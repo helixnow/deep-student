@@ -2,7 +2,7 @@
 import { fs } from '../src/local-runtime.ts';
 import type { CoordinatedDatabaseName, StorageService } from '../../../platform/storage/api.ts';
 import { tableExists, tableHasColumn, quoteIdentifier } from '../repository/sqlite-values.ts';
-import { getPendingChanges, markSyncedWithTimestamp } from '../repository/change-log.ts';
+import { deletePendingChangeLogEntries, getPendingChanges, markSyncedWithTimestamp } from '../repository/change-log.ts';
 import { enrichChangesWithData, getRecordData } from '../repository/record-data.ts';
 import { buildIdColumnMap } from './conflict-commands.ts';
 import { filterPendingChangesForDatabase, pendingHasChanges } from './change-log.ts';
@@ -27,12 +27,25 @@ export async function collectSyncChanges(local: StorageService, emitter: SyncPro
     catch (error) { throw new Error(`打开数据库 ${name} 失败: ${message(error)}`); }
     try {
       if (!tableExists(db, '__change_log')) continue;
-      let pending;
-      try { pending = filterPendingChangesForDatabase(getPendingChanges(db, null, null), name); }
+      let rawPending;
+      try { rawPending = getPendingChanges(db, null, null); }
       catch (error) {
         if (emitter !== null) continue;
         throw new Error(`获取数据库 ${name} 待同步变更失败: ${message(error)}`);
       }
+      const allowedTables = new Set(
+        rowSyncTables()
+          .filter(entry => entry.database === name)
+          .map(entry => entry.table_name),
+      );
+      const staleNonRowSyncIds = rawPending.entries
+        .filter(entry => !allowedTables.has(entry.table_name) && entry.table_name !== '__plugin_sync_records')
+        .map(entry => entry.id);
+      if (staleNonRowSyncIds.length > 0) {
+        try { deletePendingChangeLogEntries(db, staleNonRowSyncIds); }
+        catch { /* non-fatal cleanup of stale non-RowSync pending log rows */ }
+      }
+      const pending = filterPendingChangesForDatabase(rawPending, name);
       if (!pendingHasChanges(pending)) continue;
       const unresolvedKeys = new Set<string>();
       const unresolvedResourceIds = new Set<string>();

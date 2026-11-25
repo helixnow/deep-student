@@ -15,31 +15,31 @@ import { CloudStorageError, ioError } from './errors.ts';
 import { fs } from './local-fs.ts';
 import { defaultLogSink } from './logging.ts';
 import { chronoAutoSiZ } from './time.ts';
-import { BODY_STALL_TIMEOUT_MS, send, type HttpResponse } from './http.ts';
+import { BODY_STALL_TIMEOUT_MS, CONTROL_PLANE_HEADER_TIMEOUT_MS, HEADER_TIMEOUT_MS, send, type HttpResponse } from './http.ts';
 import { calculateFileHash } from './resume.ts';
 import { BoundedMemoryBody, CloudStorageBase, MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS, cancellableSleep, ensureDeclaredLenWithinBudget, ensureMemoryGetMatchesDeclaredLen, reportStatus, syncCancelSignal } from './traits.ts';
 import { documentDescendants } from './xml.ts';
 import { CLOUD_RATE_LIMITED_CODE, isCloudRateLimited } from './mod.ts';
 import {
-  backoffDelayMs, canonicalReasonOf, cappedRetryAfter, decodePath, findHref, findLastModified, findNumber,
+  MAX_RETRY_WAIT_MS, WEBDAV_CONSECUTIVE_503_TRIP_THRESHOLD, WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES, WEBDAV_MAX_503_PER_SYNC,
+  WEBDAV_RETRY_BUDGET_MS, backoffDelayMs, canonicalReasonOf, cappedRetryAfter, decodePath, findHref, findLastModified, findNumber,
   isRateLimitResponse, isRetryableStatus, isSuspiciousResponseCount, joinPaths, parseContentRangeStart, parseDocument,
   resolveRequestsPerWindow, summarizeErrorBody,
 } from './webdav-rules.ts';
 
 export {
-  MAX_RETRY_WAIT_MS, NUTSTORE_REQUESTS_PER_WINDOW, backoffDelayMs, cappedRetryAfter, decodePath, isRateLimitResponse,
+  MAX_RETRY_WAIT_MS, NUTSTORE_REQUESTS_PER_WINDOW, WEBDAV_CONSECUTIVE_503_TRIP_THRESHOLD, WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES,
+  WEBDAV_MAX_503_PER_SYNC, WEBDAV_RETRY_BUDGET_MS, backoffDelayMs, cappedRetryAfter, decodePath, isRateLimitResponse,
   isRetryableStatus, isSuspiciousResponseCount, joinPaths, parseContentRangeStart, parseRetryAfter, summarizeErrorBody,
 } from './webdav-rules.ts';
 
 export const MAX_ERROR_BODY_BYTES = 16 * 1024;
-export const ERROR_BODY_READ_TIMEOUT_MS = 10_000;
+export const ERROR_BODY_READ_TIMEOUT_MS = 3_000;
 export const RATE_WINDOW_MS = 30 * 60_000;
 const MAX_RETRIES = 3;
 const PROPFIND_BODY = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>';
 
 const providerRequestWindows = new Map<string, number[]>();
-
-const sleep = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms).unref?.(); });
 
 /** Opened on the first read, so an attempt that never connects leaves no descriptor behind. */
 function fileUploadStream(localPath: string, onChunk: (length: number) => void): ReadableStream<Uint8Array> {
@@ -79,6 +79,14 @@ export interface WebDavStorageOptions {
   rateLimitEnv?: string | undefined;
   /** Disable the 30-minute sliding window (tests that assert request counts). */
   requestWindowKey?: string;
+  /** Override control-plane response header timeout (defaults to `CONTROL_PLANE_HEADER_TIMEOUT_MS`). */
+  controlPlaneHeaderTimeoutMs?: number;
+  /** Override per-instance cumulative retry time budget (defaults to `WEBDAV_RETRY_BUDGET_MS`). */
+  retryBudgetMs?: number;
+  /** Override consecutive HTTP 503 circuit-breaker threshold (defaults to `WEBDAV_CONSECUTIVE_503_TRIP_THRESHOLD`). */
+  consecutive503Threshold?: number;
+  /** Override cumulative HTTP 503 ceiling per storage instance (defaults to `WEBDAV_MAX_503_PER_SYNC`). */
+  maxTotal503s?: number;
 }
 
 export class WebDavStorage extends CloudStorageBase {
@@ -90,6 +98,14 @@ export class WebDavStorage extends CloudStorageBase {
   private readonly createdDirs = new Set<string>();
   private readonly requestWindow: number[];
   private readonly requestsPerWindow: number;
+  private readonly controlPlaneHeaderTimeoutMs: number;
+  private readonly retryBudgetMs: number;
+  private readonly consecutive503Threshold: number;
+  private readonly maxTotal503s: number;
+  private consecutive503Count = 0;
+  private total503Count = 0;
+  private retryBudgetUsedMs = 0;
+  private circuitOpenReason: string | null = null;
 
   constructor(config: WebDavConfig, root: string, options: WebDavStorageOptions = {}) {
     super();
@@ -108,6 +124,10 @@ export class WebDavStorage extends CloudStorageBase {
     let window = providerRequestWindows.get(key);
     if (!window) { window = []; providerRequestWindows.set(key, window); }
     this.requestWindow = window;
+    this.controlPlaneHeaderTimeoutMs = options.controlPlaneHeaderTimeoutMs ?? CONTROL_PLANE_HEADER_TIMEOUT_MS;
+    this.retryBudgetMs = options.retryBudgetMs ?? WEBDAV_RETRY_BUDGET_MS;
+    this.consecutive503Threshold = options.consecutive503Threshold ?? WEBDAV_CONSECUTIVE_503_TRIP_THRESHOLD;
+    this.maxTotal503s = options.maxTotal503s ?? WEBDAV_MAX_503_PER_SYNC;
   }
 
   providerName(): string { return 'WebDAV'; }
@@ -167,43 +187,128 @@ export class WebDavStorage extends CloudStorageBase {
     return `[${CLOUD_RATE_LIMITED_CODE}] WebDAV 服务端限流，未重试；${this.formatHttpError(operation, res, body)}`;
   }
 
+  private assertCircuitHealthy(operation: string): void {
+    if (this.circuitOpenReason !== null) {
+      throw new CloudStorageError(
+        'Network',
+        `WebDAV 服务持续返回 HTTP 503，已触发熔断停止后续请求（${operation}）；原因：${this.circuitOpenReason}。请检查网络或 WebDAV 服务状态后稍后重试`,
+      );
+    }
+  }
+
+  private recordHealthyResponse(status: number): void {
+    if (status < 500 && status !== 429) {
+      this.consecutive503Count = 0;
+    }
+  }
+
+  private record503(detail: string): boolean {
+    this.consecutive503Count += 1;
+    this.total503Count += 1;
+    if (this.consecutive503Count >= this.consecutive503Threshold || this.total503Count >= this.maxTotal503s) {
+      this.circuitOpenReason = detail;
+      return true;
+    }
+    return false;
+  }
+
+  private recordRetryableAttemptElapsed(attemptStartedAt: number, errorMessage?: string | null, headerTimeoutMs?: number): void {
+    const wallElapsed = Math.max(0, performance.now() - attemptStartedAt);
+    const timeoutFloor = errorMessage && headerTimeoutMs && errorMessage.includes('等待响应头超时') ? headerTimeoutMs : 0;
+    this.retryBudgetUsedMs += Math.max(wallElapsed, timeoutFloor);
+  }
+
+  private consumeRetryWait(delayMs: number, operation: string, attemptsSoFar: number, lastError: string | null): number {
+    this.assertCircuitHealthy(operation);
+    const boundedDelay = Math.min(Math.max(0, delayMs), MAX_RETRY_WAIT_MS);
+    if (this.retryBudgetUsedMs >= this.retryBudgetMs || this.retryBudgetUsedMs + boundedDelay > this.retryBudgetMs) {
+      const detail = lastError ? `: ${lastError}` : '';
+      throw new CloudStorageError(
+        'Network',
+        `${operation} 失败（已重试 ${attemptsSoFar} 次，超出本次同步重试时间上限）${detail}`,
+      );
+    }
+    this.retryBudgetUsedMs += boundedDelay;
+    return boundedDelay;
+  }
+
+  private headerTimeoutFor(method: string, bodyLength: number | null, overrideMs?: number): number {
+    if (overrideMs !== undefined) return overrideMs;
+    if (method === 'PUT' && bodyLength !== null && bodyLength > WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES) {
+      return HEADER_TIMEOUT_MS;
+    }
+    return this.controlPlaneHeaderTimeoutMs;
+  }
+
   private static async readErrorBody(res: HttpResponse): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     try {
-      const deadline = sleep(ERROR_BODY_READ_TIMEOUT_MS).then(() => { throw new Error('timeout'); });
-      const body = await Promise.race([res.bytes(MAX_ERROR_BODY_BYTES), deadline]);
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), ERROR_BODY_READ_TIMEOUT_MS);
+        (timer as { unref?: () => void }).unref?.();
+      });
+      const body = await Promise.race([res.bytes(MAX_ERROR_BODY_BYTES, ERROR_BODY_READ_TIMEOUT_MS), deadline]);
       return decodeUtf8Lossy(body);
     } catch {
       return '';
-    } finally { res.discard(); }
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      res.discard();
+    }
   }
 
   private async responseError(operation: string, res: HttpResponse): Promise<CloudStorageError> {
     const body = await WebDavStorage.readErrorBody(res);
-    const message = isRateLimitResponse(res.status, body)
-      ? this.formatRateLimitError(operation, res, body)
-      : this.formatHttpError(operation, res, body);
+    if (isRateLimitResponse(res.status, body)) {
+      return new CloudStorageError('Network', this.formatRateLimitError(operation, res, body));
+    }
+    const message = this.formatHttpError(operation, res, body);
+    if (res.status === 503) this.record503(message);
     return new CloudStorageError('Network', message);
   }
 
   /** webdav.rs:454: bounded retries with Retry-After support; 429/rate-limited 503 return immediately. */
-  private async requestWithPath(method: string, path: string, body: Uint8Array | null, headers: Record<string, string> = {}): Promise<HttpResponse> {
+  private async requestWithPath(
+    method: string,
+    path: string,
+    body: Uint8Array | null,
+    headers: Record<string, string> = {},
+    headerTimeoutMsOverride?: number,
+  ): Promise<HttpResponse> {
     const url = this.buildPathUrl(path);
+    const operation = `WebDAV ${method} ${path}`;
+    this.assertCircuitHealthy(operation);
+    const headerTimeoutMs = this.headerTimeoutFor(method, body?.byteLength ?? null, headerTimeoutMsOverride);
     let lastError: string | null = null;
     let pendingDelay: number | null = null;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = pendingDelay ?? backoffDelayMs(attempt);
-        reportStatus(`云端请求暂不可用，${Math.floor(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
-        await cancellableSleep(delay);
+        const delay = this.consumeRetryWait(pendingDelay ?? backoffDelayMs(attempt), operation, attempt, lastError);
+        if (delay > 0) {
+          reportStatus(`云端请求暂不可用，${Math.ceil(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
+          await cancellableSleep(delay);
+        }
+        reportStatus(`正在重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
       }
+      this.assertCircuitHealthy(operation);
       await this.acquireRequestSlot();
-      const operation = `WebDAV ${method} ${path}`;
+      const attemptStartedAt = performance.now();
       let res: HttpResponse;
       try {
-        res = await send({ method, url, headers: { ...headers, authorization: this.authHeader() }, body, signal: syncCancelSignal() });
+        res = await send({
+          method,
+          url,
+          headers: { ...headers, authorization: this.authHeader() },
+          body,
+          headerTimeoutMs,
+          signal: syncCancelSignal(),
+        });
       } catch (error) {
+        if (syncCancelSignal()?.aborted) throw error;
         lastError = error instanceof CloudStorageError ? error.message : String(error);
+        this.recordRetryableAttemptElapsed(attemptStartedAt, lastError, headerTimeoutMs);
+        pendingDelay = null;
         if (attempt === MAX_RETRIES - 1) break;
         continue;
       }
@@ -218,8 +323,13 @@ export class WebDavStorage extends CloudStorageBase {
           throw new CloudStorageError('Network', this.formatRateLimitError(operation, res, errorBody));
         }
         const detail = this.formatHttpError(operation, res, errorBody);
+        const tripped = this.record503(detail);
+        this.recordRetryableAttemptElapsed(attemptStartedAt);
         if (attempt === MAX_RETRIES - 1) {
           if (method === 'MKCOL') return res;
+          throw new CloudStorageError('Network', detail);
+        }
+        if (tripped) {
           throw new CloudStorageError('Network', detail);
         }
         pendingDelay = cappedRetryAfter(res);
@@ -227,34 +337,43 @@ export class WebDavStorage extends CloudStorageBase {
         continue;
       }
       if (isRetryableStatus(res.status) && attempt < MAX_RETRIES - 1) {
+        this.recordRetryableAttemptElapsed(attemptStartedAt);
         pendingDelay = cappedRetryAfter(res);
         lastError = `HTTP ${res.status}`;
         res.discard();
         continue;
       }
+      this.recordHealthyResponse(res.status);
       return res;
     }
 
     throw new CloudStorageError('Network', `WebDAV ${method} 请求失败（已重试 ${MAX_RETRIES} 次）: ${lastError ?? ''}`);
   }
 
-  private request(method: string, key: string, body: Uint8Array | null): Promise<HttpResponse> {
-    return this.requestWithPath(method, this.remotePath(key), body);
+  private request(method: string, key: string, body: Uint8Array | null, headerTimeoutMsOverride?: number): Promise<HttpResponse> {
+    return this.requestWithPath(method, this.remotePath(key), body, {}, headerTimeoutMsOverride);
   }
 
   /** webdav.rs:578. */
   private async propfindWithRetry(url: URL, depth: string, context: string): Promise<string | null> {
+    const operation = `WebDAV PROPFIND ${context}`;
+    this.assertCircuitHealthy(operation);
     let lastError: string | null = null;
     let pendingDelay: number | null = null;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = pendingDelay ?? backoffDelayMs(attempt);
-        reportStatus(`云端目录查询暂不可用，${Math.floor(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
-        await cancellableSleep(delay);
+        const delay = this.consumeRetryWait(pendingDelay ?? backoffDelayMs(attempt), operation, attempt, lastError);
+        if (delay > 0) {
+          reportStatus(`云端目录查询暂不可用，${Math.ceil(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
+          await cancellableSleep(delay);
+        }
+        reportStatus(`正在重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
       }
+      this.assertCircuitHealthy(operation);
       await this.acquireRequestSlot();
 
+      const attemptStartedAt = performance.now();
       let res: HttpResponse;
       try {
         res = await send({
@@ -262,41 +381,55 @@ export class WebDavStorage extends CloudStorageBase {
           url,
           headers: { authorization: this.authHeader(), depth, 'content-type': 'application/xml' },
           body: utf8Encode(PROPFIND_BODY),
+          headerTimeoutMs: this.controlPlaneHeaderTimeoutMs,
           signal: syncCancelSignal(),
         });
       } catch (error) {
+        if (syncCancelSignal()?.aborted) throw error;
         lastError = error instanceof CloudStorageError ? error.message : String(error);
+        this.recordRetryableAttemptElapsed(attemptStartedAt, lastError, this.controlPlaneHeaderTimeoutMs);
+        pendingDelay = null;
+        if (attempt === MAX_RETRIES - 1) break;
         continue;
       }
 
-      if (res.status === 404) { res.discard(); return null; }
+      if (res.status === 404) { this.recordHealthyResponse(res.status); res.discard(); return null; }
       if (res.status === 429) {
         const errorBody = await WebDavStorage.readErrorBody(res);
-        throw new CloudStorageError('Network', this.formatRateLimitError(`WebDAV PROPFIND ${context}`, res, errorBody));
+        throw new CloudStorageError('Network', this.formatRateLimitError(operation, res, errorBody));
       }
       if (res.status === 503) {
         const errorBody = await WebDavStorage.readErrorBody(res);
         if (isRateLimitResponse(res.status, errorBody)) {
-          throw new CloudStorageError('Network', this.formatRateLimitError(`WebDAV PROPFIND ${context}`, res, errorBody));
+          throw new CloudStorageError('Network', this.formatRateLimitError(operation, res, errorBody));
         }
         pendingDelay = cappedRetryAfter(res);
-        lastError = this.formatHttpError(`WebDAV PROPFIND ${context}`, res, errorBody);
-        if (attempt === MAX_RETRIES - 1) throw new CloudStorageError('Network', lastError);
+        lastError = this.formatHttpError(operation, res, errorBody);
+        const tripped = this.record503(lastError);
+        this.recordRetryableAttemptElapsed(attemptStartedAt);
+        if (attempt === MAX_RETRIES - 1 || tripped) throw new CloudStorageError('Network', lastError);
         continue;
       }
       if (isRetryableStatus(res.status)) {
+        this.recordRetryableAttemptElapsed(attemptStartedAt);
         pendingDelay = cappedRetryAfter(res);
         lastError = `HTTP ${res.status} ${res.statusText}`;
         res.discard();
+        if (attempt === MAX_RETRIES - 1) break;
         continue;
       }
       if (res.status < 200 || res.status >= 300) {
+        this.recordHealthyResponse(res.status);
         res.discard();
         throw new CloudStorageError('Network', `WebDAV PROPFIND 失败: ${res.status} ${res.statusText}`);
       }
+      this.recordHealthyResponse(res.status);
       try {
         return await res.text(MAX_ERROR_BODY_BYTES * 4096);
       } catch (error) {
+        if (syncCancelSignal()?.aborted) throw error;
+        this.recordRetryableAttemptElapsed(attemptStartedAt);
+        pendingDelay = null;
         lastError = `读取 PROPFIND 响应失败: ${error instanceof Error ? error.message : String(error)}`;
       }
     }
@@ -485,20 +618,28 @@ export class WebDavStorage extends CloudStorageBase {
     const checksum = await calculateFileHash(localPath);
 
     const url = this.buildUrl(key);
+    const operation = `WebDAV 上传 ${key}`;
+    this.assertCircuitHealthy(operation);
     const uploadTimeoutMs = Math.max((120 + Math.floor(fileSize / (64 * 1024))) * 1000, 300_000);
+    const headerTimeoutMs = fileSize > WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES ? HEADER_TIMEOUT_MS : this.controlPlaneHeaderTimeoutMs;
     let lastError: CloudStorageError | null = null;
     let pendingDelay: number | null = null;
     let reportedMax = 0;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = pendingDelay ?? backoffDelayMs(attempt);
-        reportStatus(`云端上传暂不可用，${Math.floor(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
-        await cancellableSleep(delay);
+        const delay = this.consumeRetryWait(pendingDelay ?? backoffDelayMs(attempt), operation, attempt, lastError?.message ?? null);
+        if (delay > 0) {
+          reportStatus(`云端上传暂不可用，${Math.ceil(delay / 1000)} 秒后自动重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
+          await cancellableSleep(delay);
+        }
+        reportStatus(`正在重试（第 ${attempt + 1}/${MAX_RETRIES} 次）…`);
       }
 
+      this.assertCircuitHealthy(operation);
       let uploaded = 0;
       await this.acquireRequestSlot();
+      const attemptStartedAt = performance.now();
       let res: HttpResponse;
       try {
         res = await send({
@@ -510,15 +651,22 @@ export class WebDavStorage extends CloudStorageBase {
             if (uploaded > reportedMax) { reportedMax = uploaded; progress?.(uploaded, fileSize); }
           }),
           bodyLength: fileSize,
+          headerTimeoutMs,
           totalTimeoutMs: uploadTimeoutMs,
           signal: syncCancelSignal(),
         });
       } catch (error) {
-        lastError = new CloudStorageError('Network', `WebDAV 上传失败: ${error instanceof Error ? error.message : String(error)}`);
+        if (syncCancelSignal()?.aborted) throw error;
+        const text = error instanceof Error ? error.message : String(error);
+        lastError = new CloudStorageError('Network', `WebDAV 上传失败: ${text}`);
+        this.recordRetryableAttemptElapsed(attemptStartedAt, text, headerTimeoutMs);
+        pendingDelay = null;
+        if (attempt === MAX_RETRIES - 1) break;
         continue;
       }
 
       if (res.status >= 200 && res.status < 300) {
+        this.recordHealthyResponse(res.status);
         res.discard();
         progress?.(fileSize, fileSize);
         await this.verifyRemoteObjectSize(key, fileSize);
@@ -527,14 +675,21 @@ export class WebDavStorage extends CloudStorageBase {
 
       const errorBody = res.status === 429 || res.status === 503 ? await WebDavStorage.readErrorBody(res) : '';
       if (isRateLimitResponse(res.status, errorBody)) {
-        throw new CloudStorageError('Network', this.formatRateLimitError(`WebDAV 上传 ${key}`, res, errorBody));
+        throw new CloudStorageError('Network', this.formatRateLimitError(operation, res, errorBody));
       }
       if (!isRetryableStatus(res.status)) {
+        this.recordHealthyResponse(res.status);
         res.discard();
-        throw new CloudStorageError('Network', this.formatHttpError(`WebDAV 上传 ${key}`, res, errorBody));
+        throw new CloudStorageError('Network', this.formatHttpError(operation, res, errorBody));
+      }
+      const detail = this.formatHttpError(operation, res, errorBody);
+      lastError = new CloudStorageError('Network', detail);
+      this.recordRetryableAttemptElapsed(attemptStartedAt);
+      if (res.status === 503 && this.record503(detail)) {
+        res.discard();
+        throw lastError;
       }
       pendingDelay = cappedRetryAfter(res);
-      lastError = new CloudStorageError('Network', this.formatHttpError(`WebDAV 上传 ${key}`, res, errorBody));
       res.discard();
     }
 
@@ -547,7 +702,8 @@ export class WebDavStorage extends CloudStorageBase {
     const totalSize = info.size;
     progress?.(0, totalSize);
 
-    const res = await this.request('GET', key, null);
+    const headerTimeoutMs = totalSize > WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES ? HEADER_TIMEOUT_MS : this.controlPlaneHeaderTimeoutMs;
+    const res = await this.request('GET', key, null, headerTimeoutMs);
     if (res.status === 404) { res.discard(); throw new CloudStorageError('NotFound', '云端文件不存在'); }
     if (res.status < 200 || res.status >= 300) throw await this.responseError('WebDAV 下载', res);
 
@@ -595,16 +751,19 @@ export class WebDavStorage extends CloudStorageBase {
     if (resumeFrom === totalSize) return resumeFrom;
 
     const url = this.buildUrl(key);
+    this.assertCircuitHealthy(`WebDAV 续传下载 ${key}`);
     await this.acquireRequestSlot();
     const headers: Record<string, string> = { authorization: this.authHeader() };
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
+    const headerTimeoutMs = totalSize > WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES ? HEADER_TIMEOUT_MS : this.controlPlaneHeaderTimeoutMs;
     let res: HttpResponse;
-    try { res = await send({ method: 'GET', url, headers, signal: syncCancelSignal() }); }
+    try { res = await send({ method: 'GET', url, headers, headerTimeoutMs, signal: syncCancelSignal() }); }
     catch (error) { throw new CloudStorageError('Network', `WebDAV 续传下载请求失败: ${error instanceof Error ? error.message : String(error)}`); }
 
-    if (res.status === 404) { res.discard(); throw new CloudStorageError('NotFound', '云端文件不存在'); }
+    if (res.status === 404) { this.recordHealthyResponse(res.status); res.discard(); throw new CloudStorageError('NotFound', '云端文件不存在'); }
     let actualStart: number;
     if (res.status === 206) {
+      this.recordHealthyResponse(res.status);
       const contentRange = res.headers['content-range'] ?? null;
       const servedStart = contentRange === null ? null : parseContentRangeStart(contentRange);
       if (servedStart !== resumeFrom) {
@@ -613,6 +772,7 @@ export class WebDavStorage extends CloudStorageBase {
       }
       actualStart = resumeFrom;
     } else if (res.status === 200) {
+      this.recordHealthyResponse(res.status);
       actualStart = 0;
     } else {
       throw await this.responseError('WebDAV 续传下载', res);
@@ -660,21 +820,24 @@ export class WebDavStorage extends CloudStorageBase {
   override async getPrefix(key: string, prefixLen: number): Promise<Uint8Array | null> {
     if (prefixLen === 0) return new Uint8Array();
     const url = this.buildUrl(key);
+    this.assertCircuitHealthy(`WebDAV 前缀读取 ${key}`);
     let res: HttpResponse;
     try {
       res = await send({
         method: 'GET',
         url,
         headers: { authorization: this.authHeader(), range: `bytes=0-${prefixLen - 1}` },
+        headerTimeoutMs: this.controlPlaneHeaderTimeoutMs,
         signal: syncCancelSignal(),
       });
     } catch (error) {
       throw new CloudStorageError('Network', `WebDAV 前缀读取请求失败: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    if (res.status === 404) { res.discard(); return null; }
-    if (res.status === 416) { res.discard(); return new Uint8Array(); }
+    if (res.status === 404) { this.recordHealthyResponse(res.status); res.discard(); return null; }
+    if (res.status === 416) { this.recordHealthyResponse(res.status); res.discard(); return new Uint8Array(); }
     if (res.status === 206) {
+      this.recordHealthyResponse(res.status);
       const contentRange = res.headers['content-range'] ?? null;
       const servedStart = contentRange === null ? null : parseContentRangeStart(contentRange);
       if (servedStart !== 0) {
@@ -683,6 +846,8 @@ export class WebDavStorage extends CloudStorageBase {
       }
     } else if (res.status !== 200) {
       throw await this.responseError('WebDAV 前缀读取', res);
+    } else {
+      this.recordHealthyResponse(res.status);
     }
 
     const parts: Uint8Array[] = [];

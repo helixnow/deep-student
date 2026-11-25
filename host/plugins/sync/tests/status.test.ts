@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStorageService } from '../../../platform/storage/service.ts';
+import { getPendingBreakdown } from '../src/status.ts';
 import { createTestHost } from './host-fixture.ts';
 import sync from '../index.ts';
 
@@ -18,9 +19,19 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function changeLog(dbName: 'vfs' | 'chat_v2' | 'mistakes' | 'llm_usage', rows: Array<[string, number]>): void {
+const defaultRowSyncTable: Record<'vfs' | 'chat_v2' | 'mistakes' | 'llm_usage', string> = {
+  vfs: 'notes',
+  chat_v2: 'chat_v2_messages',
+  mistakes: 'mistakes',
+  llm_usage: 'llm_usage_logs',
+};
+
+function changeLog(
+  dbName: 'vfs' | 'chat_v2' | 'mistakes' | 'llm_usage',
+  rows: Array<[string, number, string?]>,
+): void {
   const db = storage.database(dbName);
-  db.exec(`CREATE TABLE __change_log (
+  db.exec(`CREATE TABLE IF NOT EXISTS __change_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     table_name TEXT NOT NULL,
     record_id TEXT NOT NULL,
@@ -28,10 +39,10 @@ function changeLog(dbName: 'vfs' | 'chat_v2' | 'mistakes' | 'llm_usage', rows: A
     changed_at TEXT NOT NULL DEFAULT (datetime('now')),
     sync_version INTEGER DEFAULT 0
   );`);
-  for (const [changedAt, version] of rows) {
+  for (const [changedAt, version, tableName] of rows) {
     db.run(
       'INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version) VALUES (?1, ?2, ?3, ?4, ?5)',
-      ['messages', `msg-${changedAt}`, 'INSERT', changedAt, version],
+      [tableName ?? defaultRowSyncTable[dbName], `rec-${changedAt}-${tableName ?? 'default'}`, 'INSERT', changedAt, version],
     );
   }
 }
@@ -118,6 +129,54 @@ it('get_sync_status reports partial status when change log statistics fail', asy
     expect(result.errors[0]).toMatch(/^vfs: 读取变更日志统计失败: Database error: 查询/);
     expect(result.databases[0]).toMatchObject({ id: 'vfs', knowledge: 'unknown', has_change_log: true });
     expect(result.databases[0]!.error).toContain('Database error:');
+  } finally {
+    await host.dispose();
+  }
+});
+
+it('get_sync_status and getPendingBreakdown exclude non-RowSync tables from pending counts', async () => {
+  changeLog('vfs', [
+    ['2024-01-01T00:00:00Z', 0, 'notes'],
+    ['2024-01-01T00:01:00Z', 0, 'note_tags'],
+    ['2024-01-01T00:02:00Z', 0, 'qbank_practice_drafts'],
+  ]);
+  changeLog('chat_v2', [
+    ['2024-01-02T00:00:00Z', 0, 'chat_v2_session_state'],
+  ]);
+  changeLog('mistakes', [
+    ['2024-01-03T00:00:00Z', 0, 'settings'],
+    ['2024-01-03T00:01:00Z', 0, 'search_logs'],
+  ]);
+  changeLog('llm_usage', [
+    ['2024-01-04T00:00:00Z', 0, 'llm_usage_daily'],
+  ]);
+
+  const host = await hostWithPaths();
+  try {
+    const status = await host.invoke<{
+      has_pending_changes: boolean;
+      total_pending_changes: number;
+      databases: Array<{ id: string; pending_changes: number }>;
+    }>('data_governance_get_sync_status');
+    expect(status.has_pending_changes).toBe(true);
+    expect(status.total_pending_changes).toBe(1);
+    expect(status.databases.map(d => [d.id, d.pending_changes])).toEqual([
+      ['vfs', 1],
+      ['llm_usage', 0],
+      ['chat_v2', 0],
+      ['mistakes', 0],
+    ]);
+
+    const breakdown = getPendingBreakdown(storage);
+    expect(breakdown.total_pending_changes).toBe(1);
+    expect(breakdown.databases.find(d => d.id === 'vfs')).toEqual({
+      id: 'vfs',
+      pending_changes: 1,
+      tables: [{ table_name: 'notes', count: 1 }],
+    });
+    expect(breakdown.databases.find(d => d.id === 'mistakes')?.pending_changes).toBe(0);
+    expect(breakdown.databases.find(d => d.id === 'chat_v2')?.pending_changes).toBe(0);
+    expect(breakdown.databases.find(d => d.id === 'llm_usage')?.pending_changes).toBe(0);
   } finally {
     await host.dispose();
   }

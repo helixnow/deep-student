@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HttpRequestInit, HttpService } from '../../../platform/http/api.ts';
 import { createDesktopHttp } from '../../../platform/http/index.ts';
 import { CloudStorageError } from '../src/errors.ts';
-import { HEADER_TIMEOUT_MS, canonicalReason, send, setHttpLookup } from '../src/http.ts';
+import { CONTROL_PLANE_HEADER_TIMEOUT_MS, HEADER_TIMEOUT_MS, canonicalReason, send, setHttpLookup } from '../src/http.ts';
 import type { SyncProviderService } from '../api.ts';
 import { createSyncHost } from './host_fixture.ts';
 
@@ -212,6 +212,24 @@ describe('http.ts cancellation and timeouts', () => {
     await vi.advanceTimersByTimeAsync(1);
     const error = await pending;
     expect([error instanceof CloudStorageError, error.message]).toEqual([true, '等待响应头超时（120 秒）']);
+  });
+
+  it(`honors custom control-plane headerTimeoutMs (${CONTROL_PLANE_HEADER_TIMEOUT_MS / 1000} s)`, async () => {
+    const hung = await listen(() => undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const pending = rejection(send({
+      method: 'PROPFIND',
+      url: new URL(`${hung.base}/`),
+      headerTimeoutMs: CONTROL_PLANE_HEADER_TIMEOUT_MS,
+    }));
+    await vi.waitFor(() => { expect(hung.log).toHaveLength(1); });
+    await vi.advanceTimersByTimeAsync(CONTROL_PLANE_HEADER_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(1);
+    const error = await pending;
+    expect([error instanceof CloudStorageError, error.message]).toEqual([
+      true,
+      `等待响应头超时（${Math.round(CONTROL_PLANE_HEADER_TIMEOUT_MS / 1000)} 秒）`,
+    ]);
   });
 
   it('totalTimeoutMs bounds the wait for headers', async () => {
