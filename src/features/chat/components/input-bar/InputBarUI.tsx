@@ -94,6 +94,12 @@ import {
 } from './composerOpenChamberEnhancements';
 import { clearComposerDraft } from './composerDraftStorage';
 import { registerSessionDraftLruClearer } from './useInputBarV2';
+import {
+  classifyUnsupportedChatAttachment,
+  filterPersistableDraftAttachments,
+  formatUnsupportedChatAttachmentMessage,
+  isUnsupportedFileTypeError,
+} from './attachmentUploadValidation';
 
 // ============================================================================
 // 常量
@@ -346,7 +352,7 @@ export class SessionDraftLruStore extends BaseSessionDraftLruStore {
     identityOrCompositeKey: string | SessionDraftTripletKeyInput,
     input: ComposerDraftInput,
   ): ComposerDraftRecord | null {
-    const attachments = input.attachments ? [...input.attachments] : [];
+    const attachments = filterPersistableDraftAttachments(input.attachments);
     const pastedPills = input.pastedPills
       ? input.pastedPills.map((pill) => ({ ...pill }))
       : [];
@@ -403,7 +409,7 @@ export class SessionDraftLruStore extends BaseSessionDraftLruStore {
           !id.startsWith(INTERNAL_DRAFT_PILL_SENTINEL) &&
           !id.startsWith(INTERNAL_DRAFT_ATTACHMENT_SENTINEL),
       ),
-      attachments: extra?.attachments ? [...extra.attachments] : [],
+      attachments: filterPersistableDraftAttachments(extra?.attachments),
       pastedPills: extra?.pastedPills
         ? extra.pastedPills.map((pill) => ({ ...pill }))
         : [],
@@ -979,25 +985,18 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       }
 
       // 🔧 P2优化：文件类型验证 (P1-08: 使用统一常量)
-      const isAllowedType = ATTACHMENT_ALLOWED_TYPES.includes(fileMime)
-        || ATTACHMENT_ALLOWED_EXTENSIONS.includes(fileExt);
-      if (!isAllowedType) {
-        console.warn(`[InputBarUI] Unsupported file type: ${fileName} (${fileMime || fileExt})`);
-        const errorAttachment: AttachmentMeta = {
-          id: attachmentId,
-          name: fileName,
-          type: attachmentType,
-          resourceType: isImage ? 'image' : 'file',
-          mimeType: fileMime || 'application/octet-stream',
-          size: fileSize,
-          status: 'error',
-          error: t('analysis:input_bar.attachments.errors.unsupported_type', {
-            name: fileName,
-            ext: fileExt || fileMime || 'unknown',
-          }),
-        };
-        onAddAttachment(errorAttachment);
-        liveAttachmentCountRef.current += 1;
+      // 不支持的文件类型（如 .apkg/.exe/.dmg）作为预期用户校验拒绝处理：
+      // 友好本地化提示、不写入 console.error、不留下死红 "Failed" 芯片。
+      const unsupported = classifyUnsupportedChatAttachment(fileName, fileMime);
+      if (unsupported) {
+        console.warn(`[InputBarUI] Unsupported file type: ${fileName} (${fileMime || fileExt || 'unknown'})`);
+        showGlobalNotification(
+          'warning',
+          formatUnsupportedChatAttachmentMessage(
+            { fileName, fileMime, kind: unsupported.kind },
+            t,
+          ),
+        );
         return;
       }
 
@@ -1277,6 +1276,24 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         } catch (error) {
           if (!upload.isActive()) return;
           const errorDetail = getErrorMessage(error);
+
+          // 后端 UNSUPPORTED_FILE_TYPE 属于预期用户校验拒绝：
+          // 不打 console.error、不泄露后端原始中文错误、不残留死红 "Failed" 芯片。
+          if (isUnsupportedFileTypeError(errorDetail)) {
+            logAttachment('ui', 'vfs_upload_unsupported_type', {
+              fileName,
+              mimeType: fileMime,
+            }, 'warning');
+            console.warn(`[InputBarUI] VFS rejected unsupported file type: ${fileName}`);
+            onRemoveAttachment(attachmentId);
+            liveAttachmentCountRef.current = Math.max(0, liveAttachmentCountRef.current - 1);
+            showGlobalNotification(
+              'warning',
+              formatUnsupportedChatAttachmentMessage({ fileName, fileMime }, t),
+            );
+            return;
+          }
+
           logAttachment('ui', 'vfs_upload_error', {
             fileName,
             error: errorDetail,
@@ -1384,7 +1401,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       reader.readAsDataURL(file);
     });
 
-  }, [onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent, isMobile]);
+  }, [onAddAttachment, onUpdateAttachment, onRemoveAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent, isMobile]);
 
   const processPreparedFilesToAttachments = useCallback((files: File[]) => {
     if (!files.length || !isUploadScopeCurrent()) return;
