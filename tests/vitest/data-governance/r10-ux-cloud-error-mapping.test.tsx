@@ -236,7 +236,7 @@ describe('平台能力拒绝的加载路径映射', () => {
     });
   });
 
-  it('E2EE 分类优先于平台能力映射（同时命中时归 E2EE 且保留原文供排查）', async () => {
+  it('E2EE 分类优先于平台能力映射（同时命中时归 E2EE 且不向用户 toast 泄露原始诊断）', async () => {
     const mixed = `解密失败（密码不一致）；${S3_BACKEND_MESSAGE}`;
     vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValue(
       Object.assign(new Error(mixed), { code: S3_BACKEND_CODE }),
@@ -247,7 +247,7 @@ describe('平台能力拒绝的加载路径映射', () => {
     await waitFor(() => {
       expect(mockShowGlobalNotification).toHaveBeenCalledWith(
         'error',
-        `cloudStorage:messages.configSsotFailed: cloudStorage:errors.e2eeWrongPassword\n(${mixed})`,
+        'cloudStorage:messages.configSsotFailed: cloudStorage:errors.e2eeWrongPassword',
       );
     });
   });

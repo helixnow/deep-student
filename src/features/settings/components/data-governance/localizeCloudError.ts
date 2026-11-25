@@ -430,10 +430,11 @@ export function formatFriendlySyncError(
 
   // Collapse verbose nested weak-network / transient server errors into one clear message.
   const isNestedTransportChain =
-    /(?:双向同步失败|上传同步失败|下载同步失败|同步格式协商失败|同步\s*schema\s*预检失败|检查云端变更断层失败|列举同步租约失败|写入同步租约失败|读取同步租约失败|回验同步租约失败|上传变更失败|上传清单失败|提交下载游标失败|WebDAV\s+(?:PUT|GET|PROPFIND|MKCOL|DELETE)\s+[^\s]+)/.test(
+    /(?:双向同步失败|上传同步失败|下载同步失败|同步格式协商失败|同步\s*schema\s*预检失败|检查云端变更断层失败|列举同步租约失败|写入同步租约失败|读取同步租约失败|回验同步租约失败|上传变更失败|上传清单失败|提交下载游标失败|WebDAV\s+(?:PUT|GET|PROPFIND|MKCOL|DELETE)\b|Network\s+error\s*:)/i.test(
       cleaned,
     );
-  if (isNestedTransportChain) {
+  const hasExplicitHttpAuthOrNotFound = /\b(?:HTTP\s*)?(?:401|403|404)\b/i.test(cleaned);
+  if (isNestedTransportChain && !hasExplicitHttpAuthOrNotFound) {
     if (/\b(?:HTTP\s*)?503\b|Service Unavailable/i.test(cleaned)) {
       return english
         ? 'Cloud server is temporarily unavailable (HTTP 503). Your local changes are safe—please retry once the network recovers.'
@@ -449,26 +450,37 @@ export function formatFriendlySyncError(
         ? 'Cloud server timed out (HTTP 504). Please check your connection and retry.'
         : '云端服务响应超时（HTTP 504），请检查网络后重试。';
     }
-    if (/socket hang up|\bECONNRESET\b|connection reset by peer|\bEPIPE\b|ERR_SOCKET_CLOSED|UND_ERR_SOCKET/i.test(cleaned)) {
+    if (/\b(?:HTTP\s*)?500\b|Internal Server Error/i.test(cleaned)) {
+      return english
+        ? 'Cloud server encountered an internal error (HTTP 500). Your local changes are safe—please retry later.'
+        : '云端服务器内部异常（HTTP 500），本地更改已安全保留，请稍后重试。';
+    }
+    if (/socket hang up|\bECONNRESET\b|connection reset|broken pipe|\bEPIPE\b|ERR_SOCKET_CLOSED|UND_ERR_SOCKET|ERR_CONNECTION_RESET|ERR_CONNECTION_ABORTED|connection closed|网络连接中断|网络连接被重置|网络连接意外断开/i.test(cleaned)) {
       return english
         ? 'Network connection was interrupted mid-sync. Your local changes are safe—please retry.'
         : '同步途中网络连接中断，本地更改已安全保留，网络恢复后重试即可。';
     }
-    if (/\b(?:ETIMEDOUT|HeadersTimeoutError|BodyTimeoutError|UND_ERR_CONNECT_TIMEOUT)\b|operation timed out|request timeout/i.test(cleaned)) {
+    if (/\b(?:ETIMEDOUT|HeadersTimeoutError|BodyTimeoutError|UND_ERR_CONNECT_TIMEOUT|ERR_CONNECTION_TIMED_OUT)\b|operation timed out|request timeout|timed out|网络连接超时/i.test(cleaned)) {
       return english
         ? 'Sync request timed out. Please check your network and retry.'
         : '同步请求超时，本地更改已安全保留，请检查网络后重试。';
     }
-    if (/\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|connection refused|fetch failed|Failed to fetch/i.test(cleaned)) {
+    if (/\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_NETWORK|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE)\b|connection refused|fetch failed|Failed to fetch|\bNetworkError\b|Network\s+error|error sending request|client error \(Connect\)|\boffline\b|网络连接不可用|无法连接到服务器|无法解析服务器域名/i.test(cleaned)) {
       return english
-        ? 'Cannot reach the cloud server. Please check your network connection and server URL.'
+        ? 'Cannot reach the cloud server. Please check your network connection and server URL, then retry.'
         : '暂时无法连接到云端服务器，请检查网络连接和服务器地址后重试。';
     }
   }
 
-  // Strip residual internal `[E_*]` error codes before general localization.
-  const withoutCode = cleaned.replace(/\[E_[A-Z0-9_]+\]\s*/g, '').trim();
-  return localizeBackendErrorText(withoutCode || cleaned, language);
+  // Strip residual internal `[E_*]` error codes, `Database error:` wrappers, and internal `[path]/<hash>.json` paths before general localization.
+  const withoutInternalTokens = cleaned
+    .replace(/\[E_[A-Z0-9_]+\]\s*/g, '')
+    .replace(/\bDatabase\s+error\s*:\s*/gi, '')
+    .replace(/(?:[:：]\s*|\s*\()?(?:\[path\]|sync\/v\d+)\/[^\s)）]+\.json\)?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[:：]\s*$/, '')
+    .trim();
+  return localizeBackendErrorText(withoutInternalTokens || cleaned, language);
 }
 
 let lastNotifiedKey = '';
@@ -528,7 +540,7 @@ export function localizeCloudStorageError(
     classifySyncE2eeErrorCode(readCloudStorageErrorCode(error)) ??
     classifySyncE2eeError(raw);
   if (e2eeKind) {
-    return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
+    return t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind]);
   }
   // 接线前/旧诊断仍可能没有稳定 code，保留中文片段兜底。
   if (/云端端到端加密密码至少需要|备份密码至少需要/.test(raw)) {
@@ -552,11 +564,9 @@ export function localizeCloudStorageError(
       return t('cloudStorage:errors.sealedBackupDecryptFailed');
     case 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE':
       return t('cloudStorage:errors.atomicRestoreUnavailable');
-    // [R5-i18n] R4 新稳定码 + commands_backup / commands_zip 第一批 code-only。
-    // 云端目录/对象状态类附上原文（排查需要对象 key 等细节）；
-    // 本机配置/资源类只给人话，原文进日志即可。
+    // 用户可见 toast 仅输出干净人话；原始技术诊断（对象路径/错误码等）收进 SyncTab 折叠详情。
     case 'E_SYNC_BAD_OBJECT_FAIL_CLOSED':
-      return `${t('cloudStorage:errors.syncBadObjectFailClosed')}\n(${raw})`;
+      return t('cloudStorage:errors.syncBadObjectFailClosed');
     case 'E_DG_TOMBSTONE_LIMITER_BUSY':
       return t('cloudStorage:errors.governanceBusy');
     case 'E_BACKUP_DIR_MISSING':
@@ -566,15 +576,13 @@ export function localizeCloudStorageError(
     case 'E_ZIP_EXPORT_TEMP_MISSING':
       return t('cloudStorage:errors.zipExportTempMissing');
     case 'E_ZIP_EXPORT_COPY_TARGET_FAILED':
-      return `${t('cloudStorage:errors.zipExportCopyTargetFailed')}\n(${raw})`;
-    // [R6-i18n] R4 verified_publish.rs 稳定码：发布前/后校验 fail-closed。
-    // 云端对象状态类，附原文（排查需要对象 key、字节数等细节）。
+      return t('cloudStorage:errors.zipExportCopyTargetFailed');
     case 'E_VERIFIED_PUBLISH_MISMATCH':
-      return `${t('cloudStorage:errors.verifiedPublishMismatch')}\n(${raw})`;
+      return t('cloudStorage:errors.verifiedPublishMismatch');
     case 'E_VERIFIED_PUBLISH_OVERSIZE':
-      return `${t('cloudStorage:errors.verifiedPublishOversize')}\n(${raw})`;
+      return t('cloudStorage:errors.verifiedPublishOversize');
     case 'E_VERIFIED_PUBLISH_UNCONDITIONAL_WRITE':
-      return `${t('cloudStorage:errors.verifiedPublishUnconditionalWrite')}\n(${raw})`;
+      return t('cloudStorage:errors.verifiedPublishUnconditionalWrite');
   }
   // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
   // 后台任务失败消息以 `[E_...] 说明` 形式携带稳定码，没有 CommandError
@@ -609,5 +617,5 @@ export function localizeCloudStorageError(
   }
   const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
   if (platformErrorKey) return t(platformErrorKey);
-  return localizeBackendErrorText(raw, language);
+  return formatFriendlySyncError(raw, t, language);
 }

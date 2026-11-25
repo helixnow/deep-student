@@ -217,6 +217,8 @@
     "desktopNameInputLabel": "桌面名称",
     "flashcardsDue": "到期闪卡：{{count}} 张待复习（点击立即复习）",
     "tasksRunning": "制卡任务：{{count}} 个进行中（点击查看进度）",
+    "syncConflicts": "同步冲突：{{count}} 组未解决（点击处理）",
+    "syncConflictsTag": "同步冲突",
     "automations": "定时学习任务：{{enabled}} 个已启用，{{running}} 个运行中，{{failed}} 个最近失败（点击管理）",
     "automationsTitle": "定时学习任务",
     "automationsEnabledShort": "{{count}} 个启用",

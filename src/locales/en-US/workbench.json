@@ -217,6 +217,8 @@
     "desktopNameInputLabel": "Desktop name",
     "flashcardsDue": "Due flashcards: {{count}} ready to review (click to start)",
     "tasksRunning": "Card generation: {{count}} tasks running (click to view progress)",
+    "syncConflicts": "Sync conflicts: {{count}} unresolved (click to resolve)",
+    "syncConflictsTag": "Conflicts",
     "automations": "Scheduled study tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed (click to manage)",
     "automationsTitle": "Scheduled study tasks",
     "automationsEnabledShort": "{{count}} enabled",

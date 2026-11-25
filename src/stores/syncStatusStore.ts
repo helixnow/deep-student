@@ -71,6 +71,10 @@ interface GlobalSyncState {
   unresolvedConflictCount: number;
   /** 各数据库未解决冲突分布 */
   unresolvedConflictPerDb: UnresolvedConflictPerDb;
+  /** 云存储配置表单是否存在未保存的草稿改动（用于阻止立即同步误用旧凭据） */
+  hasUnsavedCloudDraft: boolean;
+  /** 外部全局冲突角标触发的跳转序号（支持 Settings 冷挂载后自动聚焦冲突面板） */
+  conflictJumpRequestSeq: number;
   /**
    * 尝试开始一次同步。成功占用时把进度置为「准备中」并复位取消标记。
    * @returns true 表示成功占用；false 表示已有同步在进行，调用方应放弃本次触发
@@ -93,6 +97,12 @@ interface GlobalSyncState {
   setUnresolvedConflictCount: (count: number, perDb?: UnresolvedConflictPerDb) => void;
   /** 从后端实时刷新未解决记录级冲突计数 */
   refreshUnresolvedConflictCount: () => Promise<number>;
+  /** 更新云存储表单是否存在未保存草稿 */
+  setHasUnsavedCloudDraft: (dirty: boolean) => void;
+  /** 请求在 SyncTab 挂载或激活后自动滚动聚焦记录级冲突面板 */
+  requestJumpToConflicts: () => void;
+  /** 消费并清空待跳转记录级冲突面板请求 */
+  clearJumpToConflicts: () => void;
 }
 
 /** 同步开始时的初始进度 */
@@ -128,6 +138,8 @@ export const useGlobalSyncStore = create<GlobalSyncState>((set, get) => ({
   cancelRequested: false,
   unresolvedConflictCount: readPersistedUnresolvedConflictCount(),
   unresolvedConflictPerDb: {},
+  hasUnsavedCloudDraft: false,
+  conflictJumpRequestSeq: 0,
   beginSync: (source) => {
     if (get().isSyncing) {
       return false;
@@ -210,6 +222,20 @@ export const useGlobalSyncStore = create<GlobalSyncState>((set, get) => ({
       return total;
     } catch {
       return get().unresolvedConflictCount;
+    }
+  },
+  setHasUnsavedCloudDraft: (dirty) => {
+    const next = Boolean(dirty);
+    if (get().hasUnsavedCloudDraft !== next) {
+      set({ hasUnsavedCloudDraft: next });
+    }
+  },
+  requestJumpToConflicts: () => {
+    set((state) => ({ conflictJumpRequestSeq: state.conflictJumpRequestSeq + 1 }));
+  },
+  clearJumpToConflicts: () => {
+    if (get().conflictJumpRequestSeq !== 0) {
+      set({ conflictJumpRequestSeq: 0 });
     }
   },
 }));

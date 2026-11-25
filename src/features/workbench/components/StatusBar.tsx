@@ -954,6 +954,7 @@ const StatusBarComponent: React.FC = () => {
             dueCount={dueCount}
             taskCount={taskCount}
             automation={automation}
+            onBeforeNavigate={closeActiveMenu}
           />
         </div>
 
