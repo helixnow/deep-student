@@ -389,7 +389,22 @@
     "cancel": "Cancel",
     "reviewExitTitle": "End review session?",
     "reviewExitDescription": "Submitted ratings are kept. You can restart the remaining cards later.",
-    "reviewExitConfirm": "End review"
+    "reviewExitConfirm": "End review",
+    "moreActions": "More actions",
+    "itemActions": "More actions for {{name}}",
+    "rename": "Rename",
+    "renameInputAria": "Rename {{name}}",
+    "delete": "Delete",
+    "deleteTitle": "Move to trash",
+    "deleteDescription": "Move \"{{name}}\" to the trash? You can restore it later from Trash.",
+    "deleteConfirm": "Delete",
+    "deleteUnsavedTitle": "Delete item with unsaved changes?",
+    "deleteUnsavedDescription": "\"{{name}}\" has unsaved changes. Moving it to the trash will discard those changes.",
+    "deleteUnsavedConfirm": "Discard & delete",
+    "deleteReviewTitle": "End review and delete?",
+    "deleteReviewDescription": "\"{{name}}\" has an active review session. Deleting it will end the session (submitted ratings are kept) and move the item to the trash.",
+    "deleteReviewConfirm": "End review & delete",
+    "deletedToast": "Moved \"{{name}}\" to trash"
   },
   "appsPanel": {
     "title": "All Apps",
