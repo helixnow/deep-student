@@ -12,6 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 const CACHE_LIMIT = 256;
 const cache = new Map<string, Promise<string | null>>();
+const resolvedCache = new Map<string, string>();
 
 /** 1x1 透明 GIF 占位图：防止未解析的本地相对 src 进入 iframe srcdoc 触发 img-src CSP 违规。 */
 export const TRANSPARENT_PIXEL_DATA_URL =
@@ -23,8 +24,29 @@ const AUDIO_MEDIA_EXT_RE = /\.(?:mp3|ogg|oga|opus|wav|m4a|aac|flac|webm)(?:$|[?#
 const VIDEO_MEDIA_EXT_RE = /\.(?:mp4)(?:$|[?#])/i;
 const SUPPORTED_MEDIA_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)(?:$|[?#])/i;
 
+function setResolvedCache(key: string, url: string): void {
+  if (resolvedCache.has(key)) {
+    resolvedCache.delete(key);
+  } else if (resolvedCache.size >= CACHE_LIMIT) {
+    const oldest = resolvedCache.keys().next().value;
+    if (oldest !== undefined) resolvedCache.delete(oldest);
+  }
+  resolvedCache.set(key, url);
+}
+
+function getCachedMediaDataUrl(path: string): string | null {
+  const direct = resolvedCache.get(path);
+  if (direct) return direct;
+  const base = mediaBasename(decodeName(path));
+  if (base && base !== path.trim() && !/[\\/:]/.test(base) && base !== '.' && base !== '..') {
+    return resolvedCache.get(base) ?? null;
+  }
+  return null;
+}
+
 export function clearCardMediaCache(): void {
   cache.clear();
+  resolvedCache.clear();
 }
 
 export function isAudioMediaRef(ref: string): boolean {
@@ -50,11 +72,20 @@ export function mediaBasename(path: string): string {
 }
 
 function loadMediaDataUrlOnce(path: string): Promise<string | null> {
+  const resolved = resolvedCache.get(path);
+  if (resolved) return Promise.resolve(resolved);
   const cached = cache.get(path);
   if (cached) return cached;
   const pending = invoke<string>('read_anki_media', { path })
     .then((url) => {
-      if (typeof url === 'string' && url.startsWith('data:')) return url;
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        setResolvedCache(path, url);
+        const base = mediaBasename(decodeName(path));
+        if (base && base !== path && !/[\\/:]/.test(base) && base !== '.' && base !== '..') {
+          setResolvedCache(base, url);
+        }
+        return url;
+      }
       cache.delete(path);
       return null;
     })
@@ -130,12 +161,10 @@ export interface CardMediaState {
   loading: boolean;
 }
 
-/** 文件名 → data URL + 加载态；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
-export function useCardMediaState(
+function collectMediaCandidates(
   paths: readonly string[] | undefined,
   inlineNames?: readonly string[],
-  retryNonce = 0,
-): CardMediaState {
+): string[] {
   const candidates: string[] = [];
   const seenNames = new Set<string>();
   for (const path of paths ?? []) {
@@ -155,11 +184,53 @@ export function useCardMediaState(
     seenNames.add(lower);
     candidates.push(base);
   }
+  return candidates;
+}
+
+function resolveMediaCandidatesSync(candidates: readonly string[]): {
+  media: Map<string, string>;
+  allResolved: boolean;
+} {
+  const media = new Map<string, string>();
+  let allResolved = true;
+  for (const path of candidates) {
+    const url = getCachedMediaDataUrl(path);
+    if (url) {
+      media.set(mediaBasename(decodeName(path)), url);
+    } else {
+      allResolved = false;
+    }
+  }
+  return { media, allResolved };
+}
+
+/** 预取卡面媒体到同步缓存，切卡或翻面时可零闪烁同步命中。 */
+export function prefetchCardMedia(
+  paths: readonly string[] | undefined,
+  inlineNames?: readonly string[],
+): Promise<void> {
+  const candidates = collectMediaCandidates(paths, inlineNames);
+  if (candidates.length === 0) return Promise.resolve();
+  const pending = candidates
+    .filter((path) => !getCachedMediaDataUrl(path))
+    .map((path) => loadMediaDataUrl(path));
+  if (pending.length === 0) return Promise.resolve();
+  return Promise.all(pending).then(() => undefined);
+}
+
+/** 文件名 → data URL + 加载态；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
+export function useCardMediaState(
+  paths: readonly string[] | undefined,
+  inlineNames?: readonly string[],
+  retryNonce = 0,
+): CardMediaState {
+  const candidates = collectMediaCandidates(paths, inlineNames);
   const key = candidates.join('\n');
   const requestKey = `${retryNonce}\u0000${key}`;
+  const syncResolved = resolveMediaCandidatesSync(candidates);
   const [state, setState] = useState<{ requestKey: string; media: Map<string, string> }>(() => ({
-    requestKey: key ? '' : requestKey,
-    media: new Map(),
+    requestKey: !key || syncResolved.allResolved ? requestKey : '',
+    media: syncResolved.media,
   }));
 
   useEffect(() => {
@@ -169,6 +240,13 @@ export function useCardMediaState(
         current.requestKey === requestKey && current.media.size === 0
           ? current
           : { requestKey, media: new Map() },
+      );
+      return undefined;
+    }
+    const immediate = resolveMediaCandidatesSync(local);
+    if (immediate.allResolved) {
+      setState((current) =>
+        current.requestKey === requestKey ? current : { requestKey, media: immediate.media },
       );
       return undefined;
     }
@@ -188,8 +266,13 @@ export function useCardMediaState(
     };
   }, [key, requestKey]);
 
-  const loading = Boolean(key) && state.requestKey !== requestKey;
-  return { media: state.media, loading };
+  if (state.requestKey === requestKey) {
+    return { media: state.media, loading: false };
+  }
+  if (!key || syncResolved.allResolved) {
+    return { media: syncResolved.media, loading: false };
+  }
+  return { media: syncResolved.media, loading: true };
 }
 
 /** 文件名 → data URL；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
@@ -257,7 +340,10 @@ export function injectCardMedia(
           }
           const refAttr = trimmed ? ` data-anki-media-ref="${escapeAttr(trimmed)}"` : '';
           if (tag === 'img') {
-            return `${prefix}"${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1"${refAttr}`;
+            const hasWidth = /\bwidth\s*=/i.test(attrs);
+            const hasHeight = /\bheight\s*=/i.test(attrs);
+            const dimAttrs = `${hasWidth ? '' : ' width="240"'}${hasHeight ? '' : ' height="160"'}`;
+            return `${prefix}"${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1"${dimAttrs}${refAttr}`;
           }
           return ` data-anki-media-pending="1"${refAttr}`;
         },

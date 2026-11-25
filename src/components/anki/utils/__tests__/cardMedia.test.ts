@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import {
   CARD_FACE_HELPER_SCRIPT,
+  clearCardMediaCache,
   extractInlineMediaNames,
   injectCardMedia,
   isAnkiMediaRef,
@@ -8,9 +10,14 @@ import {
   looksLikeHtml,
   lookupCardMedia,
   mediaBasename,
+  prefetchCardMedia,
   soundNames,
   TRANSPARENT_PIXEL_DATA_URL,
 } from '../cardMedia';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
 
 const media = new Map([
   ['map.png', 'data:image/png;base64,AAAA'],
@@ -18,13 +25,35 @@ const media = new Map([
 ]);
 
 describe('card media injection', () => {
-  it('rewrites local image references to data URLs, preserves https, and replaces unresolved local images with CSP-safe placeholders', () => {
+  beforeEach(() => {
+    clearCardMediaCache();
+    vi.mocked(invoke).mockReset();
+  });
+
+  it('rewrites local image references to data URLs, preserves https, and replaces unresolved local images with non-collapsing CSP-safe placeholders', () => {
     const html = '<img src="map.png"> <img src=\'https://x.test/a.png\'> <img src="missing.png">';
     const out = injectCardMedia(html, media);
     expect(out).toBe(
-      `<img src="data:image/png;base64,AAAA"> <img src='https://x.test/a.png'> <img src="${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1" data-anki-media-ref="missing.png">`,
+      `<img src="data:image/png;base64,AAAA"> <img src='https://x.test/a.png'> <img src="${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1" width="240" height="160" data-anki-media-ref="missing.png">`,
     );
     expect(out).not.toContain('src="missing.png"');
+  });
+
+  it('preserves explicit width/height on pending img tags instead of duplicating them', () => {
+    const out = injectCardMedia('<img src="missing.png" width="400" height="300">', new Map());
+    expect(out).toBe(
+      `<img src="${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1" data-anki-media-ref="missing.png" width="400" height="300">`,
+    );
+  });
+
+  it('prefetchCardMedia populates the synchronous cache and avoids duplicate IPC calls', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce('data:image/png;base64,PREFETCHED');
+    await prefetchCardMedia(['/data/anki_media/real_protein_plots.png']);
+    await prefetchCardMedia(['/data/anki_media/real_protein_plots.png'], ['real_protein_plots.png']);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('read_anki_media', {
+      path: '/data/anki_media/real_protein_plots.png',
+    });
   });
 
   it('rewrites unquoted src, anki-media:// refs, and case-insensitive filenames', () => {

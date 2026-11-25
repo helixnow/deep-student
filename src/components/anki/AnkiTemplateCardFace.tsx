@@ -30,6 +30,7 @@ import {
   lookupCardMedia,
   looksLikeHtml,
   mediaBasename,
+  prefetchCardMedia,
   soundNames,
   useCardMediaState,
 } from './utils/cardMedia';
@@ -869,11 +870,22 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     () => (occlusionSpec ? undefined : extractInlineMediaNames(rawFaceHtml)),
     [occlusionSpec, rawFaceHtml],
   );
+  const oppositeInlineMediaRefs = useMemo(() => {
+    if (occlusionSpec) return undefined;
+    const otherHtml = side === 'front' ? backHtml : frontHtml;
+    return extractInlineMediaNames(otherHtml);
+  }, [occlusionSpec, side, frontHtml, backHtml]);
   const { media, loading: mediaLoading } = useCardMediaState(
     occlusionSpec ? undefined : card.images,
     inlineMediaRefs,
     mediaRetryNonce,
   );
+
+  useEffect(() => {
+    if (occlusionSpec) return;
+    if (!oppositeInlineMediaRefs || oppositeInlineMediaRefs.length === 0) return;
+    void prefetchCardMedia(card.images, oppositeInlineMediaRefs);
+  }, [occlusionSpec, card.images, oppositeInlineMediaRefs]);
 
   const faceHtml = useMemo(() => {
     if (!rawFaceHtml) return '';
@@ -881,6 +893,8 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
     return injectCardMedia(rawFaceHtml, media, { noAutoplay, mediaLoading });
   }, [rawFaceHtml, side, frontHtml, media, mediaLoading]);
+  const hasPendingInlineImage =
+    mediaLoading && /<img\b[^>]*data-anki-media-pending="1"/i.test(faceHtml);
   // 卡面公式与聊天侧一致由 KaTeX 自带字体排版（htmlAndMathml + iframe 内 data: 字体），
   // 不依赖设备数学字体（#461）。样式首次下载期间先出纯 MathML，就绪后切换。
   const katexCss = useKatexSandboxCss(cardHtmlNeedsKatex(faceHtml));
@@ -923,8 +937,8 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
       const trimmed = raw.trim();
       if (!trimmed) continue;
       const base = mediaBasename(trimmed);
-      // HTML 模式下跳过已被正反面内联引用的附件，避免重复展示或在正面剧透背面图片
-      if (previewHtml && base && referencedInAnyFace.has(base.toLowerCase())) continue;
+      // 跳过已被正反面内联引用的附件，避免重复展示或在另一面（如纯文本背面）错误泄漏
+      if (base && referencedInAnyFace.has(base.toLowerCase())) continue;
       if (isAudioMediaRef(trimmed)) {
         const src = resolveCardImageSrc(trimmed, media);
         if (src && !seenAudios.has(src)) {
@@ -941,7 +955,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
       }
     }
     return { imageSrcs: imgs, audioAttachments: audios };
-  }, [occlusionSpec, card.images, media, previewHtml, referencedInAnyFace]);
+  }, [occlusionSpec, card.images, media, referencedInAnyFace]);
 
   const hasInteractiveAttachments = imageSrcs.length > 0 || audioAttachments.length > 0;
   const hasInteractiveContent = frameInteractive || hasInteractiveAttachments;
@@ -993,21 +1007,32 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     >
       {previewHtml ? (
         <>
-          <ShadowDomPreview
-            key={mediaSignature}
-            htmlContent={frameHtml}
-            cssContent={cssContent}
-            compact={compact}
-            fidelity="anki"
-            darkMode={darkMode}
-            minHeight={stageMode ? stageHeight : undefined}
-            className={interactiveFrame && !frameInteractive ? 'pointer-events-none' : undefined}
-            onFrameClick={frameInteractive ? onFrameClick : undefined}
-            onFrameImageClick={frameInteractive ? handleOpenLightbox : undefined}
-            onFrameSoundClick={frameInteractive ? handleRetryMedia : undefined}
-            onFrameWheel={frameInteractive ? onFrameWheel : undefined}
-            trustedCss={katexCss ?? undefined}
-          />
+          {hasPendingInlineImage ? (
+            <div
+              data-testid="anki-card-media-loading"
+              aria-busy="true"
+              className="flex w-full items-center justify-center rounded-lg bg-muted/20 p-4"
+              style={{ minHeight: stageMode ? stageHeight : compact ? 140 : 200 }}
+            >
+              <div className="h-32 w-full max-w-[320px] animate-pulse rounded-md bg-muted/40" />
+            </div>
+          ) : (
+            <ShadowDomPreview
+              key={mediaSignature}
+              htmlContent={frameHtml}
+              cssContent={cssContent}
+              compact={compact}
+              fidelity="anki"
+              darkMode={darkMode}
+              minHeight={stageMode ? stageHeight : undefined}
+              className={interactiveFrame && !frameInteractive ? 'pointer-events-none' : undefined}
+              onFrameClick={frameInteractive ? onFrameClick : undefined}
+              onFrameImageClick={frameInteractive ? handleOpenLightbox : undefined}
+              onFrameSoundClick={frameInteractive ? handleRetryMedia : undefined}
+              onFrameWheel={frameInteractive ? onFrameWheel : undefined}
+              trustedCss={katexCss ?? undefined}
+            />
+          )}
           {accessibleFaceText ? (
             <div
               data-testid={`anki-card-face-${side}-text`}
@@ -1032,7 +1057,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
                     event.stopPropagation();
                     handleOpenLightbox({ src, alt: '' });
                   }}
-                  className="h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
+                  className="h-auto lg:h-auto !h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
                 >
                   <img
                     src={src}
@@ -1095,7 +1120,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
                 event.stopPropagation();
                 handleOpenLightbox({ src, alt: '' });
               }}
-              className="h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
+              className="h-auto lg:h-auto !h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
             >
               <img
                 src={src}

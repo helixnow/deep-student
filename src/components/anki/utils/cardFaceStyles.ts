@@ -24,7 +24,15 @@ export function normalizeCssForRender(css: string): string {
 export const CARD_FACE_HELPER_CSS = `
 :where(img) { max-width: 100%; height: auto; }
 :where(img:not([data-anki-media-pending="1"])) { cursor: zoom-in; }
-img[data-anki-media-pending="1"] { opacity: 0.35; cursor: default; }
+img[data-anki-media-pending="1"] {
+  display: inline-block;
+  min-width: 160px;
+  min-height: 120px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.14);
+  opacity: 0.65;
+  cursor: progress;
+}
 :where(audio) { display: block; width: 100%; max-width: 320px; margin: 6px auto; }
 :where(video) { max-width: 100%; height: auto; }
 .anki-hint { display: inline-block; margin: 2px 0; }
