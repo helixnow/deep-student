@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { deepScholarSkill } from "../builtin/dstu-memory-orchestrator";
 import { vfsMemorySkill } from "../builtin-tools/vfs-memory";
 
 function tool(name: string) {
@@ -109,5 +110,34 @@ describe("phase 9 memory tool contracts", () => {
     expect(vfsMemorySkill.content).toMatch(
       /超过 2000 字符.*content_truncated=true/,
     );
+  });
+
+  it("enforces user-language memory writes, L1->L2 override reconciliation, and multi-part completeness (G01)", () => {
+    const upsertRule = tool("builtin-memory_rule_upsert");
+    const upsertSchema = upsertRule.inputSchema as any;
+    expect(upsertRule.description).toContain("user's conversation language");
+    expect(upsertRule.description).toContain("contradicting L2");
+    expect(upsertSchema.properties.instruction.description).toContain(
+      "user's conversation language",
+    );
+    expect(upsertSchema.properties.scope.description).toContain(
+      "subject:<topic in user language>",
+    );
+    expect(upsertSchema.properties.scope.description).toContain(
+      "mode:<mode in user language>",
+    );
+
+    const profileUpdate = tool("builtin-learner_profile_update");
+    expect(profileUpdate.description).toContain("user conversation language");
+    const smartWrite = tool("builtin-memory_write_smart");
+    expect(smartWrite.description).toContain("user conversation language");
+    const plainWrite = tool("builtin-memory_write");
+    expect(plainWrite.description).toContain("user conversation language");
+
+    expect(vfsMemorySkill.content).toContain("Language Preservation");
+    expect(vfsMemorySkill.content).toContain("Completeness First");
+    expect(deepScholarSkill.content).toContain("Language Preservation");
+    expect(deepScholarSkill.content).toContain("L1 Rule Override & L2 Reconciliation");
+    expect(deepScholarSkill.content).toContain("完整覆盖用户所有子问题始终最优先");
   });
 });

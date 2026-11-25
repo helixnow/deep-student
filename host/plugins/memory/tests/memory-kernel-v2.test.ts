@@ -4,9 +4,13 @@ import type { MemoryServiceImpl } from '../src/service.ts';
 import type { MemoryInspectionView, MemoryProvider } from '../api.ts';
 import { MemoryToolExecutor } from '../src/memory-tool-executor.ts';
 import type { ExecutionContext, ToolExecutor } from '../../chat/api.ts';
-import { MEMORY_KERNEL_PACING_RULE, PromptBuilder } from '../../chat-pipeline/src/prompt-builder.ts';
-import { renderHardRules, renderedHardRulesCharCount, ruleCharLength } from '../src/hard-rules.ts';
-import { PROFILE_HISTORY_KEEP, emptyProfileUpdate } from '../src/learner-profile.ts';
+import {
+  MEMORY_KERNEL_PACING_RULE, MEMORY_KERNEL_PACING_RULE_EN, PromptBuilder,
+} from '../../chat-pipeline/src/prompt-builder.ts';
+import {
+  buildHardRulesDelta, normalizeRuleScope, renderHardRules, renderedHardRulesCharCount, ruleCharLength,
+} from '../src/hard-rules.ts';
+import { PROFILE_HISTORY_KEEP, emptyPreferencesPatch, emptyProfileUpdate } from '../src/learner-profile.ts';
 
 let current: MemoryHost | undefined;
 afterEach(async () => { await current?.dispose(); current = undefined; });
@@ -415,5 +419,247 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
     const turn1 = provider.buildSessionSnapshot({ sessionId: 'sess_turn1_alias', memoryEnabled: true });
     expect(turn1.renderedKernel).toContain('每次回答先给一句话结论，再给步骤');
     expect(turn1.includedRuleIds).toHaveLength(1);
+  });
+
+  it('G01-1a: preserves user language and avoids Chinese leakage for non-Chinese HardRules, LearnerProfile, legacy bridge, and deltas', async () => {
+    const { host } = await setup();
+    const service = serviceOf(host);
+    const provider = providerOf(host);
+    const executor = new MemoryToolExecutor({
+      service: () => service,
+      llmAvailable: () => true,
+      emit: () => {},
+      log: { debug: () => {}, info: () => {}, warn: () => {} },
+    });
+
+    // Preserve user-language scope suffix (English & Japanese) while normalizing localized prefixes.
+    expect(normalizeRuleScope('subject:Biology')).toBe('subject:biology');
+    expect(normalizeRuleScope('学科:Biology')).toBe('subject:biology');
+    expect(normalizeRuleScope('mode:Exam Prep')).toBe('mode:exam prep');
+    expect(normalizeRuleScope('subject:生物学')).toBe('subject:生物学');
+
+    await callTool(executor, 'builtin-memory_rule_upsert', {
+      instruction: 'Always answer with concise bullet points and end with 1 quick check.',
+      scope: 'global',
+      pinned: true,
+    });
+    await callTool(executor, 'builtin-memory_rule_upsert', {
+      instruction: 'Highlight enzyme kinetics assumptions.',
+      scope: 'subject:biochemistry',
+      pinned: true,
+    });
+
+    const profileUpdate = emptyProfileUpdate();
+    profileUpdate.preferences = {
+      ...emptyPreferencesPatch(),
+      explanation_style: 'Use real-world engineering analogies',
+      language: 'English',
+    };
+    profileUpdate.recent_status = 'Preparing for organic chemistry midterm';
+    service.applyProfileUpdate(profileUpdate, {
+      source: 'tool_call',
+      reason: 'seed English profile',
+      limitPolicy: 'reject',
+    });
+
+    // Legacy VFS note in English preference folder
+    service.getOrCreateRootFolder();
+    service.write('Preferences', 'Study Background', 'Junior biomedical engineering student who prefers intuitive analogies', 'create');
+
+    const snap = provider.buildSessionSnapshot({
+      sessionId: 'sess_en_dark',
+      memoryEnabled: true,
+      subject: 'biochemistry',
+    });
+    expect(snap.renderedKernel).toContain('## Hard Interaction Rules');
+    expect(snap.renderedKernel).toContain('[REQUIRED]');
+    expect(snap.renderedKernel).toContain('[subject:biochemistry]');
+    expect(snap.renderedKernel).toContain('## Long-Term Learner Profile');
+    expect(snap.renderedKernel).toContain('## Recorded Core Memories & Interaction Preferences');
+    expect(snap.renderedKernel).toContain('Precedence:');
+    // Zero Chinese leakage inside rendered English kernel or prompt wrapper
+    expect(snap.renderedKernel).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const built = new PromptBuilder(null).withMemoryKernel(snap.renderedKernel).buildSplit();
+    const kernelBlock = built.stableSystem.slice(
+      built.stableSystem.indexOf('<memory_kernel>'),
+      built.stableSystem.indexOf('</memory_kernel>') + '</memory_kernel>'.length,
+    );
+    expect(kernelBlock).toContain(MEMORY_KERNEL_PACING_RULE_EN);
+    expect(kernelBlock).not.toMatch(/[\u4e00-\u9fff]/);
+
+    // Mid-session rule revocation emits language-neutral [REVOKED] delta
+    const ruleId = service.loadHardRules().rules[0]!.id;
+    provider.mutateFromUser({ kind: 'remove_rule', idOrInstruction: ruleId });
+    const delta = provider.buildSessionDelta({ sessionId: 'sess_en_dark', memoryEnabled: true, subject: 'biochemistry' }, snap);
+    expect(delta).not.toBeNull();
+    expect(delta).toContain('[REVOKED - STOP IMMEDIATELY]');
+    expect(delta).not.toMatch(/[\u4e00-\u9fff]/);
+
+    // Japanese rules also stay free of Chinese markers
+    const jpRendered = renderHardRules([{
+      id: 'r_jp',
+      instruction: '箇条書きで簡潔に答えてください',
+      scope: 'subject:化学',
+      origin: 'user_explicit',
+      pinned: true,
+      createdAt: '2026-11-25T00:00:00Z',
+      updatedAt: '2026-11-25T00:00:00Z',
+    }]);
+    expect(jpRendered).toContain('## Hard Interaction Rules');
+    expect(jpRendered).toContain('[REQUIRED]');
+    expect(jpRendered).not.toContain('互动硬性规则');
+
+    const jpDelta = buildHardRulesDelta([], ['r_jp'], '2026-11-25T00:00:00Z', [{
+      id: 'r_jp',
+      instruction: '箇条書きで簡潔に答えてください',
+      scope: 'global',
+    }]);
+    expect(jpDelta).toContain('[REVOKED - STOP IMMEDIATELY]');
+  });
+
+  it('G01-1b: cascades L1 formatting override into L2 LearnerProfile (with rollback history), filters legacy notes, and returns active L2 preferences', async () => {
+    const { host } = await setup();
+    const service = serviceOf(host);
+    const provider = providerOf(host);
+    const executor = new MemoryToolExecutor({
+      service: () => service,
+      llmAvailable: () => true,
+      emit: () => {},
+      log: { debug: () => {}, info: () => {}, warn: () => {} },
+    });
+
+    // Seed L2 LearnerProfile with a table preference + an unrelated analogy preference + a compound style
+    const initProfile = emptyProfileUpdate();
+    initProfile.preferences = {
+      ...emptyPreferencesPatch(),
+      explanation_style: 'Use real-world analogies; prefer markdown tables for comparisons',
+      language: 'English',
+      others_add: ['Always format comparisons as markdown tables', 'Include one concrete clinical example'],
+    };
+    initProfile.recent_status = 'Studying pharmacokinetics';
+    const seeded = service.applyProfileUpdate(initProfile, {
+      source: 'tool_call',
+      reason: 'seed initial L2 preferences',
+      limitPolicy: 'reject',
+    });
+    expect(seeded.profile.version).toBe(1);
+
+    // Seed both a contradicting legacy VFS note (tables) and a compatible legacy note (background)
+    service.getOrCreateRootFolder();
+    const tableLegacy = service.write('Preferences', 'Table Format', 'Always summarize concepts using markdown tables', 'create');
+    const bgLegacy = service.write('Preferences', 'Major', 'Undergraduate pharmacy student who likes clinical examples', 'create');
+
+    // Freeze Turn 1 snapshot before override
+    const frozenTurn1 = provider.buildSessionSnapshot({ sessionId: 'sess_override', memoryEnabled: true });
+    expect(frozenTurn1.renderedKernel).toContain('markdown tables');
+    expect(frozenTurn1.includedLegacyNoteIds).toContain(tableLegacy.noteId);
+
+    // Turn 2: user overrides formatting via memory_rule_upsert -> no tables, use bullets
+    const upsertRes = await callTool(executor, 'builtin-memory_rule_upsert', {
+      instruction: 'Never use tables; explain with concise bullet points instead.',
+      scope: 'global',
+      pinned: true,
+    }, 'sess_override');
+    const out = upsertRes.output as Record<string, any>;
+    expect(out.success).toBe(true);
+    expect(out.profile_reconciled).toBe(true);
+    expect(out.superseded_profile_preferences.length).toBe(2);
+    // Compound explanation_style retained the non-contradicting analogy clause!
+    expect(out.active_profile_preferences.explanation_style).toBe('Use real-world analogies');
+    expect(out.active_profile_preferences.others).toEqual(['Include one concrete clinical example']);
+    expect(out.active_profile_preferences.language).toBe('English');
+
+    // Persisted L2 profile was updated with history snapshot preserved for rollback
+    const updatedProfile = service.loadProfile()!;
+    expect(updatedProfile.version).toBe(2);
+    expect(updatedProfile.preferences.explanation_style).toBe('Use real-world analogies');
+    expect(updatedProfile.preferences.others).toEqual(['Include one concrete clinical example']);
+    const history = service.loadProfileHistory();
+    expect(history.map(h => h.version)).toEqual([2, 1]);
+
+    // Same-session delta broadcasts both the new L1 rule and the superseded L2 preferences
+    const delta = provider.buildSessionDelta({ sessionId: 'sess_override', memoryEnabled: true }, frozenTurn1);
+    expect(delta).not.toBeNull();
+    expect(delta).toContain('Never use tables; explain with concise bullet points instead.');
+    expect(delta).toContain('SUPERSEDED PREFERENCE');
+
+    // New session snapshot excludes the contradicted legacy table note while keeping compatible background note
+    const nextSessionSnap = provider.buildSessionSnapshot({ sessionId: 'sess_next', memoryEnabled: true });
+    expect(nextSessionSnap.renderedKernel).toContain('Never use tables; explain with concise bullet points instead.');
+    expect(nextSessionSnap.renderedKernel).toContain('Use real-world analogies');
+    expect(nextSessionSnap.renderedKernel).not.toContain('Always summarize concepts using markdown tables');
+    expect(nextSessionSnap.renderedKernel).not.toContain('Always format comparisons as markdown tables');
+    expect(nextSessionSnap.includedLegacyNoteIds).not.toContain(tableLegacy.noteId);
+    expect(nextSessionSnap.includedLegacyNoteIds).toContain(bgLegacy.noteId);
+
+    // One-click rollback restores v1 L2 profile cleanly
+    const rolled = provider.mutateFromUser({ kind: 'rollback_profile', targetVersion: 1 });
+    expect(rolled.learnerProfile.preferences.explanation_style).toContain('markdown tables');
+    expect(rolled.learnerProfile.preferences.others).toContain('Always format comparisons as markdown tables');
+    // Even after rollback, buildSessionSnapshot projection still suppresses the contradicted L2 table clause
+    // because the L1 rule remains active!
+    const snapAfterRollback = provider.buildSessionSnapshot({ sessionId: 'sess_post_rb', memoryEnabled: true });
+    expect(snapAfterRollback.renderedKernel).not.toContain('Always format comparisons as markdown tables');
+    expect(snapAfterRollback.renderedKernel).toContain('Use real-world analogies');
+  });
+
+  it('G01-1b: scoped L1 rule preserves global L2 preference for other subjects while overriding in matching subject', async () => {
+    const { host } = await setup();
+    const service = serviceOf(host);
+    const provider = providerOf(host);
+
+    const init = emptyProfileUpdate();
+    init.preferences = { ...emptyPreferencesPatch(), explanation_style: 'Use markdown tables for summaries' };
+    service.applyProfileUpdate(init, { source: 'handler', reason: 'seed', limitPolicy: 'reject' });
+
+    provider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: 'Never use tables; write plain prose paragraphs.', scope: 'subject:history', pinned: true },
+    });
+
+    // Global L2 preference must remain intact because the L1 override was scoped to subject:history
+    expect(service.loadProfile()!.preferences.explanation_style).toBe('Use markdown tables for summaries');
+
+    // In history session, L1 rule is active and suppresses the contradicting L2 preference in the snapshot
+    const historySnap = provider.buildSessionSnapshot({ sessionId: 's_hist', memoryEnabled: true, subject: 'history' });
+    expect(historySnap.renderedKernel).toContain('Never use tables; write plain prose paragraphs.');
+    expect(historySnap.renderedKernel).not.toContain('Use markdown tables for summaries');
+
+    // In physics session, the history-scoped L1 rule is inactive so the global L2 preference still applies
+    const physicsSnap = provider.buildSessionSnapshot({ sessionId: 's_phys', memoryEnabled: true, subject: 'physics' });
+    expect(physicsSnap.renderedKernel).toContain('Use markdown tables for summaries');
+  });
+
+  it('G01-1c: prioritizes complete multi-part answering over brevity/formatting rules in both Chinese and non-Chinese kernels', async () => {
+    expect(ruleCharLength(MEMORY_KERNEL_PACING_RULE)).toBeLessThanOrEqual(80);
+    expect(MEMORY_KERNEL_PACING_RULE).toContain('完整性优先');
+    expect(MEMORY_KERNEL_PACING_RULE).toContain('子问题');
+    expect(MEMORY_KERNEL_PACING_RULE).not.toContain('控制总篇幅');
+
+    expect(MEMORY_KERNEL_PACING_RULE_EN).toContain('answer every part and sub-question completely');
+    expect(MEMORY_KERNEL_PACING_RULE_EN).toContain('memory rules govern per-part format, tone, and structure only');
+
+    const enRendered = renderHardRules([{
+      id: 'r1',
+      instruction: 'Use concise bullets.',
+      scope: 'global',
+      origin: 'user_explicit',
+      pinned: true,
+      createdAt: '2026-11-25T00:00:00Z',
+      updatedAt: '2026-11-25T00:00:00Z',
+    }]);
+    expect(enRendered).toContain('never omit any sub-question');
+
+    const zhRendered = renderHardRules([{
+      id: 'r2',
+      instruction: '回答尽量精炼',
+      scope: 'global',
+      origin: 'user_explicit',
+      pinned: true,
+      createdAt: '2026-11-25T00:00:00Z',
+      updatedAt: '2026-11-25T00:00:00Z',
+    }]);
+    expect(zhRendered).toContain('不得遗漏任何子问题');
   });
 });

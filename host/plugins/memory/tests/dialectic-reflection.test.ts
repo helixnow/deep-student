@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { runDialecticReflection } from '../src/dialectic-reflection.ts';
+import {
+  detectTextContradiction, filterProfileForActiveHardRules,
+  reconcileProfilePreferencesWithRule, runDialecticReflection,
+} from '../src/dialectic-reflection.ts';
+import { emptyProfile } from '../src/learner-profile.ts';
 
 describe('Memory v2 Dialectic Reflection Engine', () => {
   it('flags recurring weak points, stale retirement candidates, rule promotions, and budget pressure', () => {
@@ -140,5 +144,101 @@ describe('Memory v2 Dialectic Reflection Engine', () => {
     expect(conflicts).toHaveLength(2);
     expect(conflicts.some(c => c.title.includes('篇幅冲突'))).toBe(true);
     expect(conflicts.some(c => c.title.includes('语言冲突'))).toBe(true);
+  });
+
+  it('detects generalizable multilingual format, style, pace, pedagogy, language, and OOD negation contradictions without false positives', () => {
+    // Multilingual format contradictions (English, Chinese, cross-lingual, French, Japanese, German, Spanish)
+    expect(detectTextContradiction('Never use tables; use bullet points instead.', 'Prefer markdown tables for comparisons')?.dimension).toBe('format');
+    expect(detectTextContradiction('以后不要用表格，改用要点列表', '偏好表格形式总结')?.dimension).toBe('format');
+    expect(detectTextContradiction('No tables, use concise bullets', '偏好表格形式总结')?.dimension).toBe('format');
+    expect(detectTextContradiction('Pas de tableaux, utilisez des listes à puces', 'Utiliser des tableaux comparatifs')?.dimension).toBe('format');
+    expect(detectTextContradiction('表を使わないで箇条書きにしてください', '表形式でまとめてほしい')?.dimension).toBe('format');
+    expect(detectTextContradiction('Keine Tabellen, lieber Stichpunkte', 'Nutze Tabellen für Vergleiche')?.dimension).toBe('format');
+    expect(detectTextContradiction('Sin tablas, usa viñetas', 'Usa tablas comparativas')?.dimension).toBe('format');
+
+    // Exclusive primary structure switches (prose vs bullets, mindmap vs lists)
+    expect(detectTextContradiction('Switch to flowing prose paragraphs only', 'Always use bullet lists')?.dimension).toBe('format');
+    expect(detectTextContradiction('No bullet points; write narrative paragraphs', 'Prefer bulleted summaries')?.dimension).toBe('format');
+
+    // Pace, pedagogy, language, emoji, closing quiz
+    expect(detectTextContradiction('Fast pace, skip basics', 'Slow', { olderIsPaceField: true })?.dimension).toBe('pace');
+    expect(detectTextContradiction('Always give the direct answer first', 'Socratic hints first, never reveal the answer directly')?.dimension).toBe('pedagogy');
+    expect(detectTextContradiction('Reply exclusively in Japanese', 'English', { olderIsLanguageField: true })?.dimension).toBe('language');
+    expect(detectTextContradiction('Stop adding self-check questions', 'Always end with a self-check question')?.dimension).toBe('closing');
+    expect(detectTextContradiction('No emojis in answers', 'Use friendly emojis')?.dimension).toBe('style');
+
+    // Generic unseen OOD topic negation
+    expect(detectTextContradiction('Never include mnemonics in explanations', 'Include mnemonics to help memorize terms')?.dimension).toBe('negation');
+    expect(detectTextContradiction('不要再写打油诗了', '喜欢用打油诗总结知识点')?.dimension).toBe('negation');
+
+    // Aligned negatives and unrelated preferences must NOT false-positive!
+    expect(detectTextContradiction('Never use tables; use bullet points', 'Never use tables in answers')).toBeNull();
+    expect(detectTextContradiction('Never use tables; use bullet points', 'Use real-world engineering analogies')).toBeNull();
+    expect(detectTextContradiction('Focus on English grammar exceptions', '用中文讲解核心概念')).toBeNull();
+    expect(detectTextContradiction('Always reply in concise English', 'English', { olderIsLanguageField: true })).toBeNull();
+  });
+
+  it('reconciles L2 preferences cleanly (including compound clauses) and surfaces L1-vs-L2 conflicts instead of promoting them', () => {
+    const profile = emptyProfile();
+    profile.preferences.explanation_style = 'Use visual analogies; prefer markdown tables for summaries';
+    profile.preferences.language = 'Chinese';
+    profile.preferences.pace = 'Slow';
+    profile.preferences.others = [
+      'Always include comparison tables',
+      'Include mnemonics for terminology',
+      'Highlight exam traps',
+    ];
+
+    const res1 = reconcileProfilePreferencesWithRule(profile, {
+      id: 'r1',
+      instruction: 'Never use tables and never include mnemonics; reply exclusively in English.',
+      scope: 'global',
+    });
+    expect(res1.changed).toBe(true);
+    expect(profile.preferences.explanation_style).toBe('Use visual analogies');
+    expect(profile.preferences.language).toBeNull();
+    expect(profile.preferences.pace).toBe('Slow');
+    expect(profile.preferences.others).toEqual(['Highlight exam traps']);
+
+    // Non-mutating filter helper leaves input profile intact while stripping contradicted fields
+    const untouched = emptyProfile();
+    untouched.preferences.explanation_style = 'Always use comparison tables';
+    untouched.preferences.others = ['Use tables', 'Use real-world examples'];
+    const filtered = filterProfileForActiveHardRules(untouched, [
+      { id: 'r_no_tab', instruction: 'No tables; use bullet points', scope: 'subject:bio' },
+    ]);
+    expect(filtered.preferences.explanation_style).toBeNull();
+    expect(filtered.preferences.others).toEqual(['Use real-world examples']);
+    expect(untouched.preferences.explanation_style).toBe('Always use comparison tables');
+
+    // Dialectic reflection flags an L1-vs-L2 contradiction instead of suggesting promotion
+    const report = runDialecticReflection({
+      rulesChars: 80,
+      rulesMaxChars: 1500,
+      profileChars: 120,
+      profileMaxChars: 2500,
+      hardRules: {
+        version: 1,
+        updated_at: '2026-11-25T00:00:00Z',
+        rules: [{
+          id: 'r_bullets',
+          instruction: 'Never use tables; use bullet points instead.',
+          scope: 'global',
+          origin: 'user_explicit',
+          pinned: true,
+          createdAt: '2026-11-25T00:00:00Z',
+          updatedAt: '2026-11-25T00:00:00Z',
+        }],
+      },
+      learnerProfile: {
+        version: 1,
+        updated_at: '2026-11-25T00:00:00Z',
+        weak_points: [],
+        preferences: { others: ['Always summarize using markdown tables'] },
+        goals: [],
+      },
+    });
+    expect(report.proposals.some(p => p.kind === 'promote_preference_to_rule')).toBe(false);
+    expect(report.proposals.some(p => p.kind === 'resolve_rule_conflict' && p.id.startsWith('conflict:l1_l2:'))).toBe(true);
   });
 });

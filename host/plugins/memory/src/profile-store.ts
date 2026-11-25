@@ -24,12 +24,23 @@ import {
   HARD_RULES_MAX_CHARS_CONFIG_KEY, HARD_RULES_NOTE_TITLE,
   LEARNER_PROFILE_KERNEL_MAX_CHARS_CONFIG_KEY, MAX_HARD_RULES,
   clampHardRulesMaxChars, clampLearnerProfileKernelMaxChars, emptyHardRules,
-  enforceHardRulesCharLimit, hardRulesFromJson, hardRulesToJson,
+  enforceHardRulesCharLimit, hardRulesFromJson, hardRulesToJson, isChineseDominantText,
   removeHardRule as removeHardRulePure, renderedHardRulesCharCount,
   upsertHardRule as upsertHardRulePure,
   type HardRuleUpsertInput, type HardRulesDocument, type MemoryHardRule,
 } from './hard-rules.ts';
+import {
+  reconcileProfilePreferencesWithRule,
+  type SupersededPreference,
+} from './dialectic-reflection.ts';
 import type { MemoryConfig } from './config.ts';
+
+export interface HardRuleProfileReconciliation {
+  changed: boolean;
+  previousVersion: number;
+  version: number;
+  superseded: SupersededPreference[];
+}
 
 export const SYSTEM_FOLDER_TITLE = '__system__';
 export const PROFILE_CAS_MAX_RETRIES = 32;
@@ -300,11 +311,11 @@ export class MemoryProfileStore {
     return doc;
   }
 
-  /** CAS upsert for an L1 HardRule with Hermes-style hard-limit rejection when limitPolicy='reject'. */
+  /** CAS upsert for an L1 HardRule with Hermes-style hard-limit rejection and cascading L2 reconciliation. */
   upsertHardRule(
     input: HardRuleUpsertInput,
     options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason' | 'limitPolicy'>,
-  ): { doc: HardRulesDocument; rule: MemoryHardRule; changed: boolean } {
+  ): { doc: HardRulesDocument; rule: MemoryHardRule; changed: boolean; reconciledProfile?: HardRuleProfileReconciliation } {
     const maxChars = this.getHardRulesMaxChars();
     for (let attempt = 0; attempt < PROFILE_CAS_MAX_RETRIES; attempt += 1) {
       const snapshot = this.profileNoteSnapshot(HARD_RULES_NOTE_TITLE);
@@ -315,21 +326,31 @@ export class MemoryProfileStore {
         chronoRfc3339(),
         () => `rule_${globalThis.crypto.randomUUID().slice(0, 8)}`,
       );
-      if (!result.changed) return result;
+      if (!result.changed) {
+        const reconciledProfile = this.reconcileProfileAgainstHardRule(result.rule, options);
+        return reconciledProfile.changed ? { ...result, reconciledProfile } : result;
+      }
 
       let committed = result.doc;
       if (options.limitPolicy === 'enforce') {
         committed = enforceHardRulesCharLimit(committed, maxChars);
       } else {
         const chars = renderedHardRulesCharCount(committed);
+        const chinese = isChineseDominantText(
+          `${input.instruction} ${committed.rules.map(r => r.instruction).join(' ')}`,
+        );
         if (committed.rules.length > MAX_HARD_RULES) {
           throw new Error(
-            `Invalid argument 'hard_rules': 互动硬规则数量 ${committed.rules.length} 超过上限 ${MAX_HARD_RULES} 条。请先合并或移除过时规则后再试。`,
+            chinese
+              ? `Invalid argument 'hard_rules': 互动硬规则数量 ${committed.rules.length} 超过上限 ${MAX_HARD_RULES} 条。请先合并或移除过时规则后再试。`
+              : `Invalid argument 'hard_rules': Hard rule count ${committed.rules.length} exceeds the ${MAX_HARD_RULES}-rule cap. Merge or remove obsolete rules first.`,
           );
         }
         if (chars > maxChars) {
           throw new Error(
-            `Invalid argument 'hard_rules': 合并后互动硬规则 ${chars} 字符，超过 ${maxChars} 字符硬上限。请先精简、合并或删除旧规则再重试。`,
+            chinese
+              ? `Invalid argument 'hard_rules': 合并后互动硬规则 ${chars} 字符，超过 ${maxChars} 字符硬上限。请先精简、合并或删除旧规则再重试。`
+              : `Invalid argument 'hard_rules': Rendered hard rules (${chars} chars) exceed the ${maxChars}-char hard limit. Condense, merge, or remove older rules and retry.`,
           );
         }
       }
@@ -360,9 +381,85 @@ export class MemoryProfileStore {
         sessionId: options.sessionId ?? null, durationMs: 0,
         extraJson: JSON.stringify({ rule_id: result.rule.id, version: committed.version }),
       });
-      return { doc: committed, rule: result.rule, changed: true };
+      const reconciledProfile = this.reconcileProfileAgainstHardRule(result.rule, options);
+      return { doc: committed, rule: result.rule, changed: true, reconciledProfile };
     }
     throw new Error('CONFLICT(hard_rules.conflict): Hard rules remained busy after repeated retries.');
+  }
+
+  /**
+   * Cascades L1 HardRule updates into L2 `__learner_profile__` by pruning/clearing
+   * contradicted preferences via CAS while recording a history snapshot for rollback.
+   */
+  private reconcileProfileAgainstHardRule(
+    rule: MemoryHardRule,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason'>,
+  ): HardRuleProfileReconciliation {
+    for (let attempt = 0; attempt < PROFILE_CAS_MAX_RETRIES; attempt += 1) {
+      const snapshot = this.profileNoteSnapshot(LEARNER_PROFILE_NOTE_TITLE);
+      if (snapshot === null || snapshot.content.trim() === '') {
+        return { changed: false, previousVersion: 0, version: 0, superseded: [] };
+      }
+      const parsed = learnerProfileFromJson(snapshot.content);
+      if (parsed === null) {
+        return { changed: false, previousVersion: 0, version: 0, superseded: [] };
+      }
+
+      const beforeSnapshot = structuredClone(parsed);
+      const previousVersion = parsed.version;
+      const reconciliation = reconcileProfilePreferencesWithRule(parsed, rule, { respectRuleScope: true });
+      if (!reconciliation.changed) {
+        return { changed: false, previousVersion, version: previousVersion, superseded: [] };
+      }
+
+      // Ensure the pre-reconciliation profile version is preserved in history so the user can roll back.
+      const existingHistory = this.loadProfileHistory();
+      if (beforeSnapshot.version > 0 && !existingHistory.some(item => item.version === beforeSnapshot.version)) {
+        try { this.appendProfileHistory(beforeSnapshot); }
+        catch (error) {
+          this.host.warn(`[Memory] Failed to snapshot pre-reconciliation learner profile history: ${errorText(error)}`);
+        }
+      }
+
+      parsed.version = Math.min(0xffffffff, parsed.version + 1);
+      parsed.updated_at = chronoRfc3339();
+      const json = learnerProfileToJson(parsed);
+
+      try {
+        updateNote(this.host.deps, this.host.db, snapshot.noteId, {
+          content: json, expectedUpdatedAt: snapshot.updatedAt,
+        });
+      } catch (error) {
+        if (isProfileRetryable(error)) continue;
+        throw error;
+      }
+
+      try { this.appendProfileHistory(parsed); }
+      catch (error) {
+        this.host.warn(`[Memory] Failed to append reconciled learner profile history: ${errorText(error)}`);
+      }
+      this.host.audit({
+        source: options.source, operation: 'update', success: true,
+        title: LEARNER_PROFILE_NOTE_TITLE,
+        contentPreview: `reconciled ${reconciliation.superseded.length} L2 pref(s) against rule ${rule.id}`,
+        folder: SYSTEM_FOLDER_TITLE, event: 'PROFILE_RECONCILE_FROM_RULE', reason: options.reason,
+        sessionId: options.sessionId ?? null, durationMs: 0,
+        extraJson: JSON.stringify({
+          rule_id: rule.id,
+          from_version: previousVersion,
+          learner_profile_version: parsed.version,
+          superseded: reconciliation.superseded,
+        }),
+      });
+      return {
+        changed: true,
+        previousVersion,
+        version: parsed.version,
+        superseded: reconciliation.superseded,
+      };
+    }
+    this.host.warn(`[Memory] Learner profile remained busy during L1->L2 reconciliation for rule ${rule.id}`);
+    return { changed: false, previousVersion: 0, version: 0, superseded: [] };
   }
 
   /** CAS removal of an L1 HardRule by id or exact instruction text. */

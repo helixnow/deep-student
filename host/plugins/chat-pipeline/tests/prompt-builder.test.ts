@@ -3,6 +3,7 @@ import type { SourceInfo } from '../../../../contracts/ipc/generated/L04-chat-se
 import {
   buildSystemPromptWithProfileAndAgents, CanvasNoteInfo, CHEMISTRY_RENDERING_RULES,
   CITATION_GUIDE, DEFAULT_RENDERER_CAPABILITIES, DEFAULT_SYSTEM_PROMPT, LATEX_RULES,
+  MEMORY_KERNEL_PACING_RULE, MEMORY_KERNEL_PACING_RULE_EN,
   parseRendererCapabilities, PromptBuilder, RESPONSE_LANGUAGE_RULE, sourceTypeLabel,
   type RendererCapabilities,
 } from '../src/prompt-builder.ts';
@@ -315,5 +316,38 @@ describe('chat_v2/prompt_builder.rs::tests', () => {
     expect(parseRendererCapabilities('{"unknown":true,"music":true}')).toEqual({
       ...DEFAULT_RENDERER_CAPABILITIES, music: true,
     });
+  });
+
+  it('enforces language preservation for memory writes, L1>L2 precedence, and multi-part completeness across languages (G01)', () => {
+    expect(RESPONSE_LANGUAGE_RULE).toContain('memory writes');
+    expect(RESPONSE_LANGUAGE_RULE).toContain('subject:<topic in user\'s language>');
+    expect(RESPONSE_LANGUAGE_RULE).toContain('learner profile fields');
+
+    // Non-Chinese kernel & delta stay 100% free of Chinese framing and elevate multi-part completeness
+    const enBuilt = new PromptBuilder(null)
+      .withMemoryKernel('## Hard Interaction Rules\n- [REQUIRED] Use bullet points only. (id:r1)')
+      .withMemoryDelta('+ Added/updated rule: No tables; use bullets. (id:r2)')
+      .buildSplit();
+    const enKernelBlock = enBuilt.stableSystem.slice(
+      enBuilt.stableSystem.indexOf('<memory_kernel>'),
+      enBuilt.stableSystem.indexOf('</memory_kernel>') + '</memory_kernel>'.length,
+    );
+    expect(enKernelBlock).toContain(MEMORY_KERNEL_PACING_RULE_EN);
+    expect(enKernelBlock).toContain('newer L1 hard rules strictly override');
+    expect(enKernelBlock).toContain('preserve the user\'s conversation language');
+    expect(enKernelBlock).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(enBuilt.turnVolatile).toContain('completeness first: answer every part and sub-question');
+    expect(enBuilt.turnVolatile).not.toMatch(/[\u4e00-\u9fff]/);
+
+    // Chinese kernel & delta keep compact pacing rule (<=80 chars) and state completeness-first + L1>L2 precedence
+    expect([...MEMORY_KERNEL_PACING_RULE].length).toBeLessThanOrEqual(80);
+    const zhBuilt = new PromptBuilder(null)
+      .withMemoryKernel('## 互动硬性规则\n- [必遵] 回答精炼 (id:r1)')
+      .withMemoryDelta('+ 新增/更新规则：不要用表格 (id:r2)')
+      .buildSplit();
+    expect(zhBuilt.stableSystem).toContain(MEMORY_KERNEL_PACING_RULE);
+    expect(zhBuilt.stableSystem).toContain('较新的 L1 硬规则严格覆盖');
+    expect(zhBuilt.turnVolatile).toContain('完整性优先');
+    expect(zhBuilt.turnVolatile).toContain('勿中途截断');
   });
 });

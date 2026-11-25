@@ -57,4 +57,24 @@ describe('llm_decision', () => {
     expect(buildDecisionPrompt('c', null, [])).not.toContain('标题:');
     expect(JSON.parse(enhancedCleanJsonResponse('```json\n{"a":1}\n```'))).toEqual({ a: 1 });
   });
+
+  it('uses language-neutral framing and enforces language preservation for non-Chinese inputs', () => {
+    const enPrompt = buildDecisionPrompt(
+      'Never use tables; prefer concise bullet lists',
+      'Format Preference',
+      [{ note_id: 'n_tab', title: 'Table Pref', content_preview: 'Prefer markdown tables for summaries' }],
+    );
+    expect(enPrompt).toContain('Title: Format Preference');
+    expect(enPrompt).toContain('Preserve language');
+    expect(enPrompt).toContain('Format/style/verbosity/language overrides');
+    expect(enPrompt).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const frPrompt = buildDecisionPrompt(
+      'Préfère des listes à puces sans tableaux',
+      'Format',
+      [],
+    );
+    expect(frPrompt).toContain('Title: Format');
+    expect(frPrompt).not.toMatch(/[\u4e00-\u9fff]/);
+  });
 });

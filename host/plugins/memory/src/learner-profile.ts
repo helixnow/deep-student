@@ -5,6 +5,8 @@
  * Persistence (system notes, CAS retries, history) is not part of this module.
  */
 
+import { isChineseDominantText } from './hard-rules.ts';
+
 export const LEARNER_PROFILE_NOTE_TITLE = '__learner_profile__';
 export const LEARNER_PROFILE_HISTORY_NOTE_TITLE = '__learner_profile_history__';
 export const LEARNER_PROFILE_MAX_CHARS = 4000;
@@ -212,50 +214,76 @@ export function mergeLearnerProfileUpdate(profile: LearnerProfile,
   return changed;
 }
 
-/** Rust `LearnerProfile::render_markdown`. */
+/** Rust `LearnerProfile::render_markdown` (localized for Chinese content, neutral English for non-Chinese content). */
 export function renderLearnerProfile(profile: LearnerProfile): string {
+  const sampleParts: string[] = [];
+  for (const wp of profile.weak_points) {
+    sampleParts.push(wp.subject, wp.knowledge_point, wp.error_pattern);
+  }
+  const prefs = profile.preferences;
+  if (prefs.explanation_style) sampleParts.push(prefs.explanation_style);
+  if (prefs.language) sampleParts.push(prefs.language);
+  if (prefs.pace) sampleParts.push(prefs.pace);
+  sampleParts.push(...prefs.others);
+  for (const goal of profile.goals) sampleParts.push(goal.goal);
+  if (profile.recent_status) sampleParts.push(profile.recent_status);
+  const sample = sampleParts.join(' ').trim();
+  const chinese = sample === '' || isChineseDominantText(sample);
+
   const lines: string[] = [];
-  lines.push(`# 学习者画像（v${profile.version}，更新于 ${profile.updated_at === '' ? '未知' : profile.updated_at}）`);
+  if (chinese) {
+    lines.push(`# 学习者画像（v${profile.version}，更新于 ${profile.updated_at === '' ? '未知' : profile.updated_at}）`);
+  } else {
+    lines.push(`# Learner Profile (v${profile.version}, updated ${profile.updated_at === '' ? 'unknown' : profile.updated_at})`);
+  }
 
   if (profile.weak_points.length > 0) {
-    lines.push('## 薄弱知识点');
+    lines.push(chinese ? '## 薄弱知识点' : '## Weak Points');
     for (const wp of profile.weak_points) {
-      const lastSeen = wp.last_seen === null || wp.last_seen === undefined
-        ? '' : `，最近 ${wp.last_seen}`;
-      lines.push(`- [${wp.subject}/${wp.knowledge_point}] ${wp.error_pattern}（证据×${wp.evidence_count}${lastSeen}）`);
+      if (chinese) {
+        const lastSeen = wp.last_seen === null || wp.last_seen === undefined
+          ? '' : `，最近 ${wp.last_seen}`;
+        lines.push(`- [${wp.subject}/${wp.knowledge_point}] ${wp.error_pattern}（证据×${wp.evidence_count}${lastSeen}）`);
+      } else {
+        const lastSeen = wp.last_seen === null || wp.last_seen === undefined
+          ? '' : `, last seen ${wp.last_seen}`;
+        lines.push(`- [${wp.subject}/${wp.knowledge_point}] ${wp.error_pattern} (evidence×${wp.evidence_count}${lastSeen})`);
+      }
     }
   }
 
-  const prefs = profile.preferences;
   const hasPrefs = prefs.explanation_style !== null && prefs.explanation_style !== undefined
     || prefs.language !== null && prefs.language !== undefined
     || prefs.pace !== null && prefs.pace !== undefined
     || prefs.others.length > 0;
   if (hasPrefs) {
-    lines.push('## 学习偏好');
+    lines.push(chinese ? '## 学习偏好' : '## Learning Preferences');
     if (prefs.explanation_style !== null && prefs.explanation_style !== undefined) {
-      lines.push(`- 讲解风格：${prefs.explanation_style}`);
+      lines.push(chinese ? `- 讲解风格：${prefs.explanation_style}` : `- Explanation style: ${prefs.explanation_style}`);
     }
     if (prefs.language !== null && prefs.language !== undefined) {
-      lines.push(`- 语言：${prefs.language}`);
+      lines.push(chinese ? `- 语言：${prefs.language}` : `- Language: ${prefs.language}`);
     }
     if (prefs.pace !== null && prefs.pace !== undefined) {
-      lines.push(`- 节奏：${prefs.pace}`);
+      lines.push(chinese ? `- 节奏：${prefs.pace}` : `- Pace: ${prefs.pace}`);
     }
     for (const other of prefs.others) lines.push(`- ${other}`);
   }
 
   if (profile.goals.length > 0) {
-    lines.push('## 学习目标');
+    lines.push(chinese ? '## 学习目标' : '## Learning Goals');
     for (const goal of profile.goals) {
-      lines.push(goal.deadline === null || goal.deadline === undefined
-        ? `- ${goal.goal}` : `- ${goal.goal}（期限 ${goal.deadline}）`);
+      if (goal.deadline === null || goal.deadline === undefined) {
+        lines.push(`- ${goal.goal}`);
+      } else {
+        lines.push(chinese ? `- ${goal.goal}（期限 ${goal.deadline}）` : `- ${goal.goal} (deadline ${goal.deadline})`);
+      }
     }
   }
 
   if (profile.recent_status !== null && profile.recent_status !== undefined
     && profile.recent_status.trim() !== '') {
-    lines.push('## 近期状态');
+    lines.push(chinese ? '## 近期状态' : '## Recent Status');
     lines.push(profile.recent_status.trim());
   }
 

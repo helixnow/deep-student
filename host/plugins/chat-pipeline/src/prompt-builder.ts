@@ -21,13 +21,26 @@ export const DEFAULT_SYSTEM_PROMPT =
   '你是一个专业的AI学习助手，帮助学生理解知识、解答问题、分析错题。请用清晰、准确的语言回答问题，必要时提供示例和解释。';
 
 export const RESPONSE_LANGUAGE_RULE = String.raw`<response_language>
-Reply in the language of the user's latest message: Chinese in, Chinese out; English in, English out. This covers everything the user reads — narration before and after tool calls, plans, ask_user questions and options, summaries, and content you write into apps (notes, mind maps, flashcards, explanations) — unless the user asks for another language or you are quoting source text.
-回复语言跟随用户最新一条消息：中文提问用中文，英文提问用英文。
+Match the language of the user's latest message across all languages (e.g., English in -> English out, Chinese in -> Chinese out, Japanese in -> Japanese out, French in -> French out). This covers everything the user reads AND everything you persist to memory — narration before and after tool calls, plans, ask_user questions and options, summaries, app content (notes, mind maps, flashcards, explanations), and memory writes (hard rule instruction and scope suffix such as subject:<topic in user's language> or mode:<mode in user's language>, learner profile fields, memory note titles/content/folders, and study log activities) — unless the user explicitly asks for another language or you are quoting source text.
+回复及所有记忆写入（硬规则正文与 subject:/mode: 作用域后缀、学习者画像字段、记忆笔记标题/正文/目录与学习日志）均严格跟随用户最新一条消息所使用的语言，严禁擅自翻译成其他语言。
 </response_language>`;
 
-/** Compact anti-truncation & pacing guidance injected only when `<memory_kernel>` is non-empty. */
+/** Compact completeness-first pacing guidance injected when `<memory_kernel>` is non-empty (Chinese-dominant kernel). */
 export const MEMORY_KERNEL_PACING_RULE =
-  '篇幅与收尾控制：讲解请条理精炼、控制总篇幅，优先确保用户明确约定的各项格式、字数与收尾要求完整落实，严禁中途截断或遗漏。';
+  '完整性优先：须完整回答用户每个问题与子问题，严禁遗漏或中途截断；记忆规则仅规范各部分格式、语气与结构。';
+
+/** Language-neutral completeness-first pacing guidance injected when `<memory_kernel>` is non-Chinese. */
+export const MEMORY_KERNEL_PACING_RULE_EN =
+  'Completeness first: answer every part and sub-question completely without omission or truncation; memory rules govern per-part format, tone, and structure only.';
+
+function isChineseDominantKernelText(text: string): boolean {
+  const hanCount = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  if (hanCount === 0) return false;
+  if (/[\u3040-\u30ff\uac00-\ud7af]/.test(text)) return false;
+  const totalLetters = (text.match(/\p{L}/gu) ?? []).length;
+  const nonHanLetters = Math.max(0, totalLetters - hanCount);
+  return hanCount * 2.5 >= nonHanLetters;
+}
 
 export const CITATION_GUIDE = String.raw`<citation_rules>
 <description>引用格式规范，回答时必须遵守</description>
@@ -547,9 +560,16 @@ export class PromptBuilder {
     if (this.superAgentRouter !== null) parts.push(this.superAgentRouter);
     parts.push(CITATION_GUIDE);
     if (this.memoryKernel !== null) {
-      parts.push('<memory_kernel>\n以下是本会话冻结的学习者常驻内核（包含硬性互动规则与核心长期画像）。其中的互动硬性规则必须从第 1 轮起 100% 严格遵循，无需额外检索确认；若用户提出新规则可用 memory_rule_upsert 工具更新，若画像有重大变化可用 learner_profile_update 工具增量更新：\n'
-        + `${MEMORY_KERNEL_PACING_RULE}\n`
-        + `${escapeXmlContent(this.memoryKernel)}\n</memory_kernel>`);
+      const chineseKernel = isChineseDominantKernelText(this.memoryKernel);
+      if (chineseKernel) {
+        parts.push('<memory_kernel>\n以下是本会话冻结的学习者常驻内核（包含 L1 互动硬性规则与 L2 核心长期画像/背景）。优先级：完整回答用户所有问题与子问题最优先；在记忆层内，较新的 L1 硬规则严格覆盖与之矛盾的 L2 画像或历史偏好。新增/更新规则（memory_rule_upsert）或画像（learner_profile_update）时必须沿用用户当前对话语言：\n'
+          + `${MEMORY_KERNEL_PACING_RULE}\n`
+          + `${escapeXmlContent(this.memoryKernel)}\n</memory_kernel>`);
+      } else {
+        parts.push('<memory_kernel>\nSession-frozen learner memory kernel (L1 hard interaction rules and L2 long-term profile/background). Priority: answering every part and sub-question of the user\'s prompt completely is strictly primary; within memory, newer L1 hard rules strictly override any contradicting L2 profile or legacy preferences. When writing or updating rules (memory_rule_upsert) or profile entries (learner_profile_update), preserve the user\'s conversation language for all text and scope suffixes:\n'
+          + `${MEMORY_KERNEL_PACING_RULE_EN}\n`
+          + `${escapeXmlContent(this.memoryKernel)}\n</memory_kernel>`);
+      }
     }
     return parts.join('\n\n');
   }
@@ -581,8 +601,14 @@ ${hintsContent}
     }
 
     if (this.memoryDelta !== null) {
-      parts.push('<memory_delta>\n本会话进行中新增、修改或撤回的记忆规则与状态（立即生效，优先级高于旧规则；若出现【已作废/撤回】条款，必须从本轮起立即停止执行；同时请控制篇幅，确保用户要求完整落实、勿中途截断）：\n'
-        + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
+      const chineseDelta = isChineseDominantKernelText(this.memoryDelta);
+      if (chineseDelta) {
+        parts.push('<memory_delta>\n本会话进行中新增、修改或撤回的记忆规则与状态（立即生效，优先级严格高于旧规则及与之矛盾的 L2 画像/历史偏好；若出现【已作废/撤回】条款，必须从本轮起立即停止执行；完整性优先：须完整回答用户每个问题与子问题，勿中途截断或因规则省略任何部分）：\n'
+          + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
+      } else {
+        parts.push('<memory_delta>\nMid-session memory rule/profile updates (effective immediately; strictly override older rules and any contradicting L2 profile or legacy preferences; stop applying any [REVOKED] or [SUPERSEDED] item immediately; completeness first: answer every part and sub-question of the user\'s prompt completely without omission or truncation):\n'
+          + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
+      }
     }
 
     if (this.pluginExtensions !== null) {

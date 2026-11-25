@@ -69,14 +69,44 @@ const GLOBAL_SCOPE_ALIASES = new Set([
   '*',
   'general',
   'default',
+  'everywhere',
+  'everything',
+  'all subjects',
   '全局',
   '全学科',
   '通用',
+  'すべて',
+  'tous',
+  'alle',
+  'todos',
 ]);
 
+/**
+ * Returns true when `text` is predominantly Chinese (Han script without Japanese kana
+ * or Korean hangul). Used to choose localized vs. language-neutral memory framing
+ * without hardcoding to a single non-Chinese language.
+ */
+export function isChineseDominantText(text: string): boolean {
+  const hanCount = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  if (hanCount === 0) return false;
+  if (/[\u3040-\u30ff\uac00-\ud7af]/.test(text)) return false;
+  const totalLetters = (text.match(/\p{L}/gu) ?? []).length;
+  const nonHanLetters = Math.max(0, totalLetters - hanCount);
+  // Han characters carry higher information density per codepoint than alphabetic scripts.
+  return hanCount * 2.5 >= nonHanLetters;
+}
+
 export function normalizeRuleScope(raw: string | null | undefined): string {
-  const trimmed = (raw ?? '').trim().toLowerCase();
+  const trimmed = (raw ?? '').trim().replaceAll('：', ':').toLowerCase();
   if (GLOBAL_SCOPE_ALIASES.has(trimmed)) return 'global';
+  if (trimmed.startsWith('学科:')) {
+    const rest = trimmed.slice('学科:'.length).trim();
+    return GLOBAL_SCOPE_ALIASES.has(rest) ? 'global' : `subject:${rest}`;
+  }
+  if (trimmed.startsWith('模式:')) {
+    const rest = trimmed.slice('模式:'.length).trim();
+    return GLOBAL_SCOPE_ALIASES.has(rest) ? 'global' : `mode:${rest}`;
+  }
   if (trimmed.startsWith('subject:') || trimmed.startsWith('mode:')) {
     const colon = trimmed.indexOf(':');
     const rest = trimmed.slice(colon + 1).trim();
@@ -247,12 +277,16 @@ export function filterHardRulesForScope(
 
 export function renderHardRules(rules: readonly MemoryHardRule[]): string {
   if (rules.length === 0) return '';
+  const chinese = isChineseDominantText(rules.map(r => `${r.instruction} ${r.scope}`).join(' '));
   const lines = rules.map(rule => {
     const scopeTag = rule.scope === 'global' ? '' : `[${rule.scope}] `;
-    const pinTag = rule.pinned ? '[必遵] ' : '';
+    const pinTag = rule.pinned ? (chinese ? '[必遵] ' : '[REQUIRED] ') : '';
     return `- ${pinTag}${scopeTag}${rule.instruction} (id:${rule.id})`;
   });
-  return `## 互动硬性规则（从第 1 轮起 100% 严格遵循）\n${lines.join('\n')}`;
+  const heading = chinese
+    ? '## 互动硬性规则（规范格式与语气，不得遗漏任何子问题）'
+    : '## Hard Interaction Rules (govern format/tone per part; never omit any sub-question)';
+  return `${heading}\n${lines.join('\n')}`;
 }
 
 export function renderedHardRulesCharCount(doc: HardRulesDocument): number {
@@ -305,18 +339,32 @@ export function buildHardRulesDelta(
   const removedIds = frozenRuleIds.filter(id => !currentSet.has(id));
   if (addedOrUpdated.length === 0 && removedIds.length === 0) return null;
 
+  const sampleText = [
+    ...addedOrUpdated.map(r => `${r.instruction} ${r.scope}`),
+    ...removedIds.map(id => frozenById.get(id)?.instruction ?? ''),
+    ...currentRules.map(r => r.instruction),
+  ].join(' ');
+  const chinese = isChineseDominantText(sampleText);
+
   const lines: string[] = [];
   for (const r of addedOrUpdated) {
     const scopeTag = r.scope === 'global' ? '' : `[${r.scope}] `;
-    lines.push(`+ 新增/更新规则：${scopeTag}${r.instruction} (id:${r.id})`);
+    lines.push(chinese
+      ? `+ 新增/更新规则：${scopeTag}${r.instruction} (id:${r.id})`
+      : `+ Added/updated rule: ${scopeTag}${r.instruction} (id:${r.id})`);
   }
   for (const id of removedIds) {
     const prev = frozenById.get(id);
     if (prev?.instruction) {
       const scopeTag = prev.scope && prev.scope !== 'global' ? `[${prev.scope}] ` : '';
-      lines.push(`- 【已作废/撤回，立即停止执行】用户已删除规则「${scopeTag}${prev.instruction}」(id:${id})，从本轮起严禁再套用。`);
+      const prevChinese = isChineseDominantText(prev.instruction);
+      lines.push(prevChinese
+        ? `- 【已作废/撤回，立即停止执行】用户已删除规则「${scopeTag}${prev.instruction}」(id:${id})，从本轮起严禁再套用。`
+        : `- [REVOKED - STOP IMMEDIATELY] User deleted rule "${scopeTag}${prev.instruction}" (id:${id}); stop applying it from this turn onward.`);
     } else {
-      lines.push(`- 【已作废/撤回，立即停止执行】已移除旧规则 id：${id}`);
+      lines.push(chinese
+        ? `- 【已作废/撤回，立即停止执行】已移除旧规则 id：${id}`
+        : `- [REVOKED - STOP IMMEDIATELY] Removed rule id: ${id}`);
     }
   }
   return lines.join('\n');

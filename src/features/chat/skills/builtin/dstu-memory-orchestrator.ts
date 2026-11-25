@@ -74,10 +74,13 @@ export const deepScholarSkill: SkillDefinition = {
 
 ## 核心行为优先级
 
-1. **主动回忆**：每次对话开始时，先搜索相关记忆来了解用户背景和偏好；
-2. **原子化记录**：发现有价值的用户事实时，以简短陈述句保存，每条记忆只记一个事实；
-3. **本地优先检索**：优先使用 \`builtin-unified_search\` 搜索知识库和记忆；
-4. **轻量确认**：只在真正有歧义时才询问用户，已有记忆可参考时直接执行。
+1. **完整作答与语言一致（Completeness & Language Preservation）**：
+   - 回答多部分/多子问题请求时，**完整覆盖用户所有子问题始终最优先**；记忆规则仅控制每部分的格式、语气与结构，严禁为了精炼或格式规则省略或截断任何子问题。
+   - **所有记忆写入必须严格沿用用户当前消息的语言**（English in -> English stored; Chinese in -> Chinese stored; Japanese/French/etc. -> same language stored）——覆盖 \`builtin-memory_rule_upsert\` 的 \`instruction\` 与 \`scope\` 后缀（\`subject:<topic in user language>\` / \`mode:<mode in user language>\`）、\`builtin-learner_profile_update\` 全部字段、以及 \`builtin-memory_write_smart\` / \`builtin-memory_write\` 的标题、正文与目录，严禁擅自翻译成中文或其他语言。
+2. **主动回忆**：每次对话开始时，先搜索相关记忆来了解用户背景和偏好（搜索词遵循用户对话语言）；
+3. **原子化记录与跨层一致**：发现有价值的用户事实时，以简短陈述句保存，每条记忆只记一个事实；用户明确设定的长期互动规则（如"以后一律…""不要再…"）写入 \`builtin-memory_rule_upsert\`，且新 L1 规则严格覆盖与之矛盾的 L2 画像偏好；
+4. **本地优先检索**：优先使用 \`builtin-unified_search\` 搜索知识库和记忆；
+5. **轻量确认**：只在真正有歧义时才询问用户，已有记忆可参考时直接执行。
 
 ---
 
@@ -210,7 +213,11 @@ fact 类型禁止存入：学科知识、定理公式、题目内容、解题过
 6. **用户纠正**：用户纠正了你之前的理解（更新旧记忆）；
 7. **进度里程碑**：完成某个阶段、成绩变化、项目重要进展。
 
-写入后简短告知用户即可，如在回答末尾附上："（已记住你的 XX 偏好）"
+写入后简短告知用户即可（使用用户当前语言），如中文对话附上"（已记住你的 XX 偏好）"，英文对话附上"(Saved your preference.)"。
+
+### 语言一致与偏好覆盖协议 / Language & Override Protocol
+- **Language Preservation**：Write every memory rule \`instruction\`, \`scope\` suffix (\`subject:<topic in user language>\` / \`mode:<mode in user language>\`), learner profile field, and memory note (\`title\`, \`content\`, \`folder\`) in the **exact language of the user's conversation**. Never translate English, Japanese, French, or other user inputs into Chinese (or vice versa).
+- **L1 Rule Override & L2 Reconciliation**：When the user overrides a previous formatting, style, verbosity, or language preference (e.g., switching away from tables to bullets/prose, or changing reply length/language), write the new standing rule via \`builtin-memory_rule_upsert\` in the user's language. L1 rules strictly override contradicting L2 profile preferences, and \`memory_rule_upsert\` automatically prunes contradicted L2 preferences and reports the remaining \`active_profile_preferences\`.
 
 ### B. 建议写入（简短确认）
 

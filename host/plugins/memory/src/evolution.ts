@@ -4,6 +4,7 @@
  */
 import { encodeUtf8 } from '../../../platform/util/portable.ts';
 import { enhancedCleanJsonResponse, extractJsonObject } from './json.ts';
+import { isChineseDominantText } from './hard-rules.ts';
 import {
   emptyProfileUpdate, isProfileContentEmpty, renderLearnerProfile,
   type LearnerProfile, type LearnerProfileUpdate, type LearningGoal, type WeakPoint,
@@ -97,13 +98,50 @@ export function daysSinceBestSignal(nowMs: number, lastHitMs: number | null,
   return Math.trunc((nowMs - best) / 86_400_000);
 }
 
-/** Rust `build_promotion_prompt` (exact prompt text; empty profile placeholder). */
+/** Rust `build_promotion_prompt` (localized for Chinese logs/profile, neutral English for non-Chinese content). */
 export function buildPromotionPrompt(logs: readonly DailyLogRecord[],
   profile: LearnerProfile): string {
   let logsSection = '';
   for (const log of logs) logsSection += `### ${log.date}\n${log.content}\n\n`;
-  const profileSection = isProfileContentEmpty(profile)
-    ? '（当前画像为空）' : renderLearnerProfile(profile);
+  const empty = isProfileContentEmpty(profile);
+  const renderedProfile = empty ? '' : renderLearnerProfile(profile);
+  const sample = `${logs.map(l => l.content).join(' ')} ${renderedProfile}`.trim();
+  const chinese = sample === '' || isChineseDominantText(sample);
+
+  if (!chinese) {
+    const profileSection = empty ? '(Profile is currently empty)' : renderedProfile;
+    return `You are a learner-profile curator. Compare the "Recent 7-Day Study Logs" against the "Current Learner Profile", identify **recurring** error patterns and clear preference/status changes, and output an incremental JSON profile update proposal.
+
+## Current Learner Profile
+${profileSection}
+
+## Recent 7-Day Study Logs
+${logsSection}
+## Proposal Rules
+1. Only promote patterns that recur across multiple days or have strong evidence; do not write one-off slips into the profile.
+2. weak_points_add: subject + knowledge_point + one-sentence error_pattern summary, with evidence_count matching observed occurrences.
+3. Move a weak point to weak_points_remove once logs show consistent mastery over multiple days.
+4. Update preferences only when logs show a clear signal (e.g. repeatedly requesting a format/style), and include any contradicted old preference in others_remove.
+5. recent_status: optional 1-2 sentence summary of current study status.
+6. Return empty arrays / null fields when there is nothing worth updating.
+7. Language preservation: write EVERY string field (subject, knowledge_point, error_pattern, preferences, goals, recent_status) in the exact same language used in the study logs and existing profile — never translate them into Chinese or any other language.
+
+## Output Format (strict JSON only, no surrounding text)
+{
+  "weak_points_add": [
+    {"subject": "<subject in user language>", "knowledge_point": "<topic in user language>", "error_pattern": "<concise pattern in user language>", "evidence_count": 3, "last_seen": "2026-07-08"}
+  ],
+  "weak_points_remove": [
+    {"subject": "<subject>", "knowledge_point": "<mastered topic>"}
+  ],
+  "preferences": {"explanation_style": null, "language": null, "pace": null, "others_add": [], "others_remove": []},
+  "goals_add": [],
+  "goals_remove": [],
+  "recent_status": null
+}`;
+  }
+
+  const profileSection = empty ? '（当前画像为空）' : renderedProfile;
 
   return `你是学习者画像的策展人。请对比"近期学习日志"与"当前画像"，识别**反复出现**的错误模式和偏好/状态变化，输出画像的增量更新提案。
 
@@ -116,9 +154,10 @@ ${logsSection}
 1. 只提炼**跨多天反复出现**或**证据充分**的模式，单次偶发错误不要写入画像
 2. weak_points_add：科目 + 知识点 + 错误模式一句话概括，evidence_count 填日志中观察到的次数
 3. 日志显示某薄弱点已连续多天正确、明显克服时，放入 weak_points_remove
-4. 偏好只在日志中有明确信号时更新（如反复要求某种讲解方式）
+4. 偏好只在日志中有明确信号时更新（如反复要求某种讲解方式），若新偏好与旧偏好矛盾请同步放入 others_remove
 5. recent_status：用 1-2 句话概括近期学习状态（可选）
 6. 没有值得更新的内容时，所有字段返回空
+7. 语言一致：所有输出字段（subject、knowledge_point、error_pattern、preferences、goals、recent_status）必须沿用学习日志与既有画像的原始语言，严禁擅自翻译成其他语言
 
 ## 输出格式（严格 JSON，不要其他内容）
 {
