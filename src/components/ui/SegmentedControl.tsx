@@ -27,9 +27,9 @@ export interface SegmentedControlProps<T extends string> {
 
 const rootClassNames = {
   default:
-    'w-full max-w-full flex-wrap rounded-[var(--radius-shell-toolbar)] bg-[color:var(--surface-muted)] p-1 sm:w-auto sm:flex-nowrap',
+    'w-full max-w-full flex-wrap rounded-[var(--radius-shell-toolbar)] bg-[color:var(--surface-muted)] p-1 sm:w-auto',
   compact:
-    'rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] p-[3px]',
+    'max-w-full flex-wrap rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] p-[3px]',
 } as const;
 
 // [@media(pointer:coarse)]:!min-h-11：触屏统一 ≥44px 命中高度。必须带 important：
@@ -37,9 +37,9 @@ const rootClassNames = {
 // 的同名工具类（min-height 与调用点的 !h-auto/!py-* 覆写正交，桌面 fine 指针不受影响）
 const itemClassNames = {
   default:
-    'h-9 rounded-[var(--radius-shell-control)] px-3.5 text-sm font-medium sm:px-4 [@media(pointer:coarse)]:!min-h-11',
+    'h-9 min-w-0 max-w-full rounded-[var(--radius-shell-control)] px-3 text-sm font-medium sm:px-3.5 lg:px-4 [@media(pointer:coarse)]:!min-h-11',
   compact:
-    'h-7 rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11',
+    'h-7 min-w-0 max-w-full rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11',
 } as const;
 
 function getNextEnabledIndex<T extends string>(
@@ -135,15 +135,17 @@ export function SegmentedControl<T extends string>({
 
   React.useLayoutEffect(() => {
     measure();
-  }, [measure]);
+  }, [measure, options.length]);
 
   React.useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => measure());
     ro.observe(root);
+    const activeTarget = selectedIndex >= 0 ? optionRefs.current[selectedIndex] : null;
+    if (activeTarget) ro.observe(activeTarget);
     return () => ro.disconnect();
-  }, [measure]);
+  }, [measure, selectedIndex, options.length]);
 
   const selectIndex = (index: number) => {
     const option = options[index];

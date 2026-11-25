@@ -10,6 +10,11 @@ type ShellViewSwitchProps = {
    * 它挂载时的旧方向，因此前进/后退互为镜像。平级切换省略（默认 1）。
    */
   direction?: 1 | -1;
+  /**
+   * 默认 true（填满固定高度壳层）；置于滚动视口内时传 false，避免 motion.div 的
+   * h-full 干扰滚动容器内容高度量测。
+   */
+  fullHeight?: boolean;
   className?: string;
   children: React.ReactNode;
 };
@@ -23,14 +28,20 @@ const slideVariants: Variants = {
   exit: (direction: number) => ({ opacity: 0, x: -SLIDE_PX * direction }),
 };
 
-export function ShellViewSwitch({ viewKey, direction = 1, className, children }: ShellViewSwitchProps) {
+export function ShellViewSwitch({
+  viewKey,
+  direction = 1,
+  fullHeight = true,
+  className,
+  children,
+}: ShellViewSwitchProps) {
   const reduced = useReducedMotion();
 
   return (
     <AnimatePresence mode="wait" initial={false} custom={direction}>
       <motion.div
         key={viewKey}
-        className={cn('h-full min-h-0', className)}
+        className={cn(fullHeight && 'h-full', 'min-h-0', className)}
         custom={direction}
         variants={slideVariants}
         initial={reduced ? false : 'enter'}

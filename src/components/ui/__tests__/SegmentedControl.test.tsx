@@ -98,6 +98,32 @@ describe('SegmentedControl', () => {
     expect(radios[0]).toHaveAttribute('tabindex', '0');
     expect(radios[1]).toHaveAttribute('tabindex', '-1');
   });
+
+  it('G29: allows wrapping within narrow containers without sm:flex-nowrap hard clipping', () => {
+    render(
+      <SegmentedControl
+        ariaLabel="Theme Mode"
+        value="auto"
+        onValueChange={vi.fn()}
+        stretch
+        options={[
+          { value: 'light', label: 'Light' },
+          { value: 'dark', label: 'Dark' },
+          { value: 'auto', label: 'System Default' },
+        ]}
+      />
+    );
+
+    const group = screen.getByRole('radiogroup', { name: 'Theme Mode' });
+    expect(group.className).toContain('max-w-full');
+    expect(group.className).toContain('flex-wrap');
+    expect(group.className).not.toContain('sm:flex-nowrap');
+
+    const systemDefault = screen.getByRole('radio', { name: 'System Default' });
+    expect(systemDefault).toHaveAttribute('aria-checked', 'true');
+    expect(systemDefault.className).toContain('min-w-0');
+    expect(systemDefault.className).toContain('max-w-full');
+  });
 });
 
 describe('segmentedThumbGeometry', () => {

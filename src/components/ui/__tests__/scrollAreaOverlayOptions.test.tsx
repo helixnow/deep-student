@@ -78,3 +78,117 @@ describe('ScrollArea trackOffset 同步', () => {
     expect(instance.update).toHaveBeenCalledWith(true);
   });
 });
+
+describe('ScrollArea 内容尺寸变化与溢出态恢复（G25）', () => {
+  it('直接子元素高度异步增长后触发 update(true)，避免停留在 overflowYHidden', () => {
+    const callbacks: Array<ResizeObserverCallback> = [];
+    const observed = new Set<Element>();
+    class MockResizeObserver {
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+        callbacks.push(cb);
+      }
+      observe(target: Element) {
+        observed.add(target);
+      }
+      unobserve(target: Element) {
+        observed.delete(target);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    }
+    const rafQueue: FrameRequestCallback[] = [];
+    const origRO = globalThis.ResizeObserver;
+    const origRAF = globalThis.requestAnimationFrame;
+    const origCAF = globalThis.cancelAnimationFrame;
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    }) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = vi.fn();
+
+    try {
+      const { container, unmount } = render(
+        <ScrollArea nativeScrollbars={false}>
+          <div data-testid="dynamic-content">loading</div>
+        </ScrollArea>,
+      );
+      const instance = os.instance!;
+      const content = container.querySelector('[data-testid="dynamic-content"]') as HTMLElement;
+      expect(observed.has(content)).toBe(true);
+      expect(instance.update).not.toHaveBeenCalled();
+
+      // 首次基线回调（尺寸未变、无溢出）：不触发多余 update
+      callbacks[0]!(
+        [{ target: content, contentRect: { width: 600, height: 360 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+      expect(rafQueue).toHaveLength(0);
+      expect(instance.update).not.toHaveBeenCalled();
+
+      // 异步分区（如 DocumentProcessingTab -> OcrSettingsSection）加载完成撑高内容
+      callbacks[0]!(
+        [{ target: content, contentRect: { width: 600, height: 1480 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+      expect(rafQueue).toHaveLength(1);
+      rafQueue.shift()!(16);
+      expect(instance.update).toHaveBeenCalledTimes(1);
+      expect(instance.update).toHaveBeenCalledWith(true);
+
+      unmount();
+      expect(observed.size).toBe(0);
+    } finally {
+      globalThis.ResizeObserver = origRO;
+      globalThis.requestAnimationFrame = origRAF;
+      globalThis.cancelAnimationFrame = origCAF;
+    }
+  });
+
+  it('视口 scrollHeight > clientHeight 但仍缺少 overflowYScroll 时立即调度 update(true)', () => {
+    const callbacks: Array<ResizeObserverCallback> = [];
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        callbacks.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    const rafQueue: FrameRequestCallback[] = [];
+    const origRO = globalThis.ResizeObserver;
+    const origRAF = globalThis.requestAnimationFrame;
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    }) as typeof requestAnimationFrame;
+
+    try {
+      const viewportRef = React.createRef<HTMLDivElement>();
+      render(
+        <ScrollArea nativeScrollbars={false} viewportRef={viewportRef}>
+          <div>tall content</div>
+        </ScrollArea>,
+      );
+      const vp = viewportRef.current!;
+      vp.setAttribute('data-overlayscrollbars-viewport', 'scrollbarHidden overflowXHidden overflowYHidden');
+      Object.defineProperty(vp, 'clientHeight', { configurable: true, value: 600 });
+      Object.defineProperty(vp, 'scrollHeight', { configurable: true, value: 1400 });
+
+      callbacks[0]!(
+        [{ target: vp, contentRect: { width: 800, height: 600 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+      expect(rafQueue).toHaveLength(1);
+      rafQueue.shift()!(16);
+      expect(os.instance!.update).toHaveBeenCalledWith(true);
+    } finally {
+      globalThis.ResizeObserver = origRO;
+      globalThis.requestAnimationFrame = origRAF;
+    }
+  });
+});

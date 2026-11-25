@@ -303,6 +303,8 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       },
       overflow: { x: overflowX, y: overflowY },
     }), [theme, scrollHideDelay, scrollAutoHide, scrollAutoHideSuspend, platform, overflowX, overflowY]);
+    const overflowAxesRef = React.useRef({ x: overflowX, y: overflowY });
+    overflowAxesRef.current = { x: overflowX, y: overflowY };
     const destroyOverlayRef = React.useRef<(() => void) | null>(null);
     // 必须声明在 useOverlayScrollbars 之前：卸载时 React 按声明顺序执行清理，hook 自带的清理会直接 destroy
     React.useEffect(() => () => destroyOverlayRef.current?.(), []);
@@ -323,9 +325,121 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         elements: { viewport },
       }));
       justInitializedRef.current = true;
+
+      let rafId: number | null = null;
+      let lastMetrics = {
+        scrollWidth: viewport.scrollWidth,
+        scrollHeight: viewport.scrollHeight,
+        clientWidth: viewport.clientWidth,
+        clientHeight: viewport.clientHeight,
+      };
+      const observedSizes = new Map<Element, { width: number; height: number }>();
+
+      const scheduleOverlayUpdate = () => {
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const instance = getOverlayInstance();
+          if (!instance || instance.state?.().destroyed) return;
+          instance.update?.(true);
+          const elements = instance.elements?.();
+          refreshScrollTimelineHandleGeometry([
+            elements?.scrollbarHorizontal?.handle,
+            elements?.scrollbarVertical?.handle,
+          ].filter((h): h is HTMLElement => Boolean(h)));
+        });
+      };
+
+      const hasStuckHiddenOverflow = () => {
+        const vpAttr = viewport.getAttribute("data-overlayscrollbars-viewport") ?? "";
+        const axes = overflowAxesRef.current;
+        const yStuck =
+          axes.y === "scroll" &&
+          viewport.scrollHeight > viewport.clientHeight + 1 &&
+          !vpAttr.includes("overflowYScroll");
+        const xStuck =
+          axes.x === "scroll" &&
+          viewport.scrollWidth > viewport.clientWidth + 1 &&
+          !vpAttr.includes("overflowXScroll");
+        return yStuck || xStuck;
+      };
+
+      const checkAndScheduleUpdate = (sizeChanged: boolean) => {
+        const nextMetrics = {
+          scrollWidth: viewport.scrollWidth,
+          scrollHeight: viewport.scrollHeight,
+          clientWidth: viewport.clientWidth,
+          clientHeight: viewport.clientHeight,
+        };
+        const metricsChanged =
+          nextMetrics.scrollWidth !== lastMetrics.scrollWidth ||
+          nextMetrics.scrollHeight !== lastMetrics.scrollHeight ||
+          nextMetrics.clientWidth !== lastMetrics.clientWidth ||
+          nextMetrics.clientHeight !== lastMetrics.clientHeight;
+        lastMetrics = nextMetrics;
+        if (sizeChanged || metricsChanged || hasStuckHiddenOverflow()) {
+          scheduleOverlayUpdate();
+        }
+      };
+
+      let resizeObserver: ResizeObserver | null = null;
+      let childListObserver: MutationObserver | null = null;
+
+      if (typeof ResizeObserver !== "undefined") {
+        // OverlayScrollbars 只给 host 挂了 ResizeObserver，不观察 viewport 内层内容盒尺寸变化：
+        // 当 Suspense / 动画切页 / 异步配置加载 / 容器查询换行撑高内容时，视口可能停在 overflowYHidden。
+        // 观察 viewport 及其直接子元素尺寸变化，并在内容尺寸变化或溢出态失步时在下一帧触发 update(true)。
+        resizeObserver = new ResizeObserver((entries) => {
+          let sizeChanged = false;
+          for (const entry of entries) {
+            const box = entry.borderBoxSize?.[0] ?? entry.contentBoxSize?.[0];
+            const width = box ? box.inlineSize : entry.contentRect.width;
+            const height = box ? box.blockSize : entry.contentRect.height;
+            const prev = observedSizes.get(entry.target);
+            observedSizes.set(entry.target, { width, height });
+            if (prev && (Math.abs(prev.width - width) > 0.5 || Math.abs(prev.height - height) > 0.5)) {
+              sizeChanged = true;
+            }
+          }
+          checkAndScheduleUpdate(sizeChanged);
+        });
+
+        resizeObserver.observe(viewport);
+        const observeDirectChildren = () => {
+          const currentChildren = new Set<Element>(Array.from(viewport.children));
+          for (const tracked of Array.from(observedSizes.keys())) {
+            if (tracked !== viewport && !currentChildren.has(tracked)) {
+              resizeObserver?.unobserve(tracked);
+              observedSizes.delete(tracked);
+            }
+          }
+          for (const child of currentChildren) {
+            if (!observedSizes.has(child)) {
+              resizeObserver?.observe(child);
+            }
+          }
+        };
+        observeDirectChildren();
+
+        if (typeof MutationObserver !== "undefined") {
+          childListObserver = new MutationObserver(() => {
+            observeDirectChildren();
+            checkAndScheduleUpdate(false);
+          });
+          childListObserver.observe(viewport, { childList: true });
+        }
+      }
+
       const destroyOverlay = () => runWithoutOutsideRefocus(target, () => getOverlayInstance()?.destroy());
       destroyOverlayRef.current = destroyOverlay;
       return () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        childListObserver?.disconnect();
+        resizeObserver?.disconnect();
+        observedSizes.clear();
         destroyOverlayRef.current = null;
         destroyOverlay();
       };
