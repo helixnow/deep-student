@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_MEMORY_BUDGET,
+  DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS,
   FOCUS_TRANSITION_MS,
   MACOS_MEMORY_BUDGET,
   RENDER_THROTTLE_FOCUSED,
@@ -22,6 +23,7 @@ import {
   getMemoryBudget,
   getSchedulerActivity,
   getWindowRenderHint,
+  isDisplayModeOnlyTransition,
   isFreezeImminent,
   recomputeLifecycles,
   reportSchedulerActivity,
@@ -288,6 +290,61 @@ describe('startScheduler — 订阅与防抖', () => {
     await nextFrame();
     await nextFrame();
     expect(store().lifecycles).toEqual({});
+  });
+
+  it('displayMode 切换走 160ms 防抖批合；窗口创建/关闭仍保持单帧立即调度', async () => {
+    const stop = startScheduler();
+    try {
+      // 两扇完全重叠的窗口：top 盖住 under → under 为 background
+      const under = store().openWindow({
+        typeId: 'sched-light',
+        initialFrame: { x: 0, y: 0, w: 600, h: 600 },
+      });
+      const top = store().openWindow({
+        typeId: 'sched-light',
+        initialFrame: { x: 0, y: 0, w: 600, h: 600 },
+      });
+      await nextFrame();
+      await nextFrame();
+      expect(store().lifecycles[under]).toBe('background');
+      expect(store().lifecycles[top]).toBe('focused');
+
+      // 验证 isDisplayModeOnlyTransition 只识别纯 displayMode 变化
+      const prevWindows = store().windows;
+      store().setDisplayMode(top, 'tiled-right');
+      const nextWindows = store().windows;
+      expect(isDisplayModeOnlyTransition(prevWindows, nextWindows)).toBe(true);
+
+      // 仅过 1-2 帧（< 160ms）：displayMode 走防抖路径，尚不触发重算
+      await nextFrame();
+      await nextFrame();
+      expect(store().lifecycles[under]).toBe('background');
+
+      // 等待 160ms 防抖到期 + 1 帧后，under 露出成为 visible
+      await new Promise((resolve) =>
+        setTimeout(resolve, DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS + 40),
+      );
+      await nextFrame();
+      await nextFrame();
+      expect(store().lifecycles[under]).toBe('visible');
+
+      // 窗口创建/关闭不受 160ms 防抖影响：新建窗口 1-2 帧内立即进入 focused
+      const added = store().openWindow({
+        typeId: 'sched-light',
+        initialFrame: { x: 0, y: 0, w: 300, h: 300 },
+      });
+      await nextFrame();
+      await nextFrame();
+      expect(store().lifecycles[added]).toBe('focused');
+
+      // 关闭窗口同样在 1-2 帧内立即清理 lifecycle
+      store().closeWindow(added);
+      await nextFrame();
+      await nextFrame();
+      expect(store().lifecycles[added]).toBeUndefined();
+    } finally {
+      stop();
+    }
   });
 });
 
