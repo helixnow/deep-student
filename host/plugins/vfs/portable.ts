@@ -110,7 +110,7 @@ import type { DstuParsedPath } from '../../../contracts/ipc/generated/L13-vfs-ap
 export type VfsResult<T> = T;
 export type VfsPooledConnection = DatabaseHandle;
 /** dstu-storage/src/migration/vfs.rs; verified against the shipped migration set. */
-export const CURRENT_SCHEMA_VERSION = 20261116;
+export const CURRENT_SCHEMA_VERSION = 20261125;
 
 export interface VfsDatabaseStats {
   resource_count: number;

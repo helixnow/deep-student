@@ -1144,6 +1144,14 @@
       "path": "vfs/V20261116__review_plan_fsrs_revision.sql",
       "sha256": "dde3c8915c9ebb4283b1484022da24a93302018df67037015b661d64e7111cc9",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261125,
+      "name": "mastery_states_lifecycle",
+      "path": "vfs/V20261125__mastery_states_lifecycle.sql",
+      "sha256": "752806f59d3dfa17b293412fe2639b1d1a2b3c55a9c62dbac8530e5707445496",
+      "dangers": []
     }
   ]
 }

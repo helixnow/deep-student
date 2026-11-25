@@ -78,10 +78,17 @@ describe('migration/vfs.rs', () => {
     expect(m.expectedTables.length).toBe(25);
     expect(m.expectedQueries.length).toBe(2);
   });
-  it('registers the FSRS plan revision as the VFS schema head', () => {
-    expect(vfs.VFS_SCHEMA_VERSION).toBe(20261116);
+  it('registers the mastery_states lifecycle columns as the VFS schema head', () => {
+    expect(vfs.VFS_SCHEMA_VERSION).toBe(20261125);
     expect(vfs.V20260912_QBANK_GENERATION_TASKS.expectedTables).toEqual(['qbank_generation_tasks']);
-    expect(vfs.VFS_MIGRATIONS[vfs.VFS_MIGRATIONS.length - 1]!.name).toBe('review_plan_fsrs_revision');
+    expect(vfs.VFS_MIGRATIONS[vfs.VFS_MIGRATIONS.length - 1]!.name).toBe('mastery_states_lifecycle');
+    expect(vfs.V20261125_MASTERY_STATES_LIFECYCLE.expectedColumns).toEqual([
+      ['mastery_states', 'subject'],
+      ['mastery_states', 'error_tag'],
+      ['mastery_states', 'status'],
+      ['mastery_states', 'mastered_at'],
+      ['mastery_states', 'relapse_count'],
+    ]);
     expect(vfs.V20261006_STUDY_TIME.expectedTables).toEqual(['study_time_daily']);
     expect(vfs.V20261023_QUESTION_AUTHORING_V2.expectedTables).toEqual([
       'qbank_sources',
