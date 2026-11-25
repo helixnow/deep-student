@@ -146,6 +146,17 @@ export class UiHostStatusService {
     return 'available';
   }
 
+  /**
+   * 单独更新安全模式标记（例如启动时由 `?safeMode=1` 触发，早于 Host v2 清单到达）。
+   * 不覆盖 `_installed`，保持 `known === false` / `state() === 'unknown'`，避免误把乐观安装的官方插件判为 `missing` 并卸载。
+   */
+  setSafeMode(safeMode: boolean): void {
+    const next = safeMode === true;
+    if (this._safeMode === next) return;
+    this._safeMode = next;
+    this._emit();
+  }
+
   /** v2 清单：已安装插件全集、降级项与安全模式一起替换。 */
   update(inventory: HostPluginInventory): void {
     const installed = new Set(inventory.plugins.map((p) => p.id));

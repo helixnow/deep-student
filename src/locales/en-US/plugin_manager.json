@@ -74,7 +74,9 @@
     "emptyTitle": "No plugins of your own yet",
     "emptyDescription": "Tell the Plugin Workshop what you want: it builds it, checks it itself, and installs it only after you say yes. A few ready-made openers are below.",
     "creations": "Workshop history",
-    "creationsPending": "Workshop history · {{count}} waiting for you"
+    "creationsPending": "Workshop history · {{count}} waiting for you",
+    "faultBannerTitle": "Broken or degraded plugins detected",
+    "faultBannerDescription": "{{count}} community plugin(s) failed validation or could not load cleanly. Inspect their diagnostics below, turn them off, or uninstall them."
   },
   "starters": {
     "title": "Make a new one",
@@ -124,6 +126,7 @@
     "exportA11y": "Export package for {{id}}",
     "restorePrevious": "Go back to the previous version (v{{version}})",
     "noDescription": "This plugin has no description.",
+    "brokenDescription": "This plugin's manifest or files could not be loaded cleanly. Review the diagnostic below or uninstall it.",
     "openNamed": "Open {{name}}",
     "tryNotes": "Try it in notes",
     "tryPdf": "Try it in PDF",
@@ -659,6 +662,8 @@
       "consentRequired": "Permission approval is required before enabling this plugin.",
       "consentStale": "The package contents or permissions changed. Refresh the list and approve again.",
       "unloadBlocked": "Other running features depend on this plugin right now, so it cannot be disabled or uninstalled yet.",
+      "pluginNotFound": "This plugin could not be found in the current profile or package registry. Refresh the list and try again.",
+      "profileReadFailed": "Could not read the plugin profile cleanly. Use the recovery banner above to back up and reset it.",
       "profileConflict": "Plugin settings were updated elsewhere. Refresh and try again.",
       "enableFailed": "The plugin failed to start cleanly and was kept off or rolled back.",
       "installFailed": "The package could not be installed; your existing plugins remain safe.",
@@ -693,6 +698,9 @@
     "studyRule": "Grading rubrics or study rules",
     "studyWidget": "Study widgets or workflows"
   },
+  "hostGate": {
+    "missingReason": "Required host plugin “{{id}}” is currently disabled or not loaded. Enable it in Settings → Plugins and try again."
+  },
   "workshop": {
     "verified": "Verified in the app and ready to use. It will load again after restart.",
     "installedUnverified": "Installed. Functional verification is not complete.",
@@ -705,7 +713,11 @@
       "placeholder": "For example: add a searchable formula reference app to my desktop.",
       "description": "Describe your request. AI will build, install and check it, restoring the previous version if needed. The task will explain any information it needs from you.",
       "submit": "Build it with AI",
-      "sending": "Sending…"
+      "sending": "Sending…",
+      "unavailable": "Plugin Workshop is still connecting or currently unavailable. Wait a moment, or check that AI Plugin Workshop is enabled in Settings → Plugins.",
+      "submitUnavailable": "Direct AI build submission is unavailable in this environment. You can still start a workshop chat from the openers below.",
+      "safeModeDisabled": "AI Plugin Workshop is paused in Safe Mode. Exit Safe Mode and restart normally to build or install plugins with AI.",
+      "disabled": "AI Plugin Workshop input is currently disabled."
     },
     "label": "Plugin Workshop",
     "quickBarAriaLabel": "Plugin Workshop quick bar",

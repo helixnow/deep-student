@@ -3,6 +3,7 @@
 // RUST-FIX(RF-P6-manager-cards): 我的插件（卡片）→ 做一个新的（对话开场白）→ 内置能力（安静分组）→ 渠道插件；详情进侧边抽屉。
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import { WorkshopComposer } from '@/features/plugin-workshop';
+import { isSafeModeUrl } from '@/ui-kernel/services/host-status';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -98,14 +99,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   // W17 的清单/降级/同意/安全模式都可能晚于首帧到达，订阅后按当前值渲染。
   const hostStatus = usePluginUiHostStatus(uiStatus);
   const contributions = usePluginContributions();
-  const safeModeUrl = typeof window !== 'undefined' && (() => {
-    try {
-      const p = new URLSearchParams(window.location.search);
-      const v = p.get('safeMode') ?? p.get('safe_mode');
-      return v === '1' || v === 'true';
-    } catch { return false; }
-  })();
-  const safeMode = state.safeMode || hostStatus?.safeMode === true || safeModeUrl;
+  const safeMode = state.safeMode || hostStatus?.safeMode === true || isSafeModeUrl();
   const [uninstallTarget, setUninstallTarget] = useState<ManagedPlugin | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
   const [filter, setFilter] = useState<PluginFilter>('all');
@@ -143,10 +137,11 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
     setChannelTarget(plugin);
   }, [controller]);
   const closeChannel = useCallback(() => setChannelTarget(null), []);
+  const refreshChannel = channel.refresh;
   const channelChanged = useCallback(() => {
-    void channel.refresh();
+    void refreshChannel();
     void controller.refresh();
-  }, [channel.refresh, controller]);
+  }, [controller, refreshChannel]);
 
   useEffect(() => {
     void controller.start();
@@ -222,7 +217,14 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const problemOf = (plugin: ManagedPlugin) =>
     pluginNeedsAttention(plugin, pluginUiStatus(hostStatus, plugin.id)) || autoUninstalled.some((entry) => entry.pluginId === plugin.id);
   const filtered = state.plugins.filter((plugin) => {
-    const matchesQuery = !needle || [pluginName(plugin, t), plugin.id, plugin.author, pluginDescription(plugin, t)].join(' ').toLocaleLowerCase().includes(needle);
+    const matchesQuery = !needle || [
+      pluginName(plugin, t),
+      plugin.id,
+      plugin.author,
+      pluginDescription(plugin, t),
+      plugin.degraded?.reason,
+      plugin.runtimeDetail,
+    ].join(' ').toLocaleLowerCase().includes(needle);
     return matchesQuery && (filter === 'all'
       || filter === 'safeModePaused' && plugin.origin === 'community'
       || filter === 'mine' && plugin.origin === 'community'
@@ -559,7 +561,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
                 {profileErrorDetail ? (
                   <p
                     data-testid="plugin-profile-corrupted-error"
-                    className="break-words rounded bg-background/70 px-2 py-1 font-mono text-[11px] text-destructive"
+                    className="break-words rounded bg-background/70 px-2 py-1 font-mono text-2xs text-destructive"
                   >
                     <span className="font-sans font-medium text-muted-foreground">{t('profileCorrupted.errorLabel')} </span>
                     {profileErrorDetail}
@@ -624,7 +626,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
                       ? t('error.technicalGeneric')
                       : t('error.technical', { code: effectiveCode })}
                   </summary>
-                  <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
+                  <p className="mt-1 break-words font-mono text-2xs opacity-85">{friendly.technical}</p>
                 </details>
               </div>
               <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => controller.clearError()}>
@@ -638,7 +640,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           <InstallFeedback result={state.notice.result} safeMode={safeMode} onDismiss={() => controller.dismissNotice()} />
         ) : null}
 
-        <WorkshopComposer workshop={workshop} disabled={safeMode} />
+        <WorkshopComposer workshop={workshop} disabled={safeMode} safeMode={safeMode} />
 
         {/* 一条轻的工具栏：搜索 + 范围。没有底板，不抢「我的插件」的位置。 */}
         <div role="search" data-testid="plugin-toolbar" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -707,6 +709,38 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
                     {packageBusy ? t('install.running') : t('actions.install')}
                   </DsButton>
                 </div>
+              </div>
+            ) : faultedCommunityCount > 0 ? (
+              <div
+                role="region"
+                aria-label={t('mine.faultBannerTitle')}
+                data-testid="plugin-mine-fault-banner"
+                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs"
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-medium text-destructive">
+                    <WarningCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span>{t('mine.faultBannerTitle')}</span>
+                    <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 tabular-nums text-2xs">
+                      {faultedCommunityCount}
+                    </span>
+                  </div>
+                  <p className="leading-relaxed text-muted-foreground">
+                    {t('mine.faultBannerDescription', { count: faultedCommunityCount })}
+                  </p>
+                </div>
+                {filter !== 'problem' ? (
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    data-testid="plugin-mine-view-faulted"
+                    className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
+                    onClick={() => setFilter('problem')}
+                  >
+                    <WarningCircle className="size-3.5" aria-hidden="true" />
+                    {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
+                  </DsButton>
+                ) : null}
               </div>
             ) : null}
             {community.length ? (
@@ -870,8 +904,18 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           try {
             let workshopError: string | null = null;
             if (facts(target).managed && workshop?.onUninstall) {
-              try { await workshop.onUninstall(target.id); } catch (cause) { workshopError = workshopErrorText(cause); }
-              await controller.refresh();
+              try {
+                await workshop.onUninstall(target.id);
+                await controller.refresh();
+              } catch (cause) {
+                const raw = errorMessage(cause);
+                if (/\bWORKSHOP_ONLY_MANAGED\b/.test(raw)) {
+                  await controller.uninstall(target.id);
+                } else {
+                  workshopError = workshopErrorText(cause);
+                  await controller.refresh();
+                }
+              }
             } else await controller.uninstall(target.id);
             const snapshotError = controller.getSnapshot().error;
             const error = workshopError ? { code: 'UNINSTALL_FAILED', detail: workshopError } : snapshotError;

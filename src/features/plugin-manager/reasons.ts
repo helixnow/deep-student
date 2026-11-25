@@ -135,6 +135,8 @@ const MANAGER_ERROR_KEYS: Readonly<Record<string, string>> = {
   CONSENT_REQUIRED: 'error.reasons.consentRequired',
   CONSENT_STALE: 'error.reasons.consentStale',
   PLUGIN_UNLOAD_BLOCKED: 'error.reasons.unloadBlocked',
+  PLUGIN_NOT_FOUND: 'error.reasons.pluginNotFound',
+  PROFILE_READ_FAILED: 'error.reasons.profileReadFailed',
   PROFILE_CONFLICT: 'error.reasons.profileConflict',
   REVISION_CONFLICT: 'error.reasons.profileConflict',
   PLUGIN_ENABLE_FAILED: 'error.reasons.enableFailed',
@@ -175,6 +177,8 @@ const MANAGER_ERROR_CATEGORIES: Readonly<Record<string, ManagerErrorCategory>> =
   STAGE_UPLOAD_FAILED: 'network',
   SAFE_MODE_ACTIVE: 'runtime',
   PLUGIN_UNLOAD_BLOCKED: 'runtime',
+  PLUGIN_NOT_FOUND: 'runtime',
+  PROFILE_READ_FAILED: 'runtime',
   PLUGIN_ENABLE_FAILED: 'runtime',
   PLUGIN_INSTALL_UNAVAILABLE: 'runtime',
 };
@@ -312,15 +316,18 @@ export function describeManagerError(
 /**
  * Determines whether a degraded reason represents a real plugin fault/failure,
  * as opposed to normal Safe Mode pausing (`SAFE_MODE_ACTIVE`) or pending consent (`CONSENT_REQUIRED`).
+ * Evaluates both UI-side and Host-side reasons so a non-fault UI status (e.g. `SAFE_MODE_ACTIVE`)
+ * never masks a real Host load/manifest fault.
  */
 export function isFaultDegradedReason(reason?: string, uiDegraded?: { readonly code?: string; readonly consentRequired?: boolean }): boolean {
   if (uiDegraded) {
-    if (uiDegraded.consentRequired) return false;
-    if (uiDegraded.code === 'SAFE_MODE_ACTIVE' || uiDegraded.code === 'CONSENT_REQUIRED') return false;
-    return true;
+    const uiNonFault = uiDegraded.consentRequired === true
+      || uiDegraded.code === 'SAFE_MODE_ACTIVE'
+      || uiDegraded.code === 'CONSENT_REQUIRED';
+    if (!uiNonFault) return true;
   }
-  if (!reason) return false;
-  const parsed = parsePluginReason(reason);
+  if (!reason || !reason.trim()) return false;
+  const parsed = parsePluginReason(reason.trimStart());
   if (parsed.code === 'SAFE_MODE_ACTIVE' || parsed.code === 'CONSENT_REQUIRED') return false;
   return true;
 }
@@ -349,25 +356,27 @@ export function describePluginFault(
   }
   if (options.uiDegraded && isFaultDegradedReason(undefined, options.uiDegraded)) {
     const label = degradeCodeLabel(t, options.uiDegraded.code) ?? t('degraded.title');
+    const detail = options.uiDegraded.detail.trim() || undefined;
     return {
       code: options.uiDegraded.code,
       label,
-      detail: options.uiDegraded.detail || undefined,
+      detail,
     };
   }
   if (options.degradedReason && isFaultDegradedReason(options.degradedReason)) {
-    const parsed = parsePluginReason(options.degradedReason);
+    const parsed = parsePluginReason(options.degradedReason.trimStart());
     const label = degradeCodeLabel(t, parsed.code) ?? t('degraded.title');
+    const detail = parsed.detail.trim() || undefined;
     return {
       code: parsed.code,
       label,
-      detail: parsed.detail || undefined,
+      detail,
     };
   }
   if (options.runtime === 'error') {
     return {
       label: t('runtime.error'),
-      detail: options.runtimeDetail || undefined,
+      detail: options.runtimeDetail?.trim() || undefined,
     };
   }
   return null;

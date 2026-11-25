@@ -6,7 +6,7 @@
  */
 import type { UiKernel } from './kernel';
 import { UiPluginLoader, type LoaderDeps, type UiManifestEntry, type UiPluginLoadFailure } from './loader';
-import type { HostDegradedPlugin } from './services/host-status';
+import { isSafeModeUrl, type HostDegradedPlugin } from './services/host-status';
 import { recordPluginAgentTools } from './services/plugin-tools';
 
 /** `UiManifestV2` (`host/kernel/core.ts`) as read by the renderer. */
@@ -144,19 +144,12 @@ export async function startCommunityUiPlugins(
   });
   let stopped = false;
   /** Set by a v2 manifest with `safeMode: true` (or Web `?safeMode=1`): community UI is never loaded in a safe-mode session. */
-  const urlSafeMode = (() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const p = new URLSearchParams(window.location.search);
-      const v = p.get('safeMode') ?? p.get('safe_mode');
-      return v === '1' || v === 'true';
-    } catch {
-      return false;
-    }
-  })();
+  const urlSafeMode = isSafeModeUrl();
   let safeMode = urlSafeMode;
   if (urlSafeMode) {
-    kernel.hostStatus.update({ plugins: [], degraded: [], safeMode: true });
+    // Only mark safe mode before v2 manifest arrives; never fabricate `plugins: []`,
+    // which would mark optimistic official host-paired plugins (e.g. dstu.plugin-workshop) as `missing` and unload them.
+    kernel.hostStatus.setSafeMode(true);
   }
   const unlisteners: (() => void)[] = [];
   const sync = (manifest: UiManifestEntry[]) => {
@@ -180,7 +173,7 @@ export async function startCommunityUiPlugins(
     if (initial) return sync(initial);
     const requestedAt = revision;
     void transport.invoke().then(async (manifest) => {
-      if (!stopped && revision === requestedAt) await loader.sync(manifest);
+      if (!stopped && revision === requestedAt) await loader.sync(safeMode ? [] : manifest);
     }).catch((error) => {
       // An unavailable community bridge must not block the official application.
       console.error('[ui-plugins] manifest request failed', error);

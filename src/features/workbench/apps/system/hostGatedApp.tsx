@@ -8,7 +8,7 @@
 import React, { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { whenAppUiKernel } from '@/ui-kernel/app-kernel';
-import type { UiHostStatusService } from '@/ui-kernel/services/host-status';
+import { isSafeModeUrl, type UiHostStatusService } from '@/ui-kernel/services/host-status';
 import type { AppWindowProps } from '../../core/types';
 
 export const ANKI_HOST_PLUGIN = 'dstu.anki';
@@ -24,15 +24,45 @@ function currentHostStatus(): UiHostStatusService | undefined {
   return status;
 }
 
-/** 降级时返回原因（可能为空串），否则 null。 */
-function useDegradedReason(hostId: string): string | null {
+/** 订阅应用内核的 Host 状态服务（无内核时返回 undefined）。 */
+export function useAppHostStatus(): UiHostStatusService | undefined {
   const [status, setStatus] = useState(currentHostStatus);
   useEffect(() => (status ? noop : whenAppUiKernel((kernel) => setStatus(kernel.hostStatus))), [status]);
-  const subscribe = useCallback((onChange: () => void) => status?.subscribe(onChange) ?? noop, [status]);
-  return useSyncExternalStore(subscribe, () => (status?.state(hostId) === 'degraded' ? status.reason(hostId) ?? '' : null));
+  return status;
 }
 
-// RUST-FIX(RF-W09-workbench-cards-host-degraded): Host 半降级时换成降级面板
+/** 订阅安全模式状态（结合 Host v2 清单与 URL `?safeMode=1`）。 */
+export function useHostSafeMode(): boolean {
+  const status = useAppHostStatus();
+  const subscribe = useCallback((onChange: () => void) => status?.subscribe(onChange) ?? noop, [status]);
+  const hostSafeMode = useSyncExternalStore(
+    subscribe,
+    () => status?.safeMode === true,
+    () => status?.safeMode === true,
+  );
+  return hostSafeMode || isSafeModeUrl();
+}
+
+/** 降级或缺失时返回状态与原因，在线/未知返回 null。 */
+function useHostUnavailable(hostId: string): { state: 'degraded' | 'missing'; reason: string } | null {
+  const status = useAppHostStatus();
+  const subscribe = useCallback((onChange: () => void) => status?.subscribe(onChange) ?? noop, [status]);
+  const hostState = useSyncExternalStore(
+    subscribe,
+    () => status?.state(hostId) ?? 'unknown',
+    () => status?.state(hostId) ?? 'unknown',
+  );
+  const degradedReason = useSyncExternalStore(
+    subscribe,
+    () => (status?.state(hostId) === 'degraded' ? status.reason(hostId) ?? '' : ''),
+    () => (status?.state(hostId) === 'degraded' ? status.reason(hostId) ?? '' : ''),
+  );
+  if (hostState === 'degraded') return { state: 'degraded', reason: degradedReason };
+  if (hostState === 'missing') return { state: 'missing', reason: '' };
+  return null;
+}
+
+// RUST-FIX(RF-W09-workbench-cards-host-degraded): Host 半降级或缺失时换成降级面板
 export function hostGatedApp(
   hostId: string,
   nameKey: string,
@@ -42,15 +72,19 @@ export function hostGatedApp(
     const { default: AppWindow } = await load();
     const HostGatedAppWindow: React.FC<AppWindowProps> = (props) => {
       const { t } = useTranslation();
-      const reason = useDegradedReason(hostId);
+      const unavailable = useHostUnavailable(hostId);
+      const isUnavailable = unavailable !== null;
       const { onTitleChange } = props;
       useEffect(() => {
-        if (reason !== null) onTitleChange(t(nameKey));
-      }, [reason, onTitleChange, t]);
-      if (reason === null) return <AppWindow {...props} />;
+        if (isUnavailable) onTitleChange(t(nameKey));
+      }, [isUnavailable, onTitleChange, t]);
+      if (unavailable === null) return <AppWindow {...props} />;
+      const reason = unavailable.state === 'missing'
+        ? t('plugin_manager:hostGate.missingReason', { id: hostId })
+        : unavailable.reason || undefined;
       return (
         <Suspense fallback={null}>
-          <HostUnavailablePanel hostId={hostId} titleKey={nameKey} reason={reason || undefined} />
+          <HostUnavailablePanel hostId={hostId} titleKey={nameKey} reason={reason} />
         </Suspense>
       );
     };
