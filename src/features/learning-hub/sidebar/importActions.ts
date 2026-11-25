@@ -7,14 +7,17 @@ import type { DstuNode } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { pLimit } from '@/utils/concurrency';
+import i18n from '@/i18n';
 import type { ImportProgressState, ImportStage } from '../components/ImportProgressModal';
 import type { FinderPath } from '../stores/finderStore';
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
 import {
   consumePathsDropHandledFlag,
+  formatFailedImportSummary,
   isDragDropBlockedView,
   partitionMarkdownNoteImports,
+  resolveImportFormatOptions,
 } from '../dragDropRouting';
 import {
   DOCUMENT_EXTENSIONS,
@@ -224,14 +227,16 @@ export async function importPathsIntoLibrary(
     }
   }
 
+  const format = resolveImportFormatOptions(t, i18n.language);
+
   if (guidanceNames.flashcards.length > 0) {
     showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
-      names: guidanceNames.flashcards.join('、'),
+      names: guidanceNames.flashcards.join(format.listSeparator),
     }));
   }
   if (guidanceNames.mindmap.length > 0) {
     showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
-      names: guidanceNames.mindmap.join('、'),
+      names: guidanceNames.mindmap.join(format.listSeparator),
     }));
   }
   if (docPaths.length === 0 && imagePaths.length === 0 && otherPaths.length === 0) {
@@ -273,6 +278,18 @@ export async function importPathsIntoLibrary(
       totalSuccess += markdownResult.importedNodes.length;
       totalFailed += markdownResult.failedCount;
       firstImportedNode = markdownResult.importedNodes[0] ?? firstImportedNode;
+      for (const failedFile of markdownResult.failedFiles ?? []) {
+        failedDetails.push({
+          name: failedFile,
+          reason: markdownResult.firstError || undefined,
+        });
+      }
+      if (markdownResult.failedCount > 0 && (markdownResult.failedFiles?.length ?? 0) === 0) {
+        failedDetails.push({
+          name: markdownNotePaths[0] ? extractDisplayFileName(markdownNotePaths[0]) : 'markdown',
+          reason: markdownResult.firstError || undefined,
+        });
+      }
 
       if (markdownResult.importedNodes.length === 0 && markdownResult.failedCount > 0) {
         debugLog.error('[LearningHub] Markdown 笔记导入失败:', markdownResult.firstError);
@@ -450,14 +467,11 @@ export async function importPathsIntoLibrary(
     // 3. 显示结果通知（失败时附具体文件与原因，最多 3 条）
     const failedSummary = failedDetails.length > 0
       ? t('finder.dragDrop.importFailedFiles', {
-          names: failedDetails
-            .slice(0, 3)
-            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
-            .join('；'),
+          names: formatFailedImportSummary(failedDetails, format),
         })
       : undefined;
     const duplicateSummary = duplicateNames.length > 0
-      ? t('finder.dragDrop.alreadyInLibrary', { names: duplicateNames.slice(0, 3).join('、') })
+      ? t('finder.dragDrop.alreadyInLibrary', { names: duplicateNames.slice(0, 3).join(format.listSeparator) })
       : undefined;
     if (duplicateSummary && totalSuccess === 0 && totalFailed === 0) {
       showGlobalNotification('info', duplicateSummary);
@@ -622,14 +636,16 @@ export async function importDroppedFiles(
     }
     return true;
   });
+  const format = resolveImportFormatOptions(t, i18n.language);
+
   if (guidanceNames.flashcards.length > 0) {
     showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
-      names: guidanceNames.flashcards.join('、'),
+      names: guidanceNames.flashcards.join(format.listSeparator),
     }));
   }
   if (guidanceNames.mindmap.length > 0) {
     showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
-      names: guidanceNames.mindmap.join('、'),
+      names: guidanceNames.mindmap.join(format.listSeparator),
     }));
   }
   if (importableFiles.length === 0) return;
@@ -777,10 +793,7 @@ export async function importDroppedFiles(
     // ★ 失败时附具体文件与原因（最多 3 条），不再只报笼统"导入失败"
     const failedSummary = failedDetails.length > 0
       ? t('finder.dragDrop.importFailedFiles', {
-          names: failedDetails
-            .slice(0, 3)
-            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
-            .join('；'),
+          names: formatFailedImportSummary(failedDetails, format),
         })
       : undefined;
     if (totalSuccess > 0 && totalFailed === 0) {

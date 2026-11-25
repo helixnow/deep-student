@@ -765,6 +765,7 @@
       "more": "更多操作"
     },
     "create": {
+      "newFolder": "新建文件夹",
       "folderTitle": "新建文件夹",
       "noteTitle": "新建笔记",
       "folderPlaceholder": "请输入文件夹名称",
@@ -777,7 +778,8 @@
       "mindmapSuccess": "思维导图已创建",
       "todoSuccess": "待办列表已创建",
       "defaultFolderName": "新建文件夹",
-      "notAllowedHere": "当前视图不支持新建资源"
+      "notAllowedHere": "当前视图不支持新建资源",
+      "failed": "创建失败，请重试"
     },
     "quickAccess": {
       "materials": "学习资料",
@@ -879,6 +881,7 @@
       "importFailed": "文件导入失败",
       "notAllowedHere": "当前视图不支持拖入文件",
       "importing": "正在导入 {{done}} / {{total}}",
+      "importInProgress": "正在导入中，请稍候…",
       "favoriteSuccess": "已收藏 {{count}} 项",
       "favoriteFailed": "收藏失败",
       "favoriteSkipped": "没有可收藏的项目（文件夹或已收藏）",
@@ -893,11 +896,18 @@
     "markdownImport": {
       "selectFiles": "选择 Markdown 文件",
       "filterName": "Markdown 文件",
+      "unsupportedFormat": "此处仅支持 Markdown（.md、.markdown）文件，其他格式请使用「导入资料…」",
       "tooLarge": "Markdown 文件不能超过 10 MB。",
       "success": "已导入 {{count}} 个 Markdown 笔记",
       "partial": "成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败",
       "failed": "Markdown 导入失败",
       "failedFiles": "失败文件：{{names}}"
+    },
+    "format": {
+      "listSeparator": "、",
+      "clauseSeparator": "；",
+      "itemWithReason": "{{name}}（{{reason}}）",
+      "messageWithDetail": "{{message}}；{{detail}}"
     },
     "contextMenu": {
       "open": "打开",

@@ -130,19 +130,22 @@ export function createResourceCreators({
   // ★ 创建空题目集文件并打开应用面板
   const handleNewExam = () => createEmptyResource('exam', 'finder.create.examSuccess', false);
 
-  const handleNewTextbook = async () => {
-    if (!ensureCreatableView()) return;
+  const handleNewTextbook = (): Promise<void> => {
+    if (!ensureCreatableView()) return Promise.resolve();
     if (importProgress.isImporting || isImportActionInFlight(isMountedRef)) {
       showGlobalNotification('info', t('finder.dragDrop.importInProgress', { defaultValue: '正在导入中，请稍候…' }));
-      return; // 防止重复点击
+      return Promise.resolve(); // 防止重复点击
     }
 
-    await runWithActionLock('import:textbook', async () => {
+    // WebUI / 移动壳：在点击事件同步调用栈内直接拉起隐藏文件输入，
+    // 避免菜单关闭（AppMenuItem setOpen(false)）或 async 锁微任务打断用户手势激活导致静默丢文件。
+    if (!hasNativeTauriDialog() && openWebFileInput?.()) {
+      return Promise.resolve();
+    }
+
+    return runWithActionLock('import:textbook', async () => {
       try {
         if (!hasNativeTauriDialog()) {
-          if (openWebFileInput?.()) {
-            return;
-          }
           const files = await pickWebViewFiles(true);
           if (files.length === 0) return;
           await importFiles(files);

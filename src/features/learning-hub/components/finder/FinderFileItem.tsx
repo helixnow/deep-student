@@ -309,8 +309,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            ariaLabel={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : t('learningHub:contextMenu.rename')}
-            placeholder={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : undefined}
+            ariaLabel={item.type === 'folder' ? t('learningHub:finder.toolbar.newFolder') : t('learningHub:contextMenu.rename')}
+            placeholder={item.type === 'folder' ? t('learningHub:finder.toolbar.newFolder') : undefined}
             textClassName={cn(
               'min-w-0 flex-1 truncate block text-ui font-normal',
               'max-md:!text-lg max-md:leading-5 [@media(pointer:coarse)]:!text-lg [@media(pointer:coarse)]:leading-5',
@@ -585,8 +585,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            ariaLabel={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : t('learningHub:contextMenu.rename')}
-            placeholder={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : undefined}
+            ariaLabel={item.type === 'folder' ? t('learningHub:finder.toolbar.newFolder') : t('learningHub:contextMenu.rename')}
+            placeholder={item.type === 'folder' ? t('learningHub:finder.toolbar.newFolder') : undefined}
             autoSize
             className="mx-auto text-center"
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框调高到 44px 触达）
