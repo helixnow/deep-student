@@ -22,17 +22,17 @@ export function SandboxToolbar({
   onClose,
 }: SandboxToolbarProps) {
   const { t } = useTranslation('workbench');
-  // 触屏（coarse 指针）下图标按钮放大到 ≥40px 触控目标
-  const iconBtnClass = '!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
+  // DsButton iconOnly 已内建 coarse 指针 ≥44px 触控目标
+  const iconBtnClass = '!h-8 !w-8 !p-0';
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[1.05rem] font-semibold text-foreground">{title}</h1>
+        <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
         {subtitle ? (
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">{subtitle}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{subtitle}</p>
         ) : null}
         {meta ? (
-          <p className="mt-1 text-[11px] text-muted-foreground">{meta}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{meta}</p>
         ) : null}
       </div>
 

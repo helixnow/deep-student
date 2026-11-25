@@ -12,6 +12,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Brain, CaretDown, CaretUp } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { addTypedEventListener } from '@/events';
 import { FSRS_STATS_REFRESH_EVENT, subscribeFlashcardsDueRefresh } from '../events';
 import { parseSchedulerConfig } from '../schedulerConfig';
 
@@ -139,12 +141,12 @@ export const FsrsParamsPanel: React.FC = () => {
     mountedRef.current = true;
     void load();
     const onRefresh = () => void load();
-    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+    const unsubscribeStats = addTypedEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
     const unsubscribeDue = subscribeFlashcardsDueRefresh(onRefresh);
     return () => {
       mountedRef.current = false;
       requestIdRef.current += 1;
-      window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+      unsubscribeStats();
       unsubscribeDue();
     };
   }, [load]);
@@ -355,15 +357,17 @@ export const FsrsParamsPanel: React.FC = () => {
                   ? t('stats.fsrsParams.weightsCustom', { defaultValue: 'FSRS-6 个性化权重' })
                   : t('stats.fsrsParams.weightsDefault', { defaultValue: 'FSRS-6 默认权重' })}
               </span>
-              <code className="truncate font-mono text-[11px] tabular-nums text-foreground/80">
+              <code className="truncate font-mono text-xs tabular-nums text-foreground/80">
                 {vectorPreview}
               </code>
             </div>
-            <button
+            <DsButton
               type="button"
+              variant="ghost"
+              size="sm"
               aria-expanded={weightsExpanded}
               onClick={() => setWeightsExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="!h-auto !border-0 !bg-transparent !px-1 !py-0.5 gap-1 text-xs font-normal text-muted-foreground transition-colors hover:text-foreground"
             >
               <span>
                 {weightsExpanded
@@ -371,11 +375,11 @@ export const FsrsParamsPanel: React.FC = () => {
                   : t('stats.fsrsParams.expandWeights', { defaultValue: '展开 21 维权重明细' })}
               </span>
               {weightsExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
-            </button>
+            </DsButton>
           </div>
           {weightsExpanded ? (
             <div
-              className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 font-mono text-[11px] tabular-nums sm:grid-cols-7"
+              className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 font-mono text-xs tabular-nums sm:grid-cols-7"
               data-testid="fsrs-weights-detail"
             >
               {activeWeights.map((weight, index) => (

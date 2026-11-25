@@ -9,6 +9,8 @@ import {
   SquaresFour,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
 import { useActiveSpaceContextStore } from '../core/spaceSnapshots';
 import {
@@ -100,42 +102,51 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
     [onOpenChange],
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const syncViewport = () => {
-      const compact = readIsCompactViewport();
-      setIsCompact(compact);
-      if (!compact) {
-        setMenuOpen(false);
-        onOpenChange?.(false);
-      }
-    };
-    window.addEventListener('resize', syncViewport);
-    return () => {
-      window.removeEventListener('resize', syncViewport);
-    };
-  }, [onOpenChange]);
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'resize',
+        listener: () => {
+          const compact = readIsCompactViewport();
+          setIsCompact(compact);
+          if (!compact) {
+            setMenuOpen(false);
+            onOpenChange?.(false);
+          }
+        },
+      },
+    ],
+    [onOpenChange],
+  );
 
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const handlePointerDown = (event: MouseEvent | PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && compactWrapRef.current?.contains(target)) return;
-      updateMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        updateMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [menuOpen, updateMenuOpen]);
+  useEventRegistry(
+    menuOpen
+      ? [
+          {
+            target: 'document',
+            type: 'mousedown',
+            listener: (event) => {
+              const target = event.target as Node | null;
+              if (target && compactWrapRef.current?.contains(target)) return;
+              updateMenuOpen(false);
+            },
+          },
+          {
+            target: 'window',
+            type: 'keydown',
+            options: true,
+            listener: (event) => {
+              if ((event as KeyboardEvent).key === 'Escape') {
+                event.stopPropagation();
+                updateMenuOpen(false);
+              }
+            },
+          },
+        ]
+      : [],
+    [menuOpen, updateMenuOpen],
+  );
 
   const supportsSidecar =
     activeStagePreset === 'deep-reading-map' || activeStagePreset === 'note-cocreation';
@@ -219,7 +230,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
           title={t(currentItem.hintKey)}
           onClick={() => updateMenuOpen(!menuOpen)}
           className={cn(
-            'wb-stage-compact-trigger rounded-full border border-border/35 bg-background/45 px-2.5 backdrop-blur-sm inline-flex items-center gap-1.5 text-[11px] leading-none font-medium text-foreground hover:bg-background/65',
+            'wb-stage-compact-trigger rounded-full border border-border/35 bg-background/45 px-2.5 backdrop-blur-sm inline-flex items-center gap-1.5 text-xs leading-none font-medium text-foreground hover:bg-background/65',
           )}
         >
           <span
@@ -250,7 +261,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
                   title={t(stage.hintKey)}
                   onClick={() => handleSelectStage(stage.id)}
                   className={cn(
-                    'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-medium',
+                    'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium',
                     isActive
                       ? 'bg-primary/14 text-foreground'
                       : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
@@ -278,7 +289,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
                     data-testid="wb-stage-compact-dual-reader"
                     onClick={handleToggleDualReader}
                     className={cn(
-                      'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-medium',
+                      'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium',
                       dualReaderActive
                         ? 'bg-primary/14 text-foreground'
                         : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
@@ -300,7 +311,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
                   data-testid="wb-stage-compact-sidecar"
                   onClick={handleToggleSidecar}
                   className={cn(
-                    'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-medium',
+                    'wb-stage-compact-item flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium',
                     sidecarActive
                       ? 'bg-primary/14 text-foreground'
                       : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
@@ -343,7 +354,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
             title={t(stage.hintKey)}
             onClick={() => handleSelectStage(stage.id)}
             className={cn(
-              'wb-stage-pill px-2 text-[11px] leading-none font-medium rounded-full inline-flex items-center gap-1.5',
+              'wb-stage-pill px-2 text-xs leading-none font-medium rounded-full inline-flex items-center gap-1.5',
               isActive
                 ? 'bg-primary/14 text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5',
@@ -370,15 +381,18 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
             aria-hidden="true"
           />
           {supportsDualReader ? (
-            <button
+            <DsButton
               type="button"
+              variant="ghost"
+              size="icon"
+              iconOnly
               data-testid="wb-stage-dual-reader-toggle"
               aria-label={t('stagePresets.toggleDualReader')}
               aria-pressed={dualReaderActive}
               title={t('stagePresets.toggleDualReader')}
               onClick={handleToggleDualReader}
               className={cn(
-                'wb-stage-sidecar-btn rounded-full inline-flex items-center justify-center',
+                'wb-stage-sidecar-btn !h-5 !w-5 !p-0 !border-0 rounded-full',
                 dualReaderActive
                   ? 'bg-primary/14 text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5',
@@ -389,17 +403,20 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
                 weight={dualReaderActive ? 'fill' : 'regular'}
                 aria-hidden="true"
               />
-            </button>
+            </DsButton>
           ) : null}
-          <button
+          <DsButton
             type="button"
+            variant="ghost"
+            size="icon"
+            iconOnly
             data-testid="wb-stage-sidecar-toggle"
             aria-label={t('stagePresets.toggleSidecar')}
             aria-pressed={sidecarActive}
             title={t('stagePresets.toggleSidecar')}
             onClick={handleToggleSidecar}
             className={cn(
-              'wb-stage-sidecar-btn rounded-full inline-flex items-center justify-center',
+              'wb-stage-sidecar-btn !h-5 !w-5 !p-0 !border-0 rounded-full',
               sidecarActive
                 ? 'bg-primary/14 text-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5',
@@ -410,7 +427,7 @@ export const StudyFlowStageSwitcher: React.FC<StudyFlowStageSwitcherProps> = ({
               weight={sidecarActive ? 'fill' : 'regular'}
               aria-hidden="true"
             />
-          </button>
+          </DsButton>
         </>
       ) : null}
     </div>

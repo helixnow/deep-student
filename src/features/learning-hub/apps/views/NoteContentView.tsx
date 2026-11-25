@@ -22,6 +22,7 @@ import { NoteLearningPropertiesSection } from '@/features/notes/components/NoteL
 import { reportError, toVfsError, VfsError, VfsErrorCode, type Result } from '@/shared/result';
 import i18n from '@/i18n';
 import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
+import { addTypedEventListener } from '@/events';
 import { syncWikiLinksAfterNoteRename } from '@/features/workbench/apps/notes/wikilinkRenameSync';
 import { getWikilinkNotesCache } from '@/features/notes/wikilinkNotesCache';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -207,8 +208,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   useEffect(() => {
     focusModeOwnersRef.current = new Set();
     setFocusModeActive(false);
-    const handleFocusModeChanged = (event: Event) => {
-      const detail = (event as CustomEvent<NotesFocusModeEventDetail>).detail;
+    return addTypedEventListener<NotesFocusModeEventDetail>('notes:focus-mode-changed', (detail) => {
       if (!detail || detail.scopeId !== effectiveFocusScopeId) return;
       const normalizedDetail: NotesFocusModeEventDetail = detail.ownerId?.trim()
         ? detail
@@ -216,9 +216,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       const next = updateFocusModeOwners(focusModeOwnersRef.current, normalizedDetail, effectiveFocusScopeId);
       focusModeOwnersRef.current = next;
       setFocusModeActive(next.size > 0);
-    };
-    window.addEventListener('notes:focus-mode-changed', handleFocusModeChanged);
-    return () => window.removeEventListener('notes:focus-mode-changed', handleFocusModeChanged);
+    });
   }, [effectiveFocusScopeId]);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -471,7 +469,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     window.dispatchEvent(new CustomEvent('notes:external-updated', {
       detail: { noteId: currentNoteId, content: nextWindow.loadedMarkdown, force: forceApply, windowId: hostWindowId },
     }));
-  }, [initialLineWindow, node.id, node.path, setMarkdownWindow, updateKnownBaseline]);
+  }, [hostWindowId, initialLineWindow, node.id, node.path, setMarkdownWindow, updateKnownBaseline]);
 
   const refreshFromDiskRef = useRef(refreshFromDisk);
   refreshFromDiskRef.current = refreshFromDisk;
@@ -778,7 +776,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         savingContentNoteIdRef.current = null;
       }
     }
-  }, [initialLineWindow, node.id, node.path, node.type, readOnly, t, refreshFromDisk, setMarkdownWindow, updateKnownBaseline]);
+  }, [hostWindowId, initialLineWindow, node.id, node.path, node.type, readOnly, t, refreshFromDisk, setMarkdownWindow, updateKnownBaseline]);
 
   // 标题变更
   const handleTitleChange = useCallback(async (newTitle: string) => {

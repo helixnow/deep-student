@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { addTypedEventListener } from '@/events';
 import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -395,11 +396,9 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
   }, [t]);
 
   useEffect(() => {
-    const handleHistoryChanged = () => {
+    return addTypedEventListener(VOICE_INPUT_HISTORY_CHANGED_EVENT, () => {
       void refreshHistory();
-    };
-    window.addEventListener(VOICE_INPUT_HISTORY_CHANGED_EVENT, handleHistoryChanged);
-    return () => window.removeEventListener(VOICE_INPUT_HISTORY_CHANGED_EVENT, handleHistoryChanged);
+    });
   }, [refreshHistory]);
 
   const persist = useCallback(

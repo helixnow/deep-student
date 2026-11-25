@@ -56,7 +56,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     return () => {
       disposed = true;
     };
-  }, [applyZoomToWebview, isTauriEnvironment]);
+  }, [applyZoomToWebview, isTauriEnvironment, setUiZoom, setZoomLoading]);
 
   const handleZoomChange = useCallback(async (value: number) => {
     const normalized = clampZoom(value);
@@ -81,7 +81,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     } finally {
       setZoomSaving(false);
     }
-  }, [applyZoomToWebview, isTauriEnvironment, t]);
+  }, [applyZoomToWebview, isTauriEnvironment, setUiZoom, setZoomSaving, setZoomStatus, t]);
 
   const handleZoomReset = useCallback(() => {
     void handleZoomChange(DEFAULT_UI_ZOOM);
@@ -116,7 +116,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     return () => {
       disposed = true;
     };
-  }, [isTauriEnvironment]);
+  }, [isTauriEnvironment, setFontLoading, setUiFont]);
 
   // 字体设置：处理变更
   const handleFontChange = useCallback(async (value: string) => {
@@ -133,7 +133,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     } finally {
       setFontSaving(false);
     }
-  }, [isTauriEnvironment]);
+  }, [isTauriEnvironment, setFontSaving, setUiFont]);
 
   // 字体设置：重置为默认
   const handleFontReset = useCallback(() => {
@@ -169,7 +169,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     return () => {
       disposed = true;
     };
-  }, [isTauriEnvironment]);
+  }, [isTauriEnvironment, setFontSizeLoading, setUiFontSize]);
 
   // 字体大小设置：处理变更
   const handleFontSizeChange = useCallback(async (value: number) => {
@@ -187,7 +187,7 @@ export function useSettingsZoomFont(deps: UseSettingsZoomFontDeps) {
     } finally {
       setFontSizeSaving(false);
     }
-  }, [isTauriEnvironment]);
+  }, [isTauriEnvironment, setFontSizeSaving, setUiFontSize]);
 
   // 字体大小设置：重置为默认
   const handleFontSizeReset = useCallback(() => {

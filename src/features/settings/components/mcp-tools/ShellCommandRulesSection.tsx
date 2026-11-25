@@ -309,7 +309,7 @@ export function ShellCommandRulesSection() {
             onChange={event => setPreviewCommand(event.target.value)}
             placeholder={t('settings:tool_permissions.shell_rules.preview_placeholder')}
             aria-label={t('settings:tool_permissions.shell_rules.preview_title')}
-            className="min-w-0 flex-1 font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
+            className="min-w-0 flex-1 font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-lg"
           />
           {preview && (
             <div className="flex min-h-8 items-center gap-2 text-xs sm:max-w-[45%]">
@@ -334,11 +334,11 @@ export function ShellCommandRulesSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[8rem_10rem_minmax(12rem,1fr)] gap-2">
             <Select value={draft.action} onValueChange={value => { setDraft(prev => ({ ...prev, action: value as ShellCommandAction })); setPendingRisk(null); }}>
-              <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:text-lg" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={draft.matchType} onValueChange={value => { setDraft(prev => ({ ...prev, matchType: value as ShellCommandMatchType })); setDraftError(null); setPendingRisk(null); }}>
-              <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:text-lg" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Input
@@ -346,11 +346,11 @@ export function ShellCommandRulesSection() {
               onChange={event => { setDraft(prev => ({ ...prev, pattern: event.target.value })); setDraftError(null); setPendingRisk(null); }}
               placeholder={t(`settings:tool_permissions.shell_rules.placeholder_${draft.matchType}`)}
               aria-label={t('settings:tool_permissions.shell_rules.pattern_label')}
-              className="font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
+              className="font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-lg"
               autoFocus
             />
           </div>
-          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" />
+          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-lg" />
           <p className="mt-1.5 text-xs text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
           {draftError && <p className="mt-2 text-xs text-destructive">{t(`settings:tool_permissions.shell_rules.error_${draftError}`)}</p>}
           {pendingRisk && (
@@ -377,9 +377,9 @@ export function ShellCommandRulesSection() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_9rem_10rem] gap-2 mb-2">
-            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="pl-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" /></div>
-            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
-            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="pl-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-lg" /></div>
+            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:text-lg"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:text-lg"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
           </div>
           <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox

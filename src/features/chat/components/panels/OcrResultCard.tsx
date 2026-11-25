@@ -80,7 +80,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
         <span className="text-xs font-medium text-muted-foreground">
           {tCommon('note_label')}
         </span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {noteValue.trim().length === 0 ? tCommon('note_hint_empty') : tCommon('note_hint_saved')}
         </span>
       </div>
@@ -91,7 +91,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
         disabled={noteDisabled}
         className="min-h-[220px] flex-1 rounded-md border-border bg-muted/30 text-sm text-foreground transition-colors focus-visible:ring-ring"
       />
-      <div className="flex items-center justify-between text-[11px]">
+      <div className="flex items-center justify-between text-xs">
         <span className={`font-medium ${isSavingNote ? 'text-primary' : 'text-muted-foreground'}`}>
           {isSavingNote ? tCommon('note_saving') : tCommon('note_autosave')}
         </span>
@@ -125,7 +125,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
         >
           <div className={`${hasNoteSection ? 'flex-1' : 'w-full'} space-y-4 sm:space-y-6`}>
             <div className="space-y-2">
-              <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">{tOcr('questionContent')}</span>
+              <span className="text-xs font-medium text-muted-foreground">{tOcr('questionContent')}</span>
               <div className="rounded-md border border-border bg-muted/30 p-3 text-xs leading-6 text-foreground sm:p-4 sm:text-sm">
                 <LatexText
                   content={safeOcrText}
@@ -135,7 +135,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
             </div>
 
             <div className="space-y-2">
-              <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">{tCommon('summary_label')}</span>
+              <span className="text-xs font-medium text-muted-foreground">{tCommon('summary_label')}</span>
               <div className="rounded-md border border-border bg-muted/30 p-3 text-xs leading-6 text-foreground sm:p-4 sm:text-sm">
                 {safeSummary ? (
                   <LatexText
@@ -143,14 +143,14 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                     className="m-0 text-xs leading-6 text-foreground sm:text-sm"
                   />
                 ) : (
-                  <span className="text-[11px] italic text-muted-foreground sm:text-xs">{tCommon('summary_empty_hint')}</span>
+                  <span className="text-xs italic text-muted-foreground">{tCommon('summary_empty_hint')}</span>
                 )}
               </div>
             </div>
 
             {safeImages.length > 0 && (
               <div className="space-y-2">
-                <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">{tOcr('questionImages')}</span>
+                <span className="text-xs font-medium text-muted-foreground">{tOcr('questionImages')}</span>
                 <div className={`flex gap-2.5 sm:gap-3 ${safeImages.length === 1 ? 'flex-row' : 'flex-wrap'}`}>
                   {safeImages.map((src, idx) => {
                     const isFullUrl = typeof src === 'string' && /^(data:|tauri:\/\/|asset:\/\/|https?:\/\/)/.test(src);
@@ -216,7 +216,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
             <div className="flex flex-wrap items-start gap-4 sm:gap-6">
               {mistakeType ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">{tOcr('questionType')}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{tOcr('questionType')}</span>
                   <Badge variant="outline" className="border-border bg-muted/30 text-foreground">
                     {mistakeType}
                   </Badge>
@@ -226,7 +226,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
               <div className="flex min-w-[12rem] flex-1 flex-col gap-2">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Hash className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium sm:text-xs">{tOcr('tags')}</span>
+                  <span className="text-xs font-medium">{tOcr('tags')}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {safeTags.length > 0 ? (
@@ -234,20 +234,20 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                       <Badge
                         key={`${tag}-${index}`}
                         variant="outline"
-                        className="border-border bg-muted/30 px-2.5 py-1 text-[11px] font-medium text-foreground sm:px-3 sm:text-xs"
+                        className="border-border bg-muted/30 px-2.5 py-1 text-xs font-medium text-foreground sm:px-3"
                       >
                         {tag}
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-[11px] italic text-muted-foreground sm:text-xs">{tOcr('noTags')}</span>
+                    <span className="text-xs italic text-muted-foreground">{tOcr('noTags')}</span>
                   )}
                   {tagActions ? <div className="flex items-center">{tagActions}</div> : null}
                 </div>
               </div>
 
               {actions ? (
-                <div className="ml-auto flex items-center gap-2 text-[11px] text-foreground sm:text-xs">
+                <div className="ml-auto flex items-center gap-2 text-xs text-foreground">
                   {actions}
                 </div>
               ) : null}

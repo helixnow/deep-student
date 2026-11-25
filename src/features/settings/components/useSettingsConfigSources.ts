@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { Dispatch, SetStateAction } from 'react';
+import { addTypedEventListener } from '@/events';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import { normalizeMcpToolList } from './mcpUtils';
@@ -51,20 +52,20 @@ export function useSettingsConfigSources({
     } catch (e) {
       // 静默失败：不阻塞设置页、避免控制台警告噪音
     }
-  }, [invoke, setConfig]);
+  }, [setConfig]);
 
   useEffect(() => {
-    const onChanged = () => {
-      void refreshApiConfigsFromBackend();
-    };
+    let cleanup: (() => void) | null = null;
     try {
-      window.addEventListener('api_configurations_changed', onChanged);
+      cleanup = addTypedEventListener('api_configurations_changed', () => {
+        void refreshApiConfigsFromBackend();
+      });
     } catch {
       // Best-effort listener registration only.
     }
     return () => {
       try {
-        window.removeEventListener('api_configurations_changed', onChanged);
+        cleanup?.();
       } catch {
         // Best-effort listener cleanup only.
       }
@@ -91,7 +92,7 @@ export function useSettingsConfigSources({
       compaction_model_config_id: modelAssignments.compaction_model_config_id || '',
       translation_display_mode: (modelAssignments.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
     }));
-  }, [modelAssignments]);
+  }, [modelAssignments, setConfig]);
 
   useEffect(() => {
     setConfig(prev => {
@@ -104,14 +105,14 @@ export function useSettingsConfigSources({
         themePalette,
       };
     });
-  }, [themeMode, themePalette]);
+  }, [themeMode, themePalette, setConfig]);
 
   useEffect(() => {
     if (!Array.isArray(config.mcpTools)) {
       const normalized = normalizeMcpToolList(config.mcpTools);
       setConfig(prev => ({ ...prev, mcpTools: normalized }));
     }
-  }, [config.mcpTools]);
+  }, [config.mcpTools, setConfig]);
 
   // 监听模型分配变更事件（Chat V2 修改默认模型后广播）
   useEffect(() => {
@@ -155,9 +156,10 @@ export function useSettingsConfigSources({
         // Ignore malformed cached assignments and keep current settings state.
       }
     };
-    window.addEventListener('model_assignments_changed', reloadAssignments);
-    return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
-  }, []);
+    return addTypedEventListener('model_assignments_changed', () => {
+      void reloadAssignments();
+    });
+  }, [setConfig]);
 
   return refreshApiConfigsFromBackend;
 }

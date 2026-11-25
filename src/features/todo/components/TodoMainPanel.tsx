@@ -1267,13 +1267,15 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   const collapsed = collapsedBuckets.has(group.bucket);
                   return (
                     <div key={group.bucket}>
-                      <div data-wb-blur-surface className="sticky top-0 z-[1] flex items-center gap-2 bg-[color:var(--surface-root)]/95 px-4 pb-1 pt-3 backdrop-blur-sm sm:px-6">
+                      <div data-wb-blur-surface className="sticky top-0 z-10 flex items-center gap-2 bg-[color:var(--surface-root)]/95 px-4 pb-1 pt-3 backdrop-blur-sm sm:px-6">
                         {/* 组头可点击折叠/展开（caret 旋转 + InlineReveal 收合动画） */}
-                        <button
+                        <DsButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => toggleBucketCollapsed(group.bucket)}
                           aria-expanded={!collapsed}
-                          className="group/header relative -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3 [@media(pointer:coarse)]:after:content-['']"
+                          className="group/header !h-auto -mx-1 min-w-0 gap-1.5 rounded !border-0 !bg-transparent !px-1 !py-0.5 hover:!bg-transparent"
                         >
                           <CaretDown
                             size={11}
@@ -1294,7 +1296,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           <span className="font-mono text-xs tabular-nums text-muted-foreground/50">
                             {group.items.length}
                           </span>
-                        </button>
+                        </DsButton>
                         {group.bucket === 'overdue' && (
                           <DsButton
                             variant="utility"
@@ -1302,7 +1304,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             disabled={reschedulingOverdue}
                             onClick={() => void handleRescheduleOverdueToToday(group.items)}
                             title={t('todo:reschedule.allToTodayHint')}
-                            className="ml-auto h-6 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
+                            className="ml-auto h-6 gap-1 !px-2 text-xs"
                           >
                             <CalendarPlus size={12} />
                             {t('todo:reschedule.allToToday')}

@@ -12,6 +12,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/shad/Card';
 import { DsButton } from '@/components/ui/DsButton';
+import { addTypedEventListener } from '@/events';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CollapsibleModelSelector, type CollapsibleModelOption } from '@/components/ui/shad/CollapsibleModelSelector';
@@ -362,10 +363,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     };
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
+      const cleanup = addTypedEventListener('siliconflow-apikey-changed', () => {
+        handleApiKeyChanged();
+      });
       return () => {
         disposed = true;
-        window.removeEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
+        cleanup();
       };
     }
   }, [clearStatusTimer, siliconFlowVendorKey]);

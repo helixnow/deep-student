@@ -118,7 +118,7 @@ const SCROLL_VIEWPORT_SELECTOR = '[data-overlayscrollbars-viewport], .scroll-are
 /** 选择芯片（模式/文体/年级共用视觉） */
 const choiceChipClassName = (active: boolean) =>
   cn(
-    '!px-2.5 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-11 text-xs ui-state-colors',
+    '!px-2.5 !py-1 !h-auto text-xs ui-state-colors',
     active
       ? 'bg-primary/10 text-primary border border-primary/30'
       : 'bg-muted/50 text-foreground/70 border border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -133,11 +133,12 @@ const CollapsibleSection: React.FC<{
   children: React.ReactNode;
 }> = ({ title, isOpen, onToggle, badge, children }) => (
   <section>
-    <button
-      type="button"
+    <DsButton
+      variant="ghost"
+      size="sm"
       onClick={onToggle}
       aria-expanded={isOpen}
-      className="flex w-full items-center justify-between gap-2 px-4 py-3 [@media(pointer:coarse)]:min-h-11 text-xs font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors duration-150 hover:text-foreground motion-reduce:transition-none"
+      className="!h-auto flex w-full !justify-between gap-2 !rounded-none !px-4 !py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors duration-150 hover:bg-transparent hover:text-foreground motion-reduce:transition-none"
     >
       <span className="flex items-center gap-2">
         {title}
@@ -150,7 +151,7 @@ const CollapsibleSection: React.FC<{
           isOpen && 'rotate-90'
         )}
       />
-    </button>
+    </DsButton>
     <div
       className={cn(
         'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
@@ -435,7 +436,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [formInvalid, viewMode, formData, editingMode, onModesChange, t]);
+  }, [formInvalid, viewMode, formData, editingMode, setModeId, onModesChange, t]);
 
   // ========== 重置 / 删除（二段式内联确认） ==========
 
@@ -675,7 +676,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
             size="icon"
             iconOnly
             onClick={onClose}
-            className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+            className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground"
             aria-label={t('essay_grading:settings_panel.close')}
             title={t('essay_grading:settings_panel.close')}
           >
@@ -695,7 +696,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 {t('essay_grading:workbench.settings.section_criteria')}
               </h3>
               {isGrading && (
-                <span className="text-[10px] text-muted-foreground/60">
+                <span className="text-2xs text-muted-foreground/60">
                   {t('essay_grading:workbench.settings.locked_while_grading')}
                 </span>
               )}
@@ -752,18 +753,19 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       <span className="text-xs font-medium text-foreground">
                         {t('essay_grading:settings_panel.custom_rubric')}
                       </span>
-                      <button
-                        type="button"
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setCustomRubricOpen(false)}
                         aria-label={t('essay_grading:actions.cancel')}
-                        className="text-xs text-muted-foreground hover:text-foreground"
+                        className="!h-auto !px-1 !py-0.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
                       >
                         {t('essay_grading:actions.cancel')}
-                      </button>
+                      </DsButton>
                     </div>
                     <div className="essay-rubric-form-grid grid grid-cols-1 gap-2 sm:grid-cols-[1fr_92px]">
                       <div className="space-y-1">
-                        <label className="block text-[11px] text-muted-foreground">
+                        <label className="block text-xs text-muted-foreground">
                           {t('essay_grading:settings_panel.custom_rubric_name')}
                         </label>
                         <Input
@@ -775,7 +777,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="block text-[11px] text-muted-foreground">
+                        <label className="block text-xs text-muted-foreground">
                           {t('essay_grading:settings_panel.custom_rubric_total')}
                         </label>
                         <Input
@@ -790,7 +792,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-[11px] text-muted-foreground">
+                      <label className="block text-xs text-muted-foreground">
                         {t('essay_grading:settings_panel.custom_rubric_prompt')}
                       </label>
                       <Textarea
@@ -812,7 +814,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => setCustomRubricOpen(false)}
-                        className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                        className="text-xs"
                       >
                         {t('essay_grading:actions.cancel')}
                       </DsButton>
@@ -821,7 +823,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         size="sm"
                         onClick={handleSaveLocalCustomRubric}
                         data-testid="custom-rubric-save-button"
-                        className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                        className="text-xs"
                       >
                         <Check size={13} />
                         {t('essay_grading:settings_panel.custom_rubric_save')}
@@ -829,7 +831,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     </div>
                     {modes.some((m) => isLocalCustomModeId(m.id)) && (
                       <div className="space-y-1.5 border-t border-border/40 pt-2.5">
-                        <div className="text-[11px] font-medium text-muted-foreground">
+                        <div className="text-xs font-medium text-muted-foreground">
                           {t('essay_grading:settings_panel.saved_custom_rubrics')}
                         </div>
                         <div className="space-y-1">
@@ -845,8 +847,9 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                     : 'border-border/40 bg-background/60 text-foreground/80',
                                 )}
                               >
-                                <button
-                                  type="button"
+                                <DsButton
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => {
                                     handleModeSwitch(rubric.id);
                                     if (openedViaQuickEntryRef.current) {
@@ -854,11 +857,11 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                       onClose();
                                     }
                                   }}
-                                  className="min-w-0 flex-1 truncate text-left font-medium hover:text-primary"
+                                  className="!h-auto !px-0 !py-0 min-w-0 flex-1 !justify-start truncate text-left text-xs font-medium hover:bg-transparent hover:text-primary"
                                 >
                                   {rubric.name}
-                                </button>
-                                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                                </DsButton>
+                                <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                                   {rubric.total_max_score}
                                 </span>
                                 <DsButton
@@ -895,11 +898,11 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-foreground/90">{getModeDisplayName(currentMode, t)}</span>
                       {currentMode.is_builtin ? (
-                        <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
+                        <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-2xs font-normal text-muted-foreground">
                           {t('settings:gradingMode.badgeBuiltin')}
                         </Badge>
                       ) : isLocalCustomModeId(currentMode.id) ? (
-                        <Badge variant="secondary" className="h-4 bg-primary/15 px-1 text-[10px] font-normal text-primary">
+                        <Badge variant="secondary" className="h-4 bg-primary/15 px-1 text-2xs font-normal text-primary">
                           {t('essay_grading:settings_panel.custom_rubric_badge')}
                         </Badge>
                       ) : null}
@@ -945,7 +948,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         {currentMode.score_dimensions.map((dim, idx) => (
                           <span
                             key={idx}
-                            className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-foreground/70"
+                            className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-xs text-foreground/70"
                           >
                             {getDimensionDisplayName(currentMode.id, dim.name, t)}
                             <span className="ml-1 tabular-nums text-muted-foreground/60">{dim.max_score}</span>
@@ -1004,7 +1007,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   </div>
                   {((currentMode && (!currentMode.is_builtin || recommendedGradeLevelForMode(modeId, currentMode.is_builtin) === 'other')) ||
                     (Boolean(customPrompt?.trim()) && customPrompt.trim() !== t('essay_grading:prompt_editor.default_prompt').trim())) && (
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
                       {t('essay_grading:grade_level.exam_rubric_note')}
                     </p>
                   )}
@@ -1047,7 +1050,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={onRestoreDefaultPrompt}
-                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('essay_grading:prompt_editor.restore_default')}
@@ -1058,7 +1061,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={handleSavePrompt}
                   className={cn(
-                    "ui-state-colors text-xs [@media(pointer:coarse)]:!min-h-11",
+                    "ui-state-colors text-xs",
                     promptJustSaved
                       ? "bg-success/10 text-success hover:bg-success/10"
                       : "bg-primary/10 text-primary hover:bg-primary/20"
@@ -1079,7 +1082,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
             isOpen={editorExpanded}
             onToggle={() => setEditorExpanded(prev => !prev)}
             badge={isEditing ? (
-              <span className="inline-flex items-center rounded bg-primary/10 px-1 py-px text-[10px] font-normal normal-case tracking-normal text-primary">
+              <span className="inline-flex items-center rounded bg-primary/10 px-1 py-px text-2xs font-normal normal-case tracking-normal text-primary">
                 {t('essay_grading:settings_panel.editing_badge')}
               </span>
             ) : undefined}
@@ -1100,7 +1103,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={handleCancelEdit}
-                        className="h-7 [@media(pointer:coarse)]:!h-11 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                        className="h-7 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                       >
                         {t('essay_grading:actions.cancel')}
                       </DsButton>
@@ -1109,7 +1112,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         size="sm"
                         onClick={handleSave}
                         disabled={isLoading}
-                        className="h-7 [@media(pointer:coarse)]:!h-11 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                       >
                         {isLoading ? t('settings:gradingMode.saving') : t('settings:gradingMode.done')}
                       </DsButton>
@@ -1140,7 +1143,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder={t('settings:gradingMode.placeholderModeName')}
                       className={cn(
-                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]",
+                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:text-lg",
                         showValidation && nameInvalid && "border-destructive/50 focus-visible:ring-destructive/30"
                       )}
                     />
@@ -1198,35 +1201,37 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               isDropTarget && "bg-primary/5 ring-1 ring-primary/30"
                             )}
                           >
-                            <button
-                              type="button"
+                            <DsButton
+                              variant="ghost"
+                              size="icon"
+                              iconOnly
                               onPointerDown={() => setDragArmedIndex(index)}
                               onPointerUp={() => setDragArmedIndex(null)}
                               onPointerCancel={() => setDragArmedIndex(null)}
                               aria-label={t('essay_grading:settings_panel.drag_reorder')}
                               title={t('essay_grading:settings_panel.drag_reorder')}
                               /* coarse：同行删除钮已放大到 44，把手同款（14px 图标指尖抓不住） */
-                              className="inline-flex flex-shrink-0 cursor-grab items-center justify-center text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:opacity-70"
+                              className="!h-auto !w-auto !p-0 inline-flex flex-shrink-0 cursor-grab items-center justify-center text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:bg-transparent hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-70"
                             >
                               <DotsSixVertical size={14} />
-                            </button>
+                            </DsButton>
                             <Input
                               value={dim.name}
                               onChange={e => handleUpdateDimension(index, 'name', e.target.value)}
                               placeholder={t('settings:gradingMode.placeholderDimensionName')}
                               className={cn(
-                                "h-7 [@media(pointer:coarse)]:min-h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
+                                "h-7 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
                                 showValidation && issue.name && "rounded-sm ring-1 ring-destructive/50"
                               )}
                             />
                             <div className="flex flex-shrink-0 items-center gap-1">
-                              <span className="text-[10px] text-muted-foreground/50">{t('settings:gradingMode.labelScore')}</span>
+                              <span className="text-2xs text-muted-foreground/50">{t('settings:gradingMode.labelScore')}</span>
                               <Input
                                 type="number"
                                 value={dim.max_score}
                                 onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
                                 className={cn(
-                                  "h-7 [@media(pointer:coarse)]:min-h-11 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                                  "h-7 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                                   showValidation && issue.score && "ring-1 ring-destructive/50"
                                 )}
                                 min={0}
@@ -1265,7 +1270,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               size="icon"
                               iconOnly
                               onClick={() => handleRemoveDimension(index)}
-                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/50 opacity-50 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/50 opacity-50 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70"
                               aria-label={t('essay_grading:settings_panel.remove_dimension')}
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >
@@ -1279,7 +1284,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={handleAddDimension}
-                      className="group !h-auto [@media(pointer:coarse)]:!min-h-11 w-full !justify-start !px-1 !py-1.5 text-xs text-muted-foreground hover:text-primary"
+                      className="group !h-auto w-full !justify-start !px-1 !py-1.5 text-xs text-muted-foreground hover:text-primary"
                     >
                       <div className="flex h-4 w-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary">
                         <Plus size={10} />
@@ -1297,7 +1302,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-medium">{t('settings:gradingMode.maxScoreLimit')}</div>
-                          <div className="truncate text-[10px] text-muted-foreground">{t('settings:gradingMode.maxScoreLimitDesc')}</div>
+                          <div className="truncate text-2xs text-muted-foreground">{t('settings:gradingMode.maxScoreLimitDesc')}</div>
                         </div>
                         <Input
                           type="number"
@@ -1307,7 +1312,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             total_max_score: Number(e.target.value)
                           }))}
                           className={cn(
-                            "h-7 [@media(pointer:coarse)]:min-h-11 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                            "h-7 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                             showValidation && totalInvalid && "border-destructive/50"
                           )}
                           min={1}
@@ -1330,7 +1335,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))}
-                            className="!h-auto [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 !px-1.5 !py-0.5 text-[11px] text-primary hover:bg-primary/10"
+                            className="!h-auto flex-shrink-0 !px-1.5 !py-0.5 text-xs text-primary hover:bg-primary/10"
                           >
                             {t('essay_grading:settings_panel.validation.sync_total', { sum: calculatedTotal })}
                           </DsButton>
@@ -1358,7 +1363,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         placeholder={t('settings:gradingMode.placeholderSystemPrompt')}
                         className="min-h-[160px] w-full resize-none overflow-hidden border-border/30 p-3 font-mono text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary/30"
                       />
-                      <div data-wb-blur-surface className="pointer-events-none absolute bottom-2 right-2 rounded bg-background/50 px-1 text-[10px] text-muted-foreground/50 backdrop-blur-sm">
+                      <div data-wb-blur-surface className="pointer-events-none absolute bottom-2 right-2 rounded bg-background/50 px-1 text-2xs text-muted-foreground/50 backdrop-blur-sm">
                         {t('settings:gradingMode.markdownSupported')}
                       </div>
                     </div>
@@ -1374,7 +1379,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={() => currentMode && handleStartEdit(currentMode)}
                   disabled={!currentMode}
-                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Pencil size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.edit_current')}
@@ -1384,7 +1389,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={() => currentMode && handleCopyMode(currentMode)}
                   disabled={!currentMode}
-                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Copy size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.copy_current')}
@@ -1393,7 +1398,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={handleStartCreate}
-                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Plus size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.create_mode')}
@@ -1405,7 +1410,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     onClick={() => handleConfirmableClick('reset', currentMode)}
                     disabled={isLoading}
                     className={cn(
-                      "!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs",
+                      "!h-8 w-full !justify-start !px-2 text-xs",
                       pendingConfirm !== 'reset' && "text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                     )}
                   >
@@ -1422,7 +1427,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     onClick={() => handleConfirmableClick('delete', currentMode)}
                     disabled={isLoading}
                     className={cn(
-                      "!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs",
+                      "!h-8 w-full !justify-start !px-2 text-xs",
                       pendingConfirm !== 'delete' && "text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
                     )}
                   >

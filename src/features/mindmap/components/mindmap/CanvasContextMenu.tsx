@@ -716,13 +716,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   // 打开时把焦点移入菜单容器（方向键立即可用），关闭时归还原焦点
   useEffect(() => {
     if (!isOpen) return;
+    const menuEl = menuRef.current;
     const prevActive = window.document.activeElement;
-    const frame = requestAnimationFrame(() => menuRef.current?.focus({ preventScroll: true }));
+    const frame = requestAnimationFrame(() => menuEl?.focus({ preventScroll: true }));
     return () => {
       cancelAnimationFrame(frame);
       const active = window.document.activeElement;
       // 只有焦点仍属于菜单（或已丢到 body）时才归还，避免抢走动作设置的编辑焦点
-      const focusIsOurs = active === window.document.body || (menuRef.current?.contains(active) ?? false);
+      const focusIsOurs = active === window.document.body || (menuEl?.contains(active) ?? false);
       if (focusIsOurs && prevActive instanceof HTMLElement && prevActive.isConnected) {
         prevActive.focus({ preventScroll: true });
       }

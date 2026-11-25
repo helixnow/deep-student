@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { NoteBlank, Plus, PencilSimple, Trash, FloppyDisk } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/shad/Dialog';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
+import { addTypedEventListener } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   applyPreviewedNoteTemplate, fillUnsetTemplateLearningProps, getNoteTemplates, renderNoteTemplate,
@@ -105,8 +106,10 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
       } finally { if (!cancelled) setLoadingPersonal(false); }
     };
     void load();
-    window.addEventListener(PERSONAL_NOTE_TEMPLATES_CHANGED, load);
-    return () => { cancelled = true; window.removeEventListener(PERSONAL_NOTE_TEMPLATES_CHANGED, load); };
+    const offChanged = addTypedEventListener(PERSONAL_NOTE_TEMPLATES_CHANGED, () => {
+      void load();
+    });
+    return () => { cancelled = true; offChanged(); };
   }, [open]);
 
   const selected: NoteTemplate | PersonalNoteTemplate | undefined = useMemo(() => {

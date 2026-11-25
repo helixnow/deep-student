@@ -25,6 +25,7 @@ import {
   ArrowsLeftRight,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { addTypedEventListener } from '@/events';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent } from '@/components/ui/shad/Card';
@@ -118,13 +119,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   useEffect(() => {
     void refreshCloudConfigured();
-    const onCloudChanged = () => {
+    return addTypedEventListener('data-governance:cloud-config-changed', () => {
       void refreshCloudConfigured();
-    };
-    window.addEventListener('data-governance:cloud-config-changed', onCloudChanged);
-    return () => {
-      window.removeEventListener('data-governance:cloud-config-changed', onCloudChanged);
-    };
+    });
   }, [refreshCloudConfigured]);
 
   // 同步进度 / 取消 / 正在同步：全部来自全局 store（#447）。进度由应用级

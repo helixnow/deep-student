@@ -240,7 +240,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               ? t('settings:vendor_model_fetcher.search_placeholder')
               : t('settings:vendor_model_fetcher.search_placeholder_empty')
             }
-            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
+            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-lg"
             disabled={models.length === 0}
           />
         </div>
@@ -249,7 +249,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           size="sm"
           onClick={() => fetchModels(true)}
           disabled={loading || !hasApiKey || !hasBaseUrl}
-          className="shrink-0 [@media(pointer:coarse)]:!h-11"
+          className="shrink-0"
         >
           {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
@@ -284,7 +284,6 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 size="sm"
                 onClick={handleAddAll}
                 disabled={addingAll}
-                className="[@media(pointer:coarse)]:!h-11"
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                 {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}
@@ -305,7 +304,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 <div key={group.family.id}>
                   <div
                     className={cn(
-                      'sticky top-0 z-[1] flex items-baseline gap-1.5',
+                      'sticky top-0 z-10 flex items-baseline gap-1.5',
                       'px-3 py-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground/70',
                       'bg-background',
                       'border-b border-border/30'
@@ -316,13 +315,15 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     <span className="tabular-nums normal-case tracking-normal text-muted-foreground/60">{group.items.length}</span>
                   </div>
                   {group.items.map(m => (
-                    <button
+                    <DsButton
                       key={m.id}
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleAddSingle(m)}
                       disabled={addingId === m.id}
                       className={cn(
-                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors [@media(pointer:coarse)]:min-h-11",
+                        "!h-auto justify-start gap-2 w-full rounded-none !border-0 px-3 py-1.5 text-xs font-normal text-left transition-colors",
                         "hover:bg-[var(--interactive-hover)] text-foreground",
                         addingId === m.id && "opacity-50 pointer-events-none"
                       )}
@@ -335,7 +336,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                           : <Plus className="h-3.5 w-3.5" />
                         }
                       </span>
-                    </button>
+                    </DsButton>
                   ))}
                 </div>
               ))}
@@ -344,13 +345,15 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               {existingModelsInList.length > 0 && (
                 <>
                   {newModels.length > 0 && <div className="my-1 border-t border-border/20" />}
-                  <button
+                  <DsButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setExistingExpanded(v => !v)}
                     aria-expanded={existingExpanded}
                     aria-controls="vendor-model-fetcher-existing-list"
                     className={cn(
-                      'flex items-center justify-between w-full gap-2 px-3 py-1.5 [@media(pointer:coarse)]:min-h-11',
+                      '!h-auto justify-between w-full gap-2 rounded-none !border-0 px-3 py-1.5 font-normal',
                       'text-2xs uppercase tracking-wider text-muted-foreground/60',
                       'hover:text-muted-foreground hover:bg-[var(--interactive-hover)]',
                       'transition-colors'
@@ -365,7 +368,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     <span className="shrink-0 text-muted-foreground/50" aria-hidden="true">
                       {existingExpanded ? <CaretUp className="h-3 w-3" /> : <CaretDown className="h-3 w-3" />}
                     </span>
-                  </button>
+                  </DsButton>
                   <div
                     id="vendor-model-fetcher-existing-list"
                     className={cn(

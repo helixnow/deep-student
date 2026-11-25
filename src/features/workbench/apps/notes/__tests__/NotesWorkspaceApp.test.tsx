@@ -94,7 +94,7 @@ vi.mock('@/dstu', () => ({
 }));
 
 vi.mock('@/features/learning-hub/apps/UnifiedAppPanel', () => ({
-  default: (props: Record<string, unknown>) => {
+  default: function MockUnifiedAppPanel(props: Record<string, unknown>) {
     panelProps.push(props);
     const id = String(props.resourceId);
     React.useEffect(() => {

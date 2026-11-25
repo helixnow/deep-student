@@ -5,6 +5,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { isMobilePlatform } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { DsButton } from '@/components/ui/DsButton';
+import { addTypedEventListener } from '@/events';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import {
   resolveSettingsStdioFraming,
@@ -182,27 +183,27 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   // 经 chat_v2://settings_changed → systemSettingsChanged 同步刷新设置页服务器列表，
   // 不必重开设置页。value 缺失（如 mcpReloaded 广播）时回读一次 setting。
   useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ settingKey?: string; value?: unknown }>)?.detail;
-      if (detail?.settingKey !== 'mcp.tools.list') return;
-      void (async () => {
-        try {
-          const raw = typeof detail.value === 'string'
-            ? detail.value
-            : (invoke ? await invoke<string | null>('get_setting', { key: 'mcp.tools.list' }) : null);
-          const parsed = (() => {
-            try { return raw ? JSON.parse(raw) : []; } catch { return null; }
-          })();
-          if (Array.isArray(parsed)) {
-            setConfig(prev => ({ ...prev, mcpTools: parsed }));
+    return addTypedEventListener<{ settingKey?: string; value?: unknown }>(
+      'systemSettingsChanged',
+      (detail) => {
+        if (detail?.settingKey !== 'mcp.tools.list') return;
+        void (async () => {
+          try {
+            const raw = typeof detail.value === 'string'
+              ? detail.value
+              : (invoke ? await invoke<string | null>('get_setting', { key: 'mcp.tools.list' }) : null);
+            const parsed = (() => {
+              try { return raw ? JSON.parse(raw) : []; } catch { return null; }
+            })();
+            if (Array.isArray(parsed)) {
+              setConfig(prev => ({ ...prev, mcpTools: parsed }));
+            }
+          } catch (e) {
+            console.warn('[Settings] 同步外部 MCP 配置变更失败:', e);
           }
-        } catch (e) {
-          console.warn('[Settings] 同步外部 MCP 配置变更失败:', e);
-        }
-      })();
-    };
-    window.addEventListener('systemSettingsChanged', handler);
-    return () => window.removeEventListener('systemSettingsChanged', handler);
+        })();
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setConfig]);
 

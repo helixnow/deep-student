@@ -13,7 +13,7 @@ export function SandboxStatusRail({ onOpenInspector }: SandboxStatusRailProps) {
   return (
     <aside className="flex h-full w-full flex-col items-stretch gap-3 border-l border-border bg-[color:var(--shell-inspector-panel)] px-2 py-3">
       <div className="px-1">
-        <span className="block text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <span className="block text-2xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           {t('sandbox.preview')}
         </span>
       </div>
@@ -24,7 +24,7 @@ export function SandboxStatusRail({ onOpenInspector }: SandboxStatusRailProps) {
         onClick={onOpenInspector}
         title={t('sandbox.expand')}
         aria-label={t('sandbox.expand')}
-        className="!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        className="!h-8 !w-8 !p-0"
       >
         <SidebarSimple size={16} />
       </DsButton>

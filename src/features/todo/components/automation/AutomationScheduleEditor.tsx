@@ -13,6 +13,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
@@ -237,10 +238,33 @@ export function AutomationScheduleEditor({
 
   // ---- preview ----
   const previewCount = value.kind === 'once' ? 1 : 3;
+  const {
+    kind: scheduleKind,
+    time: scheduleTime,
+    weekday: scheduleWeekday,
+    weekdays: scheduleWeekdays,
+    dayOfMonth: scheduleDayOfMonth,
+    intervalMinutes: scheduleIntervalMinutes,
+    date: scheduleDate,
+    timezone: scheduleTimezone,
+  } = value;
   const nextRuns = React.useMemo(
-    () => computeNextRuns(value, previewCount),
+    () =>
+      computeNextRuns(
+        {
+          kind: scheduleKind,
+          time: scheduleTime,
+          weekday: scheduleWeekday,
+          weekdays: scheduleWeekdays,
+          dayOfMonth: scheduleDayOfMonth,
+          intervalMinutes: scheduleIntervalMinutes,
+          date: scheduleDate,
+          timezone: scheduleTimezone,
+        },
+        previewCount,
+      ),
     // Re-derive from the fields the math actually reads.
-    [value.kind, value.time, value.weekday, value.weekdays, value.dayOfMonth, value.intervalMinutes, value.date, value.timezone, previewCount],
+    [scheduleKind, scheduleTime, scheduleWeekday, scheduleWeekdays, scheduleDayOfMonth, scheduleIntervalMinutes, scheduleDate, scheduleTimezone, previewCount],
   );
 
   // once 的日期+时间联动校验：日期是「今天」但时刻已过（后端 validate_schedule
@@ -499,7 +523,7 @@ export function AutomationScheduleEditor({
           onValueChange={handleKindChange}
           size="compact"
           className="max-w-full flex-wrap gap-y-[3px]"
-          itemClassName="[@media(pointer:coarse)]:!min-h-11"
+          itemClassName="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           options={KIND_ORDER.map((kind) => ({
             value: kind,
             label: t(`${P}.kinds.${kind}`),
@@ -552,17 +576,18 @@ export function AutomationScheduleEditor({
           {t(`${P}.timezoneLabel`)}
         </span>
         <div className="flex items-center gap-1.5">
-          <button
+          <DsButton
             type="button"
+            variant="ghost"
+            size="sm"
             disabled={disabled}
             aria-expanded={timezoneExpanded}
             aria-controls={`${idPrefix}-timezone-panel`}
             aria-labelledby={`${idPrefix}-timezone-label`}
             onClick={() => setTimezoneExpanded((prev) => !prev)}
             className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-shell-control)]',
-              '[@media(pointer:coarse)]:h-11',
-              'border border-[color:var(--border-soft)] px-3 text-xs text-foreground',
+              'h-8 gap-1.5 rounded-[var(--radius-shell-control)]',
+              'border border-[color:var(--border-soft)] px-3 text-xs font-normal text-foreground',
               'transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
               'motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50',
             )}
@@ -581,23 +606,25 @@ export function AutomationScheduleEditor({
                 timezoneExpanded && 'rotate-180',
               )}
             />
-          </button>
+          </DsButton>
           {value.timezone?.trim() && (
-            <button
+            <DsButton
               type="button"
+              variant="ghost"
+              size="icon"
+              iconOnly
               disabled={disabled}
               aria-label={t(`${P}.timezoneClear`)}
               title={t(`${P}.timezoneClear`)}
               onClick={() => handleTimezoneSelect(null)}
               className={cn(
-                'inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-shell-control)]',
-                '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
+                '!h-8 !w-8 rounded-[var(--radius-shell-control)]',
                 'text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
                 'motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50',
               )}
             >
               <X size={14} aria-hidden="true" />
-            </button>
+            </DsButton>
           )}
         </div>
         <AnimatePresence initial={false}>

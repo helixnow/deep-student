@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ArrowsLeftRight, CircleNotch } from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DataGovernanceApi, runSyncWithProgress } from '@/api/dataGovernance';
 import * as cloudApi from '@/utils/cloudStorageApi';
@@ -102,18 +103,30 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
   useEffect(() => {
     if (cloudConfiguredOverride !== undefined) return;
     void refreshConfigured();
-    const handleChanged = () => {
-      void refreshConfigured();
-    };
-    window.addEventListener('data-governance:cloud-config-changed', handleChanged);
-    window.addEventListener('storage', handleChanged);
-    window.addEventListener('focus', handleChanged);
-    return () => {
-      window.removeEventListener('data-governance:cloud-config-changed', handleChanged);
-      window.removeEventListener('storage', handleChanged);
-      window.removeEventListener('focus', handleChanged);
-    };
   }, [cloudConfiguredOverride, refreshConfigured]);
+
+  useEventRegistry(
+    cloudConfiguredOverride === undefined
+      ? [
+          {
+            target: 'window',
+            type: 'data-governance:cloud-config-changed',
+            listener: () => { void refreshConfigured(); },
+          },
+          {
+            target: 'window',
+            type: 'storage',
+            listener: () => { void refreshConfigured(); },
+          },
+          {
+            target: 'window',
+            type: 'focus',
+            listener: () => { void refreshConfigured(); },
+          },
+        ]
+      : [],
+    [cloudConfiguredOverride, refreshConfigured],
+  );
 
   const effectiveConfigured =
     cloudConfiguredOverride !== undefined
@@ -244,7 +257,7 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
         void handleQuickSync();
       }}
       className={cn(
-        'shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-11',
+        'shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20',
         className,
       )}
     >

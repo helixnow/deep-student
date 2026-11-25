@@ -26,6 +26,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { DsButton } from "@/components/ui/DsButton";
+import { addTypedEventListener } from "@/events";
 import { GroupTitle } from "../settingsTabPrimitives";
 import {
   resolveCloudStorageConfig,
@@ -192,13 +193,9 @@ export const UnsyncedItemsPanel: React.FC<{
   }, [refresh, refreshSignal]);
 
   useEffect(() => {
-    const onLocalChange = () => {
+    return addTypedEventListener("data-governance:local-change", () => {
       void refresh();
-    };
-    window.addEventListener("data-governance:local-change", onLocalChange);
-    return () => {
-      window.removeEventListener("data-governance:local-change", onLocalChange);
-    };
+    });
   }, [refresh]);
 
   const items = report?.items ?? [];
@@ -235,7 +232,7 @@ export const UnsyncedItemsPanel: React.FC<{
                 })}
               </span>
               {pendingTotal > 0 && (
-                <span className="text-[11px] font-normal text-muted-foreground">
+                <span className="text-xs font-normal text-muted-foreground">
                   {t("sync:unsynced.tableDetailHint")}
                 </span>
               )}
@@ -267,15 +264,17 @@ export const UnsyncedItemsPanel: React.FC<{
                               expandedTables[`${db.id}::${tbl.table_name}`],
                             );
                             return (
-                              <button
+                              <DsButton
                                 key={tbl.table_name}
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 data-testid={`pending-table-toggle-${db.id}-${tbl.table_name}`}
                                 aria-expanded={isExpanded}
                                 onClick={() =>
                                   toggleTableExpanded(db.id, tbl.table_name)
                                 }
-                                className="inline-flex cursor-pointer items-center gap-1 rounded border border-border/50 bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:border-primary/40 hover:bg-primary/10"
+                                className="!h-auto cursor-pointer gap-1 rounded border border-border/50 bg-muted !px-1.5 !py-0.5 font-mono text-xs font-normal text-foreground transition-colors hover:border-primary/40 hover:bg-primary/10"
                               >
                                 <span>
                                   {tbl.table_name} ({tbl.count})
@@ -285,7 +284,7 @@ export const UnsyncedItemsPanel: React.FC<{
                                 ) : (
                                   <CaretRight size={10} aria-hidden="true" />
                                 )}
-                              </button>
+                              </DsButton>
                             );
                           })}
                         </div>
@@ -311,7 +310,7 @@ export const UnsyncedItemsPanel: React.FC<{
                                 })}
                               </div>
                               {hasOps && ops && (
-                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                                   {typeof ops.insert === "number" && (
                                     <span className="rounded bg-background/80 px-1.5 py-0.5">
                                       {t("sync:unsynced.tableOpInsert", {
@@ -335,12 +334,12 @@ export const UnsyncedItemsPanel: React.FC<{
                                   )}
                                 </div>
                               )}
-                              <p className="text-[11px] text-muted-foreground">
+                              <p className="text-xs text-muted-foreground">
                                 {t("sync:unsynced.tableOperationHint")}
                               </p>
                               {tbl.sample_record_ids &&
                                 tbl.sample_record_ids.length > 0 && (
-                                  <div className="font-mono text-[11px] text-muted-foreground break-all">
+                                  <div className="font-mono text-xs text-muted-foreground break-all">
                                     {t("sync:unsynced.tableRecordsPreview", {
                                       ids: tbl.sample_record_ids.join(", "),
                                     })}

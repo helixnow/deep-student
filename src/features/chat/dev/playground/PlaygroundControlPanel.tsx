@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   Play,
@@ -230,20 +231,21 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           </span>
           <div className="flex gap-0.5 flex-1">
             {ALL_PRESETS.map((p) => (
-              <button
+              <DsButton
                 key={p}
-                type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => onPresetChange(p)}
                 title={getStreamingPresetHint(p)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:!min-h-11 text-2xs rounded transition-colors',
+                  '!h-auto flex-1 !px-1 !py-0.5 text-2xs rounded transition-colors',
                   preset === p
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
                 )}
               >
                 {getStreamingPresetLabel(p)}
-              </button>
+              </DsButton>
             ))}
           </div>
         </div>
@@ -256,20 +258,21 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           </span>
           <div className="flex gap-0.5 flex-1">
             {ALL_MODES.map((m) => (
-              <button
+              <DsButton
                 key={m}
-                type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => onRenderModeChange(m)}
                 title={getRenderModeHint(m)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:!min-h-11 text-2xs rounded transition-colors',
+                  '!h-auto flex-1 !px-1 !py-0.5 text-2xs rounded transition-colors',
                   renderMode === m
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
                 )}
               >
                 {getRenderModeLabel(m)}
-              </button>
+              </DsButton>
             ))}
           </div>
         </div>
@@ -279,18 +282,19 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex-shrink-0 flex border-b border-border text-[11px]">
+      <div className="flex-shrink-0 flex border-b border-border text-xs">
         {([
           { id: 'scenarios' as const, label: '场景', Icon: Lightning },
           { id: 'profiler' as const, label: '性能', Icon: ChartBar },
           { id: 'eval' as const, label: '评测', Icon: Cpu },
         ]).map(({ id, label, Icon }) => (
-          <button
+          <DsButton
             key={id}
-            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setActiveTab(id)}
             className={cn(
-              'flex-1 px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 transition-colors flex items-center justify-center gap-1',
+              '!h-auto flex-1 !rounded-none !px-2 !py-1.5 text-xs transition-colors flex items-center justify-center gap-1',
               activeTab === id
                 ? 'text-foreground border-b-2 border-primary -mb-px font-medium'
                 : 'text-muted-foreground hover:text-foreground',
@@ -298,7 +302,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           >
             <Icon size={11} />
             {label}
-          </button>
+          </DsButton>
         ))}
       </div>
 
@@ -307,33 +311,39 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* 快捷操作 */}
           <div className="flex-shrink-0 px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
-            <button
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={handleClear}
-              className="px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
+              className="!h-auto !px-2.5 !py-1.5 min-h-7 text-xs rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
             >
               <Trash size={12} />
               清空
-            </button>
-            <button
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={handleAbort}
               disabled={sessionStatus === 'idle'}
               className={cn(
-                'px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded flex items-center gap-1 transition-colors',
+                '!h-auto !px-2.5 !py-1.5 min-h-7 text-xs rounded flex items-center gap-1 transition-colors',
                 sessionStatus === 'idle'
                   ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
-                  : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+                  : 'bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive'
               )}
             >
               <Square size={12} />
               中断
-            </button>
-            <button
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={handleInjectAll}
-              className="px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
+              className="!h-auto !px-2.5 !py-1.5 min-h-7 text-xs rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
             >
               <Stack size={12} />
               注入全部
-            </button>
+            </DsButton>
           </div>
 
           {/* 状态选择器 */}
@@ -344,19 +354,21 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               </div>
               <div className="flex gap-1">
                 {ALL_BLOCK_STATUSES.map((status) => (
-                  <button
+                  <DsButton
                     key={status}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setSelectedStatus(status)}
                     className={cn(
-                      'flex-1 px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded flex items-center justify-center gap-1 transition-colors',
+                      '!h-auto flex-1 !px-2 !py-1 text-xs rounded flex items-center justify-center gap-1 transition-colors',
                       selectedStatus === status
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                         : 'bg-muted hover:bg-muted/80 text-muted-foreground'
                     )}
                   >
                     <StatusIcon status={status} className={selectedStatus === status ? 'text-primary-foreground' : undefined} />
                     {status === 'pending' ? '待处理' : status === 'running' ? '运行中' : status === 'success' ? '成功' : '错误'}
-                  </button>
+                  </DsButton>
                 ))}
               </div>
             </div>
@@ -367,7 +379,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               <select
                 value={scenarioRhythmId}
                 onChange={(e) => handleScenarioRhythmChange(e.target.value)}
-                className="w-full text-[11px] px-2 py-1 [@media(pointer:coarse)]:!min-h-11 rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full text-xs px-2 py-1 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {RHYTHM_PRESETS.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -388,12 +400,14 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             >
               <div className="space-y-1">
                 {AUTO_REPLY_SCENARIOS.map((scenario) => (
-                  <button
+                  <DsButton
                     key={scenario.id}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleTriggerScenario(scenario.id)}
                     disabled={isExecuting || sessionStatus === 'streaming'}
                     className={cn(
-                      'w-full text-left px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 rounded text-[11px] transition-colors',
+                      '!h-auto w-full !flex-col !items-start text-left !px-2 !py-1.5 rounded text-xs transition-colors',
                       'hover:bg-muted/80 group',
                       (isExecuting || sessionStatus === 'streaming') && 'opacity-50 cursor-not-allowed'
                     )}
@@ -405,7 +419,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     <div className="text-2xs text-muted-foreground ml-[18px] mt-0.5">
                       {scenario.description}
                     </div>
-                  </button>
+                  </DsButton>
                 ))}
               </div>
             </CollapsibleSection>
@@ -419,10 +433,12 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             >
               <div className="space-y-0.5">
                 {BLOCK_TEMPLATES.map((template, index) => (
-                  <button
+                  <DsButton
                     key={`${template.type}-${index}`}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleInjectBlock(index)}
-                    className="w-full text-left px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 rounded text-[11px] hover:bg-muted/80 transition-colors group"
+                    className="!h-auto w-full !flex-col !items-stretch text-left !px-2 !py-1.5 rounded text-xs hover:bg-muted/80 transition-colors group"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -440,7 +456,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     <div className="text-2xs text-muted-foreground mt-0.5">
                       {template.description}
                     </div>
-                  </button>
+                  </DsButton>
                 ))}
               </div>
             </CollapsibleSection>
@@ -453,36 +469,39 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               badge="ask_user"
             >
               <div className="space-y-1.5">
-                <button
-                  type="button"
+                <DsButton
+                  variant="ghost"
+                  size="sm"
                   onClick={handleInjectBlockingAskUser}
-                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
+                  className="!h-auto w-full !flex-col !items-start text-left rounded !px-2 !py-2 text-xs transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `ask_user`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
                     接管输入栏，显示带选项和自定义输入的真实调试弹条。
                   </div>
-                </button>
-                <button
-                  type="button"
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
                   onClick={handleInjectBlockingApproval}
-                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
+                  className="!h-auto w-full !flex-col !items-start text-left rounded !px-2 !py-2 text-xs transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_approval`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
                     验证敏感度徽章、参数展开，以及批准/拒绝后的 resolved 态。
                   </div>
-                </button>
-                <button
-                  type="button"
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
                   onClick={handleInjectBlockingToolLimit}
-                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
+                  className="!h-auto w-full !flex-col !items-start text-left rounded !px-2 !py-2 text-xs transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_limit`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
                     直接走输入栏 continue 交互，检查阻塞态与恢复行为。
                   </div>
-                </button>
+                </DsButton>
               </div>
             </CollapsibleSection>
 
@@ -494,16 +513,17 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               badge="todo"
             >
               <div className="space-y-1.5">
-                <button
-                  type="button"
+                <DsButton
+                  variant="ghost"
+                  size="sm"
                   onClick={handleInjectTodoSample}
-                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
+                  className="!h-auto w-full !flex-col !items-start text-left rounded !px-2 !py-2 text-xs transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">Todo sample 数据</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
                     注入一组带 running / completed / pending 状态的 todo_list 示例，调试折叠摘要和步骤高亮。
                   </div>
-                </button>
+                </DsButton>
               </div>
             </CollapsibleSection>
           </CustomScrollArea>
@@ -547,9 +567,11 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   children,
 }) => (
   <div className="border-b border-border">
-    <button
+    <DsButton
+      variant="ghost"
+      size="sm"
       onClick={onToggle}
-      className="w-full px-3 py-2 [@media(pointer:coarse)]:!min-h-11 flex items-center justify-between hover:bg-muted/30 transition-colors"
+      className="!h-auto w-full !rounded-none !px-3 !py-2 flex items-center !justify-between hover:bg-muted/30 transition-colors"
     >
       <div className="flex items-center gap-1.5 text-xs font-medium">
       {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
@@ -561,7 +583,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
           {badge}
         </span>
       )}
-    </button>
+    </DsButton>
     {expanded && <div className="px-2 pb-2">{children}</div>}
   </div>
 );

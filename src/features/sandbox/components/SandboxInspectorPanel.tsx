@@ -54,7 +54,7 @@ export function SandboxInspectorPanel({
             onClick={onClose}
             title={t('sandbox.collapse')}
             aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2"
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:-my-2"
           >
             <X size={14} />
           </DsButton>
@@ -66,7 +66,7 @@ export function SandboxInspectorPanel({
       >
         <div className="space-y-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-foreground">
                 {sourceTypeLabel}
@@ -79,12 +79,13 @@ export function SandboxInspectorPanel({
           </div>
 
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
+              <DsButton
+                variant="ghost"
+                size="sm"
                 onClick={() => onSetViewportPreset('desktop')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
+                className={`!h-auto justify-start rounded-lg border px-2 py-2 text-left text-xs font-normal transition-colors ${
                   viewportPreset === 'desktop'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'
@@ -93,11 +94,12 @@ export function SandboxInspectorPanel({
                 title={t('sandbox.desktop')}
               >
                 {t('sandbox.desktopShort', '桌')}
-              </button>
-              <button
-                type="button"
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
                 onClick={() => onSetViewportPreset('tablet')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
+                className={`!h-auto justify-start rounded-lg border px-2 py-2 text-left text-xs font-normal transition-colors ${
                   viewportPreset === 'tablet'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'
@@ -106,11 +108,12 @@ export function SandboxInspectorPanel({
                 title={t('sandbox.tablet')}
               >
                 {t('sandbox.tabletShort', '平')}
-              </button>
-              <button
-                type="button"
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
                 onClick={() => onSetViewportPreset('mobile')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
+                className={`!h-auto justify-start rounded-lg border px-2 py-2 text-left text-xs font-normal transition-colors ${
                   viewportPreset === 'mobile'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'
@@ -119,12 +122,12 @@ export function SandboxInspectorPanel({
                 title={t('sandbox.mobile')}
               >
                 {t('sandbox.mobileShort', '手')}
-              </button>
+              </DsButton>
             </div>
           </div>
 
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.stats')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.stats')}</p>
             <dl className="mt-2 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-4">
                 <dt>{t('sandbox.language')}</dt>

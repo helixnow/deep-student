@@ -247,13 +247,13 @@ function HistoryContent({ noteId, onRestoredCopy, beforeOverwrite, withOverwrite
           {!loading && items.length === 0 && <p className="text-sm text-muted-foreground">{t(pinnedOnly ? (cursor === null ? 'history.no_retained' : 'history.more_retained') : 'history.empty')}</p>}
           <ul className="space-y-1">
             {items.map(item => <li key={item.version_id}>
-              <button type="button" disabled={restoring || savingRetention} onClick={() => void preview(item.version_id)}
+              <DsButton type="button" variant="ghost" size="sm" disabled={restoring || savingRetention} onClick={() => void preview(item.version_id)}
                 aria-pressed={selected?.version_id === item.version_id}
-                className="w-full rounded-lg p-3 text-left text-sm hover:bg-muted aria-pressed:bg-muted disabled:opacity-50">
+                className="!h-auto w-full flex-col items-start justify-start gap-0.5 whitespace-normal rounded-lg !border-0 p-3 text-left text-sm font-normal hover:bg-muted aria-pressed:bg-muted disabled:opacity-50">
                 <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(i18n.resolvedLanguage ?? i18n.language)}</time>
-                <span className="block truncate">{item.title}</span>
+                <span className="block w-full truncate">{item.title}</span>
                 <span className="text-xs text-muted-foreground">{sources[item.source] ? t(sources[item.source]) : item.source} · {item.content_bytes} B{item.pinned ? ` · ${t('history.pinned')}` : ''}</span>
-              </button>
+              </DsButton>
             </li>)}
           </ul>
           {loading && <p role="status" className="p-3 text-sm">{t('history.loading')}</p>}

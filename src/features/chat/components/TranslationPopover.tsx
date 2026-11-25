@@ -43,6 +43,7 @@ import { nanoid } from 'nanoid';
 import { cn } from '@/utils/cn';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -577,6 +578,9 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     [sourceText, contextBefore, contextAfter, cancelActiveStream, clearStallTimer, t]
   );
 
+  const doTranslateRef = useRef(doTranslate);
+  doTranslateRef.current = doTranslate;
+
   // 自动触发：卡片打开 + 拿到 settings 后开译
   useEffect(() => {
     if (!isVisible || !sourceText) return;
@@ -592,7 +596,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       setSrcLang(detectedSrc);
       setTgtLang(defaultTgt);
 
-      doTranslate({
+      doTranslateRef.current({
         src: detectedSrc,
         tgt: defaultTgt,
         mode: resolved.mode,
@@ -603,7 +607,6 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     return () => {
       cancelled = true;
     };
-    // 依赖 isVisible/sourceText：每次重新打开都重新跑（不依赖 doTranslate 引用变更）
   }, [isVisible, sourceText]);
 
   // 关闭时清理：取消请求 + 清空状态
@@ -624,15 +627,15 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   }, [isVisible, cancelActiveStream]);
 
   // 卸载时彻底清理（避免内存泄漏 / 卸载后 setState）
-  useEffect(() => {
-    return () => {
-      reqIdRef.current++;
-      cancelActiveStream();
-      if (copiedSourceTimerRef.current) clearTimeout(copiedSourceTimerRef.current);
-      if (copiedTranslationTimerRef.current) clearTimeout(copiedTranslationTimerRef.current);
-      if (pinnedAnnotationTimerRef.current) clearTimeout(pinnedAnnotationTimerRef.current);
-    };
+  const disposeOnUnmount = useCallback(() => {
+    reqIdRef.current++;
+    cancelActiveStream();
+    if (copiedSourceTimerRef.current) clearTimeout(copiedSourceTimerRef.current);
+    if (copiedTranslationTimerRef.current) clearTimeout(copiedTranslationTimerRef.current);
+    if (pinnedAnnotationTimerRef.current) clearTimeout(pinnedAnnotationTimerRef.current);
   }, [cancelActiveStream]);
+
+  useEffect(() => disposeOnUnmount, [disposeOnUnmount]);
 
   // ===== 焦点管理：打开时聚焦卡片（读屏/键盘可达） =====
   useEffect(() => {
@@ -792,7 +795,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 ? t('translation:chat_popover.swap_languages')
                 : t('translation:chat_popover.cannot_swap_auto')
             }
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+            className={cn('!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground', coarseHitClassFor24)}
           >
             <ArrowsLeftRight size={12} />
           </DsButton>
@@ -824,7 +827,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             aria-label={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
             title={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
             // ★ 低-11：24px 视觉不变，触屏伪元素扩命中区到 ≥44px（与 ExplainPopover 一致）
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+            className={cn('!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground', coarseHitClassFor24)}
           >
             <CaretDown
               size={13}
@@ -840,7 +843,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             iconOnly
             onClick={onClose}
             aria-label={t('common:actions.close')}
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+            className={cn('!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground', coarseHitClassFor24)}
           >
             <X size={13} />
           </DsButton>
@@ -866,7 +869,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleRetry}
                   aria-label={t('common:actions.retry')}
                   title={t('common:actions.retry')}
-                  className="!h-6 !w-6 shrink-0 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                  className={cn('!h-6 !w-6 shrink-0', coarseHitClassFor24)}
                 >
                   <ArrowsClockwise size={14} />
                 </DsButton>
@@ -956,7 +959,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopySource}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                className="gap-1.5 !px-2 text-xs"
               >
                 <IconSwap
                   active={copiedSource}
@@ -975,7 +978,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopyTranslation}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                className="gap-1.5 !px-2 text-xs"
               >
                 <IconSwap
                   active={copiedTranslation}
@@ -1015,7 +1018,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleAddToInput}
                   disabled={isLoading}
                   title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                  className="gap-1.5 !px-2 text-xs"
                 >
                   <ChatDots size={13} />
                   <span>{t('chatV2:selectionToolbar.addToChat')}</span>

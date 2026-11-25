@@ -15,6 +15,7 @@ import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { addTypedEventListener } from '@/events';
 import type { ChatSession } from '../types/session';
 import { useViewStore } from '@/stores/viewStore';
 import { APP_EVENTS } from '@/events/app';
@@ -88,16 +89,16 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   const navigateRequestSeqRef = useRef(0);
 
   useEffect(() => {
-    const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
-      if (!shouldChatHandleOpenNote(event.detail)) return;
-      const { noteId, source } = event.detail;
+    return addTypedEventListener<DstuOpenNoteDetail>('DSTU_OPEN_NOTE', (detail) => {
+      if (!shouldChatHandleOpenNote(detail)) return;
+      const { noteId, source } = detail;
 
       // 经典壳下聊天页不是当前视图（学习资源页 PDF 划词「保存为笔记」、卡片库来源、
       // 周报等）：聊天页保活隐藏或已被淘汰，开进聊天画布等于没反应——
       // 由 App 的经典壳 DSTU_OPEN_NOTE 宿主在学习资源页以标签打开（同一落点规则）。
       if (
         !workbenchBus.isEnabled()
-        && resolveClassicShellOpenNoteTarget(event.detail, useViewStore.getState().currentView) !== 'chat'
+        && resolveClassicShellOpenNoteTarget(detail, useViewStore.getState().currentView) !== 'chat'
       ) {
         return;
       }
@@ -116,13 +117,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           detail: { noteId, source }
         }));
       }
-    };
-    
-    // TODO: migrate to centralized event registry
-    window.addEventListener('DSTU_OPEN_NOTE' as any, handleOpenNote as any);
-    return () => {
-      window.removeEventListener('DSTU_OPEN_NOTE' as any, handleOpenNote as any);
-    };
+    });
   }, [notesContext, t]);
 
   // 导航握手：初始加载完成（loadSessions 已选定启动会话，不会再覆盖导航）后
@@ -158,15 +153,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
   // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
   useEffect(() => {
-    const handler = (e: Event) => {
-      const sid = (e as CustomEvent)?.detail?.sessionId;
+    return addTypedEventListener<{ sessionId?: string }>('PIPELINE_TEST_SWITCH_SESSION', (detail) => {
+      const sid = detail?.sessionId;
       if (sid && typeof sid === 'string') {
         console.log('[ChatV2Page] PIPELINE_TEST_SWITCH_SESSION:', sid);
         setCurrentSessionId(sid);
       }
-    };
-    window.addEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
-    return () => window.removeEventListener('PIPELINE_TEST_SWITCH_SESSION', handler);
+    });
   }, [setCurrentSessionId]);
 
   const handleNavigateToSession = useCallback(async (e: Event) => {
@@ -498,9 +491,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         pageNumber: target.dataset.pdfPage,
       });
     };
-    if (shouldDebugPdfRefClick) {
-      document.addEventListener('click', debugClick, true);
-    }
+    const offDebugClick = shouldDebugPdfRefClick
+      ? addTypedEventListener('click', (_detail, event) => debugClick(event as unknown as MouseEvent), true, 'document')
+      : null;
     const handlePdfRefOpen = async (event: Event) => {
       const customEvent = event as CustomEvent<{
         sourceId?: string;
@@ -676,13 +669,15 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       }
     };
 
-    // TODO: migrate to centralized event registry
-    document.addEventListener('pdf-ref:open', handlePdfRefOpen);
+    const offPdfRefOpen = addTypedEventListener(
+      'pdf-ref:open',
+      (_detail, event) => { void handlePdfRefOpen(event); },
+      undefined,
+      'document',
+    );
     return () => {
-      if (shouldDebugPdfRefClick) {
-        document.removeEventListener('click', debugClick, true);
-      }
-      document.removeEventListener('pdf-ref:open', handlePdfRefOpen);
+      offDebugClick?.();
+      offPdfRefOpen();
     };
   }, [t]);
 
@@ -690,9 +685,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   // 工作台壳由 WorkbenchEventBridge 独占处理（开 file 资源窗）：两边都处理会让
   // 聊天面板与资源窗两个播放器同时 seek + 出声。
   useEffect(() => {
-    const handleMediaRefOpen = async (event: Event) => {
+    const handleMediaRefOpen = async (detail: MediaRefOpenDetail | undefined) => {
       if (workbenchBus.isEnabled()) return;
-      const { resourceId, seconds } = (event as CustomEvent<MediaRefOpenDetail>).detail ?? {};
+      const { resourceId, seconds } = detail ?? {};
       if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
         return;
       }
@@ -711,11 +706,12 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         targetScopeId: CHAT_PANEL_PDF_FOCUS_SCOPE,
       });
     };
-    const listener = (event: Event) => {
-      void handleMediaRefOpen(event);
-    };
-    document.addEventListener(MEDIA_REF_OPEN_EVENT, listener);
-    return () => document.removeEventListener(MEDIA_REF_OPEN_EVENT, listener);
+    return addTypedEventListener<MediaRefOpenDetail>(
+      MEDIA_REF_OPEN_EVENT,
+      (detail) => { void handleMediaRefOpen(detail); },
+      undefined,
+      'document',
+    );
   }, [t]);
 
   // ========== P1-07: 命令面板 CHAT_* 事件监听 ==========
@@ -906,9 +902,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
   // 监听外部预填充输入框事件
   useEffect(() => {
-    const handleSetInput = (evt: Event) => {
-      const event = evt as CustomEvent<{ content: string; autoSend?: boolean }>;
-      const { content } = event?.detail ?? {};
+    return addTypedEventListener<{ content: string; autoSend?: boolean }>('CHAT_V2_SET_INPUT', (detail) => {
+      const { content } = detail ?? {};
       if (!content) return;
 
       const store = getCurrentStore();
@@ -916,12 +911,6 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         store.getState().setInputValue(content);
         console.log('[ChatV2Page] Input bar content pre-filled');
       }
-    };
-
-    // TODO: migrate to centralized event registry
-    window.addEventListener('CHAT_V2_SET_INPUT', handleSetInput as EventListener);
-    return () => {
-      window.removeEventListener('CHAT_V2_SET_INPUT', handleSetInput as EventListener);
-    };
+    });
   }, [getCurrentStore]);
 }

@@ -29,6 +29,7 @@ import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
@@ -807,38 +808,39 @@ export function FinderFileList({
   // 均立即复位所有拖拽状态，杜绝残留 drop-indicator 边框。
   const hasAnyDragState =
     activeId !== null || dragOverFolderId !== null || springLoadFolderId !== null;
-  useEffect(() => {
-    if (!hasAnyDragState) return;
-    const handleGlobalCancel = () => {
-      resetDragState();
-    };
-    const handleGlobalEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' || event.code === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        resetDragState();
-      }
-    };
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        resetDragState();
-      }
-    };
-    window.addEventListener('blur', handleGlobalCancel);
-    window.addEventListener('dragend', handleGlobalCancel, true);
-    window.addEventListener('pointercancel', handleGlobalCancel, true);
-    window.addEventListener('touchcancel', handleGlobalCancel, true);
-    document.addEventListener('keydown', handleGlobalEscape, true);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      window.removeEventListener('blur', handleGlobalCancel);
-      window.removeEventListener('dragend', handleGlobalCancel, true);
-      window.removeEventListener('pointercancel', handleGlobalCancel, true);
-      window.removeEventListener('touchcancel', handleGlobalCancel, true);
-      document.removeEventListener('keydown', handleGlobalEscape, true);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [hasAnyDragState, resetDragState]);
+  useEventRegistry(
+    hasAnyDragState
+      ? [
+          { target: 'window', type: 'blur', listener: () => resetDragState() },
+          { target: 'window', type: 'dragend', options: true, listener: () => resetDragState() },
+          { target: 'window', type: 'pointercancel', options: true, listener: () => resetDragState() },
+          { target: 'window', type: 'touchcancel', options: true, listener: () => resetDragState() },
+          {
+            target: 'document',
+            type: 'keydown',
+            options: true,
+            listener: (rawEvent) => {
+              const event = rawEvent as KeyboardEvent;
+              if (event.key === 'Escape' || event.code === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                resetDragState();
+              }
+            },
+          },
+          {
+            target: 'document',
+            type: 'visibilitychange',
+            listener: () => {
+              if (document.hidden) {
+                resetDragState();
+              }
+            },
+          },
+        ]
+      : [],
+    [hasAnyDragState, resetDragState],
+  );
 
   // 列表刷新或切目录后，若高亮目标文件夹已不存在，立即清理
   useEffect(() => {

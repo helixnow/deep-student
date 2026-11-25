@@ -454,7 +454,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleUnmute}
-            className="!h-auto gap-1 !px-2 !py-0.5 text-xs font-medium text-primary [@media(pointer:coarse)]:!min-h-11"
+            className="!h-auto gap-1 !px-2 !py-0.5 text-xs font-medium text-primary"
           >
             <SpeakerHigh size={13} aria-hidden="true" />
             <span>{t('mediaStudio:study.unmute', { defaultValue: '取消静音' })}</span>
@@ -477,7 +477,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleRetryPlay}
-            className="!h-auto shrink-0 !px-2 !py-0.5 text-xs font-medium !text-destructive hover:!bg-destructive/15 [@media(pointer:coarse)]:!min-h-11"
+            className="!h-auto shrink-0 !px-2 !py-0.5 text-xs font-medium !text-destructive hover:!bg-destructive/15"
           >
             {t('common:retry', { defaultValue: '重试' })}
           </DsButton>

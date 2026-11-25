@@ -14,6 +14,7 @@ import type { Crepe } from '@milkdown/crepe';
 import type { EditorView as ProseEditorView } from '@milkdown/prose/view';
 import i18next from 'i18next';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { useOptionalUiKernel } from '@/ui-kernel/react';
 import type { EditorBlockMenuContribution, SlotEntry } from '@/ui-sdk';
 import {
@@ -426,45 +427,55 @@ export function useCrepeBlockMenu({
 
   // Paint the captured sibling range without changing PM selection, document or history.
   // The body portal is independent of editor NodeViews (including upload widgets).
-  useLayoutEffect(() => {
+  const updateBlockMenuHighlights = useCallback(() => {
     if (!blockMenu) {
       setBlockMenuHighlights([]);
       return;
     }
     const { target } = blockMenu;
-    const update = () => {
-      const view = viewRef.current;
-      if (
-        !view
-        || blockMenuRef.current !== blockMenu
-        || readonlyRef.current
-        || blockMenu.noteId !== noteIdRef.current
-        || !isBlockTargetCurrent(view, target)
-      ) {
-        setBlockMenu(null);
-        return;
+    const view = viewRef.current;
+    if (
+      !view
+      || blockMenuRef.current !== blockMenu
+      || readonlyRef.current
+      || blockMenu.noteId !== noteIdRef.current
+      || !isBlockTargetCurrent(view, target)
+    ) {
+      setBlockMenu(null);
+      return;
+    }
+    const rects: BlockMenuHighlight[] = [];
+    let pos = target.pos;
+    for (const node of target.nodes) {
+      const dom = view.nodeDOM(pos);
+      if (dom instanceof HTMLElement) {
+        const { left, top, width, height } = dom.getBoundingClientRect();
+        if (width > 0 && height > 0) rects.push({ pos, left, top, width, height });
       }
-      const rects: BlockMenuHighlight[] = [];
-      let pos = target.pos;
-      for (const node of target.nodes) {
-        const dom = view.nodeDOM(pos);
-        if (dom instanceof HTMLElement) {
-          const { left, top, width, height } = dom.getBoundingClientRect();
-          if (width > 0 && height > 0) rects.push({ pos, left, top, width, height });
-        }
-        pos += node.nodeSize;
-      }
-      setBlockMenuHighlights(rects);
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    const observer = new ResizeObserver(update);
-    observer.observe(target.view.dom);
+      pos += node.nodeSize;
+    }
+    setBlockMenuHighlights(rects);
+  }, [blockMenu, noteIdRef, readonlyRef, setBlockMenu, viewRef]);
+
+  useLayoutEffect(() => {
+    if (!blockMenu) {
+      setBlockMenuHighlights([]);
+      return;
+    }
+    updateBlockMenuHighlights();
+    const observer = new ResizeObserver(updateBlockMenuHighlights);
+    observer.observe(blockMenu.target.view.dom);
     return () => {
-      window.removeEventListener('scroll', update, true);
       observer.disconnect();
     };
-  }, [blockMenu, noteIdRef, readonlyRef, setBlockMenu, viewRef]);
+  }, [blockMenu, updateBlockMenuHighlights]);
+
+  useEventRegistry(
+    blockMenu
+      ? [{ target: 'window', type: 'scroll', options: true, listener: updateBlockMenuHighlights }]
+      : [],
+    [blockMenu, updateBlockMenuHighlights],
+  );
 
   // 菜单开/关（对象变化）时重置键盘高亮
   useEffect(() => {
@@ -504,9 +515,9 @@ export function useCrepeBlockMenu({
   }, [blockMenuEntries, editorInstanceRef, isReady, reportBlockMenuRunError, viewRef]);
 
   // 全局点击/键盘导航/typeahead/输入关闭监听
-  useEffect(() => {
-    if (!blockMenu) return;
-    const close = (event: Event) => {
+  const handleGlobalMenuEvent = useCallback(
+    (event: Event) => {
+      if (!blockMenu) return;
       if (event instanceof KeyboardEvent) {
         if (event.key === 'Escape' || event.key === 'Tab') {
           event.preventDefault();
@@ -579,23 +590,30 @@ export function useCrepeBlockMenu({
         return;
       }
       setBlockMenu(null);
-    };
-    const closeOnBeforeInput = (event: Event) => {
+    },
+    [blockMenu, runContributedBlockMenuRow, setBlockMenu, setBlockMenuActiveIndex, viewRef],
+  );
+
+  const handleGlobalBeforeInput = useCallback(
+    (event: Event) => {
       if (event.target instanceof Element && event.target.closest('.ProseMirror')) {
         setBlockMenu(null);
       }
-    };
-    window.addEventListener('pointerdown', close, true);
-    window.addEventListener('keydown', close, true);
-    window.addEventListener('beforeinput', closeOnBeforeInput, true);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('pointerdown', close, true);
-      window.removeEventListener('keydown', close, true);
-      window.removeEventListener('beforeinput', closeOnBeforeInput, true);
-      window.removeEventListener('resize', close);
-    };
-  }, [blockMenu, runBlockAction, runContributedBlockMenuRow, setBlockMenu, setBlockMenuActiveIndex, viewRef]);
+    },
+    [setBlockMenu],
+  );
+
+  useEventRegistry(
+    blockMenu
+      ? [
+          { target: 'window', type: 'pointerdown', options: true, listener: handleGlobalMenuEvent },
+          { target: 'window', type: 'keydown', options: true, listener: handleGlobalMenuEvent },
+          { target: 'window', type: 'beforeinput', options: true, listener: handleGlobalBeforeInput },
+          { target: 'window', type: 'resize', listener: handleGlobalMenuEvent },
+        ]
+      : [],
+    [blockMenu, handleGlobalBeforeInput, handleGlobalMenuEvent],
+  );
 
   // 📱 Android 系统返回键：块菜单打开时先关菜单（overlay 级），避免返回键穿透到
   // 底层视图/导航。仅随开合注册注销，菜单位置变化不重挂 handler。

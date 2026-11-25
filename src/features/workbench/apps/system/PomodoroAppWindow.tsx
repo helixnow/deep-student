@@ -676,7 +676,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 onClick={() => openSubView('settings')}
                 title={t('pomodoro.settingsTitle')}
                 aria-label={t('pomodoro.settingsTitle')}
-                className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                className="!h-7 !w-7 transition-colors duration-150 ease-standard"
               >
                 <GearSix size={15} />
               </DsButton>
@@ -699,7 +699,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       onClick={handleStop}
                       title={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
                       aria-label={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
-                      className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                      className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard"
                     >
                       {t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
                     </DsButton>
@@ -709,7 +709,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       onClick={cancelStopConfirm}
                       title={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
                       aria-label={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
-                      className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                      className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard"
                     >
                       {t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
                     </DsButton>
@@ -722,7 +722,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     onClick={handleStop}
                     title={t('pomodoro.controls.stop')}
                     aria-label={t('pomodoro.controls.stop')}
-                    className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                    className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                   >
                     <Square size={14} />
                   </DsButton>
@@ -757,7 +757,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                           ? t('pomodoro.controls.startFocus')
                           : t('pomodoro.controls.resume')
                     }
-                    className="wb-sys-pomo-play h-8 gap-1.5 !px-4 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                    className="wb-sys-pomo-play h-8 gap-1.5 !px-4 text-xs transition-colors duration-150 ease-standard"
                   >
                     {isRunning ? <Pause size={14} /> : <Play size={14} weight="fill" />}
                     <span>
@@ -813,7 +813,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                             defaultValue: '提前完成并记录',
                           })
                     }
-                    className="h-8 gap-1.5 !px-2.5 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                    className="h-8 gap-1.5 !px-2.5 text-xs transition-colors duration-150 ease-standard"
                   >
                     <CheckCircle size={14} />
                     <span>
@@ -840,7 +840,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       ns: 'todo',
                       defaultValue: '跳过到休息',
                     })}
-                    className="h-8 gap-1 !px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                    className="h-8 gap-1 !px-2 text-xs text-muted-foreground hover:text-foreground"
                   >
                     <SkipForward size={14} />
                     <span>
@@ -861,7 +861,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   onClick={() => skipBreak()}
                   title={t('pomodoro.controls.skipBreak')}
                   aria-label={t('pomodoro.controls.skipBreak')}
-                  className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                  className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                 >
                   <SkipForward size={14} />
                 </DsButton>
@@ -879,7 +879,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     onClick={() => extendPhase(minutes * 60)}
                     title={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
                     aria-label={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
-                    className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                    className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard"
                   >
                     {t('pomodoro.controls.extendMinutes', { ns: 'todo', count: minutes })}
                   </DsButton>
@@ -895,7 +895,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   onClick={() => setImmersive(true)}
                   title={t('pomodoro.controls.enterImmersive')}
                   aria-label={t('pomodoro.controls.enterImmersive')}
-                  className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                  className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                 >
                   <ArrowsOut size={14} />
                 </DsButton>
@@ -909,7 +909,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 aria-label={noiseEnabled ? t('pomodoro.controls.noiseOff') : t('pomodoro.controls.noiseOn')}
                 aria-pressed={noiseEnabled}
                 className={cn(
-                  '!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+                  '!h-7 !w-7 transition-colors duration-150 ease-standard',
                   noiseEnabled && 'text-[color:hsl(var(--primary))]',
                 )}
               >
