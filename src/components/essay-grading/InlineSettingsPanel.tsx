@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/shad/Textarea';
 import { Input } from '../ui/shad/Input';
 import {
+  ArrowClockwise,
   ArrowCounterClockwise,
   FloppyDisk,
   GearSix,
@@ -33,6 +34,7 @@ import {
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type {
   GradingMode,
   ModelInfo,
@@ -59,12 +61,19 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import {
+  formatStaleRubricBannerMessage,
+  type StaleRubricInfo,
+} from './rubricResultContext';
 
 interface InlineSettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   /** 小屏内联模式：不自绘标题行（宿主顶栏已提供 chrome，关闭走返回键 / 顶栏设置开关） */
   mobileFullscreen?: boolean;
+  /** 标签页保活：非活跃实例不监听全局 Esc 快捷键。未传视为活跃 */
+  isActive?: boolean;
   // 批阅模式
   modeId: string;
   setModeId: (id: string) => void;
@@ -88,6 +97,10 @@ interface InlineSettingsPanelProps {
   setGradeLevel?: (v: string) => void;
   /** 外部直接触发打开自定义标准管理器（如顶栏模式选择器快捷入口） */
   customRubricRequestNonce?: number;
+  /** 设置页打开时仍保留可见的过期评分标准提示条 + 一键按新标准重批入口 */
+  staleRubric?: StaleRubricInfo | null;
+  onRegradeWithSelectedRubric?: () => void;
+  canRegradeWithSelectedRubric?: boolean;
 }
 
 type SettingsViewMode = 'view' | 'edit' | 'create';
@@ -176,6 +189,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   isOpen,
   onClose,
   mobileFullscreen = false,
+  isActive,
   modeId,
   setModeId,
   modes,
@@ -193,8 +207,12 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   gradeLevel,
   setGradeLevel,
   customRubricRequestNonce = 0,
+  staleRubric = null,
+  onRegradeWithSelectedRubric,
+  canRegradeWithSelectedRubric = true,
 }) => {
   const { t } = useTranslation(['essay_grading', 'settings']);
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
   const [viewMode, setViewMode] = useState<SettingsViewMode>('view');
   const [editingMode, setEditingMode] = useState<GradingMode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -651,6 +669,62 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     }, 2000);
   }, [onSavePrompt]);
 
+  // 键盘 Esc：尊重 IME 与保活/inert 守卫；先收起内联子表单或二次确认，再关闭批改设置页
+  const handleEscapeKeyDown = useCallback(
+    (rawEvent: Event) => {
+      const event = rawEvent as KeyboardEvent;
+      if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) {
+        return;
+      }
+      if (panelRootRef.current?.closest('[inert]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (customRubricOpen) {
+        setCustomRubricOpen(false);
+        setCustomRubricError(null);
+        return;
+      }
+      if (viewMode === 'edit' || viewMode === 'create') {
+        handleCancelEdit();
+        return;
+      }
+      if (pendingConfirm !== null) {
+        clearConfirmTimer();
+        setPendingConfirm(null);
+        return;
+      }
+      onClose();
+    },
+    [
+      customRubricOpen,
+      viewMode,
+      pendingConfirm,
+      handleCancelEdit,
+      clearConfirmTimer,
+      onClose,
+    ],
+  );
+  const escapeHandlerRef = useRef(handleEscapeKeyDown);
+  escapeHandlerRef.current = handleEscapeKeyDown;
+
+  useEventRegistry(
+    isOpen && isActive !== false
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            listener: (event) => escapeHandlerRef.current(event),
+          },
+        ]
+      : [],
+    [isOpen, isActive],
+  );
+
+  const staleBannerMessage =
+    isOpen && staleRubric && !isGrading
+      ? formatStaleRubricBannerMessage(staleRubric, t)
+      : null;
+
   const errorBanner = error ? (
     <div
       role="alert"
@@ -662,7 +736,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   ) : null;
 
   return (
-    <div className="essay-settings-pane h-full flex flex-col bg-background">
+    <div ref={panelRootRef} className="essay-settings-pane h-full flex flex-col bg-background">
       {/* 头部（小屏内联模式不自绘：宿主顶栏已提供 chrome，再画一条会形成双头部；
           关闭走 Android 返回键 / 宿主顶栏设置开关） */}
       {!mobileFullscreen && (
@@ -682,6 +756,44 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
           >
             <X size={16} />
           </DsButton>
+        </div>
+      )}
+
+      {/* G08: 设置页打开期间切换评分标准时，在面板顶部就地呈现过期结果提示条与一键重批入口 */}
+      {staleBannerMessage && (
+        <div
+          data-testid="essay-stale-rubric-banner"
+          role="status"
+          aria-live="polite"
+          className="mx-3 mt-2.5 mb-1 sm:mx-4 shrink-0 rounded-lg border border-amber-500/75 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-950/55 px-3.5 py-2.5 shadow-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <WarningCircle
+                size={16}
+                weight="fill"
+                className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-amber-950 dark:text-amber-100 break-words">
+                {staleBannerMessage}
+              </p>
+            </div>
+            {onRegradeWithSelectedRubric && (
+              <DsButton
+                type="button"
+                variant="primary"
+                size="sm"
+                data-testid="essay-regrade-with-selected-rubric"
+                onClick={onRegradeWithSelectedRubric}
+                disabled={!canRegradeWithSelectedRubric || isGrading}
+                className="h-8 shrink-0 gap-1.5 px-3 text-xs font-medium shadow-sm"
+              >
+                <ArrowClockwise size={13} className="shrink-0" />
+                {t('essay_grading:stale_rubric.regrade_cta', { defaultValue: '按新标准重新批改' })}
+              </DsButton>
+            )}
+          </div>
         </div>
       )}
 

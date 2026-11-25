@@ -7,8 +7,10 @@ import { ResultPanel } from './ResultPanel';
 import { InlineSettingsPanel } from './InlineSettingsPanel';
 import { useWbSysSize } from '@/features/workbench/apps/system/useWbSysSize';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import { inferGradingPhase, type GradingPhase } from '@/essay-grading/gradingPhase';
 import { getModeDisplayName } from '@/essay-grading/modeI18n';
@@ -398,6 +400,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     }
   }, [onRegrade, onGrade]);
 
+  const handleRegradeFromSettings = React.useCallback(() => {
+    setShowPromptEditor(false);
+    handleRegradeWithSelectedRubric();
+  }, [setShowPromptEditor, handleRegradeWithSelectedRubric]);
+
   // 批改中阶段推断（供 InputPanel 锁定提示条显示阶段进度）
   const gradingPhase = React.useMemo<GradingPhase | undefined>(
     () => (isGrading ? inferGradingPhase(gradingResult) : undefined),
@@ -415,6 +422,30 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isActive, useSettingsPage, showPromptEditor, setShowPromptEditor]);
+
+  // 桌面 / 窄屏兜底 Esc：InlineSettingsPanel 在 document 冒泡阶段优先处理内部子表单
+  // （自定义标准 / 编辑模式）并 preventDefault；此处监听 window 冒泡兜底，确保按分层顺序关闭设置页。
+  useEventRegistry(
+    isActive !== false && showPromptEditor
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            listener: (rawEvent) => {
+              const event = rawEvent as KeyboardEvent;
+              if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) {
+                return;
+              }
+              if (layoutRef.current?.closest('[inert]')) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setShowPromptEditor(false);
+            },
+          },
+        ]
+      : [],
+    [isActive, showPromptEditor, setShowPromptEditor, layoutRef],
+  );
 
   // ========== 共享面板（各断点复用同一份 props，状态源唯一：showPromptEditor） ==========
   const inputPanel = (
@@ -509,7 +540,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       roundNavigation={roundNavigation}
       navigateRoundsInHeader={inputCollapsed}
       gradingModeId={resultGradingModeId}
-      staleRubric={staleRubric}
+      staleRubric={showPromptEditor ? null : staleRubric}
       onRegradeWithSelectedRubric={handleRegradeWithSelectedRubric}
       canRegradeWithSelectedRubric={canGrade}
     />
@@ -522,6 +553,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       // 仅移动壳视口隐藏自绘标题行（宿主顶栏提供 chrome 与设置开关）；
       // 桌面窄容器（分屏/浮窗）没有移动顶栏，标题行 X 仍是可见退出路径
       mobileFullscreen={!useSettingsPage && viewportIsSmallScreen}
+      isActive={isActive}
       modeId={modeId}
       setModeId={setModeId}
       modes={modes}
@@ -539,6 +571,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       gradeLevel={gradeLevel}
       setGradeLevel={setGradeLevel}
       customRubricRequestNonce={customRubricRequestNonce}
+      staleRubric={showPromptEditor ? staleRubric : null}
+      onRegradeWithSelectedRubric={handleRegradeFromSettings}
+      canRegradeWithSelectedRubric={canGrade}
     />
   );
 

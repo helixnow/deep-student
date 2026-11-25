@@ -81,12 +81,58 @@ export function importConflictStrategy(value: string | null | undefined): Import
   return 'skip';
 }
 
+const STAGED_UPLOAD_PREFIX = 'dstu-staged:';
+
 /**
  * cmd/notes.rs `unified_file_manager::ensure_local_path`: canonical local path.
+ * Also materializes `dstu-staged:<uploadId>` handles uploaded via WebUI / mobile
+ * chunked staged uploads, disposing the temp file on the next microtask once
+ * synchronous callers (`importNotes` -> `exists`/`readBytes`, `importMarkdownNote`)
+ * have consumed the bytes.
  * SAF/content URIs have no Electron desktop equivalent; the Host unified-file-
  * manager fails closed instead of silently reading a local path.
  */
 export function materializeLocalImportPath(rawPath: string): string {
+  const trimmed = rawPath.trim();
+  if (trimmed.startsWith(STAGED_UPLOAD_PREFIX)) {
+    const uploadId = trimmed.slice(STAGED_UPLOAD_PREFIX.length).trim();
+    if (uploadId.length === 0) {
+      throw new CommandError(AppError.validation('无效的暂存上传 ID'));
+    }
+    const runtime = notesLocalRuntime();
+    if (typeof runtime.takeStagedUpload !== 'function') {
+      throw new CommandError(AppError.file_system(
+        `读取文件失败: ${trimmed} (暂存上传在当前平台不可用)`));
+    }
+    let staged: ReturnType<NonNullable<typeof runtime.takeStagedUpload>>;
+    try {
+      staged = runtime.takeStagedUpload(uploadId);
+    } catch (error) {
+      throw new CommandError(AppError.file_system(`读取暂存上传文件失败: ${errorMessage(error)}`));
+    }
+    const stagedPath = staged.path();
+    if (!runtime.exists(stagedPath)) {
+      try {
+        staged.dispose();
+      } catch {
+        // Best-effort cleanup of temp staged upload file.
+      }
+      throw new CommandError(AppError.file_system(`文件不存在: ${stagedPath}`));
+    }
+    queueMicrotask(() => {
+      try {
+        staged.dispose();
+      } catch {
+        // Best-effort cleanup of temp staged upload file.
+      }
+    });
+    try {
+      return runtime.realpath(stagedPath);
+    } catch {
+      return stagedPath;
+    }
+  }
+
   const classified = notesLocalRuntime().classifyPath(rawPath);
   if (classified.kind === 'virtual') {
     throw new CommandError(AppError.file_system(

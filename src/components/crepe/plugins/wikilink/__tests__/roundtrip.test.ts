@@ -11,6 +11,7 @@ import { EditorView } from '@milkdown/prose/view';
 import { wikilinkPlugin } from '../index';
 import { WIKILINK_NODE_NAME } from '../schema';
 import { WIKILINK_EVENTS, normalizeResolve } from '../types';
+import { addTypedEventListener } from '@/events';
 
 async function createEditor(
   markdown: string,
@@ -312,6 +313,95 @@ describe('wikilink markdown roundtrip', () => {
     } finally {
       focusSpy.mockRestore();
       coordsSpy.mockRestore();
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('promotes pasted/inserted plain-text [[target]] and [[target|label]] into wikilink atoms without bracket escaping (G06)', async () => {
+    const resolve = vi.fn(() => ({ resolved: true, noteId: 'target-id' }));
+    const { editor, root } = await createEditor('', { resolve });
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    try {
+      view.dispatch(
+        view.state.tr.insertText('See [[Target Note]] and [[Target Note|Custom Label]] here'),
+      );
+
+      expect(collectWikilinks(view)).toEqual([
+        { target: 'Target Note', label: '' },
+        { target: 'Target Note', label: 'Custom Label' },
+      ]);
+
+      const domLinks = root.querySelectorAll<HTMLElement>('.crepe-wikilink');
+      expect(domLinks).toHaveLength(2);
+      expect(domLinks[0]?.textContent).toBe('Target Note');
+      expect(domLinks[1]?.textContent).toBe('Custom Label');
+      expect(root.textContent ?? '').not.toContain('[[');
+      expect(root.textContent ?? '').not.toContain(']]');
+
+      const md = editor.action(getMarkdown()).trim();
+      expect(md).toBe('See [[Target Note]] and [[Target Note|Custom Label]] here');
+      expect(md).not.toMatch(/\\\[/);
+    } finally {
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('promotes remaining plain-text [[...]] when switching to reading mode even if cursor was inside it (G06)', async () => {
+    const resolve = vi.fn(() => ({ resolved: true, noteId: 'foo-id' }));
+    const onOpen = vi.fn();
+    const disposeOpen = addTypedEventListener(
+      WIKILINK_EVENTS.OPEN_NOTE,
+      (_detail, event) => onOpen(event),
+    );
+    const { editor, root } = await createEditor('foo]]', { resolve });
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    try {
+      // Typing `[[` before `foo]]` keeps cursor inside the span (pos 3), so edit mode leaves it plain text.
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+      view.dispatch(view.state.tr.insertText('[['));
+      expect(collectWikilinks(view)).toEqual([]);
+
+      // Switching to reading mode (`crepe.setReadonly(true)` -> `view.setProps({ editable: () => false })`)
+      // must promote remaining valid plain-text wikilinks so no literal `[[...]]` renders in reading view.
+      view.setProps({ editable: () => false });
+
+      expect(collectWikilinks(view)).toEqual([{ target: 'foo', label: '' }]);
+      const link = root.querySelector<HTMLElement>('.crepe-wikilink');
+      expect(link).not.toBeNull();
+      expect(link?.textContent).toBe('foo');
+      expect(root.textContent ?? '').not.toContain('[[');
+      expect(root.textContent ?? '').not.toContain(']]');
+
+      link?.click();
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
+        detail: expect.objectContaining({ noteId: 'foo-id', target: 'foo', source: 'wikilink' }),
+      }));
+    } finally {
+      disposeOpen();
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('keeps [[...]] inside inline code and fenced code blocks literal in reading mode (G06)', async () => {
+    const md = 'Inline `[[inline_code]]` stays literal.\n\n```\n[[fenced_code]]\n```';
+    const { editor, root } = await createEditor(md);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    try {
+      view.setProps({ editable: () => false });
+      expect(collectWikilinks(view)).toEqual([]);
+      expect(root.querySelectorAll('.crepe-wikilink')).toHaveLength(0);
+    } finally {
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('ignores real HTML markup containing [[...]] while promoting standalone wikilinks (G06)', async () => {
+    const md = 'Link [[Real Note]] and <span data-note="[[raw]]">plain</span>';
+    const { editor, root } = await createEditor(md);
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    try {
+      expect(collectWikilinks(view)).toEqual([{ target: 'Real Note', label: '' }]);
+    } finally {
       await destroyEditor(editor, root);
     }
   });

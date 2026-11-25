@@ -16,7 +16,7 @@ import type { FileKind } from '../../../platform/files/api.ts';
 import type {
   DatabaseWorkerTasks, SqlExecutor,
 } from '../../../platform/storage/api.ts';
-import type { NoteAssetRetention, PreparedDeletionIntent } from '../../../platform/storage/node.ts';
+import type { NoteAssetRetention, PreparedDeletionIntent, StagedFile } from '../../../platform/storage/node.ts';
 
 /** `statSync` / `lstatSync` 的子集：调用方只按类型与大小分支。 */
 export interface LocalStat {
@@ -99,6 +99,8 @@ export interface NotesLocalRuntime {
   createWorkerPool(options: NotesWorkerPoolOptions): NotesWorkerPool | null;
   /** 带哈希校验的复制（虚拟 URI → 真实文件）。 */
   copyFileVerified(source: string, target: string): Promise<void>;
+  /** 分块暂存上传的已登记句柄（WebUI / 桌面 / 移动端 `dstu-staged:<uploadId>` 归档导入）。 */
+  takeStagedUpload?(uploadId: string): Pick<StagedFile, 'path' | 'name' | 'size' | 'dispose'>;
 }
 
 export class LocalRuntimeUnavailableError extends Error {

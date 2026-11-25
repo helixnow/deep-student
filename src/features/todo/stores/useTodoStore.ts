@@ -995,8 +995,16 @@ export const useTodoStore = create<TodoState>((set, get) => {
     // 定向快照：只记录本条 item 的修改前状态。失败时定向回滚该条，
     // 不做全表快照回滚——否则会覆盖并发请求对其他条目的成功结果
     const prevItem = get().items.find((i) => i.id === input.id);
+    // 合并同条目的在途补丁（如先改 dueDate 再改 dueTime），保证并发部分保存以完整原子载荷提交，
+    // 避免后发请求覆盖或回滚尚未落库的先发字段。
+    const existingPatch = inFlightItemInputs.get(input.id);
+    const effectiveInput: UpdateTodoItemInput = existingPatch
+      ? { ...existingPatch, ...input }
+      : { ...input };
+    if (input.dueDate !== undefined && !input.dueDate.trim() && input.dueTime === undefined) {
+      effectiveInput.dueTime = '';
+    }
     // 仅编辑时间（dueTime）时，若未显式改日期则保留原 dueDate（含逾期日期），仅在无日期且设非空时间时默认今天
-    const effectiveInput: UpdateTodoItemInput = { ...input };
     if (effectiveInput.dueTime !== undefined && effectiveInput.dueDate === undefined) {
       const existingDate = prevItem?.dueDate?.trim();
       if (existingDate) {
@@ -1013,11 +1021,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
     // 领取本条目的最新写序号：同一条目快速连续保存时，
     // 旧请求的迟到响应（成功或失败）都不得覆盖新请求的乐观状态
     const opSeq = acquireItemOp(effectiveInput.id);
-    const existingPatch = inFlightItemInputs.get(effectiveInput.id);
-    inFlightItemInputs.set(
-      effectiveInput.id,
-      existingPatch ? { ...existingPatch, ...effectiveInput } : { ...effectiveInput },
-    );
+    inFlightItemInputs.set(effectiveInput.id, { ...effectiveInput });
     if (prevItem) {
       set((s) => ({
         items: s.items.map((i) => (i.id === effectiveInput.id ? mergeItemInput(i, effectiveInput) : i)),
@@ -1489,8 +1493,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = (await api.listAllPendingItems()).filter((item) => !item.parentId);
+      const rawItems = (await api.listAllPendingItems()).filter((item) => !item.parentId);
       if (get().itemsRequestVersion !== requestVersion) return;
+      const items = applyInFlightPatches(rawItems);
       const selectedItemId = get().selectedItemId;
       set({
         items,
@@ -1509,10 +1514,11 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = (await api.listCompletedItems(get().activeListId ?? undefined)).filter(
+      const rawItems = (await api.listCompletedItems(get().activeListId ?? undefined)).filter(
         (item) => !item.parentId,
       );
       if (get().itemsRequestVersion !== requestVersion) return;
+      const items = applyInFlightPatches(rawItems);
       const selectedItemId = get().selectedItemId;
       set({
         items,
@@ -1531,8 +1537,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.searchTodoItems(query);
+      const rawItems = await api.searchTodoItems(query);
       if (get().itemsRequestVersion !== requestVersion) return;
+      const items = applyInFlightPatches(Array.isArray(rawItems) ? rawItems : []);
       const selectedItemId = get().selectedItemId;
       set({
         items,

@@ -32,6 +32,8 @@ export interface WindowA11yInput {
   appName?: string;
   focused?: boolean;
   minimized?: boolean;
+  /** 被上层最大化窗口完全遮挡的后台窗口（对辅助技术隐藏） */
+  occluded?: boolean;
   /**
    * 角色描述（i18n：workbench:a11y.windowRole，建议文案「窗口」/"window"）。
    * 屏幕阅读器将播报「<标题>, 窗口」而非「对话框」。
@@ -43,7 +45,7 @@ export interface WindowA11yProps {
   role: 'dialog';
   'aria-label': string;
   'aria-roledescription'?: string;
-  /** 最小化的窗口对辅助技术整体隐藏 */
+  /** 最小化或被上层最大化窗口遮挡的窗口对辅助技术整体隐藏 */
   'aria-hidden'?: true;
   /** 可编程聚焦（窗口切换器 / 点击聚焦时把 DOM 焦点带进窗口） */
   tabIndex: -1;
@@ -66,7 +68,7 @@ export function getWindowA11yProps(input: WindowA11yInput): WindowA11yProps {
     'data-wb-a11y-window': true,
   };
   if (input.roleDescription) props['aria-roledescription'] = input.roleDescription;
-  if (input.minimized) props['aria-hidden'] = true;
+  if (input.minimized || input.occluded) props['aria-hidden'] = true;
   return props;
 }
 

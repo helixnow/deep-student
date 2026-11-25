@@ -12,7 +12,7 @@ import { classifyPath } from '../../../platform/storage/unified-file-manager.ts'
 import {
   assetLocalPathFromKey, copyFileVerified, createDatabaseWorkerPool, deleteAssetWithJournal,
   finishAssetDeletionWithConn, prepareAssetDeletionWithConn, recoverAssetDeletions,
-  registerNoteAssetRetention, type NoteAssetRetention, type PreparedDeletionIntent,
+  registerNoteAssetRetention, takeStagedUpload, type NoteAssetRetention, type PreparedDeletionIntent,
 } from '../../../platform/storage/node.ts';
 import type {
   LocalDirEntry, LocalPathClassification, LocalStat, NotesLocalRuntime, NotesWorkerPool, NotesWorkerPoolOptions,
@@ -75,4 +75,5 @@ export const nodeNotesLocalRuntime: NotesLocalRuntime = {
     });
   },
   copyFileVerified: async (source, target) => { await copyFileVerified(source, target); },
+  takeStagedUpload: (uploadId) => takeStagedUpload(uploadId),
 };
