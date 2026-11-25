@@ -381,4 +381,79 @@ describe('U03 Learning Hub sidebar rapid-click idempotency & busy-state reset', 
     expect(isImportActionInFlight(isMountedRef)).toBe(false);
     expect(setAttachImportProgress).toHaveBeenLastCalledWith(null);
   });
+
+  it('queues distinct sequential files in FIFO order without dropping while deduplicating identical files and avoiding stacked PDF windows', async () => {
+    const isMountedRef = { current: true };
+    const setAttachImportProgress = vi.fn();
+    const onOpenApp = vi.fn();
+    const firstPdfDeferred = deferred<{ ok: true; value: DstuNode[] }>();
+    const secondPdfDeferred = deferred<{ ok: true; value: DstuNode[] }>();
+    const thirdPdfDeferred = deferred<{ ok: true; value: DstuNode[] }>();
+
+    addTextbooksMock
+      .mockReturnValueOnce(firstPdfDeferred.promise)
+      .mockReturnValueOnce(secondPdfDeferred.promise)
+      .mockReturnValueOnce(thirdPdfDeferred.promise);
+
+    const makeValidPdf = (name: string) =>
+      new File([`%PDF-1.7\n${'0'.repeat(120)}\nstartxref\n0\n%%EOF`], name, {
+        type: 'application/pdf',
+        lastModified: 1_700_000_000_000,
+      });
+
+    const pdf1 = makeValidPdf('31-cad.pdf');
+    const pdf2 = makeValidPdf('62-scan.pdf');
+    const pdf3 = makeValidPdf('37-fw9.pdf');
+
+    const dropCtx = {
+      pathsDropHandledRef: { current: false },
+      currentPath: { viewKind: 'folder', folderId: null, breadcrumbs: [], typeFilter: null } as never,
+      t,
+      importMarkdownFileObjects: vi.fn(),
+      currentCreatableFolderId: null,
+      isMountedRef,
+      setAttachImportProgress,
+      handleRefresh: vi.fn(async () => {}),
+      openImportedMarkdownNote: vi.fn(),
+      onOpenApp,
+    };
+
+    const p1 = importDroppedFiles(dropCtx, [pdf1], true);
+    const p1Dup = importDroppedFiles(dropCtx, [pdf1], true);
+    const p2 = importDroppedFiles(dropCtx, [pdf2], true);
+    const p3 = importDroppedFiles(dropCtx, [pdf3], true);
+
+    expect(isImportActionInFlight(isMountedRef)).toBe(true);
+    // Only pdf1 should be in-flight right now; pdf2 and pdf3 are queued FIFO behind it
+    await vi.waitFor(() => {
+      expect(addTextbooksMock).toHaveBeenCalledTimes(1);
+    });
+    expect(addTextbooksMock).toHaveBeenNthCalledWith(1, ['dstu-staged:31-cad.pdf'], null);
+
+    firstPdfDeferred.resolve({ ok: true, value: [makeNode('tb_1', '31-cad.pdf', 'textbook')] });
+    await p1;
+    await p1Dup;
+
+    // Now pdf2 runs next in FIFO order
+    await vi.waitFor(() => {
+      expect(addTextbooksMock).toHaveBeenCalledTimes(2);
+    });
+    expect(addTextbooksMock).toHaveBeenNthCalledWith(2, ['dstu-staged:62-scan.pdf'], null);
+
+    secondPdfDeferred.resolve({ ok: true, value: [makeNode('tb_2', '62-scan.pdf', 'textbook')] });
+    await p2;
+
+    // Now pdf3 runs next in FIFO order
+    await vi.waitFor(() => {
+      expect(addTextbooksMock).toHaveBeenCalledTimes(3);
+    });
+    expect(addTextbooksMock).toHaveBeenNthCalledWith(3, ['dstu-staged:37-fw9.pdf'], null);
+
+    thirdPdfDeferred.resolve({ ok: true, value: [makeNode('tb_3', '37-fw9.pdf', 'textbook')] });
+    await p3;
+
+    expect(isImportActionInFlight(isMountedRef)).toBe(false);
+    // Rapid sequential PDF picker imports must NOT spawn multiple stacked preview windows
+    expect(onOpenApp.mock.calls.length).toBeLessThanOrEqual(1);
+  });
 });

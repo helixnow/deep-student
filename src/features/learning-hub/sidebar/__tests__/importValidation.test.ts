@@ -18,7 +18,17 @@ describe('validateImportFileObject (W2-B08 bad file guard)', () => {
     expect(reason).toContain('PDF');
   });
 
-  it('accepts valid PDF files starting with %PDF-', async () => {
+  it('rejects truncated PDF files with valid %PDF- header but missing %%EOF/startxref trailer', async () => {
+    const truncatedPdf = new File(
+      [`%PDF-1.5\n1 0 obj\n<< /Type /Catalog >>\nendobj\n${'x'.repeat(2048)}`],
+      '71-stress-truncated-corrupt.pdf',
+      { type: 'application/pdf' },
+    );
+    const reason = await validateImportFileObject(truncatedPdf, 'pdf', mockT);
+    expect(reason).toContain('PDF');
+  });
+
+  it('accepts valid PDF files starting with %PDF- and ending with %%EOF or startxref', async () => {
     const validPdf = new File([`%PDF-1.7\n${'0'.repeat(120)}\n%%EOF`], 'valid.pdf', {
       type: 'application/pdf',
     });

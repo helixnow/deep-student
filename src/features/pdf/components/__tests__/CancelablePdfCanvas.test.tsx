@@ -7,6 +7,7 @@ import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import {
   CancelablePdfCanvas,
   PdfViewportPriorityContext,
+  PdfWindowActiveContext,
   computeCanvasRenderPriorityDelayMs,
   type CancelablePdfCanvasPageContext,
 } from '../CancelablePdfCanvas';
@@ -329,6 +330,76 @@ describe('CancelablePdfCanvas heavy vector / CAD lifecycle', () => {
       await Promise.resolve();
     });
     expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers unpainted background window renders and cancels in-flight renders when PdfWindowActiveContext is false', async () => {
+    const mock = createMockPage(2384, 1684);
+    const pageCtx = makePageContext(mock.page, { scale: 1, pageNumber: 1 });
+
+    // Mount in inactive background window: must NOT start page.render()
+    const { rerender } = render(
+      <PdfWindowActiveContext.Provider value={false}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(500);
+    });
+    expect(mock.tasks).toHaveLength(0);
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // Activate window: render starts immediately
+    rerender(
+      <PdfWindowActiveContext.Provider value={true}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mock.tasks).toHaveLength(1);
+
+    // Deactivate window mid-render: in-flight heavy render task must be cancelled immediately
+    rerender(
+      <PdfWindowActiveContext.Provider value={false}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+    expect(mock.tasks[0]!.cancel).toHaveBeenCalledTimes(1);
+
+    // Re-activate window: restarts and completes cleanly
+    rerender(
+      <PdfWindowActiveContext.Provider value={true}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mock.tasks).toHaveLength(2);
+    await act(async () => {
+      mock.tasks[1]!.resolve();
+      await Promise.resolve();
+    });
+
+    // Toggling inactive -> active after a completed frame must NOT redundantly re-render
+    rerender(
+      <PdfWindowActiveContext.Provider value={false}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+    rerender(
+      <PdfWindowActiveContext.Provider value={true}>
+        <CancelablePdfCanvas pageContext={pageCtx} slowRenderDelayMs={200} />
+      </PdfWindowActiveContext.Provider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mock.tasks).toHaveLength(2);
   });
 });
 

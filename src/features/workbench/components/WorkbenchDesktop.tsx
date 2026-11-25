@@ -139,6 +139,32 @@ export function workbenchTypeIdToMobileHeaderViewId(typeId: string | null | unde
 }
 
 const SESSION_ACTIVE_STORAGE_KEY = 'ds.workbench.activeSession';
+const SESSION_HYDRATING_STORAGE_KEY = 'ds.workbench.hydrating';
+const HYDRATION_SETTLE_GUARD_MS = 1_500;
+const HEAVY_PREVIEW_WINDOW_TYPES = new Set(['file-preview', 'textbook']);
+
+/**
+ * 刷新恢复保护：避免同一时刻并发挂载多个重型 PDF/文件预览窗把主线程与 pdf.js worker 拖死。
+ * 仅保留最顶层（zIndex 最高 / 最近聚焦）的预览窗展开，其余重型预览窗折叠为 minimized，
+ * 仍在 Dock 中可随时点击唤醒，不丢失任何窗口状态。
+ */
+export function sanitizeHydratedWindowsForReload(windows: WorkbenchWindow[]): WorkbenchWindow[] {
+  const openHeavy = windows.filter(
+    (win) => HEAVY_PREVIEW_WINDOW_TYPES.has(win.typeId) && !win.minimized,
+  );
+  if (openHeavy.length <= 1) return windows;
+  const keeper = openHeavy.reduce((top, candidate) => {
+    if (candidate.zIndex !== top.zIndex) {
+      return candidate.zIndex > top.zIndex ? candidate : top;
+    }
+    return candidate.lastFocusedAt > top.lastFocusedAt ? candidate : top;
+  });
+  return windows.map((win) =>
+    HEAVY_PREVIEW_WINDOW_TYPES.has(win.typeId) && !win.minimized && win.id !== keeper.id
+      ? { ...win, minimized: true }
+      : win,
+  );
+}
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -556,7 +582,9 @@ export const WorkbenchDesktop: React.FC = () => {
     window.addEventListener(STUDY_SPACE_CHANGED_EVENT, onStudySpaceChanged);
 
     void (async () => {
-      // 默认冷启动不恢复旧布局；但同一浏览器标签页内刷新（sessionStorage 仍存活）时保留用户当前桌面窗口
+      // 默认冷启动不恢复旧布局；但同一浏览器标签页内刷新（sessionStorage 仍存活）时保留用户当前桌面窗口。
+      // 若上一次刷新在窗口恢复期间发生卡死/中断（SESSION_HYDRATING_STORAGE_KEY 仍残留），
+      // 跳过自动恢复并降级为「恢复上次桌面」CTA，避免刷新陷入重型 PDF 死循环。
       const restoreSessionVal = await readSetting(SETTING_KEYS.restoreSession);
       const isSameTabReload = (() => {
         try {
@@ -565,19 +593,51 @@ export const WorkbenchDesktop: React.FC = () => {
           return false;
         }
       })();
+      const wasUncleanReload = (() => {
+        try {
+          if (typeof sessionStorage === 'undefined') return false;
+          const pending = sessionStorage.getItem(SESSION_HYDRATING_STORAGE_KEY);
+          if (pending !== null) {
+            sessionStorage.removeItem(SESSION_HYDRATING_STORAGE_KEY);
+            return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      })();
       const shouldRestoreSession =
-        String(restoreSessionVal ?? '') === 'true'
-        || (String(restoreSessionVal ?? '') !== 'false' && isSameTabReload);
+        !wasUncleanReload
+        && (
+          String(restoreSessionVal ?? '') === 'true'
+          || (String(restoreSessionVal ?? '') !== 'false' && isSameTabReload)
+        );
       if (bootCancelled()) return;
 
       // Read before any default Dock write can schedule an empty snapshot save.
       const bootResult = await bootInitialSpaceWorkbench();
       if (bootCancelled()) return;
+      let clearHydratingGuardTimer: number | null = null;
       if (shouldRestoreSession) {
         const snapshot = bootResult.snapshot;
         if (snapshot) {
-          const windows = await pruneSnapshotWindows(snapshot.windows);
+          const prunedWindows = await pruneSnapshotWindows(snapshot.windows);
           if (bootCancelled()) return;
+          const windows = sanitizeHydratedWindowsForReload(prunedWindows);
+          try {
+            if (typeof sessionStorage !== 'undefined' && windows.length > 0) {
+              sessionStorage.setItem(SESSION_HYDRATING_STORAGE_KEY, String(Date.now()));
+              clearHydratingGuardTimer = window.setTimeout(() => {
+                try {
+                  sessionStorage.removeItem(SESSION_HYDRATING_STORAGE_KEY);
+                } catch {
+                  // Ignore restricted storage contexts.
+                }
+              }, HYDRATION_SETTLE_GUARD_MS);
+            }
+          } catch {
+            // Ignore restricted storage contexts.
+          }
           setPendingRestoreDesktopSize(snapshot.desktopSize ?? null);
           useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
             preserveExisting: true,
@@ -596,12 +656,15 @@ export const WorkbenchDesktop: React.FC = () => {
       // 快照恢复完成后补投运行中的长活实例（番茄钟等）
       resyncProjections();
 
-      // 未开启自动恢复时探测一次当前空间的快照：有内容就在空桌面上给一个显式的
+      // 未开启自动恢复（或异常刷新降级）时探测一次当前空间的快照：有内容就在空桌面上给一个显式的
       // 「恢复上次桌面」入口（首屏之后再读，不拖慢冷启动）
       if (!shouldRestoreSession) {
         if (bootResult.snapshot && bootResult.snapshot.windows.length > 0) {
           setRestorableSnapshot(bootResult.snapshot);
         }
+      }
+      if (clearHydratingGuardTimer !== null && disposed) {
+        window.clearTimeout(clearHydratingGuardTimer);
       }
     })();
 
@@ -627,8 +690,9 @@ export const WorkbenchDesktop: React.FC = () => {
     setRestorableSnapshot(null);
     const generation = getSpaceSwitchGeneration();
     void (async () => {
-      const windows = await pruneSnapshotWindows(snapshot.windows);
+      const prunedWindows = await pruneSnapshotWindows(snapshot.windows);
       if (!rootRef.current || generation !== getSpaceSwitchGeneration()) return;
+      const windows = sanitizeHydratedWindowsForReload(prunedWindows);
       useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
         preserveExisting: true,
       });

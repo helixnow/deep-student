@@ -881,6 +881,8 @@
       "overlayTextInFolder": "松开以导入至「{{folder}}」",
       "barHint": "拖放至",
       "importSuccess": "已导入 {{count}} 个文件",
+      "importSuccess_one": "已导入 {{count}} 个文件",
+      "importSuccess_other": "已导入 {{count}} 个文件",
       "importPartial": "导入 {{success}} 个成功，{{failed}} 个失败",
       "importFailed": "文件导入失败",
       "notAllowedHere": "当前视图不支持拖入文件",

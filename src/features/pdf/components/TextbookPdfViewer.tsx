@@ -4,6 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import '../styles/textbook-pdf-viewer.css';
 import { EnhancedPdfViewer, type Bookmark } from './EnhancedPdfViewer';
+import { PdfWindowActiveContext } from './CancelablePdfCanvas';
 import type { PdfSelectionPayload } from '../pdfSelectionActions';
 import { usePdfRenderTracker } from '@/utils/pdfDebug';
 import useTheme from '@/hooks/useTheme';
@@ -52,6 +53,8 @@ interface TextbookPdfViewerProps {
   /** P0 选区即上下文：源资源 id，透传给 EnhancedPdfViewer → PdfSelectionActions */
   selectionSourceId?: string;
   toolbarVariant?: 'reader' | 'preview';
+  /** 窗口/标签页活跃态：非活跃后台窗口暂停 PDF.js 画布渲染，未曾激活的后台窗口延后挂载 viewer */
+  isActive?: boolean;
   /** @deprecated 自动导出已移除，此参数无效 */
   enableAutoPrepare?: boolean;
 }
@@ -76,9 +79,20 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   onQuoteToChat,
   selectionSourceId,
   toolbarVariant,
+  isActive = true,
 }) => {
   const { t } = useTranslation(['pdf', 'common', 'textbook']);
   const { isDarkMode } = useTheme();
+  const docIdentity = resourcePath || filePath || fileName;
+  const [activatedDocIdentity, setActivatedDocIdentity] = useState<string | null>(
+    isActive ? docIdentity : null,
+  );
+  useEffect(() => {
+    if (isActive && activatedDocIdentity !== docIdentity) {
+      setActivatedDocIdentity(docIdentity);
+    }
+  }, [isActive, activatedDocIdentity, docIdentity]);
+  const isViewerActivated = isActive || activatedDocIdentity === docIdentity;
 
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
@@ -264,28 +278,29 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
         </div>
       )}
 
-      {viewerUrl && (
+      {viewerUrl && isViewerActivated && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <EnhancedPdfViewer
-            url={viewerUrl}
-            fileName={fileName}
-            enableStudyControls
-            selectedPages={selectedPages}
-            maxSelections={maxSelections}
-            onToggleSelectPage={togglePageSelection}
-            onPageChange={handleViewerPageChange}
-            onDocumentLoad={handleViewerDocumentLoad}
-            isDarkMode={isDarkMode}
-            onRegisterCommands={handleRegisterViewerCommands}
-            initialPage={readingProgress?.page ? readingProgress.page - 1 : 0}
-            resourcePath={resourcePath}
-            bookmarks={bookmarks}
-            onBookmarksChange={onBookmarksChange}
-            onQuoteToChat={onQuoteToChat}
-            selectionSourceId={selectionSourceId}
-            toolbarVariant={toolbarVariant}
-          />
-
+          <PdfWindowActiveContext.Provider value={isActive}>
+            <EnhancedPdfViewer
+              url={viewerUrl}
+              fileName={fileName}
+              enableStudyControls
+              selectedPages={selectedPages}
+              maxSelections={maxSelections}
+              onToggleSelectPage={togglePageSelection}
+              onPageChange={handleViewerPageChange}
+              onDocumentLoad={handleViewerDocumentLoad}
+              isDarkMode={isDarkMode}
+              onRegisterCommands={handleRegisterViewerCommands}
+              initialPage={readingProgress?.page ? readingProgress.page - 1 : 0}
+              resourcePath={resourcePath}
+              bookmarks={bookmarks}
+              onBookmarksChange={onBookmarksChange}
+              onQuoteToChat={onQuoteToChat}
+              selectionSourceId={selectionSourceId}
+              toolbarVariant={toolbarVariant}
+            />
+          </PdfWindowActiveContext.Provider>
         </div>
       )}
     </div>
