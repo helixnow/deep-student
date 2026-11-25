@@ -69,15 +69,89 @@ export function partitionMarkdownNoteImports<T>(
   return { markdownItems, otherItems };
 }
 
+export interface ImportFormatOptions {
+  listSeparator: string;
+  clauseSeparator: string;
+  formatItemWithReason: (name: string, reason: string) => string;
+  joinMessageWithDetail: (message: string, detail: string) => string;
+}
+
+type TranslateLike = (key: string, options?: Record<string, unknown>) => string;
+
+export function isZhLocale(language?: string | null): boolean {
+  return typeof language === 'string' && language.trim().toLowerCase().startsWith('zh');
+}
+
+export function getDefaultImportFormatOptions(language?: string | null): ImportFormatOptions {
+  const zh = isZhLocale(language);
+  return {
+    listSeparator: zh ? '、' : ', ',
+    clauseSeparator: zh ? '；' : '; ',
+    formatItemWithReason: (name, reason) => (zh ? `${name}（${reason}）` : `${name} (${reason})`),
+    joinMessageWithDetail: (message, detail) => (zh ? `${message}；${detail}` : `${message}; ${detail}`),
+  };
+}
+
+function resolveTranslatedPattern(
+  t: TranslateLike,
+  key: string,
+  fallback: string,
+  params?: Record<string, unknown>,
+): string {
+  const value = t(key, { ...params, defaultValue: fallback });
+  if (!value || value === key || value.endsWith(`:${key}`)) {
+    return fallback;
+  }
+  return value;
+}
+
+export function resolveImportFormatOptions(
+  t: TranslateLike,
+  language?: string | null,
+): ImportFormatOptions {
+  const defaults = getDefaultImportFormatOptions(language);
+  const listSeparator = resolveTranslatedPattern(t, 'finder.format.listSeparator', defaults.listSeparator);
+  const clauseSeparator = resolveTranslatedPattern(t, 'finder.format.clauseSeparator', defaults.clauseSeparator);
+  return {
+    listSeparator,
+    clauseSeparator,
+    formatItemWithReason: (name, reason) =>
+      resolveTranslatedPattern(
+        t,
+        'finder.format.itemWithReason',
+        defaults.formatItemWithReason(name, reason),
+        { name, reason },
+      ),
+    joinMessageWithDetail: (message, detail) =>
+      resolveTranslatedPattern(
+        t,
+        'finder.format.messageWithDetail',
+        defaults.joinMessageWithDetail(message, detail),
+        { message, detail },
+      ),
+  };
+}
+
+export function formatFailedImportSummary(
+  failedDetails: ReadonlyArray<{ name: string; reason?: string }>,
+  format: Pick<ImportFormatOptions, 'clauseSeparator' | 'formatItemWithReason'>,
+  maxItems = 3,
+): string {
+  return failedDetails
+    .slice(0, maxItems)
+    .map((entry) => (entry.reason ? format.formatItemWithReason(entry.name, entry.reason) : entry.name))
+    .join(format.clauseSeparator);
+}
+
 /**
  * 将失败文件列表压缩为便于通知展示的摘要。
  */
-export function summarizeFailedMarkdownFiles(failedFiles: string[]): string | null {
+export function summarizeFailedMarkdownFiles(failedFiles: string[], separator = '、'): string | null {
   if (failedFiles.length === 0) {
     return null;
   }
 
-  const preview = failedFiles.slice(0, 3).join('、');
+  const preview = failedFiles.slice(0, 3).join(separator);
   const remaining = failedFiles.length - 3;
   return remaining > 0 ? `${preview} +${remaining}` : preview;
 }

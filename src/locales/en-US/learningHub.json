@@ -765,6 +765,7 @@
       "more": "More actions"
     },
     "create": {
+      "newFolder": "New Folder",
       "folderTitle": "New Folder",
       "noteTitle": "New Note",
       "folderPlaceholder": "Enter folder name",
@@ -777,7 +778,8 @@
       "mindmapSuccess": "Mind map created",
       "todoSuccess": "Todo list created",
       "defaultFolderName": "New Folder",
-      "notAllowedHere": "You can't create items in this view"
+      "notAllowedHere": "You can't create items in this view",
+      "failed": "Creation failed, please try again"
     },
     "quickAccess": {
       "materials": "Learning materials",
@@ -879,6 +881,7 @@
       "importFailed": "File import failed",
       "notAllowedHere": "Cannot drop files in this view",
       "importing": "Importing {{done}} / {{total}}",
+      "importInProgress": "Import in progress, please wait…",
       "favoriteSuccess": "Favorited {{count}} item(s)",
       "favoriteFailed": "Failed to favorite",
       "favoriteSkipped": "Nothing to favorite (folders or already favorited)",
@@ -893,11 +896,18 @@
     "markdownImport": {
       "selectFiles": "Select Markdown Files",
       "filterName": "Markdown Files",
+      "unsupportedFormat": "Only Markdown (.md, .markdown) files are supported here. Use \"Import files…\" for other formats.",
       "tooLarge": "Markdown files must be smaller than 10 MB.",
       "success": "Imported {{count}} Markdown note(s)",
       "partial": "Imported {{success}} Markdown note(s), {{failed}} failed",
       "failed": "Markdown import failed",
       "failedFiles": "Failed files: {{names}}"
+    },
+    "format": {
+      "listSeparator": ", ",
+      "clauseSeparator": "; ",
+      "itemWithReason": "{{name}} ({{reason}})",
+      "messageWithDetail": "{{message}}; {{detail}}"
     },
     "contextMenu": {
       "open": "Open",

@@ -4,11 +4,11 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { extractDisplayFileName } from '@/utils/fileManager';
 import type { DstuNode } from '@/dstu';
-import { VfsError, VfsErrorCode, err } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { pLimit } from '@/utils/concurrency';
 import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
+import i18n from '@/i18n';
 
 const hasNativeTauriDialog = (): boolean =>
   typeof window !== 'undefined'
@@ -18,8 +18,23 @@ const hasNativeTauriDialog = (): boolean =>
 import { getFileExtension } from './sidebarConstants';
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
-import { summarizeFailedMarkdownFiles } from '../dragDropRouting';
+import { resolveImportFormatOptions, summarizeFailedMarkdownFiles } from '../dragDropRouting';
 import type { SidebarT } from './sidebarConstants';
+
+async function readFileAsText(file: File): Promise<string> {
+  if (typeof file.text === 'function') {
+    return file.text();
+  }
+  if (typeof FileReader !== 'undefined') {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+  throw new Error('File text reading is not supported in this runtime');
+}
 
 /** Markdown → 笔记导入（文件路径 / 浏览器 File 对象）与结果通知 */
 export function useMarkdownNoteImport({
@@ -74,24 +89,37 @@ export function useMarkdownNoteImport({
 
     const limit = pLimit(3);
     const results = await Promise.all(
-      files.map((file) => limit(async () => {
+      files.map((file) => limit(async (): Promise<
+        | { fileName: string; node: DstuNode }
+        | { fileName: string; errorMessage: string }
+      > => {
+        if (!['md', 'markdown'].includes(getFileExtension(file.name))) {
+          return {
+            fileName: file.name,
+            errorMessage: t('finder.markdownImport.unsupportedFormat', {
+              defaultValue: 'Only Markdown (.md, .markdown) files are supported here. Use "Import files…" for other formats.',
+            }),
+          };
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          return {
+            fileName: file.name,
+            errorMessage: t('finder.markdownImport.tooLarge', {
+              defaultValue: 'Markdown files must be smaller than 10 MB.',
+            }),
+          };
+        }
         try {
-          if (!['md', 'markdown'].includes(getFileExtension(file.name))) {
-            throw new Error(t('finder.markdownImport.filterName'));
-          }
-          if (file.size > 10 * 1024 * 1024) {
-            throw new Error(t('finder.markdownImport.tooLarge', { defaultValue: 'Markdown 文件不能超过 10 MB' }));
-          }
-          const content = await file.text();
+          const content = await readFileAsText(file);
           const result = await notesDstuAdapter.importMarkdownContent(file.name, content, folderId);
-          return { fileName: file.name, result };
+          if (result.ok) {
+            return { fileName: file.name, node: result.value };
+          }
+          return { fileName: file.name, errorMessage: result.error.toUserMessage() };
         } catch (error) {
           return {
             fileName: file.name,
-            result: err(new VfsError(
-              VfsErrorCode.UNKNOWN,
-              error instanceof Error ? error.message : t('finder.markdownImport.failed'),
-            )),
+            errorMessage: error instanceof Error ? error.message : t('finder.markdownImport.failed'),
           };
         }
       }))
@@ -102,13 +130,13 @@ export function useMarkdownNoteImport({
     let firstError: string | null = null;
     const failedFiles: string[] = [];
 
-    for (const { fileName, result } of results) {
-      if (result.ok) {
-        importedNodes.push(result.value);
+    for (const entry of results) {
+      if ('node' in entry) {
+        importedNodes.push(entry.node);
       } else {
         failedCount += 1;
-        firstError ??= result.error.toUserMessage();
-        failedFiles.push(fileName);
+        firstError ??= entry.errorMessage;
+        failedFiles.push(entry.fileName);
       }
     }
 
@@ -121,7 +149,8 @@ export function useMarkdownNoteImport({
     failedFiles: string[],
     firstError?: string | null,
   ) => {
-    const failedFileSummary = summarizeFailedMarkdownFiles(failedFiles);
+    const format = resolveImportFormatOptions(t, i18n.language);
+    const failedFileSummary = summarizeFailedMarkdownFiles(failedFiles, format.listSeparator);
     const failedFilesText = failedFileSummary
       ? t('finder.markdownImport.failedFiles', { names: failedFileSummary })
       : null;
@@ -136,12 +165,18 @@ export function useMarkdownNoteImport({
         success: importedCount,
         failed: failedCount,
       });
-      showGlobalNotification('warning', failedFilesText ? `${baseMessage}；${failedFilesText}` : baseMessage);
+      showGlobalNotification(
+        'warning',
+        failedFilesText ? format.joinMessageWithDetail(baseMessage, failedFilesText) : baseMessage,
+      );
       return;
     }
 
     const baseError = firstError || t('finder.markdownImport.failed');
-    showGlobalNotification('error', failedFilesText ? `${baseError}；${failedFilesText}` : baseError);
+    showGlobalNotification(
+      'error',
+      failedFilesText ? format.joinMessageWithDetail(baseError, failedFilesText) : baseError,
+    );
   }, [t]);
 
   const openImportedMarkdownNote = useCallback((node: DstuNode | null) => {
