@@ -22,11 +22,37 @@ import { resolveLinkKeymapAction } from './resolveLinkAction';
 export { findWordRangeAtCaret, resolveLinkKeymapAction } from './resolveLinkAction';
 export type { LinkKeymapAction } from './resolveLinkAction';
 
+/**
+ * 当光标处既无链接也无词可扩选时，将 Mod-K 转发为 window 级 keydown，
+ * 使 CommandPaletteProvider / useWorkbenchShortcuts（均对富文本编辑器内事件让行）
+ * 能够打开命令面板；因为事件直接派发在 window 上（target 为 window，非 Element），
+ * 既不会被 isInRichEditor 拦截，也不会回落到 ProseMirror 造成递归。
+ */
+function dispatchWindowCommandPaletteShortcut(): boolean {
+  if (typeof window === 'undefined') return false;
+  const isMac =
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'k',
+      code: 'KeyK',
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  return true;
+}
+
 /** 供单测：构造 Mod-k Command（不经 $prose） */
 export function createModKLinkCommand(ctx: Ctx): Command {
   return (state, dispatch) => {
     const action = resolveLinkKeymapAction(state);
-    if (!action) return false;
+    if (!action) {
+      return dispatchWindowCommandPaletteShortcut();
+    }
 
     try {
       const api = ctx.get(linkTooltipAPI.key);
@@ -46,8 +72,8 @@ export function createModKLinkCommand(ctx: Ctx): Command {
       }
       return true;
     } catch {
-      // LinkTooltip 未注册时静默失败，避免打断其它快捷键
-      return false;
+      // LinkTooltip 未注册时回落至全局命令面板，避免 Mod-K 变成无响应
+      return dispatchWindowCommandPaletteShortcut();
     }
   };
 }

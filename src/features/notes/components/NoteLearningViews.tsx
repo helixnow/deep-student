@@ -107,8 +107,10 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                   aria-current={note.id === activeId ? 'true' : undefined}
                   onClick={() => onOpen(note)}
                   onKeyDown={(event) => {
-                    if (isComposingKeyEvent(event) || event.key !== 'Delete') return;
-                    if (event.ctrlKey || event.metaKey || event.altKey) return;
+                    if (isComposingKeyEvent(event)) return;
+                    const isDeleteKey = event.key === 'Delete' && !event.ctrlKey && !event.metaKey && !event.altKey;
+                    const isBackspaceKey = event.key === 'Backspace' && !event.ctrlKey && !event.altKey;
+                    if (!isDeleteKey && !isBackspaceKey) return;
                     const targetEl = event.target as HTMLElement | null;
                     if (targetEl?.closest('input, textarea, [contenteditable="true"]')) return;
                     event.preventDefault();

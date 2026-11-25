@@ -121,7 +121,7 @@ describe('createLinkKeymapBindings / Mod-k', () => {
     expect(editLink).not.toHaveBeenCalled();
   });
 
-  it('Mod-k no-ops when caret has no word around', () => {
+  it('Mod-k forwards to window Command Palette shortcut when caret has no word around', () => {
     const addLink = vi.fn();
     const editLink = vi.fn();
     const cmd = createModKLinkCommand({
@@ -133,9 +133,44 @@ describe('createLinkKeymapBindings / Mod-k', () => {
       doc,
       selection: TextSelection.create(doc, 1),
     });
-    expect(cmd(state)).toBe(false);
-    expect(addLink).not.toHaveBeenCalled();
-    expect(editLink).not.toHaveBeenCalled();
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    try {
+      expect(cmd(state)).toBe(true);
+    } finally {
+      const dispatched = dispatchSpy.mock.calls.map(([event]) => event);
+      dispatchSpy.mockRestore();
+      expect(addLink).not.toHaveBeenCalled();
+      expect(editLink).not.toHaveBeenCalled();
+      expect(dispatched).toHaveLength(1);
+      const ev = dispatched[0] as KeyboardEvent;
+      expect(ev.type).toBe('keydown');
+      expect(ev.key).toBe('k');
+      expect(ev.code).toBe('KeyK');
+      expect(ev.metaKey || ev.ctrlKey).toBe(true);
+      expect(ev.target instanceof Element).toBe(false);
+    }
+  });
+
+  it('Mod-k falls back to window Command Palette shortcut when linkTooltipAPI is unavailable', () => {
+    const cmd = createModKLinkCommand({
+      get: () => {
+        throw new Error('linkTooltipAPI not registered');
+      },
+    } as never);
+    const state = stateWithSelection('hello', 1, 6);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    try {
+      expect(cmd(state)).toBe(true);
+    } finally {
+      const dispatched = dispatchSpy.mock.calls.map(([event]) => event);
+      dispatchSpy.mockRestore();
+      expect(dispatched).toHaveLength(1);
+      const ev = dispatched[0] as KeyboardEvent;
+      expect(ev.type).toBe('keydown');
+      expect(ev.key).toBe('k');
+      expect(ev.metaKey || ev.ctrlKey).toBe(true);
+      expect(ev.target instanceof Element).toBe(false);
+    }
   });
 
   it('Mod-k calls addLink on non-empty selection', () => {

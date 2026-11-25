@@ -280,6 +280,27 @@ describe('NoteLearningViews inline Move to Trash and Delete key', () => {
     fireEvent.keyDown(rowBtn, { key: 'Delete' });
     await waitFor(() => expect(onMoveToTrash).toHaveBeenCalledWith(sampleNote));
   });
+
+  it('invokes onMoveToTrash on Backspace and Cmd+Backspace, while ignoring Ctrl/Alt+Backspace and IME composing', async () => {
+    const onMoveToTrash = vi.fn();
+    render(<NoteLearningViews notes={[sampleNote]} view="list" onOpen={vi.fn()} onMoveToTrash={onMoveToTrash} />);
+
+    const rowBtn = screen.getByRole('button', { name: /Linear Algebra/ });
+    rowBtn.focus();
+
+    fireEvent.keyDown(rowBtn, { key: 'Backspace', isComposing: true });
+    fireEvent.keyDown(rowBtn, { key: 'Backspace', ctrlKey: true });
+    fireEvent.keyDown(rowBtn, { key: 'Backspace', altKey: true });
+    expect(onMoveToTrash).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(rowBtn, { key: 'Backspace' });
+    await waitFor(() => expect(onMoveToTrash).toHaveBeenCalledTimes(1));
+    expect(onMoveToTrash).toHaveBeenLastCalledWith(sampleNote);
+
+    fireEvent.keyDown(rowBtn, { key: 'Backspace', metaKey: true });
+    await waitFor(() => expect(onMoveToTrash).toHaveBeenCalledTimes(2));
+    expect(onMoveToTrash).toHaveBeenLastCalledWith(sampleNote);
+  });
 });
 
 describe('NotesEditorHeader debounced live title sync and keyboard exit', () => {
