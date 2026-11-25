@@ -89,6 +89,16 @@ export interface PluginManagerSnapshot {
   readonly safeMode?: boolean;
   readonly platform: PluginPlatform;
   readonly plugins: readonly ManagedPlugin[];
+  /** `user.profile.json` 损坏/无法解析时由 Host 报告（SPOF-1）。 */
+  readonly profileCorrupted?: boolean;
+  /** `user.profile.json` 损坏诊断详情。 */
+  readonly profileError?: string;
+}
+
+/** `plugin:manager|reset-profile` 的返回值。 */
+export interface PluginProfileResetResult {
+  readonly backedUpTo: string | null;
+  readonly revision: string;
 }
 
 /** 同意请求的精确主体：ID、版本、权限列表必须与弹窗展示一致（W32 CONSENT_REQUIRED）。 */
@@ -215,6 +225,8 @@ export interface PluginManagerAdapter {
   installPackagePath?(path: string): Promise<PluginPackageResult>;
   /** 从受检 HTTPS 链接下载并安装 `.dspack` / `.dstuplugin`。 */
   installPackageFromUrl?(url: string): Promise<PluginPackageResult>;
+  /** 备份并重置损坏的 `user.profile.json`（SPOF-1）。 */
+  resetProfile?(): Promise<PluginProfileResetResult>;
   /** Host 推送清单变化时的重新拉取信号（可选）。 */
   subscribe?(listener: () => void): () => void;
 }

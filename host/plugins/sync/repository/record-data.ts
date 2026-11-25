@@ -399,6 +399,7 @@ export interface DownloadChangeLike {
   operation: string;
   data: unknown;
   database_name?: string | null;
+  hard_delete?: boolean | null;
 }
 
 /** `download_change_dedupe_key`（mod.rs:3198）：内容指纹，忽略 changed_at/change_log_id/source。 */
@@ -412,6 +413,7 @@ export function downloadChangeDedupeKey(change: DownloadChangeLike): string {
     record: change.record_id,
     operation: change.operation.toUpperCase(),
     data,
+    ...(change.hard_delete === true ? { hard_delete: true } : {}),
   };
   return createHasherSync('SHA-256')
     .update(stringifyJsonLossless(raw))

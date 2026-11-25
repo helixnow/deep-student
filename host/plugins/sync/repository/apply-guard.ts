@@ -287,9 +287,14 @@ function resourceHasDivergentLocalEditForNote(
   }
 
   const resUpdatedMs = toTimestampMillis(localRes.updated_at);
-  const noteUpdatedMs = isJsonObject(localNote) ? toTimestampMillis(localNote.updated_at) : null;
+  const noteUpdatedRaw = isJsonObject(localNote) ? localNote.updated_at : undefined;
+  const noteUpdatedMs = toTimestampMillis(noteUpdatedRaw);
   if (resUpdatedMs !== null && noteUpdatedMs !== null) {
-    return resUpdatedMs > noteUpdatedMs;
+    // SQLite `datetime('now')` on `notes.updated_at` has 1-second resolution whereas
+    // `resources.updated_at` uses integer milliseconds; avoid false divergence within the same second.
+    const noteLacksSubSecond = typeof noteUpdatedRaw === 'string' && !/\.\d+/.test(noteUpdatedRaw);
+    const threshold = noteLacksSubSecond ? noteUpdatedMs + 999n : noteUpdatedMs;
+    return resUpdatedMs > threshold;
   }
   return localHasPendingForRecord(tx, 'notes', noteId);
 }

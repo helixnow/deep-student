@@ -97,7 +97,10 @@ export function createResourceCreators({
 
   const handleNewTextbook = async () => {
     if (!ensureCreatableView()) return;
-    if (importProgress.isImporting) return; // 防止重复点击
+    if (importProgress.isImporting) {
+      showGlobalNotification('info', t('finder.dragDrop.importInProgress', { defaultValue: '正在导入中，请稍候…' }));
+      return; // 防止重复点击
+    }
 
     try {
       if (!hasNativeTauriDialog()) {
@@ -149,7 +152,7 @@ export function createResourceCreators({
           },
           {
             name: t('textbook.textFiles'),
-            extensions: ['txt', 'md', 'html', 'htm'],
+            extensions: ['txt', 'md', 'html', 'htm', 'vtt'],
           },
           {
             name: t('textbook.presentationFiles'),

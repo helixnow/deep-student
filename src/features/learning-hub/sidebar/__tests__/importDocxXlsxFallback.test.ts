@@ -56,7 +56,7 @@ vi.mock('@/features/learning-hub/textbookFileImport', () => ({
   withStagedTextbookFile: async (file: File, run: (source: string) => Promise<unknown>) => run(`dstu-staged:${file.name}`),
 }));
 
-import { importPathsIntoLibrary, importDroppedFiles } from '../importActions';
+import { importPathsIntoLibrary, importDroppedFiles, resolveUploadMimeType } from '../importActions';
 
 function makeFileNode(id: string, name: string): DstuNode {
   return {
@@ -221,5 +221,123 @@ describe('S1-01(a) docx / xlsx import fallback & visible notifications', () => {
     expect(refreshSettled).toBe(true);
     expect(handleRefresh).toHaveBeenCalledTimes(1);
     expect(notifyMock).toHaveBeenCalledWith('success', 'finder.dragDrop.importSuccess:3');
+  });
+
+  it('normalizes generic browser MIME types (octet-stream / zip / empty) to canonical Office & document MIMEs', () => {
+    expect(resolveUploadMimeType('guide.docx', '')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(resolveUploadMimeType('guide.docx', 'application/octet-stream')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(resolveUploadMimeType('guide.docx', 'application/zip')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(resolveUploadMimeType('scores.xlsx', 'application/x-zip-compressed')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(resolveUploadMimeType('slides.pptx', 'binary/octet-stream')).toBe(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    );
+    expect(resolveUploadMimeType('sheet.ods', 'application/octet-stream')).toBe(
+      'application/vnd.oasis.opendocument.spreadsheet',
+    );
+    expect(resolveUploadMimeType('captions.vtt', 'application/octet-stream')).toBe('text/vtt');
+    expect(resolveUploadMimeType('mindmap.xmind', 'application/zip')).toBe('application/vnd.xmind.workbook');
+  });
+
+  it('imports .docx (application/zip) and .xlsx (application/octet-stream) cleanly via importDroppedFiles and reports errors visibly without silent drop', async () => {
+    createMock
+      .mockResolvedValueOnce({ ok: true, value: makeFileNode('file_docx_zip', '01-study-guide.docx') })
+      .mockResolvedValueOnce({ ok: true, value: makeFileNode('file_xlsx_bin', '04-scores.xlsx') });
+
+    const setAttachImportProgress = vi.fn();
+    const handleRefresh = vi.fn(async () => {});
+    const docx = new File(['PK\x03\x04docx'], '01-study-guide.docx', { type: 'application/zip' });
+    const xlsx = new File(['PK\x03\x04xlsx'], '04-scores.xlsx', { type: 'application/octet-stream' });
+
+    await importDroppedFiles({
+      pathsDropHandledRef: { current: false },
+      currentPath: { viewKind: 'folder', folderId: 'fld_2', breadcrumbs: [], typeFilter: 'file' } as never,
+      t,
+      importMarkdownFileObjects: vi.fn(),
+      currentCreatableFolderId: 'fld_2',
+      isMountedRef: { current: true },
+      setAttachImportProgress,
+      handleRefresh,
+      openImportedMarkdownNote: vi.fn(),
+      onOpenApp: vi.fn(),
+    }, [docx, xlsx], true);
+
+    expect(createMock).toHaveBeenNthCalledWith(1, docx, 'file', {
+      folderId: 'fld_2',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    expect(createMock).toHaveBeenNthCalledWith(2, xlsx, 'file', {
+      folderId: 'fld_2',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    expect(setAttachImportProgress).toHaveBeenCalledWith({ done: 0, total: 2 });
+    expect(setAttachImportProgress).toHaveBeenLastCalledWith(null);
+    expect(notifyMock).toHaveBeenCalledWith('success', 'finder.dragDrop.importSuccess:2');
+    expect(handleRefresh).toHaveBeenCalledTimes(1);
+
+    // Failure case must surface visible error notification and clear progress
+    notifyMock.mockReset();
+    setAttachImportProgress.mockReset();
+    createMock.mockRejectedValueOnce(new Error('storage write failed'));
+    const badDocx = new File(['PK\x03\x04broken'], 'broken.docx', { type: 'application/octet-stream' });
+
+    await importDroppedFiles({
+      pathsDropHandledRef: { current: false },
+      currentPath: { viewKind: 'folder', folderId: null, breadcrumbs: [], typeFilter: null } as never,
+      t,
+      importMarkdownFileObjects: vi.fn(),
+      currentCreatableFolderId: null,
+      isMountedRef: { current: true },
+      setAttachImportProgress,
+      handleRefresh,
+      openImportedMarkdownNote: vi.fn(),
+      onOpenApp: vi.fn(),
+    }, [badDocx], true);
+
+    expect(setAttachImportProgress).toHaveBeenLastCalledWith(null);
+    expect(notifyMock).toHaveBeenCalledWith('error', 'finder.dragDrop.importFailed', expect.any(String));
+  });
+
+  it('falls back .docx to VFS files even when textbookDstuAdapter.addTextbooks throws unexpectedly', async () => {
+    addTextbooksMock.mockRejectedValueOnce(new Error('native parser crashed'));
+    stagePathUploadMock.mockResolvedValueOnce({ uploadId: 'u_docx_throw', size: 1024 });
+    createFromStagedUploadMock.mockResolvedValueOnce({
+      ok: true,
+      value: makeFileNode('file_docx_fb', 'syllabus.docx'),
+    });
+
+    const handleRefresh = vi.fn(async () => {});
+    await importPathsIntoLibrary({
+      importProgress: { isImporting: false },
+      currentPath: { viewKind: 'folder', folderId: null, breadcrumbs: [], typeFilter: null } as never,
+      t,
+      currentCreatableFolderId: null,
+      importMarkdownPathNotes: vi.fn(),
+      isMountedRef: { current: true },
+      setImportProgress: vi.fn(),
+      setAttachImportProgress: vi.fn(),
+      handleRefresh,
+      openImportedMarkdownNote: vi.fn(),
+      onOpenApp: vi.fn(),
+    }, ['/tmp/syllabus.docx']);
+
+    expect(createFromStagedUploadMock).toHaveBeenCalledTimes(1);
+    expect(createFromStagedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'syllabus.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      'file',
+      undefined,
+    );
+    expect(notifyMock).toHaveBeenCalledWith('success', 'finder.dragDrop.importSuccess:1', undefined);
+    expect(handleRefresh).toHaveBeenCalledTimes(1);
   });
 });

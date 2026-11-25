@@ -730,6 +730,47 @@
         }
       },
       {
+        "name": "plugin:manager|install-url",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/plugin-admin.ts",
+          "const": "PLUGIN_MANAGER_INSTALL_URL_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "url",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "revision",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginManagerInstallResult (host/kernel/core.ts); fetches remote archive via HTTPS and installs disabled"
+        }
+      },
+      {
+        "name": "plugin:manager|reset-profile",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/plugin-admin.ts",
+          "const": "PLUGIN_MANAGER_RESET_PROFILE_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [],
+        "result": {
+          "description": "{backedUpTo:string|null,revision:string}; atomically backs up corrupt user.profile.json and resets to clean official profile; allowed in safe mode"
+        }
+      },
+      {
         "name": "plugin:ui|manifest",
         "x-host-native": true,
         "host": {

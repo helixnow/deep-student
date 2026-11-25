@@ -47,6 +47,7 @@ import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import {
+  formatFriendlySyncError,
   localizeBackendErrorText,
   localizeCloudStorageError,
   notifyErrorDeduped,
@@ -593,21 +594,13 @@ export function isSyncCancelledMessage(message: string | undefined | null): bool
   return /同步已取消|sync\s+cancel(?:led|ed)/i.test(message) || /\bcancel(?:led|ed)\b/i.test(message);
 }
 
-/** 拦截 Tauri ACL 权限异常，避免向终用户暴露内部命令名 */
+/** 拦截 Tauri ACL 权限异常，并将内部同步错误/堆栈转为用户可读的本地化文案 */
 export function sanitizeAclErrorMessage(
   raw: string,
   t: (key: string, opts?: Record<string, unknown>) => string,
   language?: string,
 ): string {
-  if (
-    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
-    /not\s+allowed\s+by\s+ACL/i.test(raw)
-  ) {
-    return t('data:governance.acl_permission_denied', {
-      defaultValue: '当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。',
-    });
-  }
-  return localizeBackendErrorText(raw, language);
+  return formatFriendlySyncError(raw, t, language);
 }
 
 export function formatGovernanceError(
@@ -2046,6 +2039,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     switch (activeTab) {
       case 'overview':
         void loadOverviewData();
+        break;
+      case 'recovery':
+        void loadBackups();
         break;
       case 'backup':
         void loadBackups();

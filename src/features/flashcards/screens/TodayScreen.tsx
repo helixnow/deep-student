@@ -11,14 +11,17 @@ import {
   ChartBar,
   CheckCircle,
   Fire,
+  Image as ImageIcon,
   Lightning,
   Play,
+  SpeakerHigh,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { ExamReadinessHud } from '@/components/exam-sprint';
 import { cn } from '@/utils/cn';
 import { cardDisplayFront } from '../cardDisplay';
-import { CardMathText } from '../cardMathPreview';
+import { CardMathText, summarizeCardMedia } from '../cardMathPreview';
+import { toReviewContent } from '../library/libraryView';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import type { AnkiLibraryDeckCount, AnkiLibraryListResponse, FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
@@ -125,13 +128,7 @@ export const TodayScreen: React.FC = () => {
       }
       await startBatchSession(
         cards.map((card) => card.id),
-        cards.map((card) => ({
-          id: card.stateId || card.id,
-          ankiCardId: card.id,
-          front: card.front || card.fields?.Front || '',
-          back: card.back || card.fields?.Back || card.text || '',
-          tags: card.tags,
-        })),
+        cards.map(toReviewContent),
       );
     } catch {
       showGlobalNotification('error', t('today.learnMoreFailed'));
@@ -493,7 +490,9 @@ export const TodayScreen: React.FC = () => {
               </div>
               <div className="wb-fcx-panel-list">
                 <ul className="wb-fc-list-ul">
-                  {dueCards.map((card) => (
+                  {dueCards.map((card) => {
+                    const cardMedia = summarizeCardMedia(card);
+                    return (
                     <li
                       key={card.id}
                       className="wb-fc-row group !p-0 transition-colors duration-150 hover:bg-foreground/[0.025] motion-reduce:transition-none"
@@ -521,9 +520,21 @@ export const TodayScreen: React.FC = () => {
                                 : t('card.untitled')}
                             </span>
                           </div>
-                          {card.tags && card.tags.length > 0 ? (
+                          {(cardMedia.imageCount > 0 || cardMedia.audioCount > 0 || (card.tags && card.tags.length > 0)) ? (
                             <div className="wb-fc-tags">
-                              {card.tags.slice(0, 4).map((tag, index) => (
+                              {cardMedia.imageCount > 0 ? (
+                                <span className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums">
+                                  <ImageIcon size={11} aria-hidden="true" />
+                                  {cardMedia.imageCount}
+                                </span>
+                              ) : null}
+                              {cardMedia.audioCount > 0 ? (
+                                <span className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums">
+                                  <SpeakerHigh size={11} aria-hidden="true" />
+                                  {cardMedia.audioCount}
+                                </span>
+                              ) : null}
+                              {(card.tags ?? []).slice(0, 4).map((tag, index) => (
                                 <span key={`${tag}-${index}`} className="wb-fc-tag">{tag}</span>
                               ))}
                             </div>
@@ -537,7 +548,8 @@ export const TodayScreen: React.FC = () => {
                         />
                       </DsButton>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
             </section>

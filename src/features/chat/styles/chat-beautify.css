@@ -289,16 +289,42 @@
   }
 }
 
-@media (width <= 640px) {
+@media (width <= 767.98px) {
   .chat-v2 .unified-input-docked:not(.chat-empty-composer-layout__input) {
+    --chat-mobile-dock-clearance: max(
+      var(--wb-mobile-dock-clearance, 0px),
+      var(--mobile-dock-height, 0px),
+      var(--wb-dock-clearance, 0px)
+    );
+
     padding-bottom: max(
-      calc(8px + var(--wb-dock-clearance, 0px)),
+      calc(
+        8px + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) +
+          var(--chat-mobile-dock-clearance, 0px)
+      ),
       var(--unified-input-bottom-gap, 8px)
     ) !important;
   }
 
+  [data-wb-dock-revealed='true'] .chat-v2 .unified-input-docked {
+    --chat-mobile-dock-clearance: max(
+      var(--wb-mobile-dock-clearance, 76px),
+      var(--mobile-dock-height, 0px),
+      var(--wb-dock-clearance, 0px)
+    );
+
+    transition-duration: var(--wb-dock-reveal-duration, 150ms);
+  }
+
   .chat-v2 .chat-empty-composer-layout {
-    padding-bottom: max(clamp(1rem, 2.6vh, 2rem), var(--wb-dock-clearance, 0px));
+    padding-bottom: max(
+      clamp(1rem, 2.6vh, 2rem),
+      max(
+        var(--wb-mobile-dock-clearance, 0px),
+        var(--mobile-dock-height, 0px),
+        var(--wb-dock-clearance, 0px)
+      )
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 import type { ManagedPlugin } from './types';
 import type { PluginUiStatusSnapshot } from './ui-status';
 import type { TFunction } from 'i18next';
+import { isFaultDegradedReason } from './reasons';
 
 /** Display adapter seam. Host metadata is mapped here once its published contract is available. */
 export function pluginName(plugin: ManagedPlugin, t: TFunction): string {
@@ -87,14 +88,22 @@ export function pluginIcon(plugin: ManagedPlugin): string | undefined {
   return categoryIcon.get(pluginCategory(plugin)) ?? plugin.icon;
 }
 
+export function pluginHasFault(plugin: ManagedPlugin, uiStatus?: PluginUiStatusSnapshot): boolean {
+  return plugin.runtime === 'error'
+    || isFaultDegradedReason(plugin.degraded?.reason)
+    || isFaultDegradedReason(undefined, uiStatus?.degraded);
+}
+
 export function pluginNeedsAttention(plugin: ManagedPlugin, uiStatus?: PluginUiStatusSnapshot): boolean {
-  return plugin.runtime === 'error' || !!plugin.degraded || plugin.consent === 'required'
-    || !!uiStatus?.degraded || uiStatus?.consentRequired === true;
+  return pluginHasFault(plugin, uiStatus)
+    || plugin.consent === 'required'
+    || uiStatus?.consentRequired === true;
 }
 
 /** A single summary never equates a profile enable flag with a running runtime. */
 export function pluginStatusKey(plugin: ManagedPlugin, uiStatus?: PluginUiStatusSnapshot, safeMode = false): string {
   if (safeMode && plugin.origin === 'community') {
+    if (pluginHasFault(plugin, uiStatus)) return 'manager.problemStatus';
     return plugin.enabled ? 'safeMode.pausedStatus' : 'safeMode.quarantinedStatus';
   }
   if (plugin.consent === 'required' || uiStatus?.consentRequired) return 'row.consentRequired';

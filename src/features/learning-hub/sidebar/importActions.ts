@@ -44,17 +44,59 @@ const UPLOAD_MIME_FALLBACKS: Record<string, string> = {
   md: 'text/markdown',
   markdown: 'text/markdown',
   csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
   json: 'application/json',
+  jsonc: 'application/jsonc',
+  jsonl: 'text/plain',
   xml: 'application/xml',
   html: 'text/html',
   htm: 'text/html',
+  yaml: 'application/yaml',
+  yml: 'application/yaml',
+  toml: 'application/toml',
+  vtt: 'text/vtt',
+  xmind: 'application/vnd.xmind.workbook',
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  opus: 'audio/opus',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  avi: 'video/x-msvideo',
+  mkv: 'video/x-matroska',
+  m4v: 'video/x-m4v',
 };
 
-function resolveUploadMimeType(fileName: string, providedType?: string, isImage = false): string {
-  const trimmed = providedType?.trim();
-  if (trimmed) return trimmed;
+/**
+ * 浏览器/OS 对 Office（本质为 ZIP 容器）或无注册关联的文件常上报空串、
+ * application/octet-stream 或 application/zip；若扩展名有明确规范 MIME，
+ * 优先使用规范 MIME，避免后端按 .bin/.zip 落盘或误判格式。
+ */
+const GENERIC_BROWSER_MIME_TYPES = new Set([
+  'application/octet-stream',
+  'binary/octet-stream',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-msdownload',
+]);
+
+export function resolveUploadMimeType(fileName: string, providedType?: string, isImage = false): string {
+  const trimmed = providedType?.trim() ?? '';
+  const normalized = trimmed.toLowerCase();
   const ext = getFileExtension(fileName);
-  if (UPLOAD_MIME_FALLBACKS[ext]) return UPLOAD_MIME_FALLBACKS[ext];
+  const canonicalByExt = UPLOAD_MIME_FALLBACKS[ext];
+  if (canonicalByExt && (!normalized || GENERIC_BROWSER_MIME_TYPES.has(normalized))) {
+    return canonicalByExt;
+  }
+  if (trimmed) return trimmed;
   if (isImage) return `image/${ext === 'jpg' ? 'jpeg' : ext || 'png'}`;
   return 'application/octet-stream';
 }
@@ -244,9 +286,18 @@ export async function importPathsIntoLibrary(
         }));
       });
 
-      const docResult = await textbookDstuAdapter.addTextbooks(textbookPaths, dropTargetFolderId);
-
-      if (unlisten) { unlisten(); unlisten = null; }
+      let docResult: Awaited<ReturnType<typeof textbookDstuAdapter.addTextbooks>>;
+      try {
+        docResult = await textbookDstuAdapter.addTextbooks(textbookPaths, dropTargetFolderId);
+      } catch (addErr) {
+        const message = addErr instanceof Error ? addErr.message : String(addErr);
+        docResult = {
+          ok: false,
+          error: { toUserMessage: () => message },
+        } as Awaited<ReturnType<typeof textbookDstuAdapter.addTextbooks>>;
+      } finally {
+        if (unlisten) { unlisten(); unlisten = null; }
+      }
 
       if (docResult.ok) {
         const existing = docResult.value.filter((node) => node.createdAt < importStartedAt - 5_000);
@@ -600,77 +651,83 @@ export async function importDroppedFiles(
 
   const preferVfsFilesView = currentPath.typeFilter === 'file';
 
-  const results = await Promise.all(
-    attachmentFiles.map((file) =>
-      limit(async () => {
-        const ext = getFileExtension(file.name);
-        const isImage = IMAGE_EXTENSIONS.has(ext);
-        const mimeType = resolveUploadMimeType(file.name, file.type, isImage);
+  let results: Array<
+    | { ok: true; name: string; node: DstuNode; isMedia: boolean }
+    | { ok: false; name: string; reason?: string }
+  >;
+  try {
+    results = await Promise.all(
+      attachmentFiles.map((file) =>
+        limit(async () => {
+          const ext = getFileExtension(file.name);
+          const isImage = IMAGE_EXTENSIONS.has(ext);
+          const mimeType = resolveUploadMimeType(file.name, file.type, isImage);
 
-        try {
-          const invalidReason = await validateImportFileObject(file, ext, t);
-          if (invalidReason) {
-            return { ok: false as const, name: file.name, reason: invalidReason };
-          }
-          let textbookFailureReason: string | undefined;
-          // 仅 PDF/EPUB 从「导入资料…」优先尝试教材解析；若浏览器/WebUI 环境未解析出教材条目，
-          // 统一兜底写入 VFS files 表（前置已拦截 0 字节与损坏 PDF），绝不静默丢弃。
-          const shouldTryTextbookImport =
-            fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
-          if (shouldTryTextbookImport) {
-            try {
-              const result = await withStagedTextbookFile(file, (source) =>
-                textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
-              if (result.ok && result.value[0]) {
-                return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
-              }
-              textbookFailureReason = result.ok
-                ? t('finder.dragDrop.importFailed')
-                : result.error.toUserMessage();
-            } catch (stageErr) {
-              textbookFailureReason = stageErr instanceof Error ? stageErr.message : String(stageErr);
+          try {
+            const invalidReason = await validateImportFileObject(file, ext, t);
+            if (invalidReason) {
+              return { ok: false as const, name: file.name, reason: invalidReason };
             }
-          }
-          // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空 type 落盘失败）
-          const result = await attachmentDstuAdapter.create(
-            file, isImage ? 'image' : 'file',
-            {
-              ...(currentCreatableFolderId ? { folderId: currentCreatableFolderId } : {}),
-              mimeType,
-            },
-          );
-          if (!result.ok) {
+            let textbookFailureReason: string | undefined;
+            // 仅 PDF/EPUB 从「导入资料…」优先尝试教材解析；若浏览器/WebUI 环境未解析出教材条目，
+            // 统一兜底写入 VFS files 表（前置已拦截 0 字节与损坏 PDF），绝不静默丢弃。
+            const shouldTryTextbookImport =
+              fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
+            if (shouldTryTextbookImport) {
+              try {
+                const result = await withStagedTextbookFile(file, (source) =>
+                  textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
+                if (result.ok && result.value[0]) {
+                  return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
+                }
+                textbookFailureReason = result.ok
+                  ? t('finder.dragDrop.importFailed')
+                  : result.error.toUserMessage();
+              } catch (stageErr) {
+                textbookFailureReason = stageErr instanceof Error ? stageErr.message : String(stageErr);
+              }
+            }
+            // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空/通用 type 落盘失败）
+            const result = await attachmentDstuAdapter.create(
+              file, isImage ? 'image' : 'file',
+              {
+                ...(currentCreatableFolderId ? { folderId: currentCreatableFolderId } : {}),
+                mimeType,
+              },
+            );
+            if (!result.ok) {
+              return {
+                ok: false as const,
+                name: file.name,
+                reason: result.error.toUserMessage() || textbookFailureReason,
+              };
+            }
+            return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
+          } catch (e) {
             return {
               ok: false as const,
               name: file.name,
-              reason: result.error.toUserMessage() || textbookFailureReason,
+              reason: e instanceof Error ? e.message : undefined,
             };
+          } finally {
+            if (isMountedRef.current) {
+              setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
+            }
           }
-          return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
-        } catch (e) {
-          return {
-            ok: false as const,
-            name: file.name,
-            reason: e instanceof Error ? e.message : undefined,
-          };
-        } finally {
-          if (isMountedRef.current) {
-            setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
-          }
-        }
-      })
-    )
-  );
-
-  if (isMountedRef.current) {
-    setAttachImportProgress(null);
+        })
+      )
+    );
+  } finally {
+    if (isMountedRef.current) {
+      setAttachImportProgress(null);
+    }
   }
 
   for (const r of results) {
     if (r.ok) totalSuccess++;
     else {
       totalFailed++;
-      failedDetails.push({ name: r.name, reason: r.reason });
+      failedDetails.push({ name: r.name, reason: 'reason' in r ? r.reason : undefined });
     }
   }
 

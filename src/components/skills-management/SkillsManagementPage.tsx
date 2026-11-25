@@ -91,6 +91,7 @@ import {
 
 // 子组件
 import { SkillsList } from './SkillsList';
+import { SkillDetailPreview } from './SkillDetailPreview';
 import { SkillEditorModal, type SkillFormData } from './SkillEditorModal';
 import { SkillFullscreenEditor } from './SkillFullscreenEditor';
 import { SkillTapBrowser } from './SkillTapBrowser';
@@ -266,8 +267,9 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState<'all' | SkillLocation>('all');
 
-  // 当前选中的技能（用于列表高亮）
+  // 当前选中的技能（用于列表高亮）与只读详情预览状态
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [previewSkillId, setPreviewSkillId] = useState<string | null>(null);
   // 默认启用的技能（使用持久化的 Hook）
   const { defaultIds: defaultSkillIds, toggleDefault } = useSkillDefaults();
 
@@ -386,13 +388,20 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registryVersion]);
 
-  // 如果当前选中项已不存在，清空选中
+  // 如果当前选中项/预览项已不存在，清空状态
   useEffect(() => {
-    if (!selectedSkillId) return;
-    if (!allSkills.find(s => s.id === selectedSkillId)) {
+    if (selectedSkillId && !allSkills.find(s => s.id === selectedSkillId)) {
       setSelectedSkillId(null);
     }
-  }, [allSkills, selectedSkillId]);
+    if (previewSkillId && !allSkills.find(s => s.id === previewSkillId)) {
+      setPreviewSkillId(null);
+    }
+  }, [allSkills, selectedSkillId, previewSkillId]);
+
+  const previewSkill = useMemo(() => {
+    if (!previewSkillId) return null;
+    return allSkills.find((s) => s.id === previewSkillId) ?? null;
+  }, [allSkills, previewSkillId]);
 
   // 默认启用的技能列表
   const defaultSkills = useMemo(() => {
@@ -482,8 +491,15 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     }
   }, [pendingUpdates, t]);
 
+  // 打开只读详情预览（点击技能卡片默认进入只读视图，需显式点击「编辑」再进入编辑器）
+  const handleOpenPreview = useCallback((skill: SkillDefinition) => {
+    setSelectedSkillId(skill.id);
+    setPreviewSkillId(skill.id);
+  }, []);
+
   // 打开创建编辑器
   const handleCreate = useCallback(() => {
+    setPreviewSkillId(null);
     setEditingSkill(null);
     setEditorLocation('global');
     setSelectedSkillId(null);
@@ -498,6 +514,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // 打开编辑器
   const handleEdit = useCallback((skill: SkillDefinition, cardRect?: DOMRect) => {
+    setPreviewSkillId(null);
     setEditingSkill(skill);
     setEditorLocation(skill.location);
     setSelectedSkillId(skill.id);
@@ -524,6 +541,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // 打开删除确认
   const handleDelete = useCallback((skill: SkillDefinition) => {
+    setPreviewSkillId((current) => (current === skill.id ? null : current));
     setSkillToDelete(skill);
     setDeleteConfirmOpen(true);
   }, []);
@@ -1695,7 +1713,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onToggleDefault={handleToggleDefault}
             onResetToOriginal={handleRequestResetToDefault}
             onExport={handleExport}
-            onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
+            onSelectSkill={handleOpenPreview}
             cardRefsMap={cardRefsMap}
             editingSkillId={editorOpen ? editingSkill?.id : null}
             isLoading={isLoading}
@@ -2189,6 +2207,17 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </MobileSlidingLayout>
 
         {/* 删除/覆盖确认已改为列表顶部行内横幅（renderInlineConfirms），不再挂载模态 AlertDialog */}
+        <SkillDetailPreview
+          skill={previewSkill}
+          open={Boolean(previewSkill) && !editorOpen}
+          isDefault={Boolean(previewSkill && defaultSkillIds.includes(previewSkill.id))}
+          onClose={() => setPreviewSkillId(null)}
+          onEdit={(skill) => handleEdit(skill)}
+          onToggleDefault={handleToggleDefault}
+          onTrustChanged={() => {
+            void reloadSkills().then(() => setRegistryVersion((v) => v + 1));
+          }}
+        />
       </div>
     );
   }
@@ -2198,6 +2227,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     <LayoutGroup>
       <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
+
+        {/* 只读详情预览抽屉：点击技能卡片先进入只读预览，显式点击「编辑」再进入编辑器 */}
+        <SkillDetailPreview
+          skill={previewSkill}
+          open={Boolean(previewSkill) && !editorOpen}
+          isDefault={Boolean(previewSkill && defaultSkillIds.includes(previewSkill.id))}
+          onClose={() => setPreviewSkillId(null)}
+          onEdit={(skill) => handleEdit(skill)}
+          onToggleDefault={handleToggleDefault}
+          onTrustChanged={() => {
+            void reloadSkills().then(() => setRegistryVersion((v) => v + 1));
+          }}
+        />
 
         {/* 桌面端编辑器：页面容器内的内联全区编辑视图（absolute 于本页面内，不逃出 OS 窗口）。
             删除/覆盖确认与移动端共用列表顶部行内横幅（renderInlineConfirms），无模态 */}

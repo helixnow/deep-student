@@ -262,6 +262,38 @@ describe('dstu_create', { timeout: 30_000 }, () => {
       .rejects.toBe('Invalid base64 data: Invalid symbol 33, offset 0.');
   });
 
+  it('stores Office/subtitle files with real blob extensions and exposes them in dstu_list typeFilter=file', async () => {
+    const docx = await create({
+      type: 'file',
+      name: '01-study-guide.docx',
+      fileBase64: Buffer.from('PK\x03\x04docx-content', 'latin1').toString('base64'),
+      metadata: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    });
+    const xlsx = await create({
+      type: 'file',
+      name: '04-scores.xlsx',
+      fileBase64: Buffer.from('PK\x03\x04xlsx-content', 'latin1').toString('base64'),
+      metadata: { mimeType: 'application/octet-stream' },
+    });
+    const vtt = await create({
+      type: 'file',
+      name: 'lecture.vtt',
+      fileBase64: Buffer.from('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n', 'utf8').toString('base64'),
+      metadata: { mimeType: 'text/vtt' },
+    });
+
+    const blobPath = (fileId: string) => conn.pluck<string | null>(
+      'SELECT b.relative_path FROM blobs b JOIN files f ON f.blob_hash = b.hash WHERE f.id = ?1',
+      [fileId],
+    );
+    expect(blobPath(docx.id)?.endsWith('.docx')).toBe(true);
+    expect(blobPath(xlsx.id)?.endsWith('.xlsx')).toBe(true);
+    expect(blobPath(vtt.id)?.endsWith('.vtt')).toBe(true);
+
+    const listed = await invoke<DstuNode[]>('dstu_list', { path: '/', options: { typeFilter: 'file' } });
+    expect(listed.map(node => node.id)).toEqual(expect.arrayContaining([docx.id, xlsx.id, vtt.id]));
+  });
+
   it('rolls back owner mindmap, resource and membership writes before emitting created', async () => {
     const folder = await createFolder('原子创建');
     const eventCount = host.eventsNamed('dstu:change').length;

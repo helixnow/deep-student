@@ -240,6 +240,25 @@
       "frontend": "app"
     },
     {
+      "name": "data_governance_get_pending_breakdown",
+      "lane": "L20-sync",
+      "source": "host/plugins/sync/src/status.ts",
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PendingBreakdownResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
       "name": "data_governance_get_sync_status",
       "lane": "L20-sync",
       "rust": {
@@ -647,6 +666,36 @@
       ],
       "result": {
         "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_pairing_get_cloud_credentials",
+      "lane": "L20-sync",
+      "source": "host/plugins/sync/src/plugin.ts",
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
       },
       "error": {
         "type": "string"
@@ -1319,6 +1368,70 @@
       ],
       "additionalProperties": false,
       "x-rust": "deep_student_lib::data_governance::commands_sync::DatabaseSyncStatusResponse"
+    },
+    "PendingBreakdownResponse": {
+      "type": "object",
+      "properties": {
+        "total_pending_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "databases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PendingDatabaseBreakdown"
+          }
+        }
+      },
+      "required": [
+        "total_pending_changes",
+        "databases"
+      ],
+      "additionalProperties": false
+    },
+    "PendingDatabaseBreakdown": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "pending_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PendingTableBreakdown"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "pending_changes",
+        "tables"
+      ],
+      "additionalProperties": false
+    },
+    "PendingTableBreakdown": {
+      "type": "object",
+      "properties": {
+        "table_name": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "table_name",
+        "count"
+      ],
+      "additionalProperties": false
     },
     "PruneGapResponse": {
       "type": "object",

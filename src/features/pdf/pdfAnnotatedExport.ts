@@ -12,7 +12,12 @@ export async function createAnnotatedPdf(
   original: Pick<PDFDocumentProxy, 'getData' | 'getPage'>,
   highlights: readonly Highlight[],
 ): Promise<Uint8Array> {
-  const pdf = await PDFDocument.load(await original.getData(), { updateMetadata: false });
+  const raw = await original.getData();
+  const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+  const pdf = await PDFDocument.load(bytes, {
+    updateMetadata: false,
+    ignoreEncryption: true,
+  });
   const viewports = new Map<number, Awaited<ReturnType<PDFDocumentProxy['getPage']>>>();
   let exported = 0;
   for (const highlight of highlights) {
@@ -23,7 +28,7 @@ export async function createAnnotatedPdf(
       source = await original.getPage(n);
       viewports.set(n, source);
     }
-    const viewport = source.getViewport({ scale: 1, rotation: 0 });
+    const viewport = source.getViewport({ scale: 1 });
     const corners = highlight.rects.flatMap(({ x, y, width, height }) => {
       if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return [];
       const w = highlight.coordVersion === 2 ? viewport.width : 1;

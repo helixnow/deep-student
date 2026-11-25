@@ -61,6 +61,12 @@ function appendQuarantineVisibilityWarning(result: SyncExecutionResult, quaranti
 }
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+/** L20-sync commands declare `error: { type: "string" }`; coerce AppError-valued subclasses (e.g. CloudStorageError). */
+function toStringCommandError(error: unknown, detail: string): CommandError {
+  return error instanceof CommandError && typeof error.value === 'string' && error.value === detail
+    ? error
+    : new CommandError(detail);
+}
 const notConfigured = 'Cloud storage is not configured. Save a cloud config in Settings first.';
 export const LAST_SYNC_AT_SETTING_KEY = 'data_governance.last_sync_at';
 export const FULL_SNAPSHOT_PUSH_SETTING_KEY = 'data_governance.pending_full_snapshot_push';
@@ -144,7 +150,7 @@ export async function runSyncV5(
     if (!encodedRoot) throw new Error('V5 repository keys are not configured. Pair this device first.');
     const root = JSON.parse(encodedRoot) as { repoId: string; kCid: string; masterKeys: [number, string][]; contentEpoch: number };
     const storage = storageWithV5Ranges(await ctx.syncProvider.createStorage(config));
-    lease = await acquireSyncTargetLease(storage, deviceId);
+    lease = await acquireSyncTargetLease(storage, deviceId, { reclaimSelfResidual: true });
     checkCancelled();
     const names: CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
     const databases = new Map(names.map(name => [name, ctx.storage.database(name)]));
@@ -178,8 +184,9 @@ export async function runSyncV5(
       conflicts_detected: 0, duration_ms: duration, error_message: null, skipped_changes: skipped };
   } catch (error) {
     const duration = Math.max(0, Math.floor(performance.now() - start));
-    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'failed', error: message(error), durationMs: duration }, details: { device_id: deviceId, protocol: 'v5' } });
-    throw error instanceof CommandError ? error : new CommandError(message(error));
+    const detail = message(error);
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'failed', error: detail, durationMs: duration }, details: { device_id: deviceId, protocol: 'v5' } });
+    throw toStringCommandError(error, detail);
   } finally {
     signal?.removeEventListener('abort', cancel);
     ctx.syncProvider.clearCancelToken();
@@ -228,7 +235,7 @@ export async function runSync(
     ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
       outcome: { kind: 'failed', error: detail, durationMs: Math.max(0, Math.floor(performance.now() - start)) },
       details: { device_id: deviceId || null, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
-    throw error instanceof CommandError ? error : new CommandError(detail);
+    throw toStringCommandError(error, detail);
   }
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
     device_id: deviceId, direction, strategy: strategy ?? 'keep_latest', provider: { webdav: 'WebDav', s3: 'S3', ftp: 'Ftp' }[providerKey(config.provider ?? 'webdav')], root: config.root ?? null,
@@ -275,7 +282,7 @@ export async function runSync(
       tombstones: ports.tombstones, isCancelled: () => ctx.syncProvider.isSyncCancelled() };
     try { await validateRemoteFormat(storage, parsed !== 'Download', options); }
     catch (error) { throw new Error(`同步格式协商失败: ${message(error)}`); }
-    lease = await acquireSyncTargetLease(storage, deviceId);
+    lease = await acquireSyncTargetLease(storage, deviceId, { reclaimSelfResidual: true });
     if (parsed !== 'Download') await enforceRecordUploadEncryptionPolicyForConfig(ctx.syncProvider, config, deviceId,
       { backup: ctx.secrets.backup, encryptionMemoryPath: join(ctx.app.dataDir, '.cloud-encrypted-roots.json') });
     validateSyncRegistryDrift(ctx.storage);
@@ -303,7 +310,7 @@ export async function runSync(
     const duration = Math.floor(performance.now() - start);
     ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'failed', error: detail, durationMs: duration },
       details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
-    throw error instanceof CommandError ? error : new CommandError(detail);
+    throw toStringCommandError(error, detail);
   }
   finally {
     signal?.removeEventListener('abort', cancel); ctx.syncProvider.clearCancelToken();
@@ -345,7 +352,7 @@ export async function runSyncWithProgress(
         details: { device_id: auditDeviceId, direction: auditParsed.toLowerCase(), strategy: auditStrategy, with_progress: true, cancelled },
       });
     }
-    throw error instanceof CommandError ? error : new CommandError(detail);
+    throw toStringCommandError(error, detail);
   };
   let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig, deviceId: string;
   try {
@@ -397,7 +404,7 @@ export async function runSyncWithProgress(
       isCancelled: () => ctx.syncProvider.isSyncCancelled() };
     try { await validateRemoteFormat(storage, parsed !== 'Download', options); }
     catch (error) { return fail(new Error(`同步格式协商失败: ${message(error)}`)); }
-    try { lease = await acquireSyncTargetLease(storage, deviceId); }
+    try { lease = await acquireSyncTargetLease(storage, deviceId, { reclaimSelfResidual: true }); }
     catch (error) { return fail(error); }
     if (parsed !== 'Download') {
       try { await enforceRecordUploadEncryptionPolicyForConfig(ctx.syncProvider, config, deviceId,

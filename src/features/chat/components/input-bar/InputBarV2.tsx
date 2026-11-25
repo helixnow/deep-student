@@ -225,10 +225,12 @@ function resolveModelReasoningSupport(model: ModelInfo | undefined): boolean {
 
 function getManualPinnedSkillIds(
   skillStateJson: string | null | undefined,
-  _fallbackActiveSkillIds: string[]
+  fallbackActiveSkillIds: string[]
 ): string[] {
   if (!skillStateJson) {
-    return [];
+    return fallbackActiveSkillIds.filter(
+      (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0
+    );
   }
 
   try {
@@ -239,7 +241,9 @@ function getManualPinnedSkillIds(
       );
     }
   } catch {
-    return [];
+    return fallbackActiveSkillIds.filter(
+      (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0
+    );
   }
 
   return [];
@@ -1344,6 +1348,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [activeSkillIds, activateSkill, deactivateSkill]);
 
+    const handleDeactivateSkill = useCallback(async (skillId: string) => {
+      await deactivateSkill(skillId);
+    }, [deactivateSkill]);
+
     const handleClearAllSkills = useCallback(async () => {
       await deactivateSkill();
     }, [deactivateSkill]);
@@ -1500,6 +1508,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         activeSkillIds={displayActiveSkillIds}
         hasLoadedSkills={hasLoadedSkills}
         onToggleSkill={handleToggleSkill}
+        onDeactivateSkill={handleDeactivateSkill}
         onClearAllSkills={handleClearAllSkills}
         // 教材侧栏控制
         textbookOpen={textbookOpen}

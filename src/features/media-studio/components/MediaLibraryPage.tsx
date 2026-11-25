@@ -926,7 +926,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
         <CustomScrollArea
           className="min-h-0 flex-1"
-          viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px)+var(--wb-dock-clearance,0px))] sm:pb-6"
+          viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px)+var(--wb-mobile-dock-clearance,var(--mobile-dock-height,var(--wb-dock-clearance,0px))))] sm:pb-6"
         >
           <div className={cn(
             'px-5 pt-4 sm:px-8 lg:px-10',
@@ -969,7 +969,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           role="toolbar"
           aria-label={t('mediaStudio:select.barLabel')}
           className="study-shell-toolbar shrink-0 space-y-1.5 border-t px-3 pt-2"
-          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px) + var(--wb-dock-clearance, 0px))' }}
+          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px) + var(--wb-mobile-dock-clearance, var(--mobile-dock-height, var(--wb-dock-clearance, 0px))))' }}
           data-media-select-bar=""
         >
           <div className="flex items-center gap-2">
@@ -986,7 +986,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         // 手机：导入固定在底部，单手可达（预留底部 Dock 避让）
         <div
           className="study-shell-toolbar shrink-0 border-t px-3 pt-2"
-          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px) + var(--wb-dock-clearance, 0px))' }}
+          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px) + var(--wb-mobile-dock-clearance, var(--mobile-dock-height, var(--wb-dock-clearance, 0px))))' }}
           data-media-import-bar=""
         >
           <div className="flex items-center gap-2.5">

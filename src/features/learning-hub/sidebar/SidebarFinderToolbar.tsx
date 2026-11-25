@@ -98,6 +98,7 @@ export function SidebarFinderToolbar({
     searchPlaceholder={searchPlaceholder}
     searchDisabled={!canSearchInCurrentView}
     onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
+    onImportFiles={canCreateInCurrentView ? handleNewTextbook : undefined}
     createMenuItems={quickAccessPortalTarget && canCreateInCurrentView ? (
       <FinderCreateMenuItems
         onNewFolder={handleNewFolder}

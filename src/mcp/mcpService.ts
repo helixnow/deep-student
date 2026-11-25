@@ -159,6 +159,8 @@ export interface McpStatusInfo {
   servers: Array<{ id: string; connected: boolean; error?: string }>;
   toolsCount: number;
   lastError?: string;
+  /** True when Safe Mode paused automatic connection to external user-configured MCP servers. */
+  mcpPausedForSafeMode?: boolean;
 }
 
 export interface ToolInfo { name: string; description?: string; input_schema?: any }
@@ -330,6 +332,18 @@ class McpServiceImpl {
   private lastErrorSummaryKey: string | null = null;
   // 标记是否正在销毁，防止 dispose() 触发的 onclose 引发重连
   private _disposing = false;
+  // 安全模式下暂停自动连接外部自定义 MCP 服务器（手动检测/测试仍可用）
+  private _mcpPausedForSafeMode = false;
+
+  get mcpPausedForSafeMode(): boolean {
+    return this._mcpPausedForSafeMode;
+  }
+
+  setMcpPausedForSafeMode(paused: boolean): void {
+    if (this._mcpPausedForSafeMode === paused) return;
+    this._mcpPausedForSafeMode = paused;
+    this.emitStatus();
+  }
   
   private readonly CACHE_KEY_TOOLS = 'mcp_cache_tools'; // per-server suffix: ::<serverId>
   private readonly CACHE_KEY_PROMPTS = 'mcp_cache_prompts';
@@ -991,6 +1005,7 @@ class McpServiceImpl {
       servers,
       toolsCount: Array.from(this.toolCacheByServer.values()).reduce((acc, s) => acc + (s.tools?.length || 0), 0),
       lastError: servers.find(s => s.error)?.error,
+      mcpPausedForSafeMode: this._mcpPausedForSafeMode,
     };
     
     // 调试：打印状态（仅在错误摘要变化时打印，避免刷屏）
@@ -2087,6 +2102,41 @@ async function loadMcpPerformanceFromSettings(): Promise<McpPerformanceSettings>
   return {};
 }
 
+export function isSafeModeUrlParam(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('safeMode') ?? params.get('safe_mode');
+    return value === '1' || value === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function isMcpPausedForSafeMode(): boolean {
+  return McpService.mcpPausedForSafeMode;
+}
+
+async function detectSafeModeSession(): Promise<boolean> {
+  if (isSafeModeUrlParam()) return true;
+  const hasHostBridge =
+    isTauriEnvironment ||
+    (typeof window !== 'undefined' &&
+      Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI_IPC__)) ||
+    Boolean((globalThis as { __DS_WEBUI__?: boolean }).__DS_WEBUI__);
+  if (!hasHostBridge) return false;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const manifest = await invoke<{ safeMode?: boolean } | unknown[]>('plugin:ui|manifest', { version: 2 });
+    if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)) {
+      return (manifest as { safeMode?: unknown }).safeMode === true;
+    }
+  } catch (err: unknown) {
+    debugLog.debug('[MCP] Safe Mode manifest probe unavailable; assuming normal mode:', err);
+  }
+  return false;
+}
+
 export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): Promise<void> {
   if (bootstrapInFlight) {
     return bootstrapInFlight;
@@ -2094,10 +2144,12 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
 
   bootstrapInFlight = (async () => {
     setupTauriBridge();
+    const safeMode = await detectSafeModeSession();
     const servers = await loadServersFromSettings();
     const cacheTtlMs = await loadCacheTtlFromSettings();
     const performance = await loadMcpPerformanceFromSettings();
     const signature = JSON.stringify({
+      safeMode,
       servers: servers.map((s) => ({
         id: s.id,
         type: s.type,
@@ -2119,9 +2171,29 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
     }
 
     McpService.init({ servers, cacheTtlMs: cacheTtlMs ?? 300_000, ...performance });
+
+    if (safeMode) {
+      McpService.setMcpPausedForSafeMode(true);
+      debugLog.warn('[MCP] Safe Mode is active — skipping auto-connect for external custom MCP servers', {
+        configuredCount: servers.length,
+        serverIds: servers.map((s) => s.id),
+      });
+      const status = await McpService.status();
+      emitMcpDebugEvent('mcp-bootstrap-ready', {
+        servers: status.servers,
+        toolsCount: status.toolsCount,
+        connected: status.connected,
+        mcpPausedForSafeMode: true,
+      });
+      lastBootstrapSignature = signature;
+      lastBootstrapCompletedAt = Date.now();
+      return;
+    }
+
+    McpService.setMcpPausedForSafeMode(false);
     if (servers.length === 0) {
       // 即使没有服务器，也触发 ready 事件让 UI 更新
-      emitMcpDebugEvent('mcp-bootstrap-ready', { servers: [], toolsCount: 0 });
+      emitMcpDebugEvent('mcp-bootstrap-ready', { servers: [], toolsCount: 0, mcpPausedForSafeMode: false });
       lastBootstrapSignature = signature;
       lastBootstrapCompletedAt = now;
       return;
@@ -2129,7 +2201,10 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
 
     try {
       await McpService.connectAll();
-      if (options.preheat && isTauriEnvironment) {
+      const inTauri =
+        isTauriEnvironment ||
+        (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__));
+      if (options.preheat && inTauri) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('preheat_mcp_tools');
@@ -2154,6 +2229,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
       servers: status.servers,
       toolsCount: status.toolsCount,
       connected: status.connected,
+      mcpPausedForSafeMode: false,
     });
     lastBootstrapSignature = signature;
     lastBootstrapCompletedAt = Date.now();

@@ -11,7 +11,7 @@
  * 位置与格式由 `profile.ts` 决定（`extends: "official"`、条目字段），本模块不另写一份 schema。
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, unlink } from 'node:fs/promises';
+import { constants as fsConstants, copyFile, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { validateProfileFile, type ProfileEntry, type ProfileFile } from './profile.ts';
 import { renameWithRetry } from '../platform/util/durable-fs.ts';
@@ -97,6 +97,38 @@ export class UserProfileStore {
       return { revision: profileRevision(text), value };
     };
     // Run after the previous write settles, whether it succeeded or failed.
+    const pending = (writes.get(this.path) ?? Promise.resolve()).then(step, step);
+    writes.set(this.path, pending);
+    try {
+      return await pending;
+    } finally {
+      if (writes.get(this.path) === pending) writes.delete(this.path);
+    }
+  }
+
+  /**
+   * 恢复入口（SPOF-1）：若磁盘上存在 `user.profile.json`，先用 `COPYFILE_EXCL` 原子备份为
+   * `user.profile.json.corrupt-<timestamp>-<uuid>.bak`（保留原始坏文件证据），再原子写入干净的
+   * `{ extends: "official", plugins: [] }`。备份失败时绝不覆盖原文件。
+   */
+  async resetWithBackup(now: number = Date.now()): Promise<{ backedUpTo: string | null; revision: string }> {
+    const step = async () => {
+      let backedUpTo: string | null = null;
+      const backup = `${this.path}.corrupt-${now}-${randomUUID()}.bak`;
+      try {
+        await copyFile(this.path, backup, fsConstants.COPYFILE_EXCL);
+        backedUpTo = backup;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw new ProfileStoreError(`cannot back up user profile ${this.path}: ${(error as Error).message}`, { cause: error });
+        }
+      }
+      const clean: ProfileFile = { extends: 'official', plugins: [] };
+      const validated = validateProfileFile(clean, this.path);
+      const text = `${JSON.stringify(validated, null, 2)}\n`;
+      await this.write(text);
+      return { backedUpTo, revision: profileRevision(text) };
+    };
     const pending = (writes.get(this.path) ?? Promise.resolve()).then(step, step);
     writes.set(this.path, pending);
     try {

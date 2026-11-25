@@ -10,10 +10,12 @@ import {
   BracketsCurly,
   CaretDown,
   Eraser,
+  Image as ImageIcon,
   Pause,
   PencilSimple,
   Play,
   PlusCircle,
+  SpeakerHigh,
   Trash,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -21,10 +23,11 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { AnkiCardPreviewPanel } from '@/components/anki/AnkiCardPreviewPanel';
+import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
-import { CardMathText } from '../cardMathPreview';
+import { CardMathText, summarizeCardMedia } from '../cardMathPreview';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { cardMediaSourceTexts, findCardMediaSource } from './cardMediaSource';
 import { jumpToChatSession, openCardSourceRef } from '../cardSource';
@@ -185,6 +188,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const status = getCardStatus(card);
   const front = getCardFront(card);
   const back = getCardBack(card);
+  const cardMedia = useMemo(() => summarizeCardMedia(card), [card]);
+  const hasEmbeddedMedia = cardMedia.imageCount > 0 || cardMedia.audioCount > 0;
 
   // 编辑视图模型：与复习会话共用字段别名映射（Cloze 卡编辑 text/Extra 而非 Front/Back）
   const editable = useMemo<EditableReviewCard>(() => ({
@@ -353,6 +358,28 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   {card.isDue ? t('library.dueNow') : absoluteDue}
                 </span>
               ) : null
+            ) : null}
+            {cardMedia.imageCount > 0 ? (
+              <span
+                className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums"
+                data-testid={`fc-lib-media-images-${card.id}`}
+                aria-label={translate('library.media.images', { count: cardMedia.imageCount, defaultValue: `${cardMedia.imageCount} 张图片` })}
+                title={translate('library.media.images', { count: cardMedia.imageCount, defaultValue: `${cardMedia.imageCount} 张图片` })}
+              >
+                <ImageIcon size={11} aria-hidden="true" />
+                <span>{cardMedia.imageCount}</span>
+              </span>
+            ) : null}
+            {cardMedia.audioCount > 0 ? (
+              <span
+                className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums"
+                data-testid={`fc-lib-media-audio-${card.id}`}
+                aria-label={translate('library.media.audio', { count: cardMedia.audioCount, defaultValue: `${cardMedia.audioCount} 段音频` })}
+                title={translate('library.media.audio', { count: cardMedia.audioCount, defaultValue: `${cardMedia.audioCount} 段音频` })}
+              >
+                <SpeakerHigh size={11} aria-hidden="true" />
+                <span>{cardMedia.audioCount}</span>
+              </span>
             ) : null}
             {card.tags.slice(0, 3).map((tag) => (
               <span key={tag} className="wb-fc-tag">{tag}</span>
@@ -569,8 +596,34 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             ) : (
               <>
                 {template ? (
-                  /* 带模板的卡片：模板化正反面预览（含字段/标签），替代纯文本卡面 */
+                  /* 带模板的卡片：模板化正反面预览（含字段/标签与内嵌媒体），替代纯文本卡面 */
                   <AnkiCardPreviewPanel card={card} template={template} />
+                ) : hasEmbeddedMedia ? (
+                  /* 带嵌入式图片/音频的导入卡：展开时渲染真实图片与可播放音频 */
+                  <div className="fc-lib-paper">
+                    <div className="fc-lib-face">
+                      <span className="fc-lib-face-label">{t('session.front')}</span>
+                      <AnkiTemplateCardFace
+                        card={card}
+                        template={null}
+                        side="front"
+                        compact
+                        interactiveFrame
+                        emptyText={t('card.untitled')}
+                      />
+                    </div>
+                    <div className="fc-lib-face">
+                      <span className="fc-lib-face-label">{t('session.back')}</span>
+                      <AnkiTemplateCardFace
+                        card={card}
+                        template={null}
+                        side="back"
+                        compact
+                        interactiveFrame
+                        emptyText={t('card.noBack')}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div className="fc-lib-paper">
                     <div className="fc-lib-face">

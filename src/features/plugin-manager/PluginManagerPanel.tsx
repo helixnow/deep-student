@@ -23,7 +23,8 @@ import type { UnifiedModelInfo } from '@/features/settings/components/plugins/Pl
 import type { PluginInfo } from '@/features/settings/api/pluginsApi';
 
 import { ChannelPluginDialog, ChannelPluginSection, findChannelPlugin, useChannelPlugins } from './ChannelPluginSection';
-import { enterSafeModeAndRestart, exitSafeModeAndRestart } from './safeMode';
+import { enterSafeModeAndRestart } from './safeMode';
+import { SafeModeExitDialog } from './SafeModeExitDialog';
 import { ConfigForm } from './ConfigForm';
 import { permissionLines } from './permissions';
 import { pluginConfigForm } from './config-schema';
@@ -33,14 +34,14 @@ import { PluginCard } from './PluginCard';
 import { PluginDetail } from './PluginDetail';
 import { PluginRow } from './PluginRow';
 import { forgetPluginContributions, usePluginContributions } from './contributions';
-import { PACKAGE_BUSY_KEY, errorMessage, usePluginManagerState, type PluginManagerController } from './controller';
+import { PACKAGE_BUSY_KEY, PROFILE_RESET_BUSY_KEY, errorMessage, usePluginManagerState, type PluginManagerController } from './controller';
 import { describeManagerError, errorBudgetOf, resolveManagerErrorCode, type PluginErrorBudgetView } from './reasons';
-import type { ManagedPlugin } from './types';
+import type { ManagedPlugin, PluginProfileResetResult } from './types';
 import { pluginUiStatus, type PluginUiHostStatus } from './ui-status';
 import { usePluginUiHostStatus } from './use-ui-status';
 import { usePluginErrorBudget } from './use-error-budget';
 import {
-  PLUGIN_FILTERS, categoryIconName, officialPluginGroups, pluginDescription, pluginFiltersForMode, pluginIsEssential, pluginName, pluginNeedsAttention,
+  PLUGIN_FILTERS, categoryIconName, officialPluginGroups, pluginDescription, pluginFiltersForMode, pluginHasFault, pluginIsEssential, pluginName, pluginNeedsAttention,
   type PluginFilter,
 } from './presentation';
 import { usePluginManagerWorkshop, type PluginManagerWork, type PluginManagerWorkshop } from './workshop';
@@ -123,6 +124,8 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
   const [urlSubmitting, setUrlSubmitting] = useState(false);
+  const [exitSafeModeOpen, setExitSafeModeOpen] = useState(false);
+  const [profileResetResult, setProfileResetResult] = useState<PluginProfileResetResult | null>(null);
   const configTitleId = useId();
   const urlDialogTitleId = useId();
   const creationsId = useId();
@@ -204,6 +207,16 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const totalCommunityCount = useMemo(
     () => state.plugins.filter((plugin) => plugin.origin === 'community').length,
     [state.plugins],
+  );
+  const faultedCommunityCount = useMemo(
+    () =>
+      state.plugins.filter(
+        (plugin) =>
+          plugin.origin === 'community' &&
+          (pluginHasFault(plugin, pluginUiStatus(hostStatus, plugin.id)) ||
+            autoUninstalled.some((entry) => entry.pluginId === plugin.id)),
+      ).length,
+    [state.plugins, hostStatus, autoUninstalled],
   );
   const needle = query.trim().toLocaleLowerCase();
   const problemOf = (plugin: ManagedPlugin) =>
@@ -305,10 +318,29 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   };
 
   const packageBusy = state.busy.includes(PACKAGE_BUSY_KEY);
+  const resettingProfile = state.busy.includes(PROFILE_RESET_BUSY_KEY);
+  const listFailedWithProfileReadError =
+    state.error?.code === 'LIST_FAILED' &&
+    typeof state.error.detail === 'string' &&
+    /\bPROFILE_READ_FAILED\b/.test(state.error.detail);
+  const profileCorrupted = state.profileCorrupted || listFailedWithProfileReadError;
+  const profileErrorDetail = state.profileError ?? (listFailedWithProfileReadError ? state.error?.detail ?? null : null);
   const config = state.config;
   const listLoading = state.status === 'loading' || state.status === 'idle';
   const noPlugins = !listLoading && state.plugins.length === 0;
   useRefreshOnReturn(() => controller.refresh(), !listLoading);
+
+  const handleResetCorruptedProfile = async () => {
+    if (resettingProfile) return;
+    setProfileResetResult(null);
+    const result = await controller.resetProfile();
+    if (!result) return;
+    setProfileResetResult(result);
+    const message = result.backedUpTo
+      ? t('profileCorrupted.resetSuccessWithBackup', { path: result.backedUpTo })
+      : t('profileCorrupted.resetSuccess');
+    showGlobalNotification('success', message);
+  };
 
   const narrowing = needle !== '' || filter === 'disabled' || filter === 'problem' || filter === 'safeModePaused';
   const showMine = filter !== 'builtin' && (!narrowing || filter === 'safeModePaused' || community.length > 0);
@@ -351,6 +383,17 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const handleWebFileUpload = async (file: File | undefined, resetInput: () => void) => {
     if (!file) return;
     try {
+      if (file.size === 0) {
+        controller.reportPackageRejection('PLUGIN_PACKAGE_INVALID', 'Archive file is empty (0 bytes)');
+        return;
+      }
+      if (!/\.(dstuplugin|dspack|dsplugin|zip)$/i.test(file.name)) {
+        controller.reportPackageRejection(
+          'PLUGIN_PACKAGE_INVALID',
+          `expected .dstuplugin, .dspack or .dsplugin archive (received "${file.name}")`,
+        );
+        return;
+      }
       const response = await fetch(`/api/files/stage?name=${encodeURIComponent(file.name)}`, {
         method: 'POST',
         headers: {
@@ -362,7 +405,15 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
       });
       if (!response.ok) {
         const text = await response.text().catch(() => '');
-        controller.reportPackageRejection('STAGE_UPLOAD_FAILED', text || `HTTP ${response.status}`);
+        let detail = text || `HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(text) as { error?: string; message?: string };
+          if (typeof parsed?.error === 'string' && parsed.error.trim()) detail = parsed.error;
+          else if (typeof parsed?.message === 'string' && parsed.message.trim()) detail = parsed.message;
+        } catch {
+          // Keep plain text response body.
+        }
+        controller.reportPackageRejection('STAGE_UPLOAD_FAILED', detail);
         return;
       }
       const data = (await response.json()) as { path?: string };
@@ -477,6 +528,9 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               <div className="min-w-0 space-y-0.5">
                 <div className="font-medium">{t('safeMode.title')}</div>
                 <p className="text-xs leading-relaxed text-muted-foreground/80">{t('safeMode.description')}</p>
+                <p data-testid="plugin-safe-mode-mcp-note" className="text-xs leading-relaxed text-muted-foreground/80">
+                  {t('safeMode.mcpPausedNote')}
+                </p>
               </div>
             </div>
             <DsButton
@@ -484,14 +538,66 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               size="sm"
               data-testid="plugin-exit-safe-mode"
               className={cn('shrink-0 border-warning/40 bg-background/85 text-foreground hover:bg-background', COARSE_TOUCH)}
-              onClick={() => void exitSafeModeAndRestart()}
+              onClick={() => setExitSafeModeOpen(true)}
             >
               {t('safeMode.exitButton')}
             </DsButton>
           </div>
         ) : null}
 
-        {state.error ? (() => {
+        {profileCorrupted ? (
+          <div
+            role="alert"
+            data-testid="plugin-profile-corrupted-banner"
+            className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3.5 text-sm text-destructive"
+          >
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+              <WarningCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 space-y-1.5">
+                <div className="font-medium">{t('profileCorrupted.title')}</div>
+                <p className="text-xs leading-relaxed text-foreground/90">{t('profileCorrupted.description')}</p>
+                {profileErrorDetail ? (
+                  <p
+                    data-testid="plugin-profile-corrupted-error"
+                    className="break-words rounded bg-background/70 px-2 py-1 font-mono text-[11px] text-destructive"
+                  >
+                    <span className="font-sans font-medium text-muted-foreground">{t('profileCorrupted.errorLabel')} </span>
+                    {profileErrorDetail}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <DsButton
+              variant="outline"
+              size="sm"
+              data-testid="plugin-profile-reset-button"
+              className={cn('shrink-0 border-destructive/40 bg-background/85 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
+              disabled={resettingProfile}
+              onClick={() => void handleResetCorruptedProfile()}
+            >
+              {resettingProfile ? t('profileCorrupted.resetting') : t('profileCorrupted.resetButton')}
+            </DsButton>
+          </div>
+        ) : null}
+
+        {profileResetResult && !profileCorrupted ? (
+          <div
+            role="status"
+            data-testid="plugin-profile-reset-success"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-foreground"
+          >
+            <p className="min-w-0 flex-1 break-words leading-relaxed">
+              {profileResetResult.backedUpTo
+                ? t('profileCorrupted.resetSuccessWithBackup', { path: profileResetResult.backedUpTo })
+                : t('profileCorrupted.resetSuccess')}
+            </p>
+            <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => setProfileResetResult(null)}>
+              {t('actions.dismiss')}
+            </DsButton>
+          </div>
+        ) : null}
+
+        {state.error && !listFailedWithProfileReadError ? (() => {
           const effectiveCode = resolveManagerErrorCode(state.error.code, state.error.detail);
           const friendly = describeManagerError(t, state.error.code, state.error.detail);
           return (
@@ -570,18 +676,37 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
                   <p className="leading-relaxed text-muted-foreground">
                     {t('safeMode.pausedSectionDescription', { count: totalCommunityCount })}
                   </p>
+                  {faultedCommunityCount > 0 ? (
+                    <p data-testid="plugin-safe-mode-fault-summary" className="font-medium leading-relaxed text-destructive">
+                      {t('safeMode.pausedSectionFaultSummary', { count: faultedCommunityCount })}
+                    </p>
+                  ) : null}
                 </div>
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  data-testid="plugin-safe-mode-import-shortcut"
-                  className={cn('shrink-0 gap-1.5', COARSE_TOUCH)}
-                  disabled={packageBusy}
-                  onClick={handleImportClick}
-                >
-                  <DownloadSimple className="size-3.5" aria-hidden="true" />
-                  {packageBusy ? t('install.running') : t('actions.install')}
-                </DsButton>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {faultedCommunityCount > 0 && filter !== 'problem' ? (
+                    <DsButton
+                      variant="outline"
+                      size="sm"
+                      data-testid="plugin-safe-mode-view-faulted"
+                      className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
+                      onClick={() => setFilter('problem')}
+                    >
+                      <WarningCircle className="size-3.5" aria-hidden="true" />
+                      {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
+                    </DsButton>
+                  ) : null}
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    data-testid="plugin-safe-mode-import-shortcut"
+                    className={cn('shrink-0 gap-1.5', COARSE_TOUCH)}
+                    disabled={packageBusy}
+                    onClick={handleImportClick}
+                  >
+                    <DownloadSimple className="size-3.5" aria-hidden="true" />
+                    {packageBusy ? t('install.running') : t('actions.install')}
+                  </DsButton>
+                </div>
               </div>
             ) : null}
             {community.length ? (
@@ -874,6 +999,15 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
             input.value = '';
           });
         }}
+      />
+
+      <SafeModeExitDialog
+        open={exitSafeModeOpen}
+        onOpenChange={setExitSafeModeOpen}
+        plugins={state.plugins}
+        controller={controller}
+        uiStatus={uiStatus}
+        errorBudget={errorBudget}
       />
 
       <DsDialog

@@ -292,30 +292,7 @@ export const workbenchBus = {
       return null;
     }
     const store = useWindowStore.getState();
-    const workspaceResource = toWorkspaceResource(req.typeId, req.instanceKey);
-    if (workspaceResource && appRegistry.get(NOTES_WORKSPACE_TYPE_ID)) {
-      const windowId = store.openWindow({
-        typeId: NOTES_WORKSPACE_TYPE_ID,
-        instanceKey: null,
-        payload: {
-          resourceType: workspaceResource.type,
-          resourceId: workspaceResource.id,
-        },
-        dropPoint: req.dropPoint,
-      });
-      void requestWorkspaceResource(workspaceResource, windowId).catch((error) => {
-        console.warn('[workbench:notes] failed to open resource:', error);
-      });
-      return windowId;
-    }
-    if (RESOURCE_WORKSPACE_TYPE_IDS.has(req.typeId)) {
-      const resourceId = req.instanceKey?.trim() || null;
-      const windowId = store.openWindow({
-        typeId: req.typeId,
-        instanceKey: null,
-        payload: resourceId ? { resourceId } : req.payload,
-        dropPoint: req.dropPoint,
-      });
+    const ensureFocusedVisible = (windowId: string | null): string | null => {
       if (windowId) {
         const fresh = useWindowStore.getState();
         const win = fresh.windows[windowId];
@@ -325,18 +302,53 @@ export const workbenchBus = {
         }
         recomputeLifecycles();
       }
+      return windowId;
+    };
+
+    const workspaceResource = toWorkspaceResource(req.typeId, req.instanceKey);
+    if (workspaceResource && appRegistry.get(NOTES_WORKSPACE_TYPE_ID)) {
+      const windowId = ensureFocusedVisible(
+        store.openWindow({
+          typeId: NOTES_WORKSPACE_TYPE_ID,
+          instanceKey: null,
+          payload: {
+            resourceType: workspaceResource.type,
+            resourceId: workspaceResource.id,
+          },
+          dropPoint: req.dropPoint,
+        }),
+      );
+      if (windowId) {
+        void requestWorkspaceResource(workspaceResource, windowId).catch((error) => {
+          console.warn('[workbench:notes] failed to open resource:', error);
+        });
+      }
+      return windowId;
+    }
+    if (RESOURCE_WORKSPACE_TYPE_IDS.has(req.typeId)) {
+      const resourceId = req.instanceKey?.trim() || null;
+      const windowId = ensureFocusedVisible(
+        store.openWindow({
+          typeId: req.typeId,
+          instanceKey: null,
+          payload: resourceId ? { resourceId } : req.payload,
+          dropPoint: req.dropPoint,
+        }),
+      );
       if (resourceId) requestResourceWorkspace(req.typeId as ResourceWorkspaceType, resourceId);
       return windowId;
     }
     if (req.placement?.mode === 'beside' && !req.dropPoint) {
-      return launchBeside(req);
+      return ensureFocusedVisible(launchBeside(req));
     }
-    return store.openWindow({
-      typeId: req.typeId,
-      instanceKey: req.instanceKey ?? null,
-      payload: req.payload,
-      dropPoint: req.dropPoint,
-    });
+    return ensureFocusedVisible(
+      store.openWindow({
+        typeId: req.typeId,
+        instanceKey: req.instanceKey ?? null,
+        payload: req.payload,
+        dropPoint: req.dropPoint,
+      }),
+    );
   },
 
   /** 读取并清空最近一次 activate 的结构化回执 */

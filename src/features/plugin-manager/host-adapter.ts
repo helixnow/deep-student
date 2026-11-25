@@ -8,7 +8,13 @@ import type {
   ManagedPlugin,
   PluginManagerAdapter, PluginConfigRevision, PluginConfigSaveResult, PluginConfigState,
   PluginConfigSchemaNode, PluginConsentSubject, PluginOperationResult, PluginPackageResult, PluginPlatform,
+  PluginProfileResetResult,
 } from './types';
+
+type RawPluginManagerInventory = PluginManagerInventory & {
+  profileCorrupted?: boolean;
+  profileError?: string;
+};
 
 export const MANAGER_COMMANDS = {
   list: 'plugin:manager|list', config: 'plugin:manager|config', save: 'plugin:manager|config|save',
@@ -16,6 +22,7 @@ export const MANAGER_COMMANDS = {
   consent: 'plugin:manager|consent', install: 'plugin:manager|install',
   installUrl: 'plugin:manager|install-url',
   setTrust: 'plugin:manager|set-trust',
+  resetProfile: 'plugin:manager|reset-profile',
 } as const;
 
 export interface PluginManagerTransport {
@@ -86,10 +93,15 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
   constructor(private readonly transport: PluginManagerTransport) {}
 
   async list() {
-    const inventory = await this.transport.invoke<PluginManagerInventory>(MANAGER_COMMANDS.list, {});
+    const inventory = await this.transport.invoke<RawPluginManagerInventory>(MANAGER_COMMANDS.list, {});
     this.inventory = inventory;
     this.revision = inventory.revision;
-    return { platform: this.transport.platform, safeMode: inventory.safeMode, plugins: inventory.plugins.map((entry) => {
+    return {
+      platform: this.transport.platform,
+      safeMode: inventory.safeMode,
+      ...(inventory.profileCorrupted === true ? { profileCorrupted: true } : {}),
+      ...(typeof inventory.profileError === 'string' && inventory.profileError.trim() ? { profileError: inventory.profileError } : {}),
+      plugins: inventory.plugins.map((entry) => {
       return ({
       id: entry.id, origin: entry.origin, version: entry.version ?? '—', platforms: entry.platforms,
       displayName: entry.displayName, displayNameKey: entry.displayNameKey, descriptionKey: entry.descriptionKey,
@@ -103,7 +115,18 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
       configurable: entry.hasConfig,
       requiredBy: entry.requiredBy ?? [], contributes: entry.contributes ?? [], agentTools: entry.agentTools ?? [],
       ...(extendedFields(entry)),
-    }); }) };
+    }); }),
+    };
+  }
+
+  async resetProfile(): Promise<PluginProfileResetResult> {
+    const result = await this.transport.invoke<PluginProfileResetResult>(MANAGER_COMMANDS.resetProfile, {});
+    this.revision = result.revision;
+    this.inventory = undefined;
+    return {
+      backedUpTo: typeof result.backedUpTo === 'string' && result.backedUpTo.trim() ? result.backedUpTo : null,
+      revision: result.revision,
+    };
   }
 
   async setTrust(subject: PluginConsentSubject, trust: 'full' | 'restricted'): Promise<PluginOperationResult> {
@@ -185,11 +208,15 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
     }
   }
 
-  private async runPackageInstall(command: string, args: Record<string, unknown>): Promise<PluginPackageResult> {
+  private async runPackageInstall(
+    source: { kind: 'path'; path: string } | { kind: 'url'; url: string },
+  ): Promise<PluginPackageResult> {
     try {
       const revision = await this.profileRevision();
       const previous = this.inventory;
-      const result = await this.transport.invoke<PluginManagerInstallResult>(command, { ...args, revision });
+      const result = source.kind === 'path'
+        ? await this.transport.invoke<PluginManagerInstallResult>(MANAGER_COMMANDS.install, { path: source.path, revision })
+        : await this.transport.invoke<PluginManagerInstallResult>(MANAGER_COMMANDS.installUrl, { url: source.url, revision });
       this.revision = result.revision;
       return { status: 'installed', id: result.id, version: result.version, enabled: result.enabled,
         previousVersion: previous?.plugins.find((entry) => entry.id === result.id)?.version ?? null,
@@ -205,15 +232,15 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
   async importPackage(): Promise<PluginPackageResult | null> {
     const path = await this.transport.choosePackage();
     if (!path) return null;
-    return this.runPackageInstall(MANAGER_COMMANDS.install, { path });
+    return this.runPackageInstall({ kind: 'path', path });
   }
 
   installPackagePath(path: string): Promise<PluginPackageResult> {
-    return this.runPackageInstall(MANAGER_COMMANDS.install, { path });
+    return this.runPackageInstall({ kind: 'path', path });
   }
 
   installPackageFromUrl(url: string): Promise<PluginPackageResult> {
-    return this.runPackageInstall(MANAGER_COMMANDS.installUrl, { url });
+    return this.runPackageInstall({ kind: 'url', url });
   }
 }
 
@@ -234,6 +261,7 @@ export function createHostPluginManagerAdapter(platform: PluginPlatform): HostPl
         case MANAGER_COMMANDS.install: return invoke<T>('plugin:manager|install', { path: args.path, revision: args.revision });
         case MANAGER_COMMANDS.installUrl: return invoke<T>('plugin:manager|install-url', { url: args.url, revision: args.revision });
         case MANAGER_COMMANDS.setTrust: return invoke<T>('plugin:manager|set-trust', { id: args.id, version: args.version, permissions: args.permissions, trust: args.trust, confirmed: true });
+        case MANAGER_COMMANDS.resetProfile: return invoke<T>('plugin:manager|reset-profile', {});
         default: throw new Error(`Unsupported plugin manager command: ${command}`);
       }
     },

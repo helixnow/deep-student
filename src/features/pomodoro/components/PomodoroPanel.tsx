@@ -969,15 +969,20 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     }
     return (
       <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
+        type="button"
+        variant="utility"
+        size="sm"
+        data-testid="pomodoro-stop-btn"
         onClick={handleStop}
         title={t('pomodoro.controls.stop')}
         aria-label={t('pomodoro.controls.stop')}
-        className={touch ? mobileIconBtnClass : desktopIconBtnClass}
+        className={cn(
+          'flex-shrink-0 gap-1.5 whitespace-nowrap text-xs font-medium !border-border/75 !bg-background/90 !text-foreground transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!border-[color:hsl(var(--destructive))]/50 hover:!bg-[color:hsl(var(--destructive))]/10 hover:!text-[color:hsl(var(--destructive))] active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100',
+          touch ? 'h-11 !px-3' : 'h-7 !px-2.5',
+        )}
       >
-        <Square size={touch ? 16 : 14} />
+        <Square size={touch ? 14 : 12} weight="fill" aria-hidden="true" className="shrink-0" />
+        <span>{t('pomodoro.controls.stop')}</span>
       </DsButton>
     );
   };
@@ -1253,29 +1258,32 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                     <span>{t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}</span>
                   </DsButton>
                   <DsButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
+                    type="button"
+                    variant="utility"
+                    size="sm"
                     onClick={() => skipPhase()}
                     title={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
                     aria-label={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
-                    className={mobileIconBtnClass}
+                    className="h-11 flex-shrink-0 gap-1.5 whitespace-nowrap !border-border/75 !bg-background/90 !px-3 text-xs font-medium !text-foreground transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-muted/80 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
-                    <SkipForward size={16} />
+                    <SkipForward size={15} weight="fill" aria-hidden="true" className="shrink-0" />
+                    <span>{t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}</span>
                   </DsButton>
                 </>
               )}
               {(mode === 'short_break' || mode === 'long_break') && (
                 <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
+                  type="button"
+                  variant="utility"
+                  size="sm"
+                  data-testid="pomodoro-skip-break-btn"
                   onClick={handleSkipBreak}
                   title={t('pomodoro.controls.skipBreak')}
                   aria-label={t('pomodoro.controls.skipBreak')}
-                  className={mobileIconBtnClass}
+                  className="h-11 flex-shrink-0 gap-1.5 whitespace-nowrap !border-border/75 !bg-background/90 !px-3 text-xs font-medium !text-foreground transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-muted/80 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
-                  <SkipForward size={16} />
+                  <SkipForward size={15} weight="fill" aria-hidden="true" className="shrink-0" />
+                  <span>{t('pomodoro.controls.skipBreak')}</span>
                 </DsButton>
               )}
               {/* 延长阶段：休息中常显；专注倒计时临近结束时也给机会 */}
@@ -1376,7 +1384,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         </div>
 
         {/* 控制按钮组 */}
-        <div className="flex flex-shrink-0 items-center gap-1">
+        <div className="flex flex-wrap flex-shrink-0 items-center gap-1.5">
           {renderStopControl(false)}
 
           {/* 专注中：支持提前完成并记录（倒计时/正计时通用）与跳过阶段 */}
@@ -1444,15 +1452,17 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
           {(mode === 'short_break' || mode === 'long_break') && (
             <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
+              type="button"
+              variant="utility"
+              size="sm"
+              data-testid="pomodoro-skip-break-btn"
               onClick={handleSkipBreak}
               title={t('pomodoro.controls.skipBreakKey')}
-              aria-label={t('pomodoro.controls.skipBreakKey')}
-              className={desktopIconBtnClass}
+              aria-label={t('pomodoro.controls.skipBreak')}
+              className="h-7 flex-shrink-0 gap-1.5 whitespace-nowrap !border-border/75 !bg-background/90 !px-2.5 text-xs font-medium !text-foreground transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-muted/80 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
-              <SkipForward size={14} />
+              <SkipForward size={13} weight="fill" aria-hidden="true" className="shrink-0" />
+              <span>{t('pomodoro.controls.skipBreak')}</span>
             </DsButton>
           )}
 

@@ -342,14 +342,15 @@ describe('headless.rs builtin schema surface', () => {
 
   it('headless_memory_surface_is_strictly_read_only', () => {
     const allowed = headlessAllowedTools();
-    for (const readTool of ['builtin-memory_read', 'builtin-memory_list']) {
+    for (const readTool of ['builtin-memory_read', 'builtin-memory_list', 'builtin-memory_rule_list']) {
       expect(allowed, readTool).toContain(readTool);
     }
     for (const writeTool of ['builtin-memory_write', 'builtin-memory_write_smart',
       'builtin-memory_write_batch', 'builtin-memory_update_by_id', 'builtin-memory_delete',
       'builtin-memory_batch_move', 'builtin-memory_add_relation',
       'builtin-memory_remove_relation', 'builtin-memory_update_tags',
-      'builtin-memory_export_all']) {
+      'builtin-memory_export_all', 'builtin-memory_rule_upsert',
+      'builtin-memory_rule_remove']) {
       expect(allowed, writeTool).not.toContain(writeTool);
     }
     expect(schemaNames()).toContain('builtin-memory_read');

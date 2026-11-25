@@ -37,6 +37,10 @@ vi.mock('@/dstu', () => ({
   },
 }));
 
+vi.mock('@/features/workbench', () => ({
+  resolveOpenDesktopCanvasNoteId: vi.fn(() => undefined),
+}));
+
 function makeSpaceGroup(id: string, name: string, rootFolderId: string): SessionGroup {
   return {
     id,

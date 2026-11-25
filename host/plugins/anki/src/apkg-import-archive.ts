@@ -334,6 +334,7 @@ function extractDeclaredMedia(
         ankiLocalRuntime().writeBytes(stagedPath, copied.bytes);
         if (mediaFilesHaveEqualContents(stagedPath, target)) {
           mediaPaths.set(rawName, target);
+          if (fileName !== rawName && !mediaPaths.has(fileName)) mediaPaths.set(fileName, target);
           importedKeys += 1;
         } else {
           warnings.push(`媒体目录已有同名但内容不同的文件，已跳过: ${fileName}`);
@@ -376,6 +377,7 @@ function extractDeclaredMedia(
       continue;
     }
     mediaPaths.set(rawName, target);
+    if (fileName !== rawName && !mediaPaths.has(fileName)) mediaPaths.set(fileName, target);
     importedKeys += 1;
   }
   return { mediaPaths, importedKeys };
@@ -691,7 +693,7 @@ export function parseArchive(
   } catch (collectionErr) {
     // 集合库校验失败时原子回滚本次新建的媒体文件，避免坏包/恶意包残留脏媒体
     const local = ankiLocalRuntime();
-    for (const writtenPath of mediaPaths.values()) {
+    for (const writtenPath of new Set(mediaPaths.values())) {
       try {
         local.remove(writtenPath);
       } catch {

@@ -667,6 +667,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
 
       setSecureStoreIssue(null);
+      setShowPassword(false);
+      setShowSecretKey(false);
+      setShowFtpPassword(false);
+      setShowEncryptionPwd(false);
       // 发布的是请求发出时的快照，不能把等待期间的新编辑标为已发布。
       if (savedRevision === formRevisionRef.current) {
         const nextAllowInsecure = published.config.allow_insecure ?? false;
@@ -687,6 +691,33 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           root: published.config.root ?? root,
           allowInsecure: nextAllowInsecure,
         };
+        const hasPlaintextSecretsInForm = Boolean(
+          webdavConfig.password
+          || s3Config.secretAccessKey
+          || ftpConfig.password
+          || encryptionPassword,
+        );
+        if (hasPlaintextSecretsInForm) {
+          hydratingFormRef.current = true;
+          if (webdavConfig.password) {
+            setWebdavConfig((prev) => ({ ...prev, password: '' }));
+          }
+          if (s3Config.secretAccessKey) {
+            setS3Config((prev) => ({ ...prev, secretAccessKey: '' }));
+          }
+          if (ftpConfig.password) {
+            setFtpConfig((prev) => ({ ...prev, password: '' }));
+          }
+          if (encryptionPassword) {
+            setEncryptionPassword('');
+          }
+        }
+        setCredentialStatus((prev) => ({
+          webdavPasswordConfigured: prev.webdavPasswordConfigured || Boolean(formCredentials.webdavPassword),
+          s3SecretAccessKeyConfigured: prev.s3SecretAccessKeyConfigured || Boolean(formCredentials.s3SecretAccessKey),
+          ftpPasswordConfigured: prev.ftpPasswordConfigured || Boolean(formCredentials.ftpPassword),
+          encryptionPasswordConfigured: prev.encryptionPasswordConfigured || Boolean(formCredentials.encryptionPassword),
+        }));
         setAllowInsecure(nextAllowInsecure);
         userEditedRef.current = false;
         setConfigPhase('published');
@@ -1896,7 +1927,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   value={webdavConfig.password}
                   onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
                   revealed={showPassword}
-                  canReveal={webdavConfig.password.trim().length > 0}
+                  canReveal
                   onToggle={() => setShowPassword(!showPassword)}
                   showLabel={t('common:securePassword.showPassword')}
                   hideLabel={t('common:securePassword.hidePassword')}

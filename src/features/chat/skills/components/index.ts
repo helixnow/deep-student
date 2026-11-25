@@ -12,6 +12,10 @@ export {
 } from './ActiveSkillBadge';
 export type { ActiveSkillBadgeProps, NoActiveSkillProps } from './ActiveSkillBadge';
 
+// BoundSkillChipsBar - 对话输入栏已绑定技能芯片条
+export { BoundSkillChipsBar } from './BoundSkillChipsBar';
+export type { BoundSkillChipsBarProps } from './BoundSkillChipsBar';
+
 // SkillSelector - 技能选择面板
 export { SkillSelector } from './SkillSelector';
 export type { SkillSelectorProps } from './SkillSelector';

@@ -10,6 +10,7 @@ import type {
   PluginOperationResult,
   PluginPackageResult,
   PluginPlatform,
+  PluginProfileResetResult,
 } from '../types';
 
 export function managedPlugin(overrides: Partial<ManagedPlugin> = {}): ManagedPlugin {
@@ -35,12 +36,16 @@ export interface AdapterCalls {
   importPackage: number;
   installPackagePath: string[];
   installPackageFromUrl: string[];
+  resetProfile: number;
 }
 
 /** 只记录调用的假适配器：测试里显式给出 Host 结果，不伪造命令名。 */
 export class FakePluginManagerAdapter implements PluginManagerAdapter {
   plugins: ManagedPlugin[];
   platform: PluginPlatform = 'desktop';
+  safeMode = false;
+  profileCorrupted = false;
+  profileError: string | undefined = undefined;
   readonly calls: AdapterCalls = {
     list: 0,
     setEnabled: [],
@@ -52,6 +57,7 @@ export class FakePluginManagerAdapter implements PluginManagerAdapter {
     importPackage: 0,
     installPackagePath: [],
     installPackageFromUrl: [],
+    resetProfile: 0,
   };
 
   setEnabledResult: PluginOperationResult = { ok: true };
@@ -60,6 +66,11 @@ export class FakePluginManagerAdapter implements PluginManagerAdapter {
   grantConsentResult: PluginOperationResult = { ok: true };
   listError: Error | null = null;
   reloadError: Error | null = null;
+  resetProfileResult: PluginProfileResetResult = {
+    backedUpTo: '/data/plugins/user.profile.json.corrupt-20261125.bak',
+    revision: 'profile-clean-1',
+  };
+  resetProfileError: Error | null = null;
 
   config: PluginConfigState = { schema: null, values: {}, revision: 1 };
   saveResult: PluginConfigSaveResult | null = null;
@@ -92,7 +103,22 @@ export class FakePluginManagerAdapter implements PluginManagerAdapter {
   async list(): Promise<PluginManagerSnapshot> {
     this.calls.list += 1;
     if (this.listError) throw this.listError;
-    return { platform: this.platform, plugins: this.plugins };
+    return {
+      platform: this.platform,
+      ...(this.safeMode ? { safeMode: true } : {}),
+      ...(this.profileCorrupted ? { profileCorrupted: true } : {}),
+      ...(this.profileError ? { profileError: this.profileError } : {}),
+      plugins: this.plugins,
+    };
+  }
+
+  async resetProfile(): Promise<PluginProfileResetResult> {
+    this.calls.resetProfile += 1;
+    if (this.resetProfileError) throw this.resetProfileError;
+    this.profileCorrupted = false;
+    this.profileError = undefined;
+    this.listError = null;
+    return this.resetProfileResult;
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<PluginOperationResult> {

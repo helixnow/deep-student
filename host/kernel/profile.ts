@@ -24,6 +24,21 @@ import type { StartupTimeline } from './startup-timing.ts';
 /** 官方 profile：`extends: "official"` 的目标，也是用户 profile 装载失败后的回退目标。 */
 export const OFFICIAL_PROFILE_PATH = fileURLToPath(new URL('../profiles/desktop.json', import.meta.url));
 
+/**
+ * 安全模式下仍视为启动必需的官方核心模块（对应 storage / paths / log / settings / backup / plugins / shell）。
+ * 其余非核心官方模块在安全模式下导入失败时降级为 `IMPORT_FAILED`，不阻断安全模式救援启动。
+ */
+export const SAFE_MODE_CORE_PLUGIN_IDS: ReadonlySet<string> = new Set([
+  'dstu.platform.storage',
+  'dstu.platform.paths',
+  'dstu.platform.log',
+  'dstu.platform.settings',
+  'dstu.platform.backup-config',
+  'dstu.backup',
+  'dstu.plugins',
+  'dstu.shell',
+]);
+
 /** 用户 profile 失败时发给前端的后端事件（载荷 `{ profile, error }`）。 */
 export const PROFILE_FAILED_EVENT = 'host://plugin-profile-failed';
 
@@ -334,7 +349,8 @@ export async function prepareProfile(runtime: HostRuntime, entries: readonly Res
     try {
       imported.push({ entry, install: await importProfileEntry(entry, runtime.startup, community) });
     } catch (error) {
-      if (!community) throw error;
+      // SPOF-2：安全模式下非核心官方模块导入失败降级记录，保留核心平台服务与普通模式的致命契约。
+      if (!community && (!runtime.safeMode || SAFE_MODE_CORE_PLUGIN_IDS.has(entry.id))) throw error;
       rejected.push(rejection(entry.id, new PluginLoadError('IMPORT_FAILED', entry.id, describeError(error), { cause: error })));
     }
   }

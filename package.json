@@ -136,7 +136,8 @@
     "tough-cookie": "^4.1.4",
     "ts-fsrs": "6.0.0",
     "undici": "7.30.1",
-    "upng-js": "^2.1.0"
+    "upng-js": "^2.1.0",
+    "yaml": "^2.8.2"
   },
   "overrides": {
     "exceljs": {
@@ -295,7 +296,6 @@
     "vitest": "^3.2.4",
     "wavedrom": "^3.7.0",
     "web-tree-sitter": "0.27.1",
-    "yaml": "^2.8.2",
     "zod": "^4.4.3",
     "zustand": "^5.0.6"
   }

@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle, MagnifyingGlass, X } from '@phosphor-icons/react';
+import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle, MagnifyingGlass, UploadSimple, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -320,6 +320,8 @@ interface FinderFileListProps {
   onContainerContextMenu?: (e: React.MouseEvent) => void;
   /** 空状态「新建」按钮（缺省时打开与右键相同的新建菜单） */
   onEmptyCreate?: (e: React.MouseEvent) => void;
+  /** 空状态「导入资料…」按钮回调 */
+  onImportFiles?: () => void;
   /** 单个项目移动（单选拖拽） */
   onMoveItem?: (itemId: string, targetFolderId: string | null) => void;
   /** 多个项目移动（多选拖拽） */
@@ -399,6 +401,7 @@ export function FinderFileList({
   onContainerClick,
   onContainerContextMenu,
   onEmptyCreate,
+  onImportFiles,
   onMoveItem,
   onMoveItems,
   isLoading,
@@ -1190,8 +1193,25 @@ export function FinderFileList({
       );
     }
 
+    const handleEmptyImportClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (onImportFiles) {
+        onImportFiles();
+        return;
+      }
+      const scope = containerRef.current?.closest('[tabindex="-1"]') ?? document;
+      const fileInput = scope.querySelector<HTMLInputElement>('[data-testid="finder-import-files-input"]');
+      if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+        return;
+      }
+      (onEmptyCreate ?? onContainerContextMenu)?.(e);
+    };
+
     return (
-      <div 
+      <div
+        ref={containerRef}
         className="flex-1 flex flex-col items-center justify-center bg-background select-none px-4"
         onClick={handleContainerClick}
         onContextMenu={handleContainerContextMenu}
@@ -1212,20 +1232,34 @@ export function FinderFileList({
           </p>
         )}
 
-        {/* ★ 可操作的新建入口：直接在点击位置打开与右键相同的新建菜单 */}
-        {canCreate && onContainerContextMenu && (
-          <DsButton
-            variant="default"
-            size="sm"
-            className="mt-4 [@media(pointer:coarse)]:!min-h-11"
-            onClick={(e) => {
-              e.stopPropagation();
-              (onEmptyCreate ?? onContainerContextMenu)(e);
-            }}
-          >
-            <Plus size={14} className="mr-1.5" />
-            {t('finder.toolbar.new')}
-          </DsButton>
+        {/* ★ 可操作的导入与新建入口 */}
+        {canCreate && (onImportFiles || onContainerContextMenu) && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <DsButton
+              variant="default"
+              size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
+              data-testid="finder-empty-import"
+              onClick={handleEmptyImportClick}
+            >
+              <UploadSimple size={14} className="mr-1.5" aria-hidden="true" />
+              {t('finder.empty.importFiles', { defaultValue: t('finder.toolbar.newTextbook') })}
+            </DsButton>
+            {onContainerContextMenu && (
+              <DsButton
+                variant="outline"
+                size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  (onEmptyCreate ?? onContainerContextMenu)(e);
+                }}
+              >
+                <Plus size={14} className="mr-1.5" aria-hidden="true" />
+                {t('finder.toolbar.new')}
+              </DsButton>
+            )}
+          </div>
         )}
 
         {/* 快捷操作提示（桌面端） */}

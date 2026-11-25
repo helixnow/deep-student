@@ -45,6 +45,7 @@ import { ModelMentionChips } from './ModelMentionChip';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
+import { BoundSkillChipsBar } from '../../skills/components/BoundSkillChipsBar';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 // P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
@@ -120,6 +121,74 @@ const INITIAL_PLACEHOLDER_HEIGHT = INPUT_BAR_CONFIG.heights.placeholder;
 const HEIGHT_CHANGE_THRESHOLD = INPUT_BAR_CONFIG.heights.changeThreshold;
 const IDLE_DELAY_MS = INPUT_BAR_CONFIG.delays.idle;
 const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
+
+/**
+ * Mobile bottom Dock clearance contract:
+ * Dock.tsx writes `--wb-mobile-dock-clearance` + `data-wb-dock-revealed="true"` on
+ * `:root`, `[data-wb-workbench-root]`, and `[data-wb-desktop]`. Fall back to
+ * `--mobile-dock-height` and legacy `--wb-dock-clearance` so any mobile shell stays clear.
+ */
+export const MOBILE_DOCK_CLEARANCE_CSS_EXPR =
+  'max(var(--wb-mobile-dock-clearance, 0px), var(--mobile-dock-height, 0px), var(--wb-dock-clearance, 0px))';
+export const MOBILE_DOCK_REVEALED_FALLBACK_PX = 76;
+
+interface MobileDockClearanceSnapshot {
+  revealed: boolean;
+  clearancePx: number;
+}
+
+function parseCssPx(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : 0;
+}
+
+export function readMobileDockClearanceSnapshot(
+  anchorEl?: HTMLElement | null,
+): MobileDockClearanceSnapshot {
+  if (typeof document === 'undefined') {
+    return { revealed: false, clearancePx: 0 };
+  }
+  const targets: HTMLElement[] = [document.documentElement];
+  const wbDesktop = anchorEl?.closest<HTMLElement>('[data-wb-desktop]');
+  const wbRoot = anchorEl?.closest<HTMLElement>('[data-wb-workbench-root]');
+  if (wbDesktop && wbDesktop !== document.documentElement) targets.push(wbDesktop);
+  if (wbRoot && wbRoot !== document.documentElement && wbRoot !== wbDesktop) targets.push(wbRoot);
+
+  let revealed = false;
+  let clearancePx = 0;
+
+  for (const el of targets) {
+    if (el.getAttribute('data-wb-dock-revealed') === 'true') {
+      revealed = true;
+    }
+    const inlineVars = [
+      el.style.getPropertyValue('--wb-mobile-dock-clearance'),
+      el.style.getPropertyValue('--mobile-dock-height'),
+      el.style.getPropertyValue('--wb-dock-clearance'),
+    ];
+    for (const raw of inlineVars) {
+      const px = parseCssPx(raw);
+      if (px > clearancePx) clearancePx = px;
+    }
+    if (clearancePx === 0 && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+      const computed = window.getComputedStyle(el);
+      const computedVars = [
+        computed.getPropertyValue('--wb-mobile-dock-clearance'),
+        computed.getPropertyValue('--mobile-dock-height'),
+        computed.getPropertyValue('--wb-dock-clearance'),
+      ];
+      for (const raw of computedVars) {
+        const px = parseCssPx(raw);
+        if (px > clearancePx) clearancePx = px;
+      }
+    }
+  }
+
+  if (revealed && clearancePx === 0) {
+    clearancePx = MOBILE_DOCK_REVEALED_FALLBACK_PX;
+  }
+  return { revealed: revealed || clearancePx > 0, clearancePx };
+}
 
 /**
  * owned-overlay 登记的 ownerId：Composer 面板打开期间，向 OverlayCoordinator
@@ -499,6 +568,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   activeSkillIds,
   hasLoadedSkills,
   onToggleSkill,
+  onDeactivateSkill,
   onClearAllSkills,
   // 🔧 MCP 选中状态
   mcpEnabled = false,
@@ -566,6 +636,9 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
+  const [mobileDockClearance, setMobileDockClearance] = useState<MobileDockClearanceSnapshot>(() =>
+    readMobileDockClearanceSnapshot(null),
+  );
   // 🔧 A-6/P1-6 → R3 能力三分离（三个判定各答一个问题，勿合并）：
   // - 布局 = isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的
   //   唯一依据（内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
@@ -1808,15 +1881,28 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   // 使用 CSS 变量作为 Android fallback，iOS 正常使用 env()
   // ★ M1 修复：键盘弹出时 inset 已包含覆盖 home indicator 的高度，
   // 与 safe-area 相加会让输入栏悬空 ~34px；改为两者取 max
+  // ★ S4-17 修复：移动端底部 Dock 展开时叠加 --wb-mobile-dock-clearance / --mobile-dock-height，
+  // 保证 360px 窄屏下 `+ / 推理 / 语音 / 发送` 控制行绝不被程序坞遮挡
   const safeAreaExpr = 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))';
+  const effectiveMobileDockClearancePx =
+    isMobile && keyboardInsetPx === 0 ? mobileDockClearance.clearancePx : 0;
+  const mobileDockClearanceExpr =
+    effectiveMobileDockClearancePx > 0
+      ? `max(${MOBILE_DOCK_CLEARANCE_CSS_EXPR}, ${effectiveMobileDockClearancePx}px)`
+      : MOBILE_DOCK_CLEARANCE_CSS_EXPR;
   const bottomGapValue = keyboardInsetPx > 0
     ? `calc(max(${safeAreaExpr}, ${keyboardInsetPx}px) + ${bottomGapPx}px)`
-    : `calc(${safeAreaExpr} + ${bottomGapPx}px)`;
+    : isMobile
+      ? `calc(max(${safeAreaExpr}, 8px) + ${bottomGapPx}px + ${mobileDockClearanceExpr})`
+      : `calc(${safeAreaExpr} + ${bottomGapPx}px)`;
   // ★ 性能修复：渲染期不再实读 offsetHeight（每次渲染强制 layout），
   // 改读 ResizeObserver / adjustTextareaHeight 维护的缓存高度；
   // 首帧（observer 未回调）回退到初始占位高度或 96
   const measuredInputHeight = inputContainerHeight || 96;
-  const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx));
+  const dockedHeightWithGap = Math.max(
+    0,
+    Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx + effectiveMobileDockClearancePx),
+  );
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
   // ========== 发送/停止按钮状态 ==========
@@ -2389,6 +2475,39 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [mobileLayout?.isMobile]);
+
+  // ★ S4-17：移动端监听底部 Dock 展开态与高度变量，确保控制行（+ / 推理 / 语音 / 发送）永不被 Dock 遮挡
+  useEffect(() => {
+    if (!isMobile || typeof document === 'undefined') {
+      setMobileDockClearance((prev) =>
+        prev.revealed || prev.clearancePx !== 0 ? { revealed: false, clearancePx: 0 } : prev,
+      );
+      return;
+    }
+
+    const syncClearance = () => {
+      const next = readMobileDockClearanceSnapshot(dropZoneRef.current);
+      setMobileDockClearance((prev) =>
+        prev.revealed === next.revealed && prev.clearancePx === next.clearancePx ? prev : next,
+      );
+    };
+    syncClearance();
+
+    if (typeof MutationObserver !== 'function') return;
+    const observer = new MutationObserver(syncClearance);
+    const observed = new Set<HTMLElement>([document.documentElement]);
+    const wbDesktop = dropZoneRef.current?.closest<HTMLElement>('[data-wb-desktop]');
+    const wbRoot = dropZoneRef.current?.closest<HTMLElement>('[data-wb-workbench-root]');
+    if (wbDesktop) observed.add(wbDesktop);
+    if (wbRoot) observed.add(wbRoot);
+    for (const target of observed) {
+      observer.observe(target, {
+        attributes: true,
+        attributeFilter: ['data-wb-dock-revealed', 'style'],
+      });
+    }
+    return () => observer.disconnect();
+  }, [isMobile]);
 
   // ⌨️ P0-2：键盘 inset 检测已统一到 useKeyboardInset 单例（见上方焦点门控），
   // 此处不再自管 visualViewport 监听
@@ -2972,6 +3091,8 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
     <div
       ref={dropZoneRef}
       data-testid="input-bar-v2-root"
+      data-mobile-dock-clearance={isMobile ? `${effectiveMobileDockClearancePx}px` : undefined}
+      data-mobile-dock-cleared={isMobile && effectiveMobileDockClearancePx > 0 ? 'true' : undefined}
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
@@ -3010,6 +3131,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         ['--unified-input-docked-height' as any]: dockedHeightVarValue,
         ['--unified-input-bottom-gap' as any]: bottomGapValue,
         ['--unified-input-keyboard-inset' as any]: `${keyboardInsetPx}px`,
+        ['--chat-mobile-dock-clearance' as any]: isMobile ? `${effectiveMobileDockClearancePx}px` : '0px',
       }}
       {...dropZoneProps}
     >
@@ -3204,6 +3326,18 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
               models={modelMentionState.selectedModels}
               onRemove={modelMentionActions.removeSelectedModel}
               disabled={isStreaming}
+            />
+          )}
+
+          {/* ★ 已绑定的技能 Chips（支持可见状态与一键解绑 ×） */}
+          {activeSkillIds && activeSkillIds.length > 0 && (onDeactivateSkill || onToggleSkill) && (
+            <BoundSkillChipsBar
+              skillIds={activeSkillIds}
+              onUnbindSkill={onDeactivateSkill ?? onToggleSkill!}
+              onClearAll={onClearAllSkills}
+              onOpenSelector={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
+              disabled={isStreaming}
+              className="px-2 pt-1.5 pb-0.5"
             />
           )}
 

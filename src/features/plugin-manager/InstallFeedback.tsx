@@ -26,10 +26,12 @@ export function InstallFeedback({ result, safeMode = false, onDismiss, className
   const { t } = useTranslation('plugin_manager');
   const Icon = result.status === 'installed' ? CheckCircle : result.status === 'rolled-back' ? ArrowCounterClockwise : XCircle;
 
+  const isRejected = result.status === 'rejected';
+
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={isRejected ? 'alert' : 'status'}
+      aria-live={isRejected ? 'assertive' : 'polite'}
       data-testid="plugin-install-feedback"
       data-status={result.status}
       data-safe-mode={safeMode ? 'true' : undefined}
@@ -75,8 +77,19 @@ export function InstallFeedback({ result, safeMode = false, onDismiss, className
             const friendly = describeManagerError(t, result.code, result.detail);
             return (
               <>
-                <div className="font-medium">{t('install.rejected.title')}</div>
-                <p className="text-xs leading-relaxed text-foreground/90">{friendly.explanation}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{t('install.rejected.title')}</span>
+                  <span
+                    data-testid="plugin-install-diagnostic-category"
+                    data-category={friendly.category}
+                    className="rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive"
+                  >
+                    {t(`install.rejected.categories.${friendly.category}`)}
+                  </span>
+                </div>
+                <p data-testid="plugin-install-diagnostic-explanation" className="text-xs leading-relaxed text-foreground/90">
+                  {friendly.explanation}
+                </p>
                 <div
                   data-testid="plugin-install-rollback"
                   data-rollback={result.rollback}

@@ -10,20 +10,53 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-const CACHE_LIMIT = 64;
+const CACHE_LIMIT = 256;
 const cache = new Map<string, Promise<string | null>>();
 
-export function mediaBasename(path: string): string {
-  const parts = path.split(/[\\/]/);
-  return parts[parts.length - 1] ?? path;
+const REMOTE_OR_DATA_SCHEME_RE = /^(?:data:|blob:|https?:|asset:)/i;
+const AUDIO_MEDIA_EXT_RE = /\.(?:mp3|ogg|oga|opus|wav|m4a|aac|flac|webm)(?:$|[?#])/i;
+const VIDEO_MEDIA_EXT_RE = /\.(?:mp4)(?:$|[?#])/i;
+const SUPPORTED_MEDIA_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)(?:$|[?#])/i;
+
+export function clearCardMediaCache(): void {
+  cache.clear();
 }
 
-function loadMediaDataUrl(path: string): Promise<string | null> {
+export function isAudioMediaRef(ref: string): boolean {
+  return AUDIO_MEDIA_EXT_RE.test(ref.trim());
+}
+
+export function isVideoMediaRef(ref: string): boolean {
+  return VIDEO_MEDIA_EXT_RE.test(ref.trim());
+}
+
+export function isAnkiMediaRef(path: string): boolean {
+  const trimmed = path.trim();
+  if (!trimmed || REMOTE_OR_DATA_SCHEME_RE.test(trimmed)) return false;
+  if (/[\\/]anki_media[\\/]/i.test(trimmed)) return true;
+  if (/^anki-media:\/\//i.test(trimmed)) return true;
+  return !/[\\/:]/.test(trimmed) && SUPPORTED_MEDIA_EXT_RE.test(trimmed);
+}
+
+export function mediaBasename(path: string): string {
+  const cleaned = path.trim().replace(/^anki-media:\/\/\/?/i, '').split(/[?#]/)[0] ?? path;
+  const parts = cleaned.split(/[\\/]/);
+  return parts[parts.length - 1] ?? cleaned;
+}
+
+function loadMediaDataUrlOnce(path: string): Promise<string | null> {
   const cached = cache.get(path);
   if (cached) return cached;
   const pending = invoke<string>('read_anki_media', { path })
-    .then((url) => (typeof url === 'string' && url.startsWith('data:') ? url : null))
-    .catch(() => null);
+    .then((url) => {
+      if (typeof url === 'string' && url.startsWith('data:')) return url;
+      cache.delete(path);
+      return null;
+    })
+    .catch(() => {
+      cache.delete(path);
+      return null;
+    });
   cache.set(path, pending);
   if (cache.size > CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
@@ -32,10 +65,87 @@ function loadMediaDataUrl(path: string): Promise<string | null> {
   return pending;
 }
 
-/** 文件名 → data URL；只加载导入媒体目录里的文件，读不到的静默跳过。 */
-export function useCardMediaMap(paths: readonly string[] | undefined): Map<string, string> {
+async function loadMediaDataUrl(path: string): Promise<string | null> {
+  const direct = await loadMediaDataUrlOnce(path);
+  if (direct) return direct;
+  // WebUI / relocated data-dir fallback: if stored absolute path came from another machine or slot,
+  // retry with the safe bare filename inside the active anki_media directory.
+  const base = mediaBasename(decodeName(path));
+  if (base && base !== path.trim() && !/[\\/:]/.test(base) && base !== '.' && base !== '..') {
+    return loadMediaDataUrlOnce(base);
+  }
+  return null;
+}
+
+/**
+ * 提取 HTML/卡面文本里引用的本地图片与音频文件名（供 read_anki_media 兜底解析）。
+ */
+export function extractInlineMediaNames(html: string): string[] {
+  if (!html) return [];
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed || REMOTE_OR_DATA_SCHEME_RE.test(trimmed)) return;
+    const base = mediaBasename(decodeName(trimmed));
+    if (!base || base === '.' || base === '..' || /[\\/:]/.test(base)) return;
+    const key = base.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    names.push(base);
+  };
+  for (const match of html.matchAll(/\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))/gi)) {
+    push(match[1] ?? match[2] ?? match[3] ?? '');
+  }
+  for (const match of html.matchAll(SOUND_TAG)) {
+    push(match[1] ?? '');
+  }
+  return names;
+}
+
+/** 按文件名查已加载的 data URL（支持 URI 解码与大小写不敏感兜底）。 */
+export function lookupCardMedia(media: ReadonlyMap<string, string>, rawRef: string): string | undefined {
+  if (media.size === 0) return undefined;
+  const trimmed = rawRef.trim();
+  if (!trimmed) return undefined;
+  const decoded = decodeName(trimmed);
+  const directBase = mediaBasename(trimmed);
+  const decodedBase = mediaBasename(decoded);
+  const hit = media.get(decodedBase) ?? media.get(directBase);
+  if (hit) return hit;
+  const targetLower = decodedBase.toLowerCase();
+  for (const [name, url] of media.entries()) {
+    if (name.toLowerCase() === targetLower) return url;
+  }
+  return undefined;
+}
+
+/** 文件名 → data URL；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
+export function useCardMediaMap(
+  paths: readonly string[] | undefined,
+  inlineNames?: readonly string[],
+): Map<string, string> {
   const [media, setMedia] = useState<Map<string, string>>(() => new Map());
-  const key = (paths ?? []).filter((path) => /[\\/]anki_media[\\/]/.test(path)).join('\n');
+  const candidates: string[] = [];
+  const seenNames = new Set<string>();
+  for (const path of paths ?? []) {
+    if (!isAnkiMediaRef(path)) continue;
+    const base = mediaBasename(decodeName(path));
+    if (!base) continue;
+    const lower = base.toLowerCase();
+    if (seenNames.has(lower)) continue;
+    seenNames.add(lower);
+    candidates.push(path);
+  }
+  for (const rawName of inlineNames ?? []) {
+    const base = mediaBasename(decodeName(rawName));
+    if (!base || base === '.' || base === '..' || /[\\/:]/.test(base)) continue;
+    const lower = base.toLowerCase();
+    if (seenNames.has(lower)) continue;
+    seenNames.add(lower);
+    candidates.push(base);
+  }
+  const key = candidates.join('\n');
   useEffect(() => {
     const local = key ? key.split('\n') : [];
     if (local.length === 0) {
@@ -43,15 +153,16 @@ export function useCardMediaMap(paths: readonly string[] | undefined): Map<strin
       return undefined;
     }
     let cancelled = false;
-    void Promise.all(local.map(async (path) => [mediaBasename(path), await loadMediaDataUrl(path)] as const))
-      .then((entries) => {
-        if (cancelled) return;
-        const next = new Map<string, string>();
-        for (const [name, url] of entries) {
-          if (url) next.set(name, url);
-        }
-        setMedia(next);
-      });
+    void Promise.all(
+      local.map(async (path) => [mediaBasename(decodeName(path)), await loadMediaDataUrl(path)] as const),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next = new Map<string, string>();
+      for (const [name, url] of entries) {
+        if (url) next.set(name, url);
+      }
+      setMedia(next);
+    });
     return () => {
       cancelled = true;
     };
@@ -86,7 +197,7 @@ export interface InjectCardMediaOptions {
 }
 
 /**
- * 替换 `src="name"` 为 data URL；`[sound:name]` 变成 `<audio>`（读不到文件时退回 ♪ 徽标）。
+ * 替换 `src="name"` / `src=name` 为 data URL；`[sound:name]` 变成 `<audio>`（读不到文件时退回 ♪ 徽标）。
  */
 export function injectCardMedia(
   html: string,
@@ -94,16 +205,19 @@ export function injectCardMedia(
   options: InjectCardMediaOptions = {},
 ): string {
   let out = html.replace(
-    /(\ssrc\s*=\s*)(["'])([^"']+)\2/gi,
-    (whole, prefix: string, quote: string, value: string) => {
-      if (/^(data:|blob:|https?:|asset:)/i.test(value.trim())) return whole;
-      const url = media.get(mediaBasename(decodeName(value)));
-      return url ? `${prefix}${quote}${url}${quote}` : whole;
+    /(\ssrc\s*=\s*)(?:(["'])([^"']+)\2|([^\s"'=<>`]+))/gi,
+    (whole, prefix: string, quote: string | undefined, quotedVal: string | undefined, unquotedVal: string | undefined) => {
+      const value = quotedVal ?? unquotedVal ?? '';
+      if (REMOTE_OR_DATA_SCHEME_RE.test(value.trim())) return whole;
+      const url = lookupCardMedia(media, value);
+      if (!url) return whole;
+      const q = quote ?? '"';
+      return `${prefix}${q}${url}${q}`;
     },
   );
   out = out.replace(SOUND_TAG, (_whole, raw: string) => {
     const name = decodeName(raw);
-    const url = media.get(mediaBasename(name));
+    const url = lookupCardMedia(media, name);
     const safeName = escapeAttr(name);
     if (!url) {
       return `<span class="anki-sound" role="img" aria-label="audio" data-sound-file="${safeName}">`
@@ -170,7 +284,7 @@ export const CARD_FACE_HELPER_SCRIPT = `<script>(function(){
   }, { passive: true });
 })();</script>`;
 
-/** 向当前页面里的卡面 iframe 广播「重播音频」。 */
+/** 向当前页面里的卡面 iframe 与直出音频广播「重播音频」。 */
 export function replayCardAudio(root: ParentNode = document): void {
   root.querySelectorAll('iframe').forEach((frame) => {
     try {
@@ -179,4 +293,22 @@ export function replayCardAudio(root: ParentNode = document): void {
       /* frame already detached */
     }
   });
+  const audios = Array.from(root.querySelectorAll<HTMLAudioElement>('audio.anki-audio'));
+  if (audios.length === 0) return;
+  audios.forEach((audio) => {
+    try { audio.pause(); } catch { /* ignore */ }
+  });
+  const playAt = (index: number) => {
+    if (index >= audios.length) return;
+    const audio = audios[index];
+    audio.onended = () => playAt(index + 1);
+    try {
+      audio.currentTime = 0;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch {
+      /* autoplay blocked or unsupported in test DOM */
+    }
+  };
+  playAt(0);
 }

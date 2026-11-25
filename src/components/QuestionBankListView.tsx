@@ -18,6 +18,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   MagnifyingGlass,
   Check,
+  CheckCircle,
   X,
   CaretRight,
   GridNine,
@@ -43,6 +44,11 @@ import {
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
+import {
+  extractGenerationTaskAttribution,
+  type PendingAuthoringDraftView,
+  type QbankGenerationTask,
+} from '@/types/qbankGeneration';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
 import { QuestionMaterialView, buildDisplayGroups, type QuestionDisplayGroup } from './QuestionMaterialView';
 import { QuestionStructureManager } from './QuestionStructureManager';
@@ -99,6 +105,18 @@ export interface QuestionBankListViewProps {
   onCsvImport?: () => void;
   /** 空状态启动台打开 AI 出题面板（只读模式不提供） */
   onAiGenerate?: () => void;
+  /** 当前题目集待确认草稿列表（含来源归属，有草稿时绝不孤立显示“暂无题目”） */
+  pendingDrafts?: PendingAuthoringDraftView[];
+  /** 当前题目集正在后台运行的 AI 出题任务 */
+  activeGenerationTask?: QbankGenerationTask | null;
+  /** 正在一键确认入库的草稿 job_id */
+  confirmingDraftJobId?: string | null;
+  /** 打开逐题审阅（AI 草稿进 AI 出题审阅面板，识别导入进上传复核页） */
+  onReviewPendingDraft?: (draft: PendingAuthoringDraftView) => void;
+  /** 一键确认并将待确认草稿全部导入题库 */
+  onConfirmPendingDraft?: (draft: PendingAuthoringDraftView) => void | Promise<void>;
+  /** 打开正在运行的 AI 出题任务进度面板 */
+  onOpenGenerationProgress?: () => void;
   /** 外部请求打开内联创建编辑器（值变化时触发一次） */
   createRequestKey?: number;
   /** Reports unsaved inline edits to an owning resource view. */
@@ -549,6 +567,12 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   onUploadFiles,
   onCsvImport,
   onAiGenerate,
+  pendingDrafts = [],
+  activeGenerationTask = null,
+  confirmingDraftJobId = null,
+  onReviewPendingDraft,
+  onConfirmPendingDraft,
+  onOpenGenerationProgress,
   createRequestKey,
   onDraftDirtyChange,
   onDraftNavigationRequested,
@@ -1171,6 +1195,16 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     const hasLauncherActions = canCreate || canImport || canCsvImport || canAiGenerate;
     const showCreateEditor = expandedEditId === '__new__' && canCreate;
 
+    const hasPendingDrafts = pendingDrafts.length > 0;
+    const hasActiveGenTask = Boolean(
+      activeGenerationTask
+      && (activeGenerationTask.status === 'queued' || activeGenerationTask.status === 'running'),
+    );
+    const primaryDraft = hasPendingDrafts ? pendingDrafts[0] : null;
+    const activeGenAttribution = hasActiveGenTask && activeGenerationTask
+      ? extractGenerationTaskAttribution(activeGenerationTask)
+      : null;
+
     const launcher = showCreateEditor ? (
       // 编辑器打开：隐藏启动台头部；容器收敛高度，滚动交给编辑器内容区（页脚钉底）
       <div className={cn('flex h-full flex-col px-3 py-4 sm:px-4', className)}>
@@ -1193,17 +1227,187 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         className={cn('h-full', className)}
         viewportClassName="flex min-h-full flex-col items-center justify-center px-4 py-10"
       >
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
-            <ExamIcon size={28} className="opacity-80" />
+        {(hasPendingDrafts || hasActiveGenTask) ? (
+          <div className="mb-8 flex w-full max-w-2xl flex-col gap-3">
+            {hasActiveGenTask && (
+              <div
+                data-testid="qbank-active-generation-card"
+                role="status"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3.5 text-left"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                  <CircleNotch size={18} className="mt-0.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-sm font-medium text-foreground">
+                      {t('exam_sheet:aiGeneration.backgroundRunningTitle', {
+                        defaultValue: 'AI 正在后台生成题目…',
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {activeGenAttribution?.sourceLabel
+                        ? t('exam_sheet:aiGeneration.backgroundRunningSource', {
+                            source: activeGenAttribution.sourceLabel,
+                            defaultValue: `来源：${activeGenAttribution.sourceLabel} · 完成后可直接在此确认并导入题库`,
+                          })
+                        : t('exam_sheet:aiGeneration.backgroundHint')}
+                    </p>
+                  </div>
+                </div>
+                {onOpenGenerationProgress && (
+                  <DsButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onOpenGenerationProgress}
+                    className="shrink-0 gap-1.5 text-xs"
+                  >
+                    <Sparkle size={14} />
+                    {t('exam_sheet:aiGeneration.viewProgress', { defaultValue: '查看进度' })}
+                  </DsButton>
+                )}
+              </div>
+            )}
+
+            {primaryDraft && (
+              <div
+                data-testid="qbank-pending-drafts-card"
+                role="region"
+                aria-label={t('exam_sheet:aiGeneration.pendingDraftsRegion', { defaultValue: '待确认题目草稿' })}
+                className="rounded-xl border border-primary/35 bg-primary/[0.06] p-4 sm:p-5 text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    {primaryDraft.origin === 'ai_generation' ? <Sparkle size={20} /> : <Scan size={20} />}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <h3 className="text-base font-medium text-foreground tabular-nums">
+                      {primaryDraft.origin === 'ai_generation'
+                        ? t('exam_sheet:aiGeneration.pendingDraftAttributed', {
+                            count: primaryDraft.question_count,
+                            source: primaryDraft.sourceLabel,
+                            defaultValue: `有 ${primaryDraft.question_count} 道 AI 生成待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                          })
+                        : t('exam_sheet:uploader.pendingDraftAttributed', {
+                            count: primaryDraft.question_count,
+                            source: primaryDraft.sourceLabel,
+                            defaultValue: `有 ${primaryDraft.question_count} 道待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                          })}
+                    </h3>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {primaryDraft.origin === 'ai_generation'
+                        ? t('exam_sheet:aiGeneration.pendingDraftDesc', {
+                            defaultValue: 'AI 已完成出题并保存为待确认草稿，点击下方按钮即可一键导入当前题库或逐题审阅。',
+                          })
+                        : t('exam_sheet:uploader.pendingDraftDesc', {
+                            defaultValue: '已解析出待确认题目，确认后即可正式加入当前题库用于练习与组卷。',
+                          })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {onConfirmPendingDraft && (
+                    <DsButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      data-testid="qbank-confirm-pending-draft"
+                      disabled={confirmingDraftJobId !== null}
+                      onClick={() => void onConfirmPendingDraft(primaryDraft)}
+                      className="gap-1.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      {confirmingDraftJobId === primaryDraft.job_id ? (
+                        <CircleNotch size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle size={14} />
+                      )}
+                      <span className="tabular-nums">
+                        {t('exam_sheet:aiGeneration.confirmImportToQbank', {
+                          count: primaryDraft.question_count,
+                          defaultValue: `确认并导入题库 (${primaryDraft.question_count})`,
+                        })}
+                      </span>
+                    </DsButton>
+                  )}
+                  {onReviewPendingDraft && (
+                    <DsButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="qbank-review-pending-draft"
+                      disabled={confirmingDraftJobId === primaryDraft.job_id}
+                      onClick={() => onReviewPendingDraft(primaryDraft)}
+                      className="gap-1.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      <span>{t('exam_sheet:uploader.review_pending_draft', { defaultValue: '逐题审阅' })}</span>
+                    </DsButton>
+                  )}
+                </div>
+
+                {pendingDrafts.length > 1 && (
+                  <div className="mt-3 space-y-1.5 border-t border-border/40 pt-3">
+                    {pendingDrafts.slice(1).map((draft) => (
+                      <div
+                        key={draft.job_id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/60 px-3 py-2 text-xs"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-foreground/85 tabular-nums">
+                          {draft.origin === 'ai_generation'
+                            ? `有 ${draft.question_count} 道 AI 生成待确认题目（来源：${draft.sourceLabel}）`
+                            : `有 ${draft.question_count} 道待确认题目（来源：${draft.sourceLabel}）`}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {onConfirmPendingDraft && (
+                            <DsButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={confirmingDraftJobId !== null}
+                              onClick={() => void onConfirmPendingDraft(draft)}
+                              className="!h-7 px-2 text-xs text-primary"
+                            >
+                              {t('exam_sheet:aiGeneration.confirmImportShort', { defaultValue: '确认入库' })}
+                            </DsButton>
+                          )}
+                          {onReviewPendingDraft && (
+                            <DsButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={confirmingDraftJobId === draft.job_id}
+                              onClick={() => onReviewPendingDraft(draft)}
+                              className="!h-7 px-2 text-xs"
+                            >
+                              {t('exam_sheet:uploader.reviewShort', { defaultValue: '审阅' })}
+                            </DsButton>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasLauncherActions && (
+              <p className="mt-1 text-center text-xs text-muted-foreground">
+                {t('practice:questionBank.orAddMoreQuestions', { defaultValue: '或通过以下方式继续添加题目' })}
+              </p>
+            )}
           </div>
-          <h3 className="mb-1.5 text-base font-medium">{t('practice:questionBank.emptyTitle')}</h3>
-          <p className="text-sm text-muted-foreground">
-            {hasLauncherActions
-              ? t('practice:questionBank.emptyChoosePath')
-              : t('practice:questionBank.emptyReadOnlyDesc')}
-          </p>
-        </div>
+        ) : (
+          <div className="mb-8 flex flex-col items-center text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
+              <ExamIcon size={28} className="opacity-80" />
+            </div>
+            <h3 className="mb-1.5 text-base font-medium">{t('practice:questionBank.emptyTitle')}</h3>
+            <p className="text-sm text-muted-foreground">
+              {hasLauncherActions
+                ? t('practice:questionBank.emptyChoosePath')
+                : t('practice:questionBank.emptyReadOnlyDesc')}
+            </p>
+          </div>
+        )}
 
         {hasLauncherActions && (
           <>

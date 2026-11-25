@@ -23,6 +23,7 @@ import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
 import { MemoryKernelAttributionPill, MessageActions, MessageInlineEdit, MessageTouchActionBar, UserMessageBubble } from './message';
+import { SkillAttributionPill } from './message/SkillAttributionPill';
 import { resolveSingleVariantDisplayMeta } from './message/variantMetaResolver';
 import { TokenUsageDisplay } from './TokenUsageDisplay';
 // 🔧 移除 ModelRetryDialog，改用底部面板模型选择重试
@@ -68,6 +69,8 @@ import { isInboundUserMessage } from '../superSession/inboundOrigin';
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+const EMPTY_ACTIVE_SKILL_IDS: string[] = [];
 
 /**
  * 聚合多个变体的 Token 使用统计
@@ -255,6 +258,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const branchTargets = useSessionBranchTargets(storeSessionId, messageId);
   const storeMode = useStore(store, (s) => s.mode);
   const storeSessionMetadata = useStore(store, (s) => s.sessionMetadata);
+  const storeActiveSkillIds = useStore(store, (s) => s.activeSkillIds ?? EMPTY_ACTIVE_SKILL_IDS);
+  const storeSkillStateJson = useStore(store, (s) => s.skillStateJson ?? null);
   const isReadOnlySession = isStoreSubagentSession({
     sessionId: storeSessionId,
     mode: storeMode,
@@ -1685,6 +1690,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           {showActions && !isUser && !isReadOnlySession && (isWaitingForContent || shouldHideLatestAssistantFooter || isLocked) && (
             <MemoryKernelAttributionPill
               prefetchOnly
+              messageId={messageId}
+              sessionId={storeSessionId}
+              variantId={activeVariant?.id}
+              messageMeta={message?._meta as Record<string, unknown> | undefined}
               sessionMetadata={storeSessionMetadata}
               isFirstAssistantTurn={isFirstAssistantTurn}
             />
@@ -1708,11 +1717,27 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {isSmallScreen && !isUser && (
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {!isReadOnlySession && !isLocked && (
-                      <MemoryKernelAttributionPill
-                        className="mr-1"
-                        sessionMetadata={storeSessionMetadata}
-                        isFirstAssistantTurn={isFirstAssistantTurn}
-                      />
+                      <>
+                        <MemoryKernelAttributionPill
+                          className="mr-1"
+                          messageId={messageId}
+                          sessionId={storeSessionId}
+                          variantId={activeVariant?.id}
+                          messageMeta={message?._meta as Record<string, unknown> | undefined}
+                          sessionMetadata={storeSessionMetadata}
+                          isFirstAssistantTurn={isFirstAssistantTurn}
+                        />
+                        <SkillAttributionPill
+                          className="mr-1"
+                          messageId={messageId}
+                          sessionId={storeSessionId}
+                          variantId={activeVariant?.id}
+                          messageMeta={message?._meta as Record<string, unknown> | undefined}
+                          variantMeta={activeVariant?.meta as Record<string, unknown> | undefined}
+                          sessionActiveSkillIds={storeActiveSkillIds}
+                          sessionSkillStateJson={storeSkillStateJson}
+                        />
+                      </>
                     )}
                     {message.timestamp && (
                       <span
@@ -1758,11 +1783,27 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       )
                     )}
                     {!isUser && !isReadOnlySession && !isLocked && (
-                      <MemoryKernelAttributionPill
-                        className="mr-1.5"
-                        sessionMetadata={storeSessionMetadata}
-                        isFirstAssistantTurn={isFirstAssistantTurn}
-                      />
+                      <>
+                        <MemoryKernelAttributionPill
+                          className="mr-1.5"
+                          messageId={messageId}
+                          sessionId={storeSessionId}
+                          variantId={activeVariant?.id}
+                          messageMeta={message?._meta as Record<string, unknown> | undefined}
+                          sessionMetadata={storeSessionMetadata}
+                          isFirstAssistantTurn={isFirstAssistantTurn}
+                        />
+                        <SkillAttributionPill
+                          className="mr-1.5"
+                          messageId={messageId}
+                          sessionId={storeSessionId}
+                          variantId={activeVariant?.id}
+                          messageMeta={message?._meta as Record<string, unknown> | undefined}
+                          variantMeta={activeVariant?.meta as Record<string, unknown> | undefined}
+                          sessionActiveSkillIds={storeActiveSkillIds}
+                          sessionSkillStateJson={storeSkillStateJson}
+                        />
+                      </>
                     )}
                     {!isUser && !isMultiVariant && isVersioned && (
                       <div

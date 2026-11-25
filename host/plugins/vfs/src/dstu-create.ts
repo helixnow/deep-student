@@ -120,8 +120,17 @@ export function decodeBase64(input: string): Uint8Array {
   return new Uint8Array(data);
 }
 
-function extensionForMime(mimeType: string): string {
-  switch (mimeType) {
+function extensionFromName(name: string): string | null {
+  const base = name.trim().split(/[\\/]/).pop() ?? '';
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0 || dot >= base.length - 1) return null;
+  const ext = base.slice(dot + 1);
+  return /^[A-Za-z0-9]{1,9}$/u.test(ext) ? ext.toLowerCase() : null;
+}
+
+function extensionForMime(mimeType: string, fileName = ''): string {
+  const normalized = mimeType.trim().toLowerCase();
+  switch (normalized) {
     case 'image/jpeg': return 'jpg';
     case 'image/png': return 'png';
     case 'image/gif': return 'gif';
@@ -130,18 +139,36 @@ function extensionForMime(mimeType: string): string {
     case 'image/svg+xml': return 'svg';
     case 'application/pdf': return 'pdf';
     case 'application/epub+zip': return 'epub';
-    case 'application/zip': return 'zip';
     case 'application/json': return 'json';
     case 'text/plain': return 'txt';
     case 'text/markdown': return 'md';
-    case 'application/octet-stream': return 'bin';
+    case 'text/csv': return 'csv';
+    case 'text/tab-separated-values': return 'tsv';
+    case 'text/html': return 'html';
+    case 'text/xml':
+    case 'application/xml': return 'xml';
+    case 'text/vtt': return 'vtt';
+    case 'application/rtf':
+    case 'text/rtf': return 'rtf';
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': return 'docx';
     case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': return 'xlsx';
+    case 'application/vnd.ms-excel': return 'xls';
+    case 'application/vnd.ms-excel.sheet.binary.macroenabled.12': return 'xlsb';
+    case 'application/vnd.oasis.opendocument.spreadsheet': return 'ods';
     case 'application/vnd.openxmlformats-officedocument.presentationml.presentation': return 'pptx';
+    case 'application/vnd.xmind.workbook':
+    case 'application/x-xmind': return 'xmind';
+    case 'application/zip':
+    case 'application/x-zip-compressed':
+      return extensionFromName(fileName) ?? 'zip';
+    case 'application/octet-stream':
+      return extensionFromName(fileName) ?? 'bin';
     default: {
+      const fromName = extensionFromName(fileName);
+      if (fromName !== null) return fromName;
       // subtype 可能带 `+` 等字符（`epub+zip`、`octet-stream`）：这类扩展名会被
       // `filestream://` 的扩展名白名单拒绝（403），所以只接受纯字母数字的短扩展名。
-      const raw = mimeType.split('/').at(-1) ?? '';
+      const raw = normalized.split('/').at(-1) ?? '';
       return /^[A-Za-z0-9]{1,9}$/u.test(raw) ? raw.toLowerCase() : 'bin';
     }
   }
@@ -211,7 +238,7 @@ async function createMedia(
   const mimeType = resourceType === 'images'
     ? (rawMime.startsWith('image/') ? rawMime : defaultMime)
     : (rawMime.includes('/') ? rawMime : defaultMime);
-  const extension = extensionForMime(mimeType);
+  const extension = extensionForMime(mimeType, options.name);
 
   const conn = deps.database.getConnSafe();
   const dir = deps.database.blobsDir();

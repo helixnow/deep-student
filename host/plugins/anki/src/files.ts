@@ -78,10 +78,23 @@ export function isInsideRoot(root: string, target: string): boolean {
   return relative === '' ? true : relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-/** Imported card rows can carry the absolute slot path of the device on which the APKG was opened. */
+/** Imported card rows can carry the absolute slot path of the device on which the APKG was opened, or a bare media filename. */
 export function resolveSyncedAnkiMedia(mediaRoot: string, reference: string): string {
-  const match = /(?:^|[\\/])slots[\\/]slot[AB][\\/]anki_media[\\/]([^\\/:]+)$/.exec(reference);
-  if (!match || match[1] === '.' || match[1] === '..') return reference;
+  const trimmed = reference.trim();
+  // Safe single-segment bare filename (or anki-media://<filename>): resolve strictly inside mediaRoot.
+  const bareCandidate = trimmed.replace(/^anki-media:\/\/\/?/i, '');
+  if (
+    bareCandidate !== ''
+    && bareCandidate !== '.'
+    && bareCandidate !== '..'
+    && !bareCandidate.includes('/')
+    && !bareCandidate.includes('\\')
+    && !bareCandidate.includes(':')
+  ) {
+    return path.join(mediaRoot, bareCandidate);
+  }
+  const match = /(?:^|[\\/])slots[\\/]slot[AB][\\/]anki_media[\\/]([^\\/:]+)$/.exec(trimmed);
+  if (!match || match[1] === '.' || match[1] === '..') return trimmed;
   const root = canonicalize(mediaRoot);
   const local = canonicalize(path.join(mediaRoot, match[1]!));
   if (!root || !local || !isInsideRoot(root, local)) {

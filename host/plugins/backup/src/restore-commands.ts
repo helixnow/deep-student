@@ -19,7 +19,7 @@ import {
 import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import type { Governance } from './governance.ts';
 import {
-  findBackup, finalizeVfsIndexRestore, prepareVfsIndexRestore, restoreNonDatabaseManifestFiles,
+  createBackup, findBackup, finalizeVfsIndexRestore, prepareVfsIndexRestore, restoreNonDatabaseManifestFiles,
   restoreSingleDatabaseToDir, restoreWorkspaceManifestFilesToDir, verifyWithAssets,
   type BackupContext,
 } from './backup-manager.ts';
@@ -701,6 +701,53 @@ export class RestoreCommands {
         return;
       }
 
+      // S5-15: Create a full, verified, slot-restorable pre-restore safety snapshot of the
+      // currently active slot while all databases & workspace are frozen in maintenance mode,
+      // BEFORE publishing restored keys or committing slot cutover. Stored in the shared
+      // recovery/backups directory so it remains visible and rollbackable after restart.
+      let preRestoreBackupId: string | null = null;
+      const activeSlotDir = this.ctx.storage.locations.activeDir;
+      const hasAllActiveCoreDbs = DATABASE_IDS.every(id => existsSync(databasePath(activeSlotDir, id)));
+      if (hasAllActiveCoreDbs) {
+        job.markRunning(
+          'checkpoint',
+          94,
+          formatBackupProgressMessage(locale, 'restore.creating_safety_snapshot'),
+          totalItems,
+          totalItems,
+        );
+        try {
+          const safetyManifest = await createBackup(this.context(), {
+            includeAssets: true,
+            backupIdSuffix: 'pre_restore',
+            assetOptions: {
+              max_file_size: Number.MAX_SAFE_INTEGER,
+              max_total_size: Number.MAX_SAFE_INTEGER,
+            },
+            checkContinue: () => job.checkContinue(),
+          });
+          validateForSlotRestore(safetyManifest);
+          preRestoreBackupId = safetyManifest.backup_id;
+          this.ctx.logger('backup').info(
+            `[data_governance] 已创建恢复前安全快照: backup_id=${preRestoreBackupId}`,
+          );
+        } catch (error) {
+          try { maintenance.release(); }
+          catch { // boundary-allow empty-catch: preserve pre-restore safety snapshot creation error.
+          }
+          try { unlinkSync(restoreActivationMarkerPath(inactiveDir)); }
+          catch (cleanupError) {
+            this.ctx.logger('backup').warn(`清理恢复激活标记失败: ${ioMessage(cleanupError)}`);
+          }
+          failJob(`创建恢复前安全快照失败，已中止恢复（当前数据未改动）: ${ioMessage(error)}`);
+          return;
+        }
+      } else {
+        this.ctx.logger('backup').warn(
+          `[data_governance] 当前活动槽缺少部分核心数据库，跳过恢复前安全快照创建: activeDir=${sanitizePathForUser(activeSlotDir, userHomeDir(this.ctx))}`,
+        );
+      }
+
       let restoredCryptoKeys: number;
       try {
         restoredCryptoKeys = await publishRestoreKeysAndCommitCutover(
@@ -785,6 +832,7 @@ export class RestoreCommands {
           domains: domainOutcomes,
           isolated_domains: isolatedSummary,
           quarantined_executable_assets: untrustedAssetCount,
+          pre_restore_backup_id: preRestoreBackupId,
         },
       ));
 
@@ -800,6 +848,7 @@ export class RestoreCommands {
         duration_ms: durationMs,
         stats: {
           backup_id: backupId,
+          pre_restore_backup_id: preRestoreBackupId,
           databases_restored: databasesRestored,
           database_count: databasesRestored.length,
           restore_assets: shouldRestoreAssets,

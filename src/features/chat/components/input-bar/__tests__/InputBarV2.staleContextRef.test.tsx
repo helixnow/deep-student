@@ -1147,4 +1147,26 @@ describe('InputBarV2 stale context ref guard', () => {
       expect(capturedInputBarUIProps?.runtimeModelProviderLabel).toBe('SiliconFlow');
     });
   });
+
+  it('S4-06: wires onDeactivateSkill to store.deactivateSkill and falls back to activeSkillIds when skillStateJson is absent', async () => {
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        activeSkillIds: ['feynman-tutor'],
+        skillStateJson: null,
+      });
+    });
+
+    render(<InputBarV2 store={store as any} />);
+
+    expect(capturedInputBarUIProps?.activeSkillIds).toEqual(['feynman-tutor']);
+    expect(capturedInputBarUIProps?.onDeactivateSkill).toBeTypeOf('function');
+
+    await act(async () => {
+      await capturedInputBarUIProps?.onDeactivateSkill('feynman-tutor');
+    });
+
+    expect(store.getState().deactivateSkill).toHaveBeenCalledWith('feynman-tutor');
+  });
 });

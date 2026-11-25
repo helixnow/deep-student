@@ -119,11 +119,13 @@ export {
   ActiveSkillBadge,
   ActiveSkillBadgeCompact,
   NoActiveSkillButton,
+  BoundSkillChipsBar,
   SkillSelector,
 } from './components';
 export type {
   ActiveSkillBadgeProps,
   NoActiveSkillProps,
+  BoundSkillChipsBarProps,
   SkillSelectorProps,
 } from './components';
 

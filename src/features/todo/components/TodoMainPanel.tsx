@@ -22,6 +22,7 @@ import {
   CaretDown,
   CheckCircle,
   CircleNotch,
+  Flag,
   ListChecks,
   MagnifyingGlass,
   Plus,
@@ -287,6 +288,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const selectItem = useTodoStore((s) => s.selectItem);
   const updateItem = useTodoStore((s) => s.updateItem);
   const setSearch = useTodoStore((s) => s.setSearch);
+  const setPriorityFilter = useTodoStore((s) => s.setPriorityFilter);
   const setShowCompleted = useTodoStore((s) => s.setShowCompleted);
   const setSortBy = useTodoStore((s) => s.setSortBy);
   const setViewFilter = useTodoStore((s) => s.setViewFilter);
@@ -296,7 +298,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
-  const activeTodayOrOverdueCount = Math.max(counts?.todayCount ?? 0, overdueCount);
 
   // 虚拟化滚动容器（CustomScrollArea 的 viewport）
   const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null);
@@ -368,35 +369,24 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     };
   }, [items, filter.priorityFilter, filter.showCompleted, filter.view, filter.sortBy]);
 
-  // ===== 'all' / 'today' / 'overdue' 视图：保留父子任务视觉层级；子任务绝不提升为顶层 =====
-  const isTreeView =
-    (filter.view === 'all' || filter.view === 'today' || filter.view === 'overdue') &&
-    !filter.search.trim();
+  const activeTodayOrOverdueCount =
+    filter.view === 'today' && !filter.search.trim() && !filter.priorityFilter && !isLoadingItems
+      ? pendingCount
+      : Math.max(counts?.todayCount ?? 0, overdueCount);
+
+  // ===== 主列表只展示顶层任务：子任务一律归属父任务（父行展示 done/total 进度徽标，详情面板交互勾选），绝不平铺成独立顶层行 =====
   const isManualSortView = filter.view === 'all' && !filter.search.trim() && filter.sortBy === 'manual';
 
-  const { topLevelItems, childrenByParent } = useMemo(() => {
-    const childMap = new Map<string, TodoItem[]>();
-    const tops: TodoItem[] = [];
-    const visibleIds = new Set(filteredItems.map((i) => i.id));
-    for (const item of filteredItems) {
-      if (item.parentId) {
-        if (isTreeView && visibleIds.has(item.parentId)) {
-          const arr = childMap.get(item.parentId) || [];
-          arr.push(item);
-          childMap.set(item.parentId, arr);
-        }
-      } else {
-        tops.push(item);
-      }
-    }
-    return { topLevelItems: tops, childrenByParent: childMap };
-  }, [filteredItems, isTreeView]);
+  const topLevelItems = useMemo(
+    () => filteredItems.filter((item) => !item.parentId),
+    [filteredItems],
+  );
 
-  // ===== 'upcoming'/'today' 视图：按时间段分组（仅顶层任务参与分桶，子任务在组内跟随父任务缩进） =====
+  // ===== 'upcoming'/'today' 视图：按时间段分组（仅顶层任务参与分桶） =====
   const upcomingGroups = useMemo(() => {
     if (filter.view !== 'upcoming' && filter.view !== 'today') return null;
     const groups = groupItemsByDueBucket(topLevelItems);
-    // today 视图只有逾期/今天两组；只有「今天」一组时无需组头，退回普通列表（仍走 isTreeView 保留子任务层级）
+    // today 视图只有逾期/今天两组；只有「今天」一组时无需组头，退回普通列表
     if (filter.view === 'today' && groups.length === 1 && groups[0].bucket === 'today') {
       return null;
     }
@@ -442,42 +432,23 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     [subtaskProgressById],
   );
 
-  // 分组内行规格：today 视图在逾期/今天分组内保留父子缩进与子任务进度；upcoming 也保留子任务进度
+  // 分组内行规格：仅渲染顶层任务行，父行保留子任务进度徽标
   const upcomingGroupRows = useMemo(() => {
     if (!upcomingGroups) return null;
-    const preserveHierarchy = filter.view === 'today' && !filter.search.trim();
     return upcomingGroups.map((group) => ({
       ...group,
-      rows: preserveHierarchy
-        ? group.items.flatMap((item): TodoRowSpec[] => [
-            { item, subtaskProgress: subtaskProgressOf(item.id) },
-            ...(childrenByParent.get(item.id) || []).map((child): TodoRowSpec => ({
-              item: child,
-              depth: 1,
-              subtaskProgress: subtaskProgressOf(child.id),
-            })),
-          ])
-        : group.items.map((item): TodoRowSpec => ({
-            item,
-            subtaskProgress: subtaskProgressOf(item.id),
-          })),
+      rows: group.items.map((item): TodoRowSpec => ({
+        item,
+        subtaskProgress: subtaskProgressOf(item.id),
+      })),
     }));
-  }, [upcomingGroups, filter.view, filter.search, childrenByParent, subtaskProgressOf]);
+  }, [upcomingGroups, subtaskProgressOf]);
 
-  // 树形/平铺分支交给 TodoRowsList（>100 行自动虚拟化）
-  const listRows = useMemo<TodoRowSpec[]>(() => {
-    if (isTreeView) {
-      return topLevelItems.flatMap((item) => [
-        { item, subtaskProgress: subtaskProgressOf(item.id) },
-        ...(childrenByParent.get(item.id) || []).map((child) => ({
-          item: child,
-          depth: 1,
-          subtaskProgress: subtaskProgressOf(child.id),
-        })),
-      ]);
-    }
-    return topLevelItems.map((item) => ({ item, subtaskProgress: subtaskProgressOf(item.id) }));
-  }, [isTreeView, topLevelItems, childrenByParent, subtaskProgressOf]);
+  // 顶层行规格交给 TodoRowsList（>100 行自动虚拟化）
+  const listRows = useMemo<TodoRowSpec[]>(
+    () => topLevelItems.map((item) => ({ item, subtaskProgress: subtaskProgressOf(item.id) })),
+    [topLevelItems, subtaskProgressOf],
+  );
 
   // 键盘导航的可见行顺序（跨所有视图分支统一口径；折叠分组内的行不参与 j/k）
   const visibleRowIds = useMemo(() => {
@@ -774,13 +745,25 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     filter.view === 'today' && !filter.showCompleted && !filter.priorityFilter
       ? Math.max(completedCount, todayCompletedCount)
       : completedCount;
+  const isPriorityFilteredEmpty = Boolean(
+    filter.priorityFilter &&
+      !filter.search.trim() &&
+      topLevelItems.length === 0 &&
+      items.some(
+        (item) =>
+          !item.parentId &&
+          (filter.view === 'completed' || filter.showCompleted || item.status !== 'completed'),
+      ),
+  );
   const isTodayAllDone =
     !filter.search.trim() &&
+    !filter.priorityFilter &&
     filter.view === 'today' &&
     effectiveTodayCompletedCount > 0 &&
     pendingCount === 0;
   const isTodayFreshEmpty =
     !filter.search.trim() &&
+    !filter.priorityFilter &&
     filter.view === 'today' &&
     effectiveTodayCompletedCount === 0 &&
     pendingCount === 0;
@@ -792,6 +775,14 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         icon: MagnifyingGlass,
         title: t('todo:empty.noSearchResults'),
         hint: t('todo:empty.noSearchResultsHint'),
+        celebratory: false,
+      };
+    }
+    if (isPriorityFilteredEmpty) {
+      return {
+        icon: Flag,
+        title: t('todo:empty.noSearchResults'),
+        hint: t('todo:filters.allPriorities'),
         celebratory: false,
       };
     }
@@ -1131,7 +1122,10 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 <CircleNotch size={24} className="animate-spin text-muted-foreground/60" />
               </div>
             ) : topLevelItems.length === 0 ? (
-              <div className="study-shell-empty-state m-4 sm:m-6 ui-rise-in motion-reduce:animate-none">
+              <div
+                data-testid="todo-empty-state"
+                className="study-shell-empty-state m-4 sm:m-6 ui-rise-in motion-reduce:animate-none"
+              >
                 <div
                   className={cn(
                     'study-shell-empty-state__icon',
@@ -1161,6 +1155,19 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   </span>
                 )}
                 <p className="study-shell-empty-state__description">{emptyState.hint}</p>
+                {isPriorityFilteredEmpty && (
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    <DsButton
+                      variant="utility"
+                      size="sm"
+                      onClick={() => setPriorityFilter(null)}
+                      className="gap-1.5 text-xs"
+                    >
+                      <Flag size={14} />
+                      {t('todo:filters.allPriorities')}
+                    </DsButton>
+                  </div>
+                )}
                 {isTodayAllDone && (
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                     <DsButton
@@ -1183,7 +1190,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                     </DsButton>
                   </div>
                 )}
-                {showQuickAdd && !isTodayAllDone && !filter.search.trim() && (
+                {showQuickAdd && !isTodayAllDone && !isPriorityFilteredEmpty && !filter.search.trim() && (
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                     {filter.view === 'all' && activeTodayOrOverdueCount > 0 && (
                       <DsButton
@@ -1229,37 +1236,20 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 >
                   <div className="flex flex-col divide-y divide-border/[0.08]">
                     {topLevelItems.map((item) => (
-                      <React.Fragment key={item.id}>
-                        <SortableTodoItemRow
-                          item={item}
-                          onToggle={toggleItem}
-                          onSelect={handleSelect}
-                          onDelete={deleteItem}
-                          onRename={handleRename}
-                          isSelected={selectedItemId === item.id}
-                          isFocused={focusedItemId === item.id}
-                          isChecked={checkedIds.has(item.id)}
-                          onCheckToggle={handleCheckToggle}
-                          checkMode={checkMode}
-                          subtaskProgress={subtaskProgressOf(item.id)}
-                        />
-                        {(childrenByParent.get(item.id) || []).map((child) => (
-                          <TodoItemRow
-                            key={child.id}
-                            item={child}
-                            onToggle={toggleItem}
-                            onSelect={handleSelect}
-                            onDelete={deleteItem}
-                            onRename={handleRename}
-                            isSelected={selectedItemId === child.id}
-                            isFocused={focusedItemId === child.id}
-                            isChecked={checkedIds.has(child.id)}
-                            onCheckToggle={handleCheckToggle}
-                            checkMode={checkMode}
-                            depth={1}
-                          />
-                        ))}
-                      </React.Fragment>
+                      <SortableTodoItemRow
+                        key={item.id}
+                        item={item}
+                        onToggle={toggleItem}
+                        onSelect={handleSelect}
+                        onDelete={deleteItem}
+                        onRename={handleRename}
+                        isSelected={selectedItemId === item.id}
+                        isFocused={focusedItemId === item.id}
+                        isChecked={checkedIds.has(item.id)}
+                        onCheckToggle={handleCheckToggle}
+                        checkMode={checkMode}
+                        subtaskProgress={subtaskProgressOf(item.id)}
+                      />
                     ))}
                   </div>
                 </SortableContext>

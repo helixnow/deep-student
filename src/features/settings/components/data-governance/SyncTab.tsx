@@ -54,7 +54,10 @@ import {
   classifySyncE2eeError,
   SYNC_E2EE_ERROR_I18N_KEYS,
 } from "./syncE2eeErrorMapping";
-import { localizeBackendErrorText } from "./localizeCloudError";
+import {
+  formatFriendlySyncError,
+  localizeBackendErrorText,
+} from "./localizeCloudError";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
 import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
 import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
@@ -341,6 +344,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   const rawSyncError = syncProgress?.error;
   const sanitizedSyncError = rawSyncError
     ? sanitizeSyncAclError(rawSyncError, t, i18n?.language)
+    : undefined;
+  const friendlySyncError = rawSyncError
+    ? formatFriendlySyncError(rawSyncError, t, i18n?.language)
     : undefined;
   const localizedProgressItem = syncProgress?.current_item
     ? syncProgress.current_item.startsWith("sync:")
@@ -1029,18 +1035,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                               })
                             : syncErrorE2eeKind
                               ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
-                              : sanitizedSyncError}
+                              : friendlySyncError ?? sanitizedSyncError}
                         </span>
                       </div>
-                      {syncErrorE2eeKind && (
-                        <p className="pl-[18px] text-2xs text-muted-foreground break-all">
-                          {t("sync:errors.technicalDetail")} {sanitizedSyncError}
-                        </p>
-                      )}
-                      {syncErrorKind && !syncErrorE2eeKind && (
-                        <p className="pl-[18px] text-2xs text-muted-foreground break-all">
-                          {t("sync:errors.technicalDetail")} {sanitizedSyncError}
-                        </p>
+                      {(syncErrorE2eeKind || syncErrorKind) && (
+                        <details className="pl-[18px] text-2xs text-muted-foreground">
+                          <summary className="cursor-pointer select-none hover:text-foreground">
+                            {t("sync:errors.technicalDetail")}
+                          </summary>
+                          <p className="mt-1 break-all">{sanitizedSyncError}</p>
+                        </details>
                       )}
                       <div className="flex items-center gap-2 pl-[18px]">
                         {onRetrySync && (

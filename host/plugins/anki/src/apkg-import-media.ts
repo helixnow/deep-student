@@ -61,41 +61,18 @@ export function sanitizeMediaFilename(raw: string): string | null {
   return name;
 }
 
-/** `src="..."` / `src='...'` / `[sound:...]` 引用的媒体文件名（保持出现顺序）。 */
+/** `src="..."` / `src='...'` / `src=...` / `[sound:...]` 引用的媒体文件名（保持出现顺序）。 */
 export function extractMediaFilenames(text: string): string[] {
   const names: string[] = [];
-  const searchable = text.replace(/src=|\[sound:/gi, match => match.toLowerCase());
 
-  let searchFrom = 0;
-  for (;;) {
-    const matchIndex = searchable.indexOf('src=', searchFrom);
-    if (matchIndex < 0) break;
-    const quoteIndex = matchIndex + 4;
-    if (quoteIndex >= text.length) break;
-    const quote = text[quoteIndex]!;
-    if (quote === '"' || quote === "'") {
-      const valueStart = quoteIndex + 1;
-      const valueEnd = text.indexOf(quote, valueStart);
-      if (valueEnd >= 0) {
-        const value = text.slice(valueStart, valueEnd);
-        if (value !== '') names.push(value);
-        searchFrom = valueEnd + 1;
-        continue;
-      }
-    }
-    searchFrom = quoteIndex;
+  for (const match of text.matchAll(/\bsrc(?:\s*=\s*(?:"([^"]+)"|'([^']+)')|=([^\s"'=<>`]+\.[a-z0-9]{1,8}))/gi)) {
+    const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+    if (value !== '') names.push(value);
   }
 
-  searchFrom = 0;
-  for (;;) {
-    const matchIndex = searchable.indexOf('[sound:', searchFrom);
-    if (matchIndex < 0) break;
-    const valueStart = matchIndex + '[sound:'.length;
-    const valueEnd = text.indexOf(']', valueStart);
-    if (valueEnd < 0) break;
-    const value = text.slice(valueStart, valueEnd);
+  for (const match of text.matchAll(/\[sound:([^\]]+)\]/gi)) {
+    const value = (match[1] ?? '').trim();
     if (value !== '') names.push(value);
-    searchFrom = valueEnd + 1;
   }
 
   return names;
@@ -109,13 +86,48 @@ export function collectCardMediaPaths(
   if (mediaPaths.size === 0) return [];
   const images: string[] = [];
   const seen = new Set<string>();
+  let lowerIndex: Map<string, string> | null = null;
+  const resolveTarget = (raw: string): string | undefined => {
+    const stripped = raw.replace(/^anki-media:\/\/\/?/i, '');
+    const candidates = [raw, stripped];
+    try {
+      const decoded = decodeURIComponent(stripped);
+      if (decoded !== stripped) candidates.push(decoded);
+    } catch { /* boundary-allow empty-catch: Malformed URI escapes remain literal filenames. */ }
+    for (const candidate of candidates) {
+      const direct = mediaPaths.get(candidate);
+      if (direct !== undefined) return direct;
+      const sanitized = sanitizeMediaFilename(candidate);
+      if (sanitized !== null) {
+        const byBase = mediaPaths.get(sanitized);
+        if (byBase !== undefined) return byBase;
+      }
+    }
+    if (lowerIndex === null) {
+      lowerIndex = new Map<string, string>();
+      for (const [key, value] of mediaPaths.entries()) {
+        const lowerKey = key.toLowerCase();
+        if (!lowerIndex.has(lowerKey)) lowerIndex.set(lowerKey, value);
+        const sanitized = sanitizeMediaFilename(key);
+        if (sanitized !== null && !lowerIndex.has(sanitized.toLowerCase())) {
+          lowerIndex.set(sanitized.toLowerCase(), value);
+        }
+      }
+    }
+    for (const candidate of candidates) {
+      const hit = lowerIndex.get(candidate.toLowerCase());
+      if (hit !== undefined) return hit;
+      const sanitized = sanitizeMediaFilename(candidate);
+      if (sanitized !== null) {
+        const baseHit = lowerIndex.get(sanitized.toLowerCase());
+        if (baseHit !== undefined) return baseHit;
+      }
+    }
+    return undefined;
+  };
   for (const value of fieldValues) {
     for (const name of extractMediaFilenames(value)) {
-      let target = mediaPaths.get(name);
-      if (target === undefined) {
-        try { target = mediaPaths.get(decodeURIComponent(name)); }
-        catch { /* boundary-allow empty-catch: Malformed URI escapes remain literal filenames. */ }
-      }
+      const target = resolveTarget(name);
       if (target !== undefined && !seen.has(target)) {
         seen.add(target);
         images.push(target);

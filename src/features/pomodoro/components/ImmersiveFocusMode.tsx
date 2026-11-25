@@ -637,12 +637,14 @@ export const ImmersiveFocusMode: React.FC<{
             {/* 停止 */}
             {mode !== 'idle' && (
               <button
+                type="button"
+                data-testid="immersive-pomodoro-stop-btn"
                 onClick={handleStop}
                 className={cn(
-                  secondaryControlClass,
+                  'inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-4 text-xs font-medium text-foreground transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
                   confirmingStop
-                    ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                    : 'hover:bg-destructive/10 hover:text-destructive',
+                    ? 'border-destructive/50 bg-destructive/15 text-destructive'
+                    : 'hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive',
                 )}
                 title={confirmingStop
                   ? t('pomodoro.controls.abandonConfirm', '放弃本次专注？')
@@ -651,7 +653,8 @@ export const ImmersiveFocusMode: React.FC<{
                   ? t('pomodoro.controls.abandonConfirm', '放弃本次专注？')
                   : t('pomodoro.controls.stop')}
               >
-                <Square size={20} />
+                <Square size={15} weight="fill" aria-hidden="true" className="shrink-0" />
+                <span>{confirmingStop ? t('pomodoro.controls.abandon', '放弃') : t('pomodoro.controls.stop')}</span>
               </button>
             )}
 
@@ -716,12 +719,15 @@ export const ImmersiveFocusMode: React.FC<{
             {/* 跳过（休息阶段可用） */}
             {(mode === 'short_break' || mode === 'long_break') && (
               <button
+                type="button"
+                data-testid="immersive-pomodoro-skip-break-btn"
                 onClick={() => skipBreak()}
-                className={secondaryControlClass}
+                className="inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-4 text-xs font-medium text-foreground transition-[transform,background-color,border-color,color] duration-150 hover:bg-[var(--interactive-hover)] active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
                 title={t('pomodoro.controls.skipBreak')}
                 aria-label={t('pomodoro.controls.skipBreak')}
               >
-                <SkipForward size={20} />
+                <SkipForward size={16} weight="fill" aria-hidden="true" className="shrink-0" />
+                <span>{t('pomodoro.controls.skipBreak')}</span>
               </button>
             )}
           </div>

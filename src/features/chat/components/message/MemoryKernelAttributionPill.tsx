@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain, SlidersHorizontal, Trash, X } from '@phosphor-icons/react';
 import {
@@ -15,8 +15,21 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { cn } from '@/lib/utils';
+import {
+  buildMemorySnapshotKey,
+  clearPersistedMessageMemorySnapshots,
+  extractMessageMemorySnapshotFromMeta,
+  getPersistedMessageMemorySnapshot,
+  hasNonEmptyFrozenSnapshot,
+  parseFrozenMemorySnapshot,
+  savePersistedMessageMemorySnapshot,
+  snapshotFromInspectionView,
+  snapshotFromSessionFrozen,
+  type MessageMemoryAttributionSnapshot,
+} from './memoryAttributionSnapshot';
 
-export { invalidateMemoryKernelAttributionCache };
+export { invalidateMemoryKernelAttributionCache, clearPersistedMessageMemorySnapshots };
+export type { MessageMemoryAttributionSnapshot };
 
 let inflight: Promise<MemoryInspectionView | null> | null = null;
 let memoryChangedSubscribed = false;
@@ -57,68 +70,21 @@ function ensureMemoryChangedListener(): void {
 
 export interface MemoryKernelAttributionPillProps {
   className?: string;
+  /** Message ID for per-message immutable snapshot capture & persistence. */
+  messageId?: string;
+  /** Session ID paired with messageId for snapshot keying. */
+  sessionId?: string | null;
+  /** Active variant ID so regenerated versions keep independent attribution snapshots. */
+  variantId?: string | null;
+  /** Message-level metadata (reads `memoryAttributionSnapshot` / `memoryKernelSnapshot` when present). */
+  messageMeta?: Record<string, unknown> | null;
+  /** Explicit per-message snapshot override (highest priority, immutable). */
+  messageSnapshot?: MessageMemoryAttributionSnapshot | null;
   sessionMetadata?: Record<string, unknown> | null;
   /** Whether this assistant reply is Turn 1 of the session (baseline snapshot) vs Turn 2+ (delta-synced). */
   isFirstAssistantTurn?: boolean;
   /** Mounts invisibly while Turn 1 is streaming so kernel summary is prefetched before settle. */
   prefetchOnly?: boolean;
-}
-
-interface FrozenRuleRef {
-  id: string;
-  instruction: string;
-  scope?: string;
-}
-
-interface ParsedFrozenMemorySnapshot {
-  renderedKernel: string;
-  rulesVersion: number;
-  profileVersion: number;
-  includedRuleIds: string[];
-  includedRules: FrozenRuleRef[];
-  includedWeakPointKeys: string[];
-  includedLegacyNoteIds: string[];
-}
-
-function parseFrozenMemorySnapshot(
-  sessionMetadata: Record<string, unknown> | null | undefined,
-): ParsedFrozenMemorySnapshot | null {
-  if (!sessionMetadata || typeof sessionMetadata !== 'object') return null;
-  const raw = sessionMetadata.memoryKernelSnapshot;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const obj = raw as Record<string, unknown>;
-  const includedRuleIds = Array.isArray(obj.includedRuleIds)
-    ? obj.includedRuleIds.filter((item): item is string => typeof item === 'string')
-    : [];
-  const includedWeakPointKeys = Array.isArray(obj.includedWeakPointKeys)
-    ? obj.includedWeakPointKeys.filter((item): item is string => typeof item === 'string')
-    : [];
-  const includedLegacyNoteIds = Array.isArray(obj.includedLegacyNoteIds)
-    ? obj.includedLegacyNoteIds.filter((item): item is string => typeof item === 'string')
-    : [];
-  const includedRules: FrozenRuleRef[] = [];
-  if (Array.isArray(obj.includedRules)) {
-    for (const item of obj.includedRules) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const ruleObj = item as Record<string, unknown>;
-      if (typeof ruleObj.id === 'string' && typeof ruleObj.instruction === 'string') {
-        includedRules.push({
-          id: ruleObj.id,
-          instruction: ruleObj.instruction,
-          ...(typeof ruleObj.scope === 'string' ? { scope: ruleObj.scope } : {}),
-        });
-      }
-    }
-  }
-  return {
-    renderedKernel: typeof obj.renderedKernel === 'string' ? obj.renderedKernel : '',
-    rulesVersion: typeof obj.rulesVersion === 'number' ? obj.rulesVersion : 0,
-    profileVersion: typeof obj.profileVersion === 'number' ? obj.profileVersion : 0,
-    includedRuleIds,
-    includedRules,
-    includedWeakPointKeys,
-    includedLegacyNoteIds,
-  };
 }
 
 interface AttributionRuleEntry {
@@ -127,6 +93,7 @@ interface AttributionRuleEntry {
   scope: string;
   pinned: boolean;
   inLive: boolean;
+  replacedInLive: boolean;
 }
 
 interface AttributionWeakPointEntry {
@@ -137,6 +104,11 @@ interface AttributionWeakPointEntry {
 
 export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillProps> = ({
   className,
+  messageId,
+  sessionId,
+  variantId,
+  messageMeta,
+  messageSnapshot,
   sessionMetadata,
   isFirstAssistantTurn,
   prefetchOnly = false,
@@ -152,123 +124,163 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   const [lastRemovedRule, setLastRemovedRule] = useState<{ instruction: string; scope: string; pinned: boolean } | null>(null);
   const prevPrefetchOnlyRef = useRef(prefetchOnly);
 
+  const snapshotKey = useMemo(
+    () => buildMemorySnapshotKey({ sessionId, messageId, variantId }),
+    [sessionId, messageId, variantId],
+  );
+
+  const explicitSnapshot = useMemo(
+    () => messageSnapshot ?? extractMessageMemorySnapshotFromMeta(messageMeta),
+    [messageSnapshot, messageMeta],
+  );
+
+  const frozenSessionSnapshot = useMemo(
+    () => parseFrozenMemorySnapshot(sessionMetadata),
+    [sessionMetadata],
+  );
+
+  const hasNonEmptySessionBaseline = hasNonEmptyFrozenSnapshot(frozenSessionSnapshot);
+  const useTurnOneSessionBaseline = hasNonEmptySessionBaseline && isFirstAssistantTurn !== false;
+
+  const [persistedSnapshot, setPersistedSnapshot] = useState<MessageMemoryAttributionSnapshot | null>(
+    () => (snapshotKey ? getPersistedMessageMemorySnapshot(snapshotKey) : null),
+  );
+
   useEffect(() => {
+    setPersistedSnapshot(snapshotKey ? getPersistedMessageMemorySnapshot(snapshotKey) : null);
+  }, [snapshotKey]);
+
+  // Freeze Turn-1 session baseline into per-message persisted store as soon as Turn 1 settles.
+  useEffect(() => {
+    if (prefetchOnly || explicitSnapshot || persistedSnapshot) return;
+    if (!snapshotKey || !useTurnOneSessionBaseline || !frozenSessionSnapshot) return;
+    const saved = savePersistedMessageMemorySnapshot(
+      snapshotKey,
+      snapshotFromSessionFrozen(frozenSessionSnapshot),
+    );
+    setPersistedSnapshot(saved);
+  }, [
+    prefetchOnly,
+    explicitSnapshot,
+    persistedSnapshot,
+    snapshotKey,
+    useTurnOneSessionBaseline,
+    frozenSessionSnapshot,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
     ensureMemoryChangedListener();
-    void ensureMemoryKernelSummary();
-    if (!prefetchOnly) return;
+    const shouldForceRefresh = prevPrefetchOnlyRef.current && !prefetchOnly;
+    prevPrefetchOnlyRef.current = prefetchOnly;
+
+    void ensureMemoryKernelSummary(shouldForceRefresh).then((freshView) => {
+      if (cancelled || prefetchOnly || !freshView || freshView.privacyMode) return;
+      if (explicitSnapshot || !snapshotKey) return;
+      if (getPersistedMessageMemorySnapshot(snapshotKey)) return;
+      if (useTurnOneSessionBaseline && frozenSessionSnapshot) {
+        const saved = savePersistedMessageMemorySnapshot(
+          snapshotKey,
+          snapshotFromSessionFrozen(frozenSessionSnapshot),
+        );
+        setPersistedSnapshot(saved);
+        return;
+      }
+      const saved = savePersistedMessageMemorySnapshot(
+        snapshotKey,
+        snapshotFromInspectionView(freshView),
+      );
+      setPersistedSnapshot(saved);
+    });
+
+    if (!prefetchOnly) {
+      return () => {
+        cancelled = true;
+      };
+    }
     return () => {
+      cancelled = true;
       // Mark TTL stale when streaming prefetcher unmounts (keeps cached snapshot for frame-0 paint, forces post-turn refresh).
       invalidateMemoryKernelAttributionCache();
     };
-  }, [prefetchOnly]);
-
-  useEffect(() => {
-    const wasPrefetchOnly = prevPrefetchOnlyRef.current;
-    prevPrefetchOnlyRef.current = prefetchOnly;
-    if (wasPrefetchOnly && !prefetchOnly) {
-      // Stream just settled (e.g. Turn 1 finished): force refresh so rules/profile updated during the turn appear immediately.
-      void ensureMemoryKernelSummary(true);
-    }
-  }, [prefetchOnly]);
+  }, [prefetchOnly, explicitSnapshot, snapshotKey, useTurnOneSessionBaseline, frozenSessionSnapshot]);
 
   if (prefetchOnly) return null;
-  if (!view || view.privacyMode) return null;
+  if (view?.privacyMode) return null;
 
-  const liveRules = view.hardRules?.rules ?? [];
-  const liveWeakPoints = view.learnerProfile?.weak_points ?? [];
-  const liveGoals = view.learnerProfile?.goals ?? [];
-  const frozenSnapshot = parseFrozenMemorySnapshot(sessionMetadata);
-
-  const hasNonEmptyFrozenBaseline = Boolean(
-    frozenSnapshot && (
-      frozenSnapshot.includedRuleIds.length > 0 ||
-      frozenSnapshot.includedWeakPointKeys.length > 0 ||
-      frozenSnapshot.includedLegacyNoteIds.length > 0 ||
-      frozenSnapshot.renderedKernel.trim() !== ''
-    ),
-  );
-  // Turn 1 uses its non-empty Turn-1 baseline snapshot; Turn 2+ reflects live rules/weak-points applied via <memory_delta>.
-  // If Turn 1 started with an empty baseline and rules were added mid-Turn-1, fall back to live rules so Turn 1 still renders attribution.
-  const useTurnOneFrozenBaseline = hasNonEmptyFrozenBaseline && isFirstAssistantTurn !== false;
-
-  const rules: AttributionRuleEntry[] = (() => {
-    if (!useTurnOneFrozenBaseline || !frozenSnapshot) {
-      return liveRules.map((rule) => ({
-        id: rule.id,
-        instruction: rule.instruction,
-        scope: rule.scope,
-        pinned: rule.pinned,
-        inLive: true,
-      }));
+  const effectiveSnapshot: MessageMemoryAttributionSnapshot | null = (() => {
+    if (explicitSnapshot) return explicitSnapshot;
+    if (persistedSnapshot) return persistedSnapshot;
+    if (useTurnOneSessionBaseline && frozenSessionSnapshot) {
+      return snapshotFromSessionFrozen(frozenSessionSnapshot);
     }
-    const liveById = new Map(liveRules.map((rule) => [rule.id, rule]));
-    const frozenById = new Map(frozenSnapshot.includedRules.map((rule) => [rule.id, rule]));
-    return frozenSnapshot.includedRuleIds.map((ruleId) => {
-      const liveRule = liveById.get(ruleId);
-      if (liveRule) {
-        return {
-          id: liveRule.id,
-          instruction: liveRule.instruction,
-          scope: liveRule.scope,
-          pinned: liveRule.pinned,
-          inLive: true,
-        };
-      }
-      const frozenRule = frozenById.get(ruleId);
-      return {
-        id: ruleId,
-        instruction: frozenRule?.instruction ?? ruleId,
-        scope: frozenRule?.scope ?? 'global',
-        pinned: false,
-        inLive: false,
-      };
-    });
+    // Wait for post-stream refresh before painting/capturing when a keyed message has a stale cache.
+    if (snapshotKey && !isMemoryKernelSummaryFresh()) return null;
+    if (!view) return null;
+    return snapshotFromInspectionView(view);
   })();
 
-  const weakPoints: AttributionWeakPointEntry[] = (() => {
-    if (!useTurnOneFrozenBaseline || !frozenSnapshot) {
-      return liveWeakPoints.map((wp) => ({
-        subject: wp.subject,
-        knowledge_point: wp.knowledge_point,
-        inLive: true,
-      }));
-    }
-    const liveByKey = new Map(
-      liveWeakPoints.map((wp) => [`${wp.subject}:${wp.knowledge_point}`, wp]),
+  if (!effectiveSnapshot) return null;
+
+  const liveRules = view?.hardRules?.rules ?? [];
+  const liveWeakPoints = view?.learnerProfile?.weak_points ?? [];
+
+  const liveRulesById = new Map(liveRules.map((rule) => [rule.id, rule]));
+  const rules: AttributionRuleEntry[] = effectiveSnapshot.rules.map((rule) => {
+    const liveRule = liveRulesById.get(rule.id);
+    const exactMatch = Boolean(
+      liveRule && liveRule.instruction.trim() === rule.instruction.trim(),
     );
-    return frozenSnapshot.includedWeakPointKeys.map((key) => {
-      const liveWp = liveByKey.get(key);
-      if (liveWp) {
-        return {
-          subject: liveWp.subject,
-          knowledge_point: liveWp.knowledge_point,
-          inLive: true,
-        };
-      }
-      const sepIndex = key.indexOf(':');
-      return {
-        subject: sepIndex > 0 ? key.slice(0, sepIndex) : '',
-        knowledge_point: sepIndex > 0 ? key.slice(sepIndex + 1) : key,
-        inLive: false,
-      };
-    });
-  })();
+    return {
+      id: rule.id,
+      // Always preserve the historical snapshot instruction; never mutate with live edits.
+      instruction: rule.instruction,
+      scope: rule.scope,
+      pinned: exactMatch && liveRule ? liveRule.pinned : rule.pinned,
+      inLive: exactMatch,
+      replacedInLive: Boolean(liveRule && !exactMatch),
+    };
+  });
 
-  const hasGlobalDrift = Boolean(
-    frozenSnapshot && (
-      frozenSnapshot.rulesVersion !== view.hardRules.version ||
-      liveRules.length !== frozenSnapshot.includedRuleIds.length ||
-      liveRules.some((rule, idx) => frozenSnapshot.includedRuleIds[idx] !== rule.id)
+  const liveWeakPointKeys = new Set(
+    liveWeakPoints.map((wp) => `${wp.subject}:${wp.knowledge_point}`),
+  );
+  const weakPoints: AttributionWeakPointEntry[] = effectiveSnapshot.weakPoints.map((wp) => ({
+    subject: wp.subject,
+    knowledge_point: wp.knowledge_point,
+    inLive: liveWeakPointKeys.has(`${wp.subject}:${wp.knowledge_point}`),
+  }));
+
+  const snapshotGoals = effectiveSnapshot.goals;
+
+  const snapshotDriftedFromLive = Boolean(
+    view && (
+      (effectiveSnapshot.rulesVersion > 0 && effectiveSnapshot.rulesVersion !== view.hardRules.version) ||
+      liveRules.length !== effectiveSnapshot.rules.length ||
+      liveRules.some((liveRule, idx) => {
+        const snapRule = effectiveSnapshot.rules[idx];
+        return (
+          !snapRule ||
+          snapRule.id !== liveRule.id ||
+          snapRule.instruction.trim() !== liveRule.instruction.trim()
+        );
+      })
     ),
   );
 
-  const effectiveKernelPreview = (
-    useTurnOneFrozenBaseline
-      ? frozenSnapshot?.renderedKernel ?? ''
-      : view.renderedKernelPreview ?? ''
-  ).trim();
+  const sessionBaselineDriftedFromLive = Boolean(
+    view &&
+      frozenSessionSnapshot && (
+        frozenSessionSnapshot.rulesVersion !== view.hardRules.version ||
+        liveRules.length !== frozenSessionSnapshot.includedRuleIds.length ||
+        liveRules.some((rule, idx) => frozenSessionSnapshot.includedRuleIds[idx] !== rule.id)
+      ),
+  );
 
-  const structuredCount = rules.length + weakPoints.length + liveGoals.length;
+  const hasGlobalDrift = snapshotDriftedFromLive || sessionBaselineDriftedFromLive;
+  const effectiveKernelPreview = effectiveSnapshot.renderedKernel.trim();
+
+  const structuredCount = rules.length + weakPoints.length + snapshotGoals.length;
   const hasKernelContextOnly = structuredCount === 0 && effectiveKernelPreview.length > 0;
   if (structuredCount === 0 && !hasKernelContextOnly && !lastRemovedRule) return null;
 
@@ -279,8 +291,8 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   if (weakPoints.length > 0) {
     summaryParts.push(t('memoryAttribution.weakPointsCount', { count: weakPoints.length }));
   }
-  if (summaryParts.length === 0 && liveGoals.length > 0) {
-    summaryParts.push(t('memoryAttribution.goalsCount', { count: liveGoals.length }));
+  if (summaryParts.length === 0 && snapshotGoals.length > 0) {
+    summaryParts.push(t('memoryAttribution.goalsCount', { count: snapshotGoals.length }));
   }
   if (summaryParts.length === 0) {
     summaryParts.push(t('memoryAttribution.activeSummary'));
@@ -427,7 +439,11 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
                     <span className="leading-snug text-foreground/90">{rule.instruction}</span>
                     {!rule.inLive && (
                       <div className="text-[10px] text-muted-foreground">
-                        {t('memoryAttribution.removedFromGlobal')}
+                        {rule.replacedInLive
+                          ? t('memoryAttribution.updatedInGlobal', {
+                              defaultValue: '已更新（新规则自后续轮次生效）',
+                            })
+                          : t('memoryAttribution.removedFromGlobal')}
                       </div>
                     )}
                   </div>
@@ -501,12 +517,12 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
             </div>
           )}
 
-          {rules.length === 0 && weakPoints.length === 0 && liveGoals.length > 0 && (
+          {rules.length === 0 && weakPoints.length === 0 && snapshotGoals.length > 0 && (
             <div className="mb-2 space-y-1">
               <div className="text-[11px] font-medium text-muted-foreground">
                 {t('memoryAttribution.goalsHeading')}
               </div>
-              {liveGoals.slice(0, 3).map((goalItem) => (
+              {snapshotGoals.slice(0, 3).map((goalItem) => (
                 <div
                   key={goalItem.goal}
                   className="rounded-md border border-border/40 bg-muted/30 px-2 py-1 text-foreground/90"

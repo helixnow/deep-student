@@ -132,24 +132,51 @@ function localizeFileSyncProgressKey(
   return i18nMatchesLocale ? readI18n(raw, defaultValue) : defaultValue;
 }
 
+/** Strip raw JS/Node stack traces, HTML error pages, and duplicate Error class wrappers. */
+function stripRawErrorNoise(raw: string): string {
+  let text = raw
+    // Drop multi-line JS/Node stack traces (`\n    at fn (file:line:col)`)
+    .replace(/\r?\n\s*at\s+[\s\S]*$/, '')
+    // Drop raw HTML responses appended as server detail
+    .replace(/[；;]\s*服务器详情\s*[:：]\s*<(?:!doctype|html|head|body)[\s\S]*$/i, '')
+    .replace(/<(?:!doctype|html|head|body)[\s\S]*$/i, '')
+    .replace(/^(?:(?:Command|CloudStorage|Sync|Type|Range|Network)?Error\s*:\s*)+/i, '')
+    .trim();
+  // Collapse multi-line whitespace noise into a clean single line
+  text = text.replace(/\s*\r?\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return text;
+}
+
 export function localizeBackendErrorText(raw: string, language?: string): string {
   if (!raw) return raw;
   const english = isEnglishUiLanguage(language);
   const fileSyncLabel = localizeFileSyncProgressKey(raw, english, language);
   if (fileSyncLabel !== null) return fileSyncLabel;
 
-  let text = raw;
+  let text = stripRawErrorNoise(raw);
   if (!english) {
     return text
+      .replace(/\[E_CLOUD_RATE_LIMITED\]\s*/g, '')
       .replace(/socket hang up/gi, '网络连接中断，请检查服务器或网络后重试')
       .replace(/(?<!\()\bECONNRESET\b(?!\))|(?<!\()connection reset by peer(?!\))/gi, '网络连接被重置，请检查服务器或网络后重试')
       .replace(/\bECONNREFUSED\b|connection refused/gi, '无法连接到服务器，请检查地址和端口')
-      .replace(/\bETIMEDOUT\b|operation timed out|request timeout/gi, '网络连接超时，请检查网络或稍后重试')
-      .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, '无法解析服务器域名，请检查服务器地址和网络');
+      .replace(/\b(?:ETIMEDOUT|HeadersTimeoutError|BodyTimeoutError|UND_ERR_CONNECT_TIMEOUT)\b|operation timed out|request timeout/gi, '网络连接超时，请检查网络或稍后重试')
+      .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, '无法解析服务器域名，请检查服务器地址和网络')
+      .replace(/\b(?:EHOSTUNREACH|ENETUNREACH|ERR_NETWORK)\b|fetch failed|Failed to fetch|\bNetworkError\b/gi, '网络连接不可用，请检查网络设置后重试')
+      .replace(/\b(?:EPIPE|ERR_SOCKET_CLOSED|UND_ERR_SOCKET)\b/gi, '网络连接意外断开，请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*503(?:\s+Service Unavailable)?\b(?!）)/gi, '云端服务暂时不可用（HTTP 503），请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*502(?:\s+Bad Gateway)?\b(?!）)/gi, '云端网关异常（HTTP 502），请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*504(?:\s+Gateway Timeout)?\b(?!）)/gi, '云端服务响应超时（HTTP 504），请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*500(?:\s+Internal Server Error)?\b(?!）)/gi, '云端服务器内部错误（HTTP 500），请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*429(?:\s+Too Many Requests)?\b(?!）)/gi, '请求过于频繁，云端已临时限流（HTTP 429），请稍后重试')
+      .replace(/(?<!（)\bHTTP\s*403(?:\s+Forbidden)?\b(?!）)/gi, '云端拒绝访问（HTTP 403），请检查账号权限或同步目录设置')
+      .replace(/(?<!（)\bHTTP\s*404(?:\s+Not Found)?\b(?!）)/gi, '云端目录或文件不存在（HTTP 404），请检查服务器地址与同步根目录')
+      .trim();
   }
 
   // Progress & retry status messages
   text = text
+    .replace(/\[E_CLOUD_RATE_LIMITED\]\s*/g, '')
     .replace(
       /云端请求暂不可用，(\d+)\s*秒后自动重试（第\s*(\d+\/\d+)\s*次）…?/g,
       'Cloud request temporarily unavailable, retrying in $1s (attempt $2)...',
@@ -177,8 +204,10 @@ export function localizeBackendErrorText(raw: string, language?: string): string
     .replace(/socket hang up/gi, 'Network connection interrupted. Please check the server or network and try again')
     .replace(/\bECONNRESET\b|connection reset by peer/gi, 'Network connection reset. Please check the server or network and try again')
     .replace(/\bECONNREFUSED\b|connection refused/gi, 'Connection refused by server. Please check the endpoint URL and port')
-    .replace(/\bETIMEDOUT\b/gi, 'Network connection timed out. Please try again later')
-    .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, 'Could not resolve server host name. Please check the URL and network');
+    .replace(/\b(?:ETIMEDOUT|HeadersTimeoutError|BodyTimeoutError|UND_ERR_CONNECT_TIMEOUT)\b|operation timed out|request timeout/gi, 'Network connection timed out. Please try again later')
+    .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, 'Could not resolve server host name. Please check the URL and network')
+    .replace(/\b(?:EHOSTUNREACH|ENETUNREACH|ERR_NETWORK)\b|fetch failed|Failed to fetch|\bNetworkError\b/gi, 'Network unavailable. Please check your connection and try again')
+    .replace(/\b(?:EPIPE|ERR_SOCKET_CLOSED|UND_ERR_SOCKET)\b/gi, 'Network connection closed unexpectedly. Please try again later');
 
   // Common WebDAV / Sync / Cloud Storage prefixes & error details
   const replacements: ReadonlyArray<[RegExp, string]> = [
@@ -203,7 +232,16 @@ export function localizeBackendErrorText(raw: string, language?: string): string
     [/WebDAV\s+同步目录不存在，且服务器正在限流（([^）]+)）：[^。.\n]*/g, 'WebDAV sync directory missing and rate-limited ($1). Please try again later.'],
     [/WebDAV\s+同步目录不存在且无法创建/g, 'WebDAV sync directory does not exist and could not be created'],
     [/服务端限流（未重试）/g, 'Rate limited by cloud server (not retried)'],
+    [/WebDAV\s*服务端限流，未重试[；;]\s*/g, 'Rate limited by cloud server: '],
     [/服务端限流/g, 'Rate limited by cloud server'],
+    [/同步格式协商失败\s*[:：]\s*/g, 'Failed to negotiate remote sync format: '],
+    [/列举同步租约失败\s*[:：]\s*/g, 'Failed to inspect cloud sync lock: '],
+    [/写入同步租约失败\s*[:：]\s*/g, 'Failed to acquire cloud sync lock: '],
+    [/读取同步租约失败(?:\s+[^\s:：]+)?\s*[:：]\s*/g, 'Failed to read cloud sync lock: '],
+    [/回验同步租约失败\s*[:：]\s*/g, 'Failed to verify cloud sync lock: '],
+    [/同步租约心跳已失效[^:：]*[:：]\s*/g, 'Sync lock expired while paused: '],
+    [/提交下载游标失败\s*[:：]\s*/g, 'Failed to commit download progress: '],
+    [/上传当前设备清单失败\s*[:：]\s*/g, 'Failed to upload device manifest: '],
     [/检查云端变更断层失败\s*[:：]\s*/g, 'Failed to check cloud change log gaps: '],
     [/读取远端同步格式失败\s*[:：]\s*/g, 'Failed to read remote sync format: '],
     [/创建云存储失败\s*[:：]\s*/g, 'Failed to create cloud storage: '],
@@ -237,6 +275,131 @@ export function localizeBackendErrorText(raw: string, language?: string): string
     text = `${text} (Check username and app-specific password)`;
   }
   return text;
+}
+
+function extractLeaseExpiryDate(raw: string): Date | null {
+  const match = /预计\s*(\S+?)\s*到期/.exec(raw);
+  if (!match) return null;
+  const expiry = new Date(match[1].replace(/(\.\d{3})\d+/, '$1'));
+  return Number.isNaN(expiry.getTime()) ? null : expiry;
+}
+
+/**
+ * Formats a sync error into a concise, learner-friendly localized string suitable for
+ * toasts and error banners — stripping internal `[E_*]` codes, nested transport chains,
+ * HTML responses, and raw JS/Node stack traces.
+ */
+export function formatFriendlySyncError(
+  raw: string,
+  t: Translate,
+  language?: string,
+): string {
+  if (!raw) return raw;
+  const english = isEnglishUiLanguage(language);
+  const cleaned = stripRawErrorNoise(raw);
+
+  if (
+    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(cleaned) ||
+    /not\s+allowed\s+by\s+ACL/i.test(cleaned)
+  ) {
+    return t('data:governance.acl_permission_denied', {
+      defaultValue: english
+        ? 'Permission denied for this sync operation in the current environment.'
+        : '当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。',
+    });
+  }
+
+  if (cleaned.includes('E_SYNC_LEASE_HELD_SELF')) {
+    const expires = extractLeaseExpiryDate(cleaned)?.toLocaleString() ?? '';
+    return expires
+      ? t('sync:errors.leaseHeldSelf', {
+          expiresAt: expires,
+          defaultValue: english
+            ? `The previous sync on this device was interrupted. Retry shortly (auto-clears by ${expires}).`
+            : `本机上一次同步未正常结束，云端占用保护最晚将在 ${expires} 自动解除，请稍后重试。`,
+        })
+      : t('sync:errors.leaseHeld', {
+          defaultValue: english
+            ? 'Another sync session is currently active on this cloud folder. Please retry shortly.'
+            : '当前云端目录存在进行中的同步保护，请稍后重试。',
+        });
+  }
+
+  if (cleaned.includes('E_SYNC_LEASE_HELD')) {
+    return t('sync:errors.leaseHeld', {
+      defaultValue: english
+        ? 'Another device is currently syncing to this cloud folder. Please wait and try again.'
+        : '另一台设备正在同步同一云端目录，请等待对方完成后重试。',
+    });
+  }
+
+  if (/同步租约心跳已失效/.test(cleaned)) {
+    return english
+      ? 'Sync paused too long and stopped safely to protect cloud data. Please retry.'
+      : '同步连接中断时间过长，本轮同步已安全停止，请点击重试。';
+  }
+
+  const e2eeKind = classifySyncE2eeError(cleaned);
+  if (e2eeKind) {
+    return t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind]);
+  }
+  if (/缺少\s*DSBK\s*加密头/.test(cleaned)) {
+    return t('sync:errors.legacyPlaintextRejected');
+  }
+  if (/未配置加密密码/.test(cleaned)) {
+    return t('sync:errors.encryptionPasswordMissing');
+  }
+  if (/密码错误或数据损坏|请检查加密密码|无法解密/.test(cleaned)) {
+    return t('sync:errors.wrongEncryptionPassword');
+  }
+
+  if (cleaned.includes('E_CLOUD_RATE_LIMITED') || /\b(?:HTTP\s*)?429\b/i.test(cleaned)) {
+    return english
+      ? 'Cloud server is temporarily rate-limiting requests (HTTP 429). Please wait a moment and retry.'
+      : '云端请求过于频繁，已触发临时限流（HTTP 429），请稍等片刻后重试同步。';
+  }
+
+  // Collapse verbose nested weak-network / transient server errors into one clear message.
+  const isNestedTransportChain =
+    /(?:双向同步失败|上传同步失败|下载同步失败|同步格式协商失败|同步\s*schema\s*预检失败|检查云端变更断层失败|列举同步租约失败|写入同步租约失败|读取同步租约失败|回验同步租约失败|上传变更失败|上传清单失败|提交下载游标失败|WebDAV\s+(?:PUT|GET|PROPFIND|MKCOL|DELETE)\s+[^\s]+)/.test(
+      cleaned,
+    );
+  if (isNestedTransportChain) {
+    if (/\b(?:HTTP\s*)?503\b|Service Unavailable/i.test(cleaned)) {
+      return english
+        ? 'Cloud server is temporarily unavailable (HTTP 503). Your local changes are safe—please retry once the network recovers.'
+        : '云端服务暂时不可用（HTTP 503），本地更改已安全保留，网络恢复后点击重试即可。';
+    }
+    if (/\b(?:HTTP\s*)?502\b|Bad Gateway/i.test(cleaned)) {
+      return english
+        ? 'Cloud gateway error (HTTP 502). Your local changes are safe—please retry later.'
+        : '云端网关暂时异常（HTTP 502），本地更改已安全保留，请稍后重试。';
+    }
+    if (/\b(?:HTTP\s*)?504\b|Gateway Timeout/i.test(cleaned)) {
+      return english
+        ? 'Cloud server timed out (HTTP 504). Please check your connection and retry.'
+        : '云端服务响应超时（HTTP 504），请检查网络后重试。';
+    }
+    if (/socket hang up|\bECONNRESET\b|connection reset by peer|\bEPIPE\b|ERR_SOCKET_CLOSED|UND_ERR_SOCKET/i.test(cleaned)) {
+      return english
+        ? 'Network connection was interrupted mid-sync. Your local changes are safe—please retry.'
+        : '同步途中网络连接中断，本地更改已安全保留，网络恢复后重试即可。';
+    }
+    if (/\b(?:ETIMEDOUT|HeadersTimeoutError|BodyTimeoutError|UND_ERR_CONNECT_TIMEOUT)\b|operation timed out|request timeout/i.test(cleaned)) {
+      return english
+        ? 'Sync request timed out. Please check your network and retry.'
+        : '同步请求超时，本地更改已安全保留，请检查网络后重试。';
+    }
+    if (/\b(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)\b|connection refused|fetch failed|Failed to fetch/i.test(cleaned)) {
+      return english
+        ? 'Cannot reach the cloud server. Please check your network connection and server URL.'
+        : '暂时无法连接到云端服务器，请检查网络连接和服务器地址后重试。';
+    }
+  }
+
+  // Strip residual internal `[E_*]` error codes before general localization.
+  const withoutCode = cleaned.replace(/\[E_[A-Z0-9_]+\]\s*/g, '').trim();
+  return localizeBackendErrorText(withoutCode || cleaned, language);
 }
 
 let lastNotifiedKey = '';

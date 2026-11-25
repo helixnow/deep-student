@@ -27,6 +27,8 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { LatexText } from '@/components/LatexText';
 import { useQbankAiGeneration, type GeneratedQuestionDraft } from '@/hooks/useQbankAiGeneration';
+import { useQbankGenerationStore } from '@/stores/qbankGenerationStore';
+import { extractAuthoringDraftAttribution } from '@/types/qbankGeneration';
 import SmilesText from '@/components/SmilesText';
 import {
   UnifiedModelSelector,
@@ -105,6 +107,10 @@ interface AiQuestionGenerationPanelProps {
   onImportComplete?: () => void;
   /** 当前题目集现有题目的知识点（去重后），供点选注入 */
   availableTags?: string[];
+  /** 指定要审阅的任务 ID（如从通知/待确认草稿入口打开） */
+  initialTaskId?: string | null;
+  /** 指定要审阅的 authoring draft job_id（即使重启后任务缓存不在内存也可直读草稿） */
+  initialDraftJobId?: string | null;
 }
 
 interface SpecRow {
@@ -131,6 +137,8 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   examName,
   onImportComplete,
   availableTags = [],
+  initialTaskId = null,
+  initialDraftJobId = null,
 }) => {
   const { t, i18n } = useTranslation(['exam_sheet', 'common']);
   // 2026-09-09 后台任务化：hook 只负责提交/取消，任务状态由全局 store 跟踪
@@ -141,7 +149,87 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     startGeneration,
     cancelGeneration,
     selectTask,
-  } = useQbankAiGeneration(examId);
+  } = useQbankAiGeneration(examId, { initialTaskId, initialDraftJobId });
+
+  // 直接按 jobId 加载的待确认草稿（重启/刷新后也能审阅并确认入库）
+  const [loadedDraft, setLoadedDraft] = useState<{
+    job_id: string;
+    version: number;
+    metadata: unknown;
+    materials: Array<{ local_id?: string; id?: string; content: string }>;
+    drafts: GeneratedQuestionDraft[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!open || !initialDraftJobId) {
+      setLoadedDraft(null);
+      return;
+    }
+    // 已有对应任务时直接走任务视图，无需重复加载
+    if (task?.authoringResult?.job_id === initialDraftJobId && task.drafts.length > 0) {
+      setLoadedDraft(null);
+      return;
+    }
+    let cancelled = false;
+    void invoke<{
+      job_id: string;
+      version: number;
+      metadata: unknown;
+      document: {
+        materials?: Array<{ local_id?: string; id?: string; content: string }>;
+        questions?: Array<{
+          local_id: string;
+          group_id?: string | null;
+          original_label?: string | null;
+          structured_data?: GeneratedQuestionDraft['structured_data'];
+          question_type: QuestionType;
+          content: string;
+          options?: GeneratedQuestionDraft['options'] | null;
+          answer?: string | null;
+          explanation?: string | null;
+          difficulty?: Difficulty | null;
+          tags?: string[];
+          smiles?: string | null;
+          smiles_caption?: string | null;
+          source_ref?: string | null;
+        }>;
+      };
+    }>('qbank_get_authoring_draft', { jobId: initialDraftJobId })
+      .then((res) => {
+        if (cancelled || !res?.document?.questions) return;
+        const mappedDrafts: GeneratedQuestionDraft[] = res.document.questions.map((q) => ({
+          local_id: q.local_id,
+          group_id: q.group_id ?? null,
+          original_label: q.original_label ?? undefined,
+          structured_data: q.structured_data ?? null,
+          question_type: q.question_type,
+          content: q.content,
+          options: q.options ?? undefined,
+          answer: q.answer ?? undefined,
+          explanation: q.explanation ?? undefined,
+          difficulty: q.difficulty ?? undefined,
+          tags: q.tags ?? [],
+          smiles: q.smiles ?? undefined,
+          smiles_caption: q.smiles_caption ?? undefined,
+          source_ref: q.source_ref ?? undefined,
+        }));
+        setLoadedDraft({
+          job_id: res.job_id,
+          version: res.version,
+          metadata: res.metadata,
+          materials: res.document.materials ?? [],
+          drafts: mappedDrafts,
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          debugLog.warn('[AiQuestionGenerationPanel] load authoring draft failed:', error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, initialDraftJobId, task?.authoringResult?.job_id, task?.drafts.length]);
 
   // 参数面板状态
   const [specs, setSpecs] = useState<SpecRow[]>([newSpecRow()]);
@@ -155,7 +243,21 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   const [modelId, setModelId] = useState<string>('');
 
   const isGenerating = task?.status === 'queued' || task?.status === 'running';
-  const drafts = task?.drafts ?? [];
+  const usingLoadedDraft = Boolean(!isGenerating && (!task || task.drafts.length === 0) && loadedDraft && loadedDraft.drafts.length > 0);
+  const drafts = usingLoadedDraft ? loadedDraft!.drafts : (task?.drafts ?? []);
+  const activeJobId = usingLoadedDraft ? loadedDraft!.job_id : (task?.authoringResult?.job_id ?? null);
+  const activeVersion = usingLoadedDraft ? loadedDraft!.version : (task?.authoringResult?.version ?? null);
+  const activeMaterials = usingLoadedDraft
+    ? loadedDraft!.materials
+    : (task?.authoringResult?.document.materials ?? []);
+  const activeAttribution = useMemo(
+    () =>
+      extractAuthoringDraftAttribution(
+        usingLoadedDraft ? loadedDraft?.metadata : task?.authoringResult?.model_route,
+        { defaultOrigin: 'ai_generation' },
+      ),
+    [usingLoadedDraft, loadedDraft?.metadata, task?.authoringResult?.model_route],
+  );
   const hasDrafts = drafts.length > 0;
   const taskFailed = task?.status === 'failed';
   const maxQuestions = useMemo(
@@ -169,6 +271,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
       setSelected(new Set());
     } else {
       selectTask(null);
+      setLoadedDraft(null);
       setSpecs([newSpecRow()]);
       setTopicHint('');
       setDifficulty('');
@@ -180,34 +283,21 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // 任务完成时默认全选草稿（面板关闭期间完成也适用）；
-  // 每个任务只初始化一次，避免后续 store 刷新覆盖用户勾选
-  const selectedInitTaskRef = useRef<string | null>(null);
-  const notifiedCompletedTaskRef = useRef<string | null>(null);
+  // 任务完成或直读待确认草稿就绪时默认全选草稿；
+  // 每个任务/草稿只初始化一次，避免后续 store 刷新覆盖用户勾选
+  const selectedInitKeyRef = useRef<string | null>(null);
+  const draftInitKey = usingLoadedDraft
+    ? `draft:${loadedDraft?.job_id}:${loadedDraft?.drafts.length}`
+    : task?.status === 'completed' && task.drafts.length > 0
+      ? `task:${task.id}:${task.drafts.length}`
+      : null;
   useEffect(() => {
-    if (task?.status !== 'completed' || task.drafts.length === 0) return;
-    if (selectedInitTaskRef.current !== task.id) {
-      selectedInitTaskRef.current = task.id;
-      setSelected(new Set(task.drafts.map((_, index) => index)));
+    if (!draftInitKey || drafts.length === 0) return;
+    if (selectedInitKeyRef.current !== draftInitKey) {
+      selectedInitKeyRef.current = draftInitKey;
+      setSelected(new Set(drafts.map((_, index) => index)));
     }
-    if (!open && notifiedCompletedTaskRef.current !== task.id) {
-      notifiedCompletedTaskRef.current = task.id;
-      showGlobalNotification(
-        'success',
-        t('exam_sheet:aiGeneration.backgroundReadyToast', {
-          count: task.drafts.length,
-          defaultValue: `AI 已在后台生成 ${task.drafts.length} 道草稿题，点击审阅入库`,
-        }),
-        undefined,
-        {
-          action: {
-            label: t('exam_sheet:aiGeneration.openReviewAction', { defaultValue: '立即审阅' }),
-            onClick: () => onOpenChange(true),
-          },
-        },
-      );
-    }
-  }, [task, open, onOpenChange, t]);
+  }, [draftInitKey, drafts]);
 
   // 检测当前题目集是否已有存量题（空题目集禁止仅靠勾选「基于现有题目生成」绕过上下文门禁）
   const [existingQuestionCount, setExistingQuestionCount] = useState<number>(0);
@@ -462,13 +552,24 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     if (selected.size === 0 || importing) return;
     setImporting(true);
     try {
-      if (!task?.authoringResult?.job_id) throw new Error(t('exam_sheet:aiGeneration.regenerateLegacy'));
-      const created = await invoke<{committed:boolean;imported_count:number}>('qbank_commit_authoring_draft', {
-        jobId:task.authoringResult.job_id,
-        expectedVersion:task.authoringResult.version,
-        selectedLocalIds:drafts.filter((_,index)=>selected.has(index)).map(draft=>draft.local_id),
+      if (!activeJobId || activeVersion == null) throw new Error(t('exam_sheet:aiGeneration.regenerateLegacy'));
+      const selectedLocalIds = drafts
+        .filter((_, index) => selected.has(index))
+        .map((draft) => draft.local_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const created = await invoke<{ committed: boolean; imported_count: number }>('qbank_commit_authoring_draft', {
+        jobId: activeJobId,
+        expectedVersion: activeVersion,
+        selectedLocalIds,
       });
       if (!created.committed) throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
+      if (task?.id) {
+        useQbankGenerationStore.getState().removeTask(task.id);
+      }
+      setLoadedDraft(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('qbank:refresh', { detail: { examId } }));
+      }
       showGlobalNotification(
         'success',
         t('exam_sheet:aiGeneration.importSuccess', { count: created.imported_count }),
@@ -839,6 +940,21 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
         {/* 阶段三：预览确认 */}
         {hasDrafts && !isGenerating && (
           <div className="space-y-3">
+            <div
+              data-testid="ai-generation-draft-attribution"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/[0.06] px-3 py-2 text-xs"
+            >
+              <span className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+                <Sparkle size={14} className="shrink-0 text-primary" />
+                <span className="truncate">
+                  {t('exam_sheet:aiGeneration.draftReadyAttribution', {
+                    count: drafts.length,
+                    source: activeAttribution.sourceLabel,
+                    defaultValue: `已生成 ${drafts.length} 道待确认题目（来源：${activeAttribution.sourceLabel}）`,
+                  })}
+                </span>
+              </span>
+            </div>
             {task && task.rejectedCount > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 p-2.5 text-xs text-warning">
                 <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
@@ -878,7 +994,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               </div>
             )}
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
-              {(task?.authoringResult?.document.materials || []).map(material=>(
+              {activeMaterials.map((material) => (
                 <section key={material.local_id || material.id} className="rounded-r-xl border-l-2 border-primary/35 bg-foreground/[0.025] pl-3.5 pr-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
               ))}
               {drafts.map((draft, index) => (
@@ -955,6 +1071,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 className="text-primary hover:underline"
                 onClick={() => {
                   selectTask(null);
+                  setLoadedDraft(null);
                   setSpecs([newSpecRow()]);
                 }}
               >
@@ -998,6 +1115,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 <DsButton
                   variant="default"
                   size="sm"
+                  data-testid="ai-generation-confirm-import"
                   disabled={selected.size === 0 || importing}
                   onClick={() => void handleConfirmImport()}
                 >

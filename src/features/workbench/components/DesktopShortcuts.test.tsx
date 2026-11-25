@@ -303,3 +303,49 @@ describe('DesktopShortcutsLayer 框选、多选、空格 Quick Look 与拖拽重
     expect(orderedIds).toEqual(['res-2', 'res-3', 'res-1']);
   });
 });
+
+describe('S1-14 / S3-02: 桌面应用图标单击即打开（不再只高亮不弹窗）', () => {
+  beforeEach(() => {
+    mocks.launch.mockReset();
+    mocks.activate.mockReset();
+    const [note, , essay] = getPresetAppShortcuts();
+    useDesktopStore.setState({
+      shortcuts: [
+        { ...note, id: 'desk-note', position: 0, createdAt: '2026-01-01T00:00:00.000Z' },
+        { ...essay, id: 'desk-essay', position: 1, createdAt: '2026-01-01T00:00:01.000Z' },
+      ],
+      desktopRoot: { folderId: null, folderName: null, folderPath: null },
+    });
+  });
+
+  it('单击桌面「笔记」与「作文批改」图标直接启动对应窗口，快速双击不重复启动，Cmd+点击仅多选不启动', () => {
+    render(
+      <div data-wb-desktop>
+        <DesktopShortcutsLayer />
+      </div>,
+    );
+
+    const noteIcon = document.querySelector('[data-wb-desk-shortcut="desk-note"]')!;
+    const essayIcon = document.querySelector('[data-wb-desk-shortcut="desk-essay"]')!;
+
+    // 单击「笔记」直接启动 notes 窗口
+    fireEvent.click(noteIcon);
+    expect(noteIcon).toHaveAttribute('data-selected', 'true');
+    expect(mocks.launch).toHaveBeenCalledTimes(1);
+    expect(mocks.launch).toHaveBeenLastCalledWith({ typeId: 'notes', reason: 'shortcut' });
+
+    // 紧接双击事件去重，不重复 launch
+    fireEvent.doubleClick(noteIcon);
+    expect(mocks.launch).toHaveBeenCalledTimes(1);
+
+    // Cmd+点击「作文批改」仅切换多选，不启动窗口
+    fireEvent.click(essayIcon, { metaKey: true });
+    expect(essayIcon).toHaveAttribute('data-selected', 'true');
+    expect(mocks.launch).toHaveBeenCalledTimes(1);
+
+    // 普通单击「作文批改」直接启动 essay 窗口
+    fireEvent.click(essayIcon);
+    expect(mocks.launch).toHaveBeenCalledTimes(2);
+    expect(mocks.launch).toHaveBeenLastCalledWith({ typeId: 'essay', reason: 'shortcut' });
+  });
+});

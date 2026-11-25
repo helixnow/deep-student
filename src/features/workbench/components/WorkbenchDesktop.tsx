@@ -16,7 +16,7 @@
  *   卸载时 flushSnapshot 立即落盘。
  * 卸载清理：stopScheduler / dispose projections / 注销 provider。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import '../styles/workbench.css';
@@ -29,6 +29,7 @@ import {
   type StudySpaceChangedEventDetail,
 } from '@/shared/study-space/types';
 import { setPendingRestoreDesktopSize, useWindowStore } from '../core/windowStore';
+import { workbenchBus } from '../core/workbenchBus';
 import { recomputeLifecycles } from '../core/scheduler';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { getSortedWindows } from '../core/windowListCache';
@@ -103,8 +104,9 @@ import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
 import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import type { DesktopWidgetSize } from '@/ui-kernel/contracts/surfaces';
-import { exitSafeModeAndRestart, usePluginUiHostStatus } from '@/features/plugin-manager';
+import { SafeModeExitDialog, usePluginUiHostStatus } from '@/features/plugin-manager';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { resetPersistedWorkbenchSnapshots, resetUiLayoutCache } from '@/utils/uiLayoutReset';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 
 const SESSION_ACTIVE_STORAGE_KEY = 'ds.workbench.activeSession';
@@ -231,6 +233,13 @@ async function pruneSnapshotWindows(windows: WorkbenchWindow[]): Promise<Workben
 
 export const WorkbenchDesktop: React.FC = () => {
   const { t } = useTranslation('workbench');
+  // LazyWorkbenchDesktop 可能早于 LazyAgentBridge 挂载完成：挂起桌面交互前同步确保
+  // workbenchBus 已启用，避免首屏点击 Dock / 桌面图标被静默吞掉。
+  useLayoutEffect(() => {
+    if (!workbenchBus.isEnabled()) {
+      workbenchBus.setEnabled(true);
+    }
+  }, []);
   /** 全桌面根：Windows 合成器自愈需要覆盖完整客户区。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** 应用窗口的可用工作区：从顶栏下缘开始。 */
@@ -277,7 +286,9 @@ export const WorkbenchDesktop: React.FC = () => {
   const [widgetBriefing, setWidgetBriefing] = useState(true);
   const [devPanel, setDevPanel] = useState(false);
   const contributedWidgets = useOptionalSlot('desktop.widgets');
-  const hostStatus = usePluginUiHostStatus(useOptionalUiKernel()?.hostStatus);
+  const uiKernel = useOptionalUiKernel();
+  const hostStatus = usePluginUiHostStatus(uiKernel?.hostStatus);
+  const [exitSafeModeOpen, setExitSafeModeOpen] = useState(false);
   /**
    * 「恢复上次桌面」次级 CTA 的可用性：仅在关闭自动恢复、且启动时确有快照的
    * 冷启动首屏提供。不翻转 restoreSession 默认值（老用户不会突然被恢复一屏窗口）。
@@ -748,12 +759,39 @@ export const WorkbenchDesktop: React.FC = () => {
             style={{ zIndex: 'var(--wb-z-menubar)' }}
             className="pointer-events-none absolute inset-x-3 top-2 flex justify-center"
           >
-            <div className="pointer-events-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/15 px-3.5 py-2 text-xs text-foreground shadow-sm backdrop-blur-md">
+            <div className="pointer-events-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/15 px-3.5 py-2 text-xs text-foreground shadow-sm backdrop-blur-md">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="font-semibold text-warning">{t('safeModeBanner.title')}</span>
                 <span className="text-muted-foreground">{t('safeModeBanner.description')}</span>
+                <span data-testid="global-safe-mode-mcp-note" className="text-muted-foreground">
+                  {t('plugin_manager:safeMode.mcpPausedNote', {
+                    defaultValue: '外部自定义 MCP 自动连接也已暂停（你仍可在设置中手动查看和测试）。',
+                  })}
+                </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="global-safe-mode-reset-layout"
+                  onClick={() => {
+                    resetUiLayoutCache();
+                    if (
+                      typeof window !== 'undefined' &&
+                      typeof (window as unknown as { __TAURI_INTERNALS__?: { invoke?: unknown } }).__TAURI_INTERNALS__?.invoke === 'function'
+                    ) {
+                      void resetPersistedWorkbenchSnapshots().finally(() => {
+                        window.location.reload();
+                      });
+                      return;
+                    }
+                    if (typeof window !== 'undefined') window.location.reload();
+                  }}
+                  className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
+                >
+                  {t('plugin_manager:safeMode.resetLayoutButton', {
+                    defaultValue: '重置界面布局缓存（不删除学习数据）',
+                  })}
+                </button>
                 <button
                   type="button"
                   data-testid="global-safe-mode-open-plugins"
@@ -768,7 +806,7 @@ export const WorkbenchDesktop: React.FC = () => {
                 <button
                   type="button"
                   data-testid="global-safe-mode-exit"
-                  onClick={() => void exitSafeModeAndRestart()}
+                  onClick={() => setExitSafeModeOpen(true)}
                   className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
                 >
                   {t('plugin_manager:safeMode.exitButton', { defaultValue: '退出安全模式并恢复正常启动' })}
@@ -776,6 +814,14 @@ export const WorkbenchDesktop: React.FC = () => {
               </div>
             </div>
           </div>
+        ) : null}
+        {hostStatus?.safeMode ? (
+          <SafeModeExitDialog
+            open={exitSafeModeOpen}
+            onOpenChange={setExitSafeModeOpen}
+            uiStatus={uiKernel?.hostStatus}
+            errorBudget={uiKernel?.errors}
+          />
         ) : null}
         {hydrated && orderedWindows.length === 0 && (
           <EmptyDesktop

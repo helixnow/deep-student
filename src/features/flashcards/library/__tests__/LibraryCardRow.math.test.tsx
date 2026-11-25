@@ -49,13 +49,17 @@ describe('renderCardPreviewMathHtml', () => {
     expect(block).toContain('katex-display');
   });
 
-  it('renders safe Anki HTML formatting and image placeholders while escaping unsafe scripts (U19 regression)', () => {
-    const raw = '<b>Card #763</b>: $I_{763} = \\mathrm{tr}(A)$ <img src="qa_img_63.png"> <i>hint</i> <script>alert(1)</script>';
+  it('renders safe Anki HTML formatting and clean media placeholders without leaking raw filenames (U19 / S2-09 regression)', () => {
+    const raw = '<b>Card #763</b>: $I_{763} = \\mathrm{tr}(A)$ <img src="qa_img_63.png"> [sound:qa_audio_01.mp3] <i>hint</i> <script>alert(1)</script>';
     const blockHtml = renderAnkiCardPreviewHtml(raw, { inline: false })!;
     expect(blockHtml).toContain('<b>Card #763</b>');
     expect(blockHtml).toContain('<i>hint</i>');
     expect(blockHtml).toContain('class="katex"');
-    expect(blockHtml).toContain('[图片: qa_img_63.png]');
+    expect(blockHtml).toContain('[图片]');
+    expect(blockHtml).toContain('[音频]');
+    expect(blockHtml).not.toContain('qa_img_63.png');
+    expect(blockHtml).not.toContain('qa_audio_01.mp3');
+    expect(blockHtml).not.toContain('[sound:');
     expect(blockHtml).not.toContain('<img');
     expect(blockHtml).not.toContain('<script>');
     expect(blockHtml).toContain('&lt;script&gt;');
@@ -63,13 +67,21 @@ describe('renderCardPreviewMathHtml', () => {
     const inlineHtml = renderAnkiCardPreviewHtml(raw, { inline: true })!;
     expect(inlineHtml).toContain('Card #763');
     expect(inlineHtml).not.toContain('<b>');
-    expect(inlineHtml).toContain('[图片: qa_img_63.png]');
+    expect(inlineHtml).not.toContain('qa_img_63.png');
+    expect(inlineHtml).not.toContain('qa_audio_01.mp3');
+    expect(inlineHtml).not.toContain('[sound:');
+
+    // Media-only inline card falls back to clean neutral indicator (never raw filename)
+    expect(renderAnkiCardPreviewHtml('<img src="qa_img_63.png">', { inline: true })).toBe('[图片]');
+    expect(renderAnkiCardPreviewHtml('[sound:qa_audio_01.mp3]', { inline: true })).toBe('[音频]');
+    expect(renderAnkiCardPreviewHtml('<img src="qa_img_63.png">[sound:qa_audio_01.mp3]', { inline: true })).toBe('[图片 · 音频]');
 
     // Pure HTML without LaTeX must NOT crash when renderLatexToHtml returns null
-    const htmlOnly = renderAnkiCardPreviewHtml('<b>Amoxicillin</b><br><img src="rx.png"> <script>x()</script>', { inline: false })!;
+    const htmlOnly = renderAnkiCardPreviewHtml('<b>Amoxicillin</b><br><img src="rx.png" alt="Molecule diagram"> <script>x()</script>', { inline: false })!;
     expect(htmlOnly).toContain('<b>Amoxicillin</b>');
     expect(htmlOnly).toContain('<br />');
-    expect(htmlOnly).toContain('[图片: rx.png]');
+    expect(htmlOnly).toContain('[图片: Molecule diagram]');
+    expect(htmlOnly).not.toContain('rx.png');
     expect(htmlOnly).toContain('&lt;script&gt;');
     expect(renderAnkiCardPreviewHtml(null)).toBeNull();
   });

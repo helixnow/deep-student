@@ -99,3 +99,154 @@ export interface QbankGenerationTask {
 export function isTerminalTaskStatus(status: QbankGenerationTaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
+
+/** 全局事件：从完成通知等处一键打开指定题目集的 AI 出题草稿审阅面板 */
+export const QBANK_OPEN_GENERATION_DRAFT_EVENT = 'qbank:open-generation-draft';
+
+export interface QbankOpenGenerationDraftDetail {
+  examId: string;
+  taskId?: string | null;
+  jobId?: string | null;
+}
+
+export type PendingAuthoringDraftOrigin = 'ai_generation' | 'chat_import' | 'file_import';
+
+/** 题目集待确认草稿视图（带来源归属，供 QBank 空态/顶栏展示与一键确认入库） */
+export interface PendingAuthoringDraftView {
+  job_id: string;
+  version: number;
+  question_count: number;
+  status: string;
+  created_at?: string;
+  origin: PendingAuthoringDraftOrigin;
+  /** 人类可读的来源说明（主题/参考资料/知识点/模型或导入来源） */
+  sourceLabel: string;
+  /** 关联的后台出题任务 ID（由 AI 出题生成时存在） */
+  taskId?: string | null;
+  /** 草稿内全部题目的 local_id，支持一键全部确认入库 */
+  localIds?: string[];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function collectSourceNames(metadata: Record<string, unknown>, request: Record<string, unknown> | null): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown) => {
+    const str = readNonEmptyString(raw);
+    if (!str || seen.has(str)) return;
+    seen.add(str);
+    names.push(str);
+  };
+
+  if (Array.isArray(metadata.sources)) {
+    for (const item of metadata.sources) {
+      const rec = asRecord(item);
+      if (!rec) continue;
+      push(rec.name ?? rec.file_name ?? rec.title);
+    }
+  }
+  if (request && Array.isArray(request.reference_files_base64)) {
+    for (const item of request.reference_files_base64) {
+      const rec = asRecord(item);
+      if (!rec) continue;
+      push(rec.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * 从 authoring draft 的 `metadata`（或 generation task 的 `authoringResult.model_route`）
+ * 提取稳定的来源类型与可读归属文案，避免出现无归属的“待确认草稿”。
+ */
+export function extractAuthoringDraftAttribution(
+  metadata: unknown,
+  options?: { defaultOrigin?: PendingAuthoringDraftOrigin },
+): { origin: PendingAuthoringDraftOrigin; sourceLabel: string } {
+  const meta = asRecord(metadata);
+  const rawSource = readNonEmptyString(meta?.source);
+  const request = asRecord(meta?.request);
+  const hasChatSession = Boolean(readNonEmptyString(meta?.chat_session_id));
+
+  let origin: PendingAuthoringDraftOrigin;
+  if (rawSource === 'ai_generation') {
+    origin = 'ai_generation';
+  } else if (rawSource === 'chat_import' || hasChatSession) {
+    origin = 'chat_import';
+  } else if (options?.defaultOrigin) {
+    origin = options.defaultOrigin;
+  } else {
+    origin = 'file_import';
+  }
+
+  const parts: string[] = [];
+  const topicHint = readNonEmptyString(request?.topic_hint);
+  if (topicHint) {
+    const clipped = topicHint.length > 36 ? `${topicHint.slice(0, 36)}…` : topicHint;
+    parts.push(`主题：${clipped}`);
+  }
+
+  const sourceNames = meta ? collectSourceNames(meta, request) : [];
+  if (sourceNames.length > 0) {
+    const shown = sourceNames.slice(0, 2).join('、');
+    const suffix = sourceNames.length > 2 ? ` 等 ${sourceNames.length} 份资料` : '';
+    parts.push(`资料：${shown}${suffix}`);
+  }
+
+  if (request && Array.isArray(request.knowledge_points)) {
+    const kps = request.knowledge_points
+      .map((item) => readNonEmptyString(item))
+      .filter((item): item is string => Boolean(item));
+    if (kps.length > 0) {
+      const shown = kps.slice(0, 3).join('、');
+      parts.push(`知识点：${shown}${kps.length > 3 ? '…' : ''}`);
+    }
+  }
+
+  if (parts.length === 0 && request?.based_on_existing === true) {
+    parts.push('基于现有题库变式');
+  }
+
+  if (parts.length === 0) {
+    const primaryModel = asRecord(meta?.primary_model);
+    const modelLabel = readNonEmptyString(primaryModel?.name) ?? readNonEmptyString(primaryModel?.model);
+    if (origin === 'ai_generation') {
+      parts.push(modelLabel ? `AI 智能出题 · ${modelLabel}` : 'AI 智能出题');
+    } else if (origin === 'chat_import') {
+      parts.push('对话导入');
+    } else {
+      parts.push(modelLabel ? `文档/试卷识别导入 · ${modelLabel}` : '文档/试卷识别导入');
+    }
+  }
+
+  return {
+    origin,
+    sourceLabel: parts.join(' · '),
+  };
+}
+
+/** 提取后台 AI 出题任务的数量与归属信息（用于完成通知与状态卡片）。 */
+export function extractGenerationTaskAttribution(task: QbankGenerationTask): {
+  count: number;
+  sourceLabel: string;
+} {
+  const docCount = Array.isArray(task.authoringResult?.document?.questions)
+    ? task.authoringResult!.document.questions.length
+    : 0;
+  const count = task.drafts.length > 0 ? task.drafts.length : docCount;
+  const { sourceLabel } = extractAuthoringDraftAttribution(task.authoringResult?.model_route, {
+    defaultOrigin: 'ai_generation',
+  });
+  return { count, sourceLabel };
+}

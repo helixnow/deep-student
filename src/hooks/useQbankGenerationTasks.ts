@@ -17,8 +17,11 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useQbankGenerationStore } from '@/stores/qbankGenerationStore';
 import {
+  extractGenerationTaskAttribution,
   isTerminalTaskStatus,
+  QBANK_OPEN_GENERATION_DRAFT_EVENT,
   type QbankGenerationTask,
+  type QbankOpenGenerationDraftDetail,
 } from '@/types/qbankGeneration';
 
 /** 全局任务事件名（与 Rust `qbank_generation::events::QBANK_GENERATION_TASK_EVENT` 一致） */
@@ -40,9 +43,50 @@ export function useQbankGenerationTasks(): void {
       notifiedRef.current.add(task.id);
 
       if (task.status === 'completed') {
+        const { count, sourceLabel } = extractGenerationTaskAttribution(task);
+        if (typeof window !== 'undefined') {
+          // 立即通知题库视图刷新待确认草稿列表，避免停留在“暂无题目”
+          window.dispatchEvent(
+            new CustomEvent('qbank:refresh', {
+              detail: {
+                examId: task.examId,
+                taskId: task.id,
+                jobId: task.authoringResult?.job_id ?? null,
+                source: 'ai_generation',
+              },
+            }),
+          );
+        }
+        const fallbackMessage = sourceLabel
+          ? `AI 出题已完成：生成 ${count} 道待确认题目（来源：${sourceLabel}）`
+          : `AI 出题已完成：生成 ${count} 道待确认题目，请审阅并导入题库`;
         showGlobalNotification(
           'success',
-          t('exam_sheet:aiGeneration.taskCompleted', { count: task.drafts.length }),
+          t('exam_sheet:aiGeneration.taskCompletedAttributed', {
+            count,
+            source: sourceLabel,
+            defaultValue: fallbackMessage,
+          }),
+          undefined,
+          {
+            action: {
+              label: t('exam_sheet:aiGeneration.openReviewAction', { defaultValue: '审阅并导入' }),
+              onClick: () => {
+                if (typeof window === 'undefined') return;
+                const detail: QbankOpenGenerationDraftDetail = {
+                  examId: task.examId,
+                  taskId: task.id,
+                  jobId: task.authoringResult?.job_id ?? null,
+                };
+                window.dispatchEvent(
+                  new CustomEvent<QbankOpenGenerationDraftDetail>(
+                    QBANK_OPEN_GENERATION_DRAFT_EVENT,
+                    { detail },
+                  ),
+                );
+              },
+            },
+          },
         );
       } else if (task.status === 'failed') {
         showGlobalNotification(

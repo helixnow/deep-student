@@ -1,7 +1,7 @@
 // RUST-FIX(RF-P6-manager-cards): 详情抽屉的正文——它增加了什么、健康、信任与权限（人话）、设置、版本与改动、技术信息。
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowCounterClockwise, ArrowSquareOut, Export, Play, ShieldCheck, Sparkle, Trash } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, ArrowSquareOut, Export, Play, Power, ShieldCheck, Sparkle, Trash } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { DegradedReason } from './DegradedReason';
 import { PluginAdditionChips, PluginStatus, PluginTile, pluginProvenance } from './PluginCard';
 import { PluginLockedMark } from './PluginRow';
-import type { PluginAutoUninstallReason } from './reasons';
+import { isFaultDegradedReason, type PluginAutoUninstallReason } from './reasons';
 import type { ManagedPlugin, PluginPlatform } from './types';
 import type { PluginUiStatusSnapshot } from './ui-status';
 import type { PluginManagerWork } from './workshop';
@@ -74,9 +74,11 @@ export function PluginDetail({
   const degraded = uiStatus?.degraded;
   const consentRequired = uiStatus?.consentRequired === true || plugin.consent === 'required';
   const blockedBySafeMode = safeMode && plugin.origin === 'community';
+  const hasRealDegraded = isFaultDegradedReason(plugin.degraded?.reason) || isFaultDegradedReason(undefined, degraded);
   const statusKey = !supported ? unsupportedPlatformKey(plugin, platform) : autoUninstalled ? 'manager.problemStatus' : pluginStatusKey(plugin, uiStatus, safeMode);
   const switchChecked = pendingEnabled ?? (plugin.enabled && !consentRequired);
-  const switchDisabled = busy || !supported || blockedBySafeMode;
+  // 安全模式下禁止启用社区插件，但允许停用已启用的社区插件以隔离排查故障。
+  const switchDisabled = busy || !supported || (blockedBySafeMode && !switchChecked);
   const additions = pluginAdditions(plugin, livePoints);
   const declarativeGroups: Array<{ labelKey: string; items: string[] }> = [];
   if (plugin.declarative) {
@@ -127,9 +129,14 @@ export function PluginDetail({
               <ArrowSquareOut className="size-4" aria-hidden="true" />{t('card.open')}
             </DsButton>
           ) : null}
-          {plugin.enabled && plugin.runtime !== 'running' && !consentRequired ? (
+          {plugin.enabled && plugin.runtime !== 'running' && !consentRequired && !blockedBySafeMode ? (
             <DsButton variant="primary" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} disabled={switchDisabled} onClick={() => onToggle(true)}>
               <Play className="size-4" aria-hidden="true" />{t('manager.start')}
+            </DsButton>
+          ) : null}
+          {blockedBySafeMode && plugin.enabled ? (
+            <DsButton variant="outline" size="sm" data-testid="plugin-detail-disable" className={cn('gap-1.5', COARSE_TOUCH)} disabled={busy} onClick={() => onToggle(false)}>
+              <Power className="size-4" aria-hidden="true" />{t('card.disable')}
             </DsButton>
           ) : null}
           {consentRequired && onReviewConsent ? (
@@ -183,10 +190,10 @@ export function PluginDetail({
 
       <Section title={t('detail.health')} testId="plugin-detail-health">
         {!supported ? <p data-testid="plugin-platform-unsupported" className="text-xs text-warning">{t(unsupportedPlatformKey(plugin, platform))}</p> : null}
-        {!blockedBySafeMode && !degraded && !plugin.degraded && plugin.runtimeDetail ? (
+        {(!blockedBySafeMode || hasRealDegraded) && !degraded && !plugin.degraded && plugin.runtimeDetail ? (
           <p className="min-w-0 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]" data-testid="plugin-runtime-detail">{plugin.runtimeDetail}</p>
         ) : null}
-        {!blockedBySafeMode && (degraded || plugin.degraded) ? <DegradedReason reason={plugin.degraded?.reason} info={degraded} /> : null}
+        {(hasRealDegraded || (!blockedBySafeMode && (degraded || plugin.degraded))) ? <DegradedReason reason={plugin.degraded?.reason} info={degraded} /> : null}
         {blockedBySafeMode ? <p data-testid="plugin-safe-mode-hint" className="text-xs leading-relaxed text-muted-foreground">{t('safeMode.rowHint')}</p> : null}
         {autoUninstalled ? (
           <p role="status" data-testid="plugin-auto-uninstalled" className="flex items-start gap-1.5 text-xs text-destructive">

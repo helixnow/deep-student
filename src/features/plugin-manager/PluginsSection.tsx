@@ -7,6 +7,7 @@ import { usePluginErrorBudget } from './use-error-budget';
 import { usePluginUiHostStatus } from './use-ui-status';
 import { usePluginManagerWorkshop } from './workshop';
 import { pluginName } from './presentation';
+import { isFaultDegradedReason } from './reasons';
 
 export interface PluginsSectionProps extends PluginManagerPanelProps {
   /** Restore is supplied by the version owner; no invented Host command or optimistic success. */
@@ -28,8 +29,8 @@ export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
   const running = useRef(false);
   const isolated = state.plugins.filter(plugin => plugin.origin === 'community' && (
     disabled.some(entry => entry.pluginId === plugin.id)
-    || plugin.degraded && plugin.consent !== 'required' && !plugin.degraded.reason.startsWith('CONSENT_REQUIRED:')
-    || status?.state(plugin.id) === 'degraded' && !status.consentRequired(plugin.id)
+    || plugin.degraded && plugin.consent !== 'required' && isFaultDegradedReason(plugin.degraded.reason)
+    || status?.state(plugin.id) === 'degraded' && !status.consentRequired(plugin.id) && isFaultDegradedReason(undefined, status.degraded(plugin.id))
   ));
   // 「回到上一版」只在工坊真的留着上一版时出现，不给一个点了才报错的按钮。
   const isolatedSignature = isolated.map(plugin => plugin.id).join('|');

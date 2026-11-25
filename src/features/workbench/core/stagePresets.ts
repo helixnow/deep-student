@@ -327,16 +327,19 @@ async function resolveRecentExamTarget(rootFolderId?: string | null): Promise<{
   hasDueMistakes: boolean;
 } | null> {
   if (!appRegistry.get('exam')) return null;
-  const [exams, dueItems] = await Promise.all([
+  const [exams, dueResult] = await Promise.all([
     listRecentNodesByTypes(['exam'], 12),
     withHydrateTimeout(
-      invoke<Array<{ plan?: { exam_id?: string | null } }>>('get_due_review_items', { limit: 10 }),
-      [],
+      invoke<{ plans?: Array<{ exam_id?: string | null }> }>(
+        'review_plan_get_due_with_filter',
+        { filter: { limit: 10 } },
+      ),
+      { plans: [] },
     ),
   ]);
   if (exams.length === 0) return null;
-  const dueList = Array.isArray(dueItems) ? dueItems : [];
-  const dueExamId = dueList.find((entry) => entry?.plan?.exam_id)?.plan?.exam_id ?? null;
+  const dueList = Array.isArray(dueResult?.plans) ? dueResult.plans : [];
+  const dueExamId = dueList.find((plan) => plan?.exam_id)?.exam_id ?? null;
   if (dueExamId) {
     const matchedDueExam = exams.find((exam) => exam.id === dueExamId);
     if (matchedDueExam) {

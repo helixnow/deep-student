@@ -22,8 +22,8 @@ describe('modern sidebar typography contract', () => {
     expect(sidebarSource).toContain("aria-label={t('sidebar:aria.topic_sessions')}");
     expect(sidebarSource).toContain("aria-label={t('sidebar:aria.conversation_sessions')}");
     expect(sidebarSource).toContain('className="group/sidebar-top-section flex items-center justify-between gap-2 px-2"');
-    expect(shadcnVariablesSource).toContain('--app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;');
-    expect(typographyCssSource).toMatch(/\.font-sidebar-study-ui\s*\{[\s\S]*font-family:\s*ui-sans-serif,\s*system-ui,\s*sans-serif,\s*"Apple Color Emoji",\s*"Segoe UI Emoji",\s*"Segoe UI Symbol",\s*"Noto Color Emoji";/);
+    expect(shadcnVariablesSource).toContain('--app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", var(--font-math-fallback), sans-serif;');
+    expect(typographyCssSource).toMatch(/\.font-sidebar-study-ui\s*\{[\s\S]*font-family:\s*ui-sans-serif,\s*system-ui,\s*var\(--font-math-fallback\),\s*sans-serif,\s*"Apple Color Emoji",\s*"Segoe UI Emoji",\s*"Segoe UI Symbol",\s*"Noto Color Emoji";/);
     expect(typographyCssSource).toMatch(/\.font-sidebar-study-ui\s*\{[\s\S]*font-weight:\s*var\(--font-weight-normal\);/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*font-size:\s*12px;/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*line-height:\s*16px;/);

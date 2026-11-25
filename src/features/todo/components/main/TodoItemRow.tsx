@@ -1053,6 +1053,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             )}
             {subtaskProgress && (
               <span
+                data-testid={`todo-row-subtasks-${item.id}`}
                 className={cn(
                   'inline-flex items-center gap-1 font-mono text-xs tabular-nums',
                   subtaskProgress.done >= subtaskProgress.total
