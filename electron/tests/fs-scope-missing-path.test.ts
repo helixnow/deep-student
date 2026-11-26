@@ -11,9 +11,9 @@ import { fakeScopeFs, type FakeScopeFsOptions } from './__fixtures__/scope-fs.ts
 
 const scopeOn = (platform: ShellPlatform, fs: Omit<FakeScopeFsOptions, 'platform'>) => new FsScope({ platform, fs: fakeScopeFs({ platform, ...fs }) });
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
-const macAppData = '/Users/heli/Library/Application Support/com.deepstudent.app';
-const linuxAppData = '/home/heli/.local/share/com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
+const macAppData = '/Users/alice/Library/Application Support/com.deepstudent.app';
+const linuxAppData = '/home/alice/.local/share/com.deepstudent.app';
 
 const temporary: string[] = [];
 afterEach(() => {
@@ -80,8 +80,8 @@ describe('fs scope: paths that do not exist yet', () => {
     const scope = scopeOn('win32', { entries: [win32.join(winAppData, 'notes'), '\\\\localhost\\c$\\Windows'] });
     scope.allowPattern(win32.join(winAppData, '**'));
     // Tauri: false（不存在的路径按字面匹配，盘符与目录大小写不同即不匹配）。
-    expect(scope.isAllowed('c:\\users\\HELI\\appdata\\roaming\\com.deepstudent.app\\notes\\new.md')).toBe(true);
-    expect(scope.isAllowed('c:\\users\\heli\\appdata\\roaming\\other\\new.md')).toBe(false);
+    expect(scope.isAllowed('c:\\users\\ALICE\\appdata\\roaming\\com.deepstudent.app\\notes\\new.md')).toBe(true);
+    expect(scope.isAllowed('c:\\users\\alice\\appdata\\roaming\\other\\new.md')).toBe(false);
     expect(scope.isAllowed('Q:\\no-such-drive\\new.md')).toBe(false);
 
     const unc = scopeOn('win32', { entries: ['\\\\localhost\\c$\\Windows'] });

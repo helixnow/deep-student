@@ -65,28 +65,28 @@ it('an explicitly injected env is kept as-is', () => {
 });
 
 describe('sandboxTestEnv (pure)', () => {
-  const server: UserHomeRoots = { realHome: '/home/dsdev', tempDirs: ['/home/dsdev/oc-jobs-tmp/42'] };
+  const server: UserHomeRoots = { realHome: '/home/alice', tempDirs: ['/home/alice/jobs-tmp/42'] };
 
   it('real home → sandbox; temp dirs inside the real home are test-owned and kept', () => {
     const out = sandboxTestEnv({
-      HOME: '/home/dsdev',
-      XDG_DATA_HOME: '/home/dsdev/oc-jobs-tmp/42/case/local',
-      XDG_CONFIG_HOME: '/home/dsdev/.config',
+      HOME: '/home/alice',
+      XDG_DATA_HOME: '/home/alice/jobs-tmp/42/case/local',
+      XDG_CONFIG_HOME: '/home/alice/.config',
       XDG_CACHE_HOME: '',
-    }, 'linux', '/home/dsdev/oc-jobs-tmp/42/case/app', server)!;
-    expect(out.HOME).toBe('/home/dsdev/oc-jobs-tmp/42/case/app/.test-home');
-    expect(out.XDG_DATA_HOME).toBe('/home/dsdev/oc-jobs-tmp/42/case/local');
+    }, 'linux', '/home/alice/jobs-tmp/42/case/app', server)!;
+    expect(out.HOME).toBe('/home/alice/jobs-tmp/42/case/app/.test-home');
+    expect(out.XDG_DATA_HOME).toBe('/home/alice/jobs-tmp/42/case/local');
     expect('XDG_CONFIG_HOME' in out).toBe(false);
     expect('XDG_CACHE_HOME' in out).toBe(false);
-    expect(resolveOsDirs('linux', out).dataLocal).toBe('/home/dsdev/oc-jobs-tmp/42/case/local');
+    expect(resolveOsDirs('linux', out).dataLocal).toBe('/home/alice/jobs-tmp/42/case/local');
   });
 
   it('nothing in the real home → null (the process env is used unchanged)', () => {
-    expect(sandboxTestEnv({ HOME: '/home/dsdev/oc-jobs-tmp/42/h', XDG_DATA_HOME: '/tmp/x' }, 'linux', '/d', server)).toBeNull();
+    expect(sandboxTestEnv({ HOME: '/home/alice/jobs-tmp/42/h', XDG_DATA_HOME: '/tmp/x' }, 'linux', '/d', server)).toBeNull();
   });
 
   it('".." cannot climb out of the temp dir into the real home', () => {
-    const out = sandboxTestEnv({ HOME: '/tmp/h', XDG_CONFIG_HOME: '/home/dsdev/oc-jobs-tmp/42/../../.config' }, 'linux', '/tmp/app', server)!;
+    const out = sandboxTestEnv({ HOME: '/tmp/h', XDG_CONFIG_HOME: '/home/alice/jobs-tmp/42/../../.config' }, 'linux', '/tmp/app', server)!;
     expect('XDG_CONFIG_HOME' in out).toBe(false);
     expect(out.HOME).toBe('/tmp/h');
   });
@@ -99,8 +99,8 @@ describe('sandboxTestEnv (pure)', () => {
 
   it('DS_SHELL_OS_DIRS entries in the real home cannot bypass the sandbox', () => {
     const env = {
-      HOME: '/home/dsdev',
-      [SHELL_OS_DIRS_ENV]: JSON.stringify({ home: '/home/dsdev', dataLocal: '/home/dsdev/.local/share', cache: '/tmp/c' }),
+      HOME: '/home/alice',
+      [SHELL_OS_DIRS_ENV]: JSON.stringify({ home: '/home/alice', dataLocal: '/home/alice/.local/share', cache: '/tmp/c' }),
     };
     const out = sandboxTestEnv(env, 'linux', '/tmp/app', server)!;
     const os = resolveOsDirs('linux', out);

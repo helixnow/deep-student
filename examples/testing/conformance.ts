@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { beforeAll, expect, it } from 'vitest';
-import { checkManifest as gateCheckManifest } from '../../scripts/electron-migration/gate-checks/plugin-manifest.mjs';
+import { checkManifest as gateCheckManifest } from '../../scripts/arch/gate-checks/plugin-manifest.mjs';
 import type { HostPlugin } from '../../host/kernel/api.ts';
 import { assertInstallable, checkManifest, checkPluginModule } from '../../host/kernel/manifest.ts';
 import { pluginNamespaces } from '../../host/kernel/plugin-id.ts';

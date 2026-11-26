@@ -3,7 +3,7 @@
  * `contracts/plugin-manifest/v1.schema.json` 及 W09 门禁 `gate-checks/plugin-manifest.mjs` 的一致性。
  *
  * 样例（范围接受 / 拒绝列表、版本扫描、manifest 构造方式）取自 W09 门禁测试
- * `scripts/electron-migration/gate-checks/plugin-manifest.test.ts`；判定以门禁导出的函数为参照逐条比对。
+ * `scripts/arch/gate-checks/plugin-manifest.test.ts`；判定以门禁导出的函数为参照逐条比对。
  * 运行时不导入 `scripts/`（可移植性），只有这个测试把两边放在一起。
  *
  * 官方插件策略：官方插件（`dstu.*`，经 profile 从应用目录装载）在测试里校验、运行时不读 package.json：
@@ -13,7 +13,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import MANIFEST_SCHEMA from '../../../contracts/plugin-manifest/v1.schema.json' with { type: 'json' };
-import * as gate from '../../../scripts/electron-migration/gate-checks/plugin-manifest.mjs';
+import * as gate from '../../../scripts/arch/gate-checks/plugin-manifest.mjs';
 import { checkManifest, manifestSchemaProblems, parseRange, parseVersion, rangeIsEmpty, satisfies } from '../manifest.ts';
 import { ASSIGNED_PUBLISHERS, FORBIDDEN_PUBLISHERS, isValidPluginId } from '../plugin-id.ts';
 

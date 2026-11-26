@@ -842,7 +842,7 @@ const text = ctx.crypto.toBase64(bytes);
   的插件豁免。依赖消除后运行 `--write-baseline` 收紧（基线只应变小）。
 - profile 检查：`--profile host/profiles/mobile.json`，profile 中任一模块的运行时闭包触达 Node 即退出 1。
 
-**接入 W09 的边界检查**（`scripts/electron-migration/lib/boundary-rules.mjs` 归 W09，W14 不改）。两种方式任选：
+**接入 W09 的边界检查**（`scripts/arch/lib/boundary-rules.mjs` 归 W09，W14 不改）。两种方式任选：
 
 1. 门禁里直接加两条命令：`node scripts/portability/scan.mjs --check` 与
    `node scripts/portability/scan.mjs --profile host/profiles/mobile.json`。

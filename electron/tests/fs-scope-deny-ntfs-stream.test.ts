@@ -8,9 +8,9 @@ import { FsScope, stripNtfsStreams } from '../shell/scope.ts';
 import type { ShellPlatform } from '../shell/tauri-config.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
-const macAppData = '/Users/heli/Library/Application Support/com.deepstudent.app';
-const linuxAppData = '/home/heli/.local/share/com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
+const macAppData = '/Users/alice/Library/Application Support/com.deepstudent.app';
+const linuxAppData = '/home/alice/.local/share/com.deepstudent.app';
 
 function appDataScope(platform: ShellPlatform, lib: typeof posix | typeof win32, appData: string, entries: readonly string[]): FsScope {
   const scope = new FsScope({ platform, fs: fakeScopeFs({ platform, entries }) });

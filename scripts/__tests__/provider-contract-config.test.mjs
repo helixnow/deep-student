@@ -65,12 +65,12 @@ test('provider gate reserves setup time without extending test execution', () =>
 
 test('canonical provider composition pins all services with healthchecks', () => {
   const compose = read('scripts/dev/docker-compose.sync-test.yml');
-  const minioDockerfile = read('dstu-test/docker/Dockerfile.minio-tool');
+  const minioDockerfile = read('scripts/dev/sync-test-docker/Dockerfile.minio-tool');
   const minio = yamlTopLevelSection(compose, 'minio');
   const webdav = yamlTopLevelSection(compose, 'webdav');
   const ftp = yamlTopLevelSection(compose, 'ftp');
 
-  assert.match(minio, /dockerfile: dstu-test\/docker\/Dockerfile\.minio-tool/);
+  assert.match(minio, /dockerfile: scripts\/dev\/sync-test-docker\/Dockerfile\.minio-tool/);
   assert.match(minio, /image: deep-student-sync-test-minio:RELEASE\.[^\s]+/);
   assert.match(minio, /healthcheck:/);
   assert.match(minio, /\/minio\/health\/live/);
@@ -93,14 +93,6 @@ test('canonical provider composition pins all services with healthchecks', () =>
   }
 });
 
-test('compatibility composition delegates to the canonical source', () => {
-  const compatibility = read('dstu-test/docker/docker-compose.sync-test.yml');
-  assert.match(
-    compatibility,
-    /include:\s*\n\s+- path: \.\.\/\.\.\/scripts\/dev\/docker-compose\.sync-test\.yml/,
-  );
-  assert.doesNotMatch(compatibility, /^services:/m);
-});
 
 // A fixture that only comes up locally is worthless as a pre-CI signal, so the
 // npm scripts must drive the same file and the same startup sequence as the gate.
@@ -119,10 +111,6 @@ test('local cloud fixture scripts match the CI provider contract sequence', () =
   assert.match(down, /down --volumes --remove-orphans/);
 });
 
-// Both entrypoints must resolve to one project, otherwise each would create its
-// own volumes behind identical container names and `down` would half-clean.
-test('both compositions pin the same compose project name', () => {
-  const projectName = /^name: deep-student-sync-test$/m;
-  assert.match(read('scripts/dev/docker-compose.sync-test.yml'), projectName);
-  assert.match(read('dstu-test/docker/docker-compose.sync-test.yml'), projectName);
+test('canonical composition pins the compose project name', () => {
+  assert.match(read('scripts/dev/docker-compose.sync-test.yml'), /^name: deep-student-sync-test$/m);
 });

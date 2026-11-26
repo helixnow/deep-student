@@ -1,41 +1,21 @@
-# Logs
+# Logs & runtime diagnostics
 logs
 logs/
 *.log
 *.log.*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# Additional log files
 **/*.log
 **/*.log.*
 **/logs/
 **/log/
-log71.md
-log*.md
-error*.md
-debug*.log
-trace*.log
-app*.log
-server*.log
-tauri*.log
-rust*.log
-workflow_*.log
-error_check.log
-deps_check.log
 *.stackdump
 
-# Database and CozoDB log files
+# Database runtime files (with source directory exemptions for case-insensitive macOS FS)
 LOG
 LOG.*
 LOG.old.*
 **/LOG
 **/LOG.*
 **/LOG.old.*
-# 大小写不敏感文件系统上 **/LOG 会误伤 host/platform/log（F4 日志服务源码）
 !host/platform/log/
 !host/platform/log/**
 **/cozo/data/
@@ -46,48 +26,82 @@ OPTIONS-*
 CURRENT
 **/CURRENT
 
-# App data directories
+# App data & local databases
 app_data/
 **/app_data/
+/deep-student.db
+/dev.db
 
-# Temporary and backup files
+# Environment & temporary files
 *.tmp
 *.temp
 *.bak
 *.backup
-ai_mistakes.db.backup_*
 .env
 .env.*
 !.env.example
-
 *.swp
 *.swo
 *~
 .#*
 #*#
+/tmp/
+.tmp/
+temp_*/
+*_temp/
+*.local
 
 # Auto-generated version file
 src/version.ts
 
+# Dependencies & build outputs
 node_modules
+**/node_modules/
 /dist
+**/dist/
 dist-ssr
-*.local
-
-# Archive bucket (cleaned-up legacy/tests/logs)
-archive/
-.deep-agent/
-# Development security directory (sensitive files and build artifacts)
-devsec/
-
-# Root directory build artifacts
+/dist-demo
+/dist-web
+/dist-web.next
+/dist-web.prev
+/release/
+target/
+**/target/
+.target-local/
+**/.target-local/
+**/build/
 /build-android/
 /build-ios/
 /build-windows/
+*.apk
+*.aab
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+*.rar
+!host/platform/native/tests/fixtures/**
+!host/platform/zip/tests/__fixtures__/**
+!electron/build/
+!electron/build/installer.nsh
 
-# Editor directories and files
+# Alternate lockfiles & caches
+yarn.lock
+pnpm-lock.yaml
+.pnpm-store/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+node-jiti/
+node-compile-cache/
+.plugin-build/
+*.tsbuildinfo
+/test-results/
+output/
+
+# Editor, local AI tools & companion private repo mount
 .vscode/*
-.trae/*
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -96,238 +110,22 @@ devsec/
 *.njsproj
 *.sln
 *.sw?
-
-# Android SDK and build files
-AndroidSDK/
-android-sdk/
-java/
-gen/
-
-# Build outputs
-target/
-.target-local/
-**/.target-local/
-*.apk
-*.aab
-
-# Temporary files
-/tmp/
-.tmp/
-temp_*/
-*_temp/
-temp_apkg/
-temp_clean_sqlite.rs
-temp_restore/
-
-# Additional Node.js dependencies
-**/node_modules/
-**/dist/
-**/target/
-**/build/
-
-# Package manager lock files
-yarn.lock
-pnpm-lock.yaml
-
-# Cache directories
-.cache/
-.parcel-cache/
-.next/
-.nuxt/
-
-# Claude settings files
-**/.claude/
-.claude/
-
-# PWA build artifacts and dependencies
-**/PWA/
-PWA/
-
-# Additional frontend dependencies
-**/refactored/
-deepstudent-refactored/
-
-# Additional temporary files
-
-# 忽略临时编译产物和依赖目录
-/android-sdk/
-/AndroidSDK/
-/gradle-deps/
-/tmp-lib/
-/libc++_temp/
-/libc++18_temp/
-/libc++abi18_temp/
-/libunwind_temp/
-/libxml2_temp/
-
-# 忽略所有大文件（超过100MB）
-*.zip
-*.tar.gz
-*.tar.bz2
-*.7z
-*.rar
-android-*.zip
-commandlinetools-*.zip
-OpenJDK*.tar.gz
-wasi-*.tar.gz
-
-# 忽略根目录下的大文件
-/android-*.zip
-/commandlinetools-*.zip
-/OpenJDK*.tar.gz
-/wasi-*.tar.gz
-
-# Auto Claude data directory
-.auto-claude/
-
-# Git worktrees (local)
-.worktrees/
-
-# pnpm store
-.pnpm-store/
-
-# Local tool/editor state
+.trae/*
 .windsurf/
 .cursor/
 .serena/
 .codex/
 .claude/
+**/.claude/
+.auto-claude/
+.worktrees/
 .recovery/
-
-# Rust local build cache variant
-src-tauri/.cargo-target/
-
-# Internal docs (not for OSS repo) — 目录级管理，不再按文件名模式匹配
-# 内部一次性文档统一放 docs/archive/（历史归档）或 docs/design/（内部设计）
-/todo.md
-/docs/archive/
-/docs/design/
-/docs/RELEASE-WORKFLOW.md
-# 自动生成的 i18n 检查报告（scripts/check-missing-translations.mjs 现写入 note/，此条防历史路径回归）
-/docs/翻译键缺失详细报告.md
-
-# Intermediate verification/fix docs in src
-src/**/verify-*.md
-
-# One-off SQL scripts (use migrations/ for schema changes)
-src-tauri/create_tables.sql
-src-tauri/fix_*.sql
-src-tauri/import_*.sql
-src-tauri/update_*.sql
-scripts/*.sql
-
-# Temporary test files at src-tauri root
-src-tauri/test_*.rs
-patch_notes_manager.rs
-
-# Timestamp / sweep files
-src-tauri/sweep.timestamp
-
-# iOS icon generation output (use `npm run icons` for canonical icons)
-src-tauri/icons_ios_current/
-
-# Personal development environment scripts
-init-ramdisk.bat
-format_ascii.*
-
-# Hashed / auto-generated images
-public/images/*
-
-# Private CI workflows (backup infrastructure)
-.github/workflows/backup.yml
-
-# GSD planning workflow artifacts
-.planning/
-study-ui/.planning/
-
-# Design assets
-design/
-
-# Generated outputs
-output/
-
-# Development notes
-/docs/dev/*-20??-??-??.md
-/test-results/
-note/
-
-# AI tool artifacts
+.local-work/
+/.internal/
 AGENTS.md
-UI-REVIEW.md
-FRONTEND_ANALYSIS.md
-.codex-page-state.png
+CLAUDE.md
 
-# Project-local AI skills and UI study docs
-.skills/
-.study-ui/
-
-# Personal IDE / MCP settings (machine-specific paths)
-.kiro/settings/
-
-# Local tooling artifacts (never commit)
-.codex_downgrade/
-.playwright-mcp/
-src-tauri/.codex_appcast.xml
-.pr-review/
-# 本机 MCP 反馈工具 clone（嵌套 git 仓库）
-mcp-feedback-enhanced/
-# 根目录调试数据库副本
-/deep-student.db
-/dev.db
-# 本机参考代码副本（不入库）
-deep-agent-ref/
-# MCP 反馈工具会话接力文档（本机生成，不入库）
-.feed/
-
-# Workbench polish local artifacts (dev logs / check outputs / MSVC misdrops)
-tsc-out.txt
-vitest-contract-out.txt
-o13-test-out.txt
-.tsc-baseline-*.txt
-dev-server*.log
-tauri-dev*.log
-tc_agent*.log
-src-tauri/NONE
-
-# 内部规划/评审/设计过程文档（不入库）
-.parallel-notes/
-.planning/
-.roundtable/
-docs/reviews/
-docs/prompts/
-docs/superpowers/
-docs/cloud-sync-compatibility-analysis-*.md
-docs/cloud-sync-remediation-plan.md
-docs/FABLE_SOTA_GOAL.md
-docs/DEEPSEEK-V4-V32-RELEASE-NOTES.md
-docs/vfs-vector-knowledge-base-hardening.md
-docs/design-tokens-and-color-semantics.md
-dstu-test/docs/*
-!dstu-test/docs/README.md
-/dist-demo
-/dist-web
-/dist-web.next
-/dist-web.prev
-
-# vite jiti 缓存（tailwind/配置文件加载产物）
-node-jiti/
-
-# Node compile cache (runtime-generated bytecode)
-node-compile-cache/
-
-# video 宣传片工程（Remotion）——单独在 video 分支维护，main 不含。
-# 大产物（out/ 渲染、node_modules、public/audio 配乐）由 video/.gitignore 与
-# 下面这条整目录忽略共同兜底，避免误入库。
-/video/
-.plugin-build/
-
-# opencode 派发运行记录（oc-dispatch.mjs）
-/.oc-runs/
-/.integration-dist/
-/.integration-dist-demo/
-
-# 迁移源码豁免：上面 LOG.* / MANIFEST-* / OPTIONS-* / CURRENT 等数据库文件规则在大小写不敏感文件系统（macOS）上
-# 会误伤 log.ts、manifest-upload.ts 之类源码，导致 lane 本地能跑但文件从未进提交。源码与测试一律不受其影响。
+# Source code exemptions against uppercase DB glob rules on case-insensitive filesystems
 !host/**/*.ts
 !host/**/*.tsx
 !electron/**/*.ts
@@ -336,15 +134,5 @@ node-compile-cache/
 !web/index.html
 !src/**/*.ts
 !src/**/*.tsx
-# src/version.ts 由 scripts/generate-version.mjs 生成，保持未跟踪；上面的 !src/**/*.ts 会把它重新放回。
 src/version.ts
 !scripts/**/*.mjs
-# electron-builder 的 NSIS 自定义安装脚本必须入库（`**/build/` 会误伤 electron/build/）。
-!electron/build/
-!electron/build/installer.nsh
-
-# 增量类型检查缓存（作业执行器/集成门禁）
-*.tsbuildinfo
-
-# Stale branch backup bundles (kept out of the repo)
-*-branches-backup-*.bundle

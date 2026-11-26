@@ -8,10 +8,10 @@ import { FsScope, mayMatchBelow, type ScopeFileSystem } from '../shell/scope.ts'
 import type { ShellPlatform } from '../shell/tauri-config.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
-const winLocalAppData = 'C:\\Users\\heli\\AppData\\Local\\com.deepstudent.app';
-const macAppData = '/Users/heli/Library/Application Support/com.deepstudent.app';
-const linuxAppData = '/home/heli/.local/share/com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
+const winLocalAppData = 'C:\\Users\\alice\\AppData\\Local\\com.deepstudent.app';
+const macAppData = '/Users/alice/Library/Application Support/com.deepstudent.app';
+const linuxAppData = '/home/alice/.local/share/com.deepstudent.app';
 
 /** `capabilities.ts` 的 deny：Host 插件目录、各槽位的 browser-profiles、userData；Windows 另有 `$APPLOCALDATA/EBWebView/**`。 */
 function appDataScope(platform: ShellPlatform, appData: string, fs: ScopeFileSystem): FsScope {

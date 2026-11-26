@@ -14,8 +14,6 @@
 恶意插件仍可能利用共享闭包、原型、其他原生对象或 Node 能力绕过框架防误用检查；不要把访问一个受限 `ctx` 当成可信代码审查
 或进程隔离的替代。第三批 K4–K6 的独立进程、受控 RPC 与能力代理才负责物理隔离，本轮没有实现它们。
 
-隔离的设计与进度：Host 半见 `host/kernel/SEC-E06-HOST-ISOLATION-PLAN.md`（K0–K7），UI 半见
-`src/ui-kernel/SEC-E06-SANDBOX-DESIGN.md`。
 
 ## 2. 插件代码执行之前：清单筛查
 
@@ -104,9 +102,9 @@ UI 半由 Host 半的 `meta.ui` 带进来（没有单独装 UI 半的入口）�
 |---|---|---|
 | 被模块检查拒绝的插件，顶层代码已经执行过 | 第 3 节的检查需要模块导出的 `meta`，只能在导入之后做 | `examples/testing/security.test.ts` |
 | Host 半没声明权限也能 `import` `node:fs`、`node:child_process`。`ctx.get('<服务名>')` 已按声明拦截：社区包只能按名字拿到自己 `inject`、声明为 `service:*` 或自己提供的服务（加隐式的 `log`），其余抛 `PERMISSION_UNDECLARED`；kernel 专有服务照旧在方法入口拒绝（KERNEL_API_FORBIDDEN）；工坊作品（宿主分配的 `workshop.plugin-<uuid>` id）不做这层名字过滤 | 与应用同进程（`host/kernel/API.md` §16.4：`service:` 权限防误用，不是安全边界）；名字过滤在 `host/kernel/community-context.ts` `mayGet`、`host/kernel/runtime.ts` `lookupPolicy` | `examples/testing/security.test.ts` |
-| UI 半能拿到应用的 IPC 桥、主窗口 DOM 和 `localStorage`，能调用主窗口能调的任何命令 | 在主窗口主世界里 `import()`（`src/ui-kernel/community.ts` `startCommunityUiPlugins`） | `src/ui-kernel/SEC-E06-SANDBOX-DESIGN.md` 第 1 节 |
+| UI 半能拿到应用的 IPC 桥、主窗口 DOM 和 `localStorage`，能调用主窗口能调的任何命令 | 在主窗口主世界里 `import()`（`src/ui-kernel/community.ts` `startCommunityUiPlugins`） | `src/ui-kernel/community.ts` |
 | `plugin:host\|call` 的 `caller` 由调用方自己填，Host 不核实：UI 半直接调用这个命令、填别的插件 id，就能调到那个插件 `meta.remote` 里的方法 | 所有 UI 半在同一个主世界里运行（上一行），Host 分不出调用来自哪个插件；不填 `caller` 的调用已经拒绝（K2） | `host/kernel/tests/ui-bridge.test.ts` |
-| 原生对象、闭包和原型仍处在共享进程中；内置插件主动暴露的高权限闭包也可能成为绕过路径 | 社区 `ctx.root`/注册表的直接遍历已按第 3.1 节拒绝，但收窄上下文不是物理沙箱，第三批 K4–K6 才实现独立进程 | `host/kernel/tests/community-kernel-surface.test.ts`、`host/kernel/SEC-E06-HOST-ISOLATION-PLAN.md` |
+| 原生对象、闭包和原型仍处在共享进程中；内置插件主动暴露的高权限闭包也可能成为绕过路径 | 社区 `ctx.root`/注册表的直接遍历已按第 3.1 节拒绝，但收窄上下文不是物理沙箱，第三批 K4–K6 才实现独立进程 | `host/kernel/tests/community-kernel-surface.test.ts` |
 
 ## 6. 插件目录是信任的起点
 

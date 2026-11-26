@@ -9,9 +9,9 @@ import { FsScope, trimWin32Trailing } from '../shell/scope.ts';
 import type { ShellPlatform } from '../shell/tauri-config.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
-const macAppData = '/Users/heli/Library/Application Support/com.deepstudent.app';
-const linuxAppData = '/home/heli/.local/share/com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
+const macAppData = '/Users/alice/Library/Application Support/com.deepstudent.app';
+const linuxAppData = '/home/alice/.local/share/com.deepstudent.app';
 
 const missing = [win32.join(winAppData, 'notes.txt'), win32.join(winAppData, 'slots', 'a', 'chat_v2.db')];
 const present = [...missing, win32.join(winAppData, 'plugins', 'user.profile.json'), win32.join(winAppData, 'slots', 'a', 'browser-profiles', 'Default', 'Cookies')];
@@ -63,7 +63,7 @@ describe('fs scope deny and Win32 trailing dots / spaces', () => {
       device('slots.\\a\\browser-profiles'),
       `\\\\.\\${win32.join(winAppData, 'PLUGINS...').toLowerCase()}`,
       `//./${win32.join(winAppData, 'plugins.').replace(/\\/g, '/')}`,
-      `\\\\.\\C:\\Users\\\\heli\\AppData\\Roaming\\com.deepstudent.app\\\\plugins. `,
+      `\\\\.\\C:\\Users\\\\alice\\AppData\\Roaming\\com.deepstudent.app\\\\plugins. `,
     ];
     for (const [state, entries] of [['missing', missing], ['present', present]] as const) {
       const scope = appDataScope('win32', win32, winAppData, entries);

@@ -8,10 +8,10 @@ import { FsScope, foldForDeny, type ScopeFileSystem } from '../shell/scope.ts';
 import type { ShellPlatform } from '../shell/tauri-config.ts';
 import { fakeScopeFs, type FakeScopeFsOptions } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
-const winLocalAppData = 'C:\\Users\\heli\\AppData\\Local\\com.deepstudent.app';
-const macAppData = '/Users/heli/Library/Application Support/com.deepstudent.app';
-const linuxAppData = '/home/heli/.local/share/com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
+const winLocalAppData = 'C:\\Users\\alice\\AppData\\Local\\com.deepstudent.app';
+const macAppData = '/Users/alice/Library/Application Support/com.deepstudent.app';
+const linuxAppData = '/home/alice/.local/share/com.deepstudent.app';
 
 /** 作用域建好之后磁盘内容还会变（fs 插件按命令首次使用时建作用域，之后页面才建出目录）。 */
 function changingFs(platform: ShellPlatform, entries: readonly string[], aliases?: FakeScopeFsOptions['aliases']) {
@@ -95,9 +95,9 @@ describe('fs scope deny on case-insensitive file systems', () => {
     scope.allowPattern(win32.join(winLocalAppData, '**'));
     scope.forbidPattern(win32.join(winLocalAppData, 'EBWebView', '**'));
     for (const request of [
-      'c:\\users\\heli\\appdata\\local\\com.deepstudent.app\\ebwebview\\Default\\Cookies',
-      'C:/Users/heli/AppData/Local/com.deepstudent.app/EBWEBVIEW/Default/Cookies',
-      '\\\\?\\C:\\Users\\heli\\AppData\\Local\\com.deepstudent.app\\EbWebView\\x',
+      'c:\\users\\alice\\appdata\\local\\com.deepstudent.app\\ebwebview\\Default\\Cookies',
+      'C:/Users/alice/AppData/Local/com.deepstudent.app/EBWEBVIEW/Default/Cookies',
+      '\\\\?\\C:\\Users\\alice\\AppData\\Local\\com.deepstudent.app\\EbWebView\\x',
     ]) {
       expect(scope.isAllowed(request), request).toBe(false);
     }
@@ -113,7 +113,7 @@ describe('fs scope deny on case-insensitive file systems', () => {
   });
 
   it('RF-W23-fs-deny-case-insensitive: allow keeps Tauri\'s exact glob on every platform (only deny is folded)', () => {
-    for (const [platform, lib, root] of [['darwin', posix, '/Users/heli'], ['win32', win32, 'C:\\Users\\heli']] as const) {
+    for (const [platform, lib, root] of [['darwin', posix, '/Users/alice'], ['win32', win32, 'C:\\Users\\alice']] as const) {
       const { fs } = changingFs(platform, [root]);
       const scope = new FsScope({ platform, fs });
       scope.allowPattern(lib.join(root, 'Docs', '**'));

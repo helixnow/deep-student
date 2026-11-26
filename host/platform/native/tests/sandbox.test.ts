@@ -45,7 +45,7 @@ describe('native sandbox process boundary', () => {
         '--unshare-net', '--unshare-pid', '--die-with-parent', '--new-session', '--chdir', root, '--');
       const request = { backend: 'linux_bwrap' as const, program: available.program, cwd: root,
         env: { PATH: '/usr/bin:/bin' }, args: [...base, '/bin/sh', '-c',
-          'cat input > output; test ! -e /home/dsdev; test -z "$HOME"; ulimit -t; ulimit -f; cat /proc/net/route'] };
+          'cat input > output; test ! -e /home/alice; test -z "$HOME"; ulimit -t; ulimit -f; cat /proc/net/route'] };
       const child = await host.ctx.nativeSandbox.spawn(request);
       let stdout = '';
       const output = (async () => { for await (const chunk of child.stdout) stdout += Buffer.from(chunk).toString(); })();

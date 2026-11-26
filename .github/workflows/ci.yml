@@ -31,6 +31,7 @@ jobs:
           node-version: '24'
       - run: node --test scripts/__tests__/*.test.mjs
       - run: node scripts/generate-version.mjs --check
+      - run: node scripts/ci/check-public-surface.mjs
 
   plugin-consistency:
     name: Plugin Migration Consistency
@@ -139,7 +140,7 @@ jobs:
               - 'host/platform/secrets/**'
               - 'package-lock.json'
               - 'scripts/dev/docker-compose.sync-test.yml'
-              - 'dstu-test/docker/**'
+              - 'scripts/dev/sync-test-docker/**'
               - 'scripts/ci/**'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
@@ -305,6 +306,6 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: node scripts/generate-version.mjs
       - name: Plugin manifest gate (no new findings)
-        run: node scripts/electron-migration/gate-checks/plugin-manifest.mjs --check
+        run: node scripts/arch/gate-checks/plugin-manifest.mjs --check
       - name: Example plugin tests (examples/vitest.config.ts)
         run: npx vitest run -c examples/vitest.config.ts

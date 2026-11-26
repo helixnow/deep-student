@@ -14,5 +14,5 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["host/**/*.ts", "electron/**/*.ts", "scripts/electron-migration/**/*.ts", "scripts/contracts/**/*.ts"]
+  "include": ["host/**/*.ts", "electron/**/*.ts", "scripts/arch/**/*.ts", "scripts/contracts/**/*.ts"]
 }

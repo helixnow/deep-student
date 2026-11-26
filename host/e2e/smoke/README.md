@@ -76,9 +76,9 @@ fails, and the probe never converts or rounds internal service values itself.
 Submit CPU-heavy diagnostics instead of executing them directly. From this worktree:
 
 ```sh
-node /home/dsdev/dev/deep-student/scripts/electron-migration/jobs/job.mjs submit -- npx vitest run -c vitest.host.config.ts host/e2e/smoke/probe.test.ts host/e2e/smoke/minimal.test.ts --maxWorkers=1
-node /home/dsdev/dev/deep-student/scripts/electron-migration/jobs/job.mjs submit -- npx tsc -p host/e2e/smoke/__fixtures__/tsconfig.json --pretty false --incremental --tsBuildInfoFile /tmp/opencode/x1-smoke.tsbuildinfo
-node /home/dsdev/dev/deep-student/scripts/electron-migration/jobs/job.mjs submit -- env DS_SMOKE_STARTUP_ONLY=1 node host/e2e/smoke/run.mjs
+npx vitest run -c vitest.host.config.ts host/e2e/smoke/probe.test.ts host/e2e/smoke/minimal.test.ts --maxWorkers=1
+npx tsc -p host/e2e/smoke/__fixtures__/tsconfig.json --pretty false --incremental --tsBuildInfoFile /tmp/opencode/x1-smoke.tsbuildinfo
+env DS_SMOKE_STARTUP_ONLY=1 node host/e2e/smoke/run.mjs
 ```
 
 Use `job.mjs result <job-id> --tail <enough-lines>` after reviewing/writing while

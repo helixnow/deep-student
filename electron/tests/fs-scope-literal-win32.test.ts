@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { FsScope } from '../shell/scope.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
 
 function scopes() {
   const fs = fakeScopeFs({ platform: 'win32', entries: [win32.join(winAppData, 'notes.txt'), win32.join(winAppData, 'slots', 'a', 'chat_v2.db')] });

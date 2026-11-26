@@ -12,9 +12,9 @@ import type { ShellPlatform } from '../shell/tauri-config.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
 const PLATFORMS = [
-  ['darwin', posix, '/Users/heli/Library/Application Support/com.deepstudent.app'],
-  ['win32', win32, 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app'],
-  ['linux', posix, '/home/heli/.local/share/com.deepstudent.app'],
+  ['darwin', posix, '/Users/alice/Library/Application Support/com.deepstudent.app'],
+  ['win32', win32, 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app'],
+  ['linux', posix, '/home/alice/.local/share/com.deepstudent.app'],
 ] as const;
 
 function appDataScope(platform: ShellPlatform, appData: string, fs?: ScopeFileSystem): FsScope {

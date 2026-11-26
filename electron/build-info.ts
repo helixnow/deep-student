@@ -50,7 +50,7 @@ export function buildInfo(root: string, version: string): BuildInfo {
   const bundled = join(root, 'electron', '.build', 'version.json');
   if (existsSync(bundled)) return decodeBundledBuildInfo(readFileSync(bundled), version, bundled);
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const baseline = '64edcb7735e5d4e6ccad6f13514b9ee0a8867c78';
+  const baseline = '928a5aad6bcb004205e40e258bc6c636741ab789';
   const override = process.env.DEEP_STUDENT_BUILD_NUMBER;
   let buildNumber: number;
   if (override !== undefined) {

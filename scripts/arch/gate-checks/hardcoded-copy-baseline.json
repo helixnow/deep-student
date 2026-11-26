@@ -1,0 +1,885 @@
+{
+ "description": "WAVE2-BRIEF §8 D5 硬编码用户文案基线（按 规则+文件 计数，只减不增）。规则见 hardcoded-copy.mjs 文件头。",
+ "entries": [
+  {
+   "rule": "jsx-attribute",
+   "file": "src/boot/BootShell.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/button-audit/ButtonAuditPage.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/button-audit/ButtonAuditPage.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/button-audit/ButtonAuditPage.tsx",
+   "count": 19
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/button-audit/ControlSamples.tsx",
+   "count": 13
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/button-audit/ControlSamples.tsx",
+   "count": 59
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/button-audit/Samples.tsx",
+   "count": 11
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/button-audit/Samples.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/button-audit/Samples.tsx",
+   "count": 36
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/command-palette/CommandPalette.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/components/dev/CrepeDemoPage.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/components/dev/CrepeDemoPage.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/dev/CrepeDemoPage.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/components/shared/UnifiedDragDropZone.example.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/components/shared/UnifiedDragDropZone.example.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/shared/UnifiedDragDropZone.example.tsx",
+   "count": 18
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/components/style-lab/ComponentCompareTab.tsx",
+   "count": 8
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/components/style-lab/ComponentCompareTab.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/ComponentCompareTab.tsx",
+   "count": 114
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/components/style-lab/GenerativeUIDemoTab.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/GenerativeUIDemoTab.tsx",
+   "count": 13
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/MigrationOverviewTab.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/MixedUsageTab.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/StyleDebugPage.tsx",
+   "count": 7
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/components/style-lab/TokenInspectorTab.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/style-lab/TokenInspectorTab.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/ui/app-menu/AppMenuDemo.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/ui/PulseDot.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/components/ui/shad/Tooltip.example.tsx",
+   "count": 36
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/AttachmentInjectionDebugPlugin.tsx",
+   "count": 13
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/AttachmentOcrRequestAuditPlugin.tsx",
+   "count": 12
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/AttachmentPipelineTestPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/AttachmentPipelineTestPlugin.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/AttachmentPipelineTestPlugin.tsx",
+   "count": 30
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ChatAnkiIntegrationTestPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ChatAnkiIntegrationTestPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ChatAnkiIntegrationTestPlugin.tsx",
+   "count": 24
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ChatAnkiParseDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ChatAnkiParseDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ChatAnkiParseDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ChatAnkiWorkflowDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ChatAnkiWorkflowDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ChatAnkiWorkflowDebugPlugin.tsx",
+   "count": 9
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ChatInteractionTestPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ChatInteractionTestPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ChatInteractionTestPlugin.tsx",
+   "count": 32
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ChatV2ImagePreviewDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ChatV2ImagePreviewDebugPlugin.tsx",
+   "count": 18
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/CitationTestPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/CitationTestPlugin.tsx",
+   "count": 19
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx",
+   "count": 22
+  },
+  {
+   "rule": "notification",
+   "file": "src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/CrepeEditorDebugPlugin.tsx",
+   "count": 8
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/CrepeEditorDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/CrepeEditorDebugPlugin.tsx",
+   "count": 40
+  },
+  {
+   "rule": "notification",
+   "file": "src/debug-panel/plugins/CrepeEditorDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/CrepeImageUploadDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/CrepeImageUploadDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/CrepeImageUploadDebugPlugin.tsx",
+   "count": 17
+  },
+  {
+   "rule": "notification",
+   "file": "src/debug-panel/plugins/CrepeImageUploadDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/DeepSeekOcrDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/DeepSeekOcrDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/DeepSeekOcrDebugPlugin.tsx",
+   "count": 15
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/DeleteRenderMonitorPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/DeleteRenderMonitorPlugin.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/DstuDebugPlugin.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/DstuDebugPlugin.tsx",
+   "count": 9
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/EditRetryDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/EditRetryDebugPlugin.tsx",
+   "count": 15
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/EssayGradingTooltipDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/EssayGradingTooltipDebugPlugin.tsx",
+   "count": 24
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ExamSheetProcessingDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ExamSheetProcessingDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ExamSheetProcessingDebugPlugin.tsx",
+   "count": 11
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/FinderDragDropDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/FinderDragDropDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/FinderDragDropDebugPlugin.tsx",
+   "count": 12
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/FloatingPanelDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/FloatingPanelDebugPlugin.tsx",
+   "count": 21
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ImageAttachmentInspectorPlugin.tsx",
+   "count": 22
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ImagePreviewDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ImagePreviewDebugPlugin.tsx",
+   "count": 26
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/LayoutDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/LayoutDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/LayoutDebugPlugin.tsx",
+   "count": 23
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/MarkdownStreamingProfilerPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+   "count": 9
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+   "count": 24
+  },
+  {
+   "rule": "notification",
+   "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/MediaProcessingDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/MediaProcessingDebugPlugin.tsx",
+   "count": 29
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/MultiAgentDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/MultiAgentDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/MultiAgentDebugPlugin.tsx",
+   "count": 25
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/MultiVariantDebugPlugin.tsx",
+   "count": 23
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/MultiVariantTestPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/MultiVariantTestPlugin.tsx",
+   "count": 21
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/NotesOutlineDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/NotesOutlineDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/NotesOutlineDebugPlugin.tsx",
+   "count": 16
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/NotesTypographyDebugPlugin.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/NotesTypographyDebugPlugin.tsx",
+   "count": 15
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/NotesTypographyDebugPlugin.tsx",
+   "count": 28
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/PageLifecycleDebugPlugin.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/PdfMultimodalDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/PdfMultimodalDebugPlugin.tsx",
+   "count": 15
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/QuestionImportDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/QuestionImportDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/QuestionImportDebugPlugin.tsx",
+   "count": 16
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/SelectionBoxDebugPlugin.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/SelectionBoxDebugPlugin.tsx",
+   "count": 23
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/SessionLoadFlowDebugPlugin.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/SessionSwitchPerfDebugPlugin.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/SessionSwitchPerfDebugPlugin.tsx",
+   "count": 25
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx",
+   "count": 33
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/StreamResponseMonitorPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/StreamResponseMonitorPlugin.tsx",
+   "count": 12
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/SubagentMessageFlowDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/SubagentMessageFlowDebugPlugin.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/SubagentTestPlugin.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/SubagentTestPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/SubagentTestPlugin.tsx",
+   "count": 17
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/TemplateDesignerWorkflowDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/TemplateDesignerWorkflowDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/TemplateDesignerWorkflowDebugPlugin.tsx",
+   "count": 7
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ThinkingBlockDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ThinkingBlockDebugPlugin.tsx",
+   "count": 17
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ThinkingChainDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ThinkingChainDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ThinkingChainDebugPlugin.tsx",
+   "count": 14
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/TimelineSourceMonitorPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/TimelineSourceMonitorPlugin.tsx",
+   "count": 32
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/ToolCallLifecycleDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/ToolCallLifecycleDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/ToolCallLifecycleDebugPlugin.tsx",
+   "count": 11
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/UnifiedDragDropDebugPlugin.tsx",
+   "count": 7
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/UnifiedDragDropDebugPlugin.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/UnifiedDragDropDebugPlugin.tsx",
+   "count": 22
+  },
+  {
+   "rule": "notification",
+   "file": "src/debug-panel/plugins/UnifiedDragDropDebugPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/UserMessageContentTrackerPlugin.tsx",
+   "count": 7
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/UserMessageContentTrackerPlugin.tsx",
+   "count": 20
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/WebSearchDebugPlugin.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/WebSearchDebugPlugin.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/WebSearchDebugPlugin.tsx",
+   "count": 30
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/debug-panel/plugins/WorkspaceOrchestrationTestPlugin.tsx",
+   "count": 3
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/debug-panel/plugins/WorkspaceOrchestrationTestPlugin.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/debug-panel/plugins/WorkspaceOrchestrationTestPlugin.tsx",
+   "count": 21
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/dev/DevMobileRecoveryFab.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/components/input-bar/BlockingApprovalBar.tsx",
+   "count": 7
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/chat/dev/playground/EvalPanel.tsx",
+   "count": 11
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/dev/playground/EvalPanel.tsx",
+   "count": 15
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/chat/dev/playground/LLMOutputPlayground.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/features/chat/dev/playground/LLMOutputPlayground.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/dev/playground/LLMOutputPlayground.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/chat/dev/playground/PlaygroundControlPanel.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/features/chat/dev/playground/PlaygroundControlPanel.tsx",
+   "count": 6
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/dev/playground/PlaygroundControlPanel.tsx",
+   "count": 19
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/chat/dev/playground/ProfilerPanel.tsx",
+   "count": 17
+  },
+  {
+   "rule": "jsx-expression",
+   "file": "src/features/chat/dev/playground/ProfilerPanel.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/dev/playground/ProfilerPanel.tsx",
+   "count": 9
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/chat/dev/StoreInspector.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/dev/StoreInspector.tsx",
+   "count": 2
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/pages/SessionItemRenderer.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/chat/plugins/blocks/components/ShellOutputView.tsx",
+   "count": 5
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/learning-hub/icons/ResourceIcons.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/learning-hub/views/IndexDiagnosticPanel.tsx",
+   "count": 4
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/settings/components/AboutTab.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/settings/components/mcp-tools/NewServerEditItem.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/settings/components/mcp-tools/ServerEditPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-attribute",
+   "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+   "count": 1
+  },
+  {
+   "rule": "jsx-text",
+   "file": "src/features/workbench/components/WorkbenchDevPanel.tsx",
+   "count": 2
+  }
+ ]
+}

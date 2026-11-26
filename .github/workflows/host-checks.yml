@@ -6,27 +6,27 @@ on:
       - 'host/**'
       - 'electron/**'
       - 'contracts/**'
-      - 'scripts/electron-migration/**'
+      - 'scripts/arch/**'
       - 'tsconfig.host.json'
       - 'vitest.host.config.ts'
-      - '.github/workflows/electron-migration.yml'
+      - '.github/workflows/host-checks.yml'
   push:
     branches: [main]
     paths:
       - 'host/**'
       - 'electron/**'
       - 'contracts/**'
-      - 'scripts/electron-migration/**'
+      - 'scripts/arch/**'
       - 'tsconfig.host.json'
       - 'vitest.host.config.ts'
-      - '.github/workflows/electron-migration.yml'
+      - '.github/workflows/host-checks.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: electron-migration-${{ github.ref }}
+  group: host-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
 
       - name: Architecture boundaries
         if: ${{ !cancelled() }}
-        run: node scripts/electron-migration/boundaries.mjs
+        run: node scripts/arch/boundaries.mjs
 
   host-electron:
     name: Host tests in Electron's Node (native modules, Electron ABI)

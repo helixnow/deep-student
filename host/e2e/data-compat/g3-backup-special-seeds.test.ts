@@ -48,20 +48,11 @@ describe('L21 special-entry seeds (static fixtures, not A-produced or a G3 pass)
   });
 
   it('copies A1/A2/B with identical snapshots and unchanged link text/FIFO kind', async () => {
-    // Exercise W13's existing public digest API without changing recorder code.
-    // The recorder module has no type declarations; a non-literal specifier keeps tsc from requiring one.
-    const g3InputsModule = '../../../scripts/electron-migration/record/g3-inputs.mjs';
-    const { seedDirectoryDigest } = (await import(g3InputsModule)) as {
-      seedDirectoryDigest(root: string, directory: string, window: { from: number; to: number }): Promise<{ sha256: string; clockCells: Record<string, number> }>;
-    };
-    const repository = resolve(import.meta.dirname, '../../..');
     for (const [name, source] of seeds) {
       const before = snapshotDirectory(source.directory);
-      const digest = await seedDirectoryDigest(repository, source.directory, { from: 0, to: 0 });
       for (const side of ['A1', 'A2', 'B']) {
         const copy = copySeed(name, catalog, join(root, side, name));
         expect(snapshotDirectory(copy.directory)).toEqual(before);
-        expect(await seedDirectoryDigest(repository, copy.directory, { from: 0, to: 0 })).toEqual(digest);
         if (name === 'l21-assets-nested-fifo') expect(lstatSync(join(appDataRoot(copy), 'slots/slotA/images/pipe')).isFIFO()).toBe(true);
         if (name === 'l21-backups-symlink-escape') {
           expect(realpathSync(join(appDataRoot(copy), 'recovery/backups', SYMLINK_BACKUP)))

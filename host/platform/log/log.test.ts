@@ -96,7 +96,7 @@ describe('脱敏（debug_log_service.rs）', () => {
     });
   });
   it('scrub_pii', () => {
-    expect(scrubPii('at /Users/heli/code/x.ts', 'darwin')).toBe('at /<REDACTED>/code/x.ts');
+    expect(scrubPii('at /Users/alice/code/x.ts', 'darwin')).toBe('at /<REDACTED>/code/x.ts');
     expect(scrubPii('C:\\Users\\bob\\a', 'win32')).toBe('C:\\Users\\<REDACTED>\\a');
   });
 });

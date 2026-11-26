@@ -2,69 +2,48 @@
 
 感谢你愿意为 Deep Student 贡献！
 
-### 提交规范
-- 使用小范围、可回滚的提交；提交信息说明"动机与影响"
+### 提交与仓库边界规范
+- 使用小范围、可回滚的提交；提交信息说明「动机与影响」
 - PR 标题遵循约定式提交：`feat|fix|docs|chore|refactor|test: ...`
+- **公开仓库纯净原则**：本仓库仅存放产品源码本体与面向用户/贡献者的必要文档（CI 通过 `npm run check:public-surface` 执行根目录与文档目录白名单门禁），请勿在提交中包含个人笔记、过程草稿或运行日志。
 
 ### 开发环境
-- **Node.js**: v20+
-- **Rust**: Stable（建议通过 `rustup` 安装）
-- **包管理器**: npm（本项目统一使用 npm，请勿混用 pnpm/yarn）
+- **Node.js**: v24（推荐，与 CI 一致；最低 v20+）
+- **包管理器**: npm（本项目统一使用 `npm ci --legacy-peer-deps`，请勿混用 pnpm/yarn）
 
-### 安装与开发
+### 安装与本地开发
 
 ```bash
-# 安装前端依赖
-npm ci
+# 安装依赖
+npm ci --legacy-peer-deps
 
-# 启动前端开发服务器（端口 1422）
+# 启动纯前端开发服务器（端口 1422）
 npm run dev
 
-# 启动 Tauri 桌面应用（同时启动前端和后端）
-npm run dev:tauri
+# 启动 Electron 桌面端开发环境（前端 + Cordis Host）
+npm run dev:electron
 
-# 构建前端
-npm run build
+# 启动 WebUI 开发服务端
+npm run web
 
-# Lint 检查
+# 类型检查与 Lint
+npm run typecheck
+npm run typecheck:host
 npm run lint
+
+# 运行测试与公开面门禁
+npm test
+npm run test:host
+npm run check:public-surface
 ```
 
-### 代码风格
-- TypeScript/React：请通过 `npm run lint` 检查（ESLint）
-- Rust：`cargo fmt` 格式化，`cargo clippy` 静态分析
-- 详细规范参见 [CODE_STYLE.md](../docs/CODE_STYLE.md)
-
-### 项目规范
-- **请务必阅读 [`docs/CODE_STYLE.md`](../docs/CODE_STYLE.md)**，其中包含重要的开发规范
-- 特别注意：拖拽上传功能必须使用统一组件（`UnifiedDragDropZone` 或 `useTauriDragAndDrop`），详见 CODE_STYLE 第 5.2 节
+### 代码风格与架构约束
+- TypeScript / React：请通过 `npm run lint`、`npm run check:frontend-layers` 检查
+- Host 与插件边界：请通过 `npm run migration:boundaries` 与 `npm run contracts:check` 检查
+- 详细规范参见 [`docs/CODE_STYLE.md`](../docs/CODE_STYLE.md)、[`docs/frontend/README.md`](../docs/frontend/README.md) 与 [`host/kernel/API.md`](../host/kernel/API.md)
 
 ### CI/CD
-
-本项目配置了 GitHub Actions CI 流水线（`.github/workflows/ci.yml`），PR 提交时会自动运行以下 job：
-
-| Job | 内容 |
-|-----|------|
-| Build Configuration Contracts | 版本/代理契约自测（`node --test scripts/__tests__/*.test.mjs`）、Android versionCode 生成校验 |
-| Frontend | 第三方许可证核对、`npx tsc --noEmit`、`npm run lint`（error 阻塞合并）、`npx vite build`、npm audit（非阻塞） |
-| Frontend Tests (Vitest ×4) | `npx vitest run --shard=N/4`，4 路分片 |
-| Backend | `cargo fmt --check`、`cargo clippy --all-targets -- -D clippy::correctness` |
-| Cloud Provider Contract Gate | Docker 起 MinIO/WebDAV/FTP，跑 `cargo test --test sync_provider_contract_tests -- --ignored` 全量 |
-| Windows Shell Sandbox | Windows 上 `cargo check --lib` + AppContainer 文件系统边界测试 |
-| Rust Tests · Build Archive + Rust Tests ×8 | `cargo nextest archive` 一次编译，8 路 partition 执行（新增 `tests/*.rs` 自动纳入） |
-| Migration Gate | 迁移静态门禁、迁移工具自测、生产迁移测试（强制非零用例数）、代表性 fixture 升级 |
-| Security Audit | `cargo audit`（非阻塞，忽略清单见 `src-tauri/.cargo/audit.toml`） |
-
-Rust 相关 job（Backend、Rust Tests、Cloud Provider Contract Gate、Windows Shell Sandbox、Migration Gate）只等 Build Configuration Contracts 与改动检测，与前端 job 并行。PR 只改根目录 `*.md` 或 `docs/**` 时跳过这些 Rust job，CI Required 放行；`docs/user-guide/**` 不算纯文档（有 Rust 测试读取用户指南）。push 到 main 始终全量运行。
-
-另有 **CLA 签署检查**（`.github/workflows/cla.yml`）— 首次贡献需签署 CLA。
-
-以上为摘要，**一律以 `.github/workflows/ci.yml` 为准**；本文档与该文件冲突时请以 workflow 定义为准。
-
-请确保 PR 提交前本地通过 `npm run lint`、`npm run test` 和 `npm run build`。
-
-组件测试、完整本地 CI、Rust 归档分片、资源限制及历史故障处理方法见
-[本地测试方法](../docs/dev/local-testing.md)。执行前对照当前 workflow，避免重复踩坑。
+PR 提交时会自动运行 `.github/workflows/ci.yml` 与 `.github/workflows/host-checks.yml`（含公开仓库表面白名单检查、前端类型与构建门禁、Vitest 分片测试、Host/Electron 契约与迁移门禁、示例插件测试及 CLA 签署检查）。提交 PR 前请确保本地相关检查通过。
 
 ### PR 指南
 - 描述变更与测试方式；关联 Issue（如有）

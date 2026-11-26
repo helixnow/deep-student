@@ -1,59 +1,33 @@
-# docs/ 目录索引
+# docs/ 文档导航
 
-> 用户指南在线版：https://deepstudent.cn/docs/
+> 在线使用指南：https://deepstudent.cn/docs/
 
 ## 用户指南（面向最终用户）
 
 | 文档 | 说明 |
-|------|------|
-| [user-guide/README.md](./user-guide/README.md) | 用户指南总目录（17 章，覆盖桌面 + 移动双端，含快速上手） |
-| [DEEPSEEK-API.md](./DEEPSEEK-API.md) | Node 版 DeepSeek 对话功能与独立 API 配置 |
+| :--- | :--- |
+| [user-guide/README.md](./user-guide/README.md) | 中文使用指南总目录（覆盖桌面端、移动端与 WebUI） |
+| [user-guide/en/README.md](./user-guide/en/README.md) | English User Guide |
+| [DEEPSEEK-API.md](./DEEPSEEK-API.md) | DeepSeek 对话功能与独立 API 配置说明 |
+| [WEBUI-AND-PWA.md](./WEBUI-AND-PWA.md) | WebUI 与 PWA 的运行方式、安全模型与自托管说明 |
 
-## 开发必读
+## 开发者与贡献者文档
 
 | 文档 | 说明 |
-|------|------|
-| [CODE_STYLE.md](./CODE_STYLE.md) | 代码风格规范（React/Rust/i18n/拖拽上传/日志） |
+| :--- | :--- |
+| [CODE_STYLE.md](./CODE_STYLE.md) | 代码风格与前端/Host 开发规范 |
 | [BUILD-CONFIG.md](./BUILD-CONFIG.md) | 跨平台构建环境配置（签名、证书、环境变量） |
-| [README-BUILD.md](./README-BUILD.md) | 构建脚本快速参考 |
+| [README-BUILD.md](./README-BUILD.md) | 构建与本地运行脚本速查 |
+| [frontend/README.md](./frontend/README.md) | 前端组件体系、设计令牌与界面模式 |
+| [plugins/ARCHITECTURE.md](./plugins/ARCHITECTURE.md) | Plugin v2 插件架构、SDK 与安全边界 |
+| [community/good-first-issues.md](./community/good-first-issues.md) | 社区贡献入门参考 |
 
-## 架构与设计
-
-| 文档 | 说明 |
-|------|------|
-| [WEBUI-AND-PWA.md](./WEBUI-AND-PWA.md) | WebUI 与 PWA 的架构分层、运行方式、安全模型与离线扩展路径 |
-| `src/features/chat/BLOCK_RENDERING_GUIDE.md` | Chat V2 块渲染开发者手册（就地文档） |
-| `src-tauri/migrations/README.md` | 数据库迁移规范（就地文档） |
-
-## 法务
+## 法务与合规
 
 | 文档 | 说明 |
-|------|------|
-| [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) | 第三方许可证清单 |
+| :--- | :--- |
+| [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) | 第三方开源软件许可证清单 |
 
-## 内部目录（不随仓库发布）
+## 公开仓库文档规范
 
-以下条目均被 `.gitignore` 排除，只存在于本地工作副本，公开仓库中访问会 404。
-可用 `git check-ignore -v <路径>` 核实。
-
-| 路径 | 说明 |
-|------|------|
-| `archive/` | 已完结的历史评审/计划/报告归档 |
-| `design/` | 内部设计契约文档：learning-hub-core-contracts、chat-v2-model-protocol |
-| `reviews/` | 按日期命名的评审与修复记录（如 `docs-distribution-review-2026-06-11.md`） |
-| `prompts/`、`superpowers/` | 内部提示词与实验性材料 |
-| `RELEASE-WORKFLOW.md` | 发布流程 |
-| `design-tokens-and-color-semantics.md` | 设计令牌与颜色语义体系 |
-| `DEEPSEEK-V4-V32-RELEASE-NOTES.md` | DeepSeek 系列适配器设计说明 |
-| `FABLE_SOTA_GOAL.md` | Fable SOTA 目标与进度 |
-| `cloud-sync-remediation-plan.md` | 云同步整治计划 |
-| `cloud-sync-compatibility-analysis-*.md` | 云同步兼容性分析（上文依据） |
-| `vfs-vector-knowledge-base-hardening.md` | VFS 向量知识库加固方案 |
-
-## 文档放置约定
-
-1. 公开技术文档放 `docs/` 根层，评审记录放 `docs/reviews/`（内部，git 忽略）
-2. 内部一次性产物完结后移入 `docs/archive/`
-3. 内部设计契约放 `docs/design/`
-4. 组件级文档随代码就地存放（如 `src/features/chat/`）
-5. 引用代码一律用仓库相对路径，禁止本机绝对路径
+本仓库仅收录**产品源码本体**与面向最终用户、外部贡献者的**必要公开文档**（由 `npm run check:public-surface` 自动校验）。内部研发方案、过程记录、运维配置与评测集请勿提交至本仓库。

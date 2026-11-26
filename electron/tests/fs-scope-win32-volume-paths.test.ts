@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { FsScope } from '../shell/scope.ts';
 import { fakeScopeFs } from './__fixtures__/scope-fs.ts';
 
-const winAppData = 'C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app';
+const winAppData = 'C:\\Users\\alice\\AppData\\Roaming\\com.deepstudent.app';
 const VOLUME = 'Volume{4c1b02c1-d990-11dc-99ae-806e6f6e6963}';
 const DEVICE = 'GLOBALROOT\\Device\\HarddiskVolume3';
 

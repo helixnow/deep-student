@@ -73,7 +73,7 @@ describe('Windows: Tauri windows_root_paths (src/scope/fs.rs:632-696)', () => {
 });
 
 describe('Windows path forms', () => {
-  const appData = win32.join('C:\\Users\\heli\\AppData\\Roaming', 'com.deepstudent.app');
+  const appData = win32.join('C:\\Users\\alice\\AppData\\Roaming', 'com.deepstudent.app');
   const note = win32.join(appData, 'notes', 'a.md');
   const plugin = win32.join(appData, 'plugins', 'p', 'index.js');
 
@@ -81,31 +81,31 @@ describe('Windows path forms', () => {
     const scope = windowsScope({ entries: [note, plugin] });
     scope.allowPattern(win32.join(appData, '**'));
     scope.forbidPattern(win32.join(appData, 'plugins', '**'));
-    expect(scope.isAllowed('c:\\users\\HELI\\appdata\\roaming\\COM.DEEPSTUDENT.APP\\notes\\A.MD')).toBe(true);
-    expect(scope.isAllowed('C:\\USERS\\heli\\appdata\\Roaming\\com.deepstudent.app\\Plugins\\P\\INDEX.JS')).toBe(false);
-    expect(scope.isForbidden('c:\\users\\heli\\appdata\\roaming\\com.deepstudent.app\\PLUGINS\\p\\index.js')).toBe(true);
+    expect(scope.isAllowed('c:\\users\\ALICE\\appdata\\roaming\\COM.DEEPSTUDENT.APP\\notes\\A.MD')).toBe(true);
+    expect(scope.isAllowed('C:\\USERS\\alice\\appdata\\Roaming\\com.deepstudent.app\\Plugins\\P\\INDEX.JS')).toBe(false);
+    expect(scope.isForbidden('c:\\users\\alice\\appdata\\roaming\\com.deepstudent.app\\PLUGINS\\p\\index.js')).toBe(true);
   });
 
   it('a pattern configured in another case still matches the on-disk directory', () => {
     const scope = windowsScope({ entries: [note] });
-    scope.allowPattern('c:\\USERS\\Heli\\appdata\\roaming\\com.deepstudent.app\\**');
+    scope.allowPattern('c:\\USERS\\Alice\\appdata\\roaming\\com.deepstudent.app\\**');
     expect(scope.isAllowed(note)).toBe(true);
     expect(scope.allowedPatterns()).toContain(`\\\\?\\${appData}\\**`);
   });
 
   it('`/` and `\\` are the same separator, in patterns and in requests; `*` crosses neither', () => {
     const scope = windowsScope({ entries: [note] });
-    scope.allowPattern('C:/Users/heli/AppData/Roaming/com.deepstudent.app/**');
+    scope.allowPattern('C:/Users/alice/AppData/Roaming/com.deepstudent.app/**');
     expect(scope.allowedPatterns()).toContain(win32.join(appData, '**'));
-    expect(scope.isAllowed('C:/Users/heli/AppData/Roaming/com.deepstudent.app/notes/a.md')).toBe(true);
+    expect(scope.isAllowed('C:/Users/alice/AppData/Roaming/com.deepstudent.app/notes/a.md')).toBe(true);
     expect(scope.isAllowed(win32.join(appData, 'new.md'))).toBe(true);
-    expect(scope.isAllowed('C:/Users/heli/AppData/Roaming/com.deepstudent.app/new.md')).toBe(true);
+    expect(scope.isAllowed('C:/Users/alice/AppData/Roaming/com.deepstudent.app/new.md')).toBe(true);
 
     const flat = windowsScope({ entries: [note] });
     flat.allowDirectory(appData, false);
     expect(flat.isAllowed(win32.join(appData, 'notes'))).toBe(true);
     expect(flat.isAllowed(note)).toBe(false);
-    expect(flat.isAllowed('C:/Users/heli/AppData/Roaming/com.deepstudent.app/notes/a.md')).toBe(false);
+    expect(flat.isAllowed('C:/Users/alice/AppData/Roaming/com.deepstudent.app/notes/a.md')).toBe(false);
   });
 
   it('a verbatim request for a file not yet created matches like the drive form (Rust canonical patterns are verbatim)', () => {
@@ -113,7 +113,7 @@ describe('Windows path forms', () => {
     scope.allowPattern(win32.join(appData, '**'));
     expect(scope.isAllowed(`\\\\?\\${win32.join(appData, 'notes', 'new.md')}`)).toBe(true);
     expect(scope.isAllowed(`\\\\?\\${note}`)).toBe(true);
-    expect(scope.isAllowed('\\\\?\\C:\\Users\\heli\\AppData\\Roaming\\other\\new.md')).toBe(false);
+    expect(scope.isAllowed('\\\\?\\C:\\Users\\alice\\AppData\\Roaming\\other\\new.md')).toBe(false);
   });
 
   it('8.3 short names: existing paths resolve to the long name, whichever form the pattern or the request uses', () => {

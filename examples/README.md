@@ -1,7 +1,7 @@
 # 社区插件示例
 
 四个按 v1 清单写的社区插件，都能在本机测试。规则的出处写在每条后面，以代码为准。写插件的完整指南是
-`docs/plugins/SDK.md`；示例覆盖了哪些 API 见 `examples/W27-PROGRESS.md` 的覆盖面表。
+`docs/plugins/SDK.md`。
 
 | 目录 | id | 演示 |
 |---|---|---|
@@ -44,7 +44,7 @@ DS_HOST_PROFILE="$PWD/../study-stats/user.profile.json" npm run dev:electron    
 
 ## 清单（`package.json`）
 
-契约：`contracts/plugin-manifest/v1.schema.json`。门禁（`scripts/electron-migration/gate-checks/plugin-manifest.mjs`）与
+契约：`contracts/plugin-manifest/v1.schema.json`。门禁（`scripts/arch/gate-checks/plugin-manifest.mjs`）与
 Host 装载（`host/kernel/manifest.ts` `checkManifest`）用同一份。下面合并了示例用到的全部字段：
 
 ```json

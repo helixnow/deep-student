@@ -1,0 +1,257 @@
+{
+ "description": "event-emit 门禁现存缺口：src/ 中 listen/once 的事件名找不到可产生它的 emit 发射点（unemitted-event），或事件名不可静态确定（dynamic-event，白名单）。只阻止新增；修复后用 --write-baseline 收紧。",
+ "entries": [
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/chat/debug/workspaceOrchestrationTestPlugin.ts",
+   "function": "createWorkspaceEventCapture",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/chat/workspace/events.ts",
+   "function": "registerListener",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/learning-hub/apps/views/media/mediaTranscriptApi.ts",
+   "function": "subscribeMediaProcessingEvents",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+   "function": "register",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/workbench/agent/domainEvents.ts",
+   "function": "ensureHubSubscription",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供（registerDomainListener → hubListen）"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/workbench/agent/domainEvents.ts",
+   "function": "registerDomainListener",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/workbench/components/WorkbenchDevPanel.tsx",
+   "function": "WorkbenchDevPanel",
+   "count": 1,
+   "reason": "开发面板按 KNOWN_DOMAIN_EVENTS 常量表逐个预热 registerDomainListener，事件名是 map 回调参数；表里的事件与业务侧 registerDomainListener 调用相同"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/features/workbench/core/eventHub.ts",
+   "function": "ensureListening",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/hooks/usePdfProcessingProgress.ts",
+   "function": "registerListener",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/hooks/useTauriEventListener.ts",
+   "function": "useTauriEventListener",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/menu/menuEventBridge.ts",
+   "function": "useMenuEventBridge",
+   "count": 1,
+   "reason": "透传/注入事件名的包装或分发函数，事件名由调用方提供"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/ui-kernel/bootstrap.ts",
+   "function": "listen",
+   "count": 1,
+   "reason": "RF-W17-host-event-own-prefix 的 Host→UI 事件传输包装；事件名由 ctx.ui.host.on 经 UiEventsService 校验本插件命名空间后提供（host-events.test.ts 覆盖外来/近似/非法前缀在传输注册前被拒），包装自身不持有静态事件名"
+  },
+  {
+   "rule": "dynamic-event",
+   "file": "src/utils/guardedListen.ts",
+   "function": "guardedListen",
+   "count": 1,
+   "reason": "透传事件名的守护包装（内部动态导入 @tauri-apps/api/event），事件名由调用方提供，调用方各自计入监听点"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/components/shared/UnifiedDragDropZone.tsx",
+   "event": "tauri://file-drop",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/components/shared/UnifiedDragDropZone.tsx",
+   "event": "tauri://file-drop-cancelled",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/components/shared/UnifiedDragDropZone.tsx",
+   "event": "tauri://file-drop-hover",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/debug-panel/plugins/ExamSheetProcessingDebugPlugin.tsx",
+   "event": "exam_sheet_progress",
+   "count": 1,
+   "reason": "同 src/hooks/useExamSheetProgress.ts 的 exam_sheet_progress：Rust 与 Host 都没有发出端（审计 V03 §3.3 死监听）；调试面板经动态导入注册，A06 跟进 2 后纳入扫描"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/engines/TemplateAIEngine.ts",
+   "event": "template_ai_stream_${…}",
+   "count": 1,
+   "reason": "TemplateAIEngine 无任何 import 方、也不调用任何命令（死代码）；_start/_error/_cancelled 后缀被通用 `${…}_start` 等发射模式过近似覆盖"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/engines/TemplateAIEngine.ts",
+   "event": "template_ai_stream_${…}_end",
+   "count": 1,
+   "reason": "TemplateAIEngine 无任何 import 方、也不调用任何命令（死代码）；_start/_error/_cancelled 后缀被通用 `${…}_start` 等发射模式过近似覆盖"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/engines/TemplateAIEngine.ts",
+   "event": "template_ai_stream_${…}_json",
+   "count": 1,
+   "reason": "TemplateAIEngine 无任何 import 方、也不调用任何命令（死代码）；_start/_error/_cancelled 后缀被通用 `${…}_start` 等发射模式过近似覆盖"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/engines/TemplateAIEngine.ts",
+   "event": "template_ai_stream_${…}_reasoning",
+   "count": 1,
+   "reason": "TemplateAIEngine 无任何 import 方、也不调用任何命令（死代码）；_start/_error/_cancelled 后缀被通用 `${…}_start` 等发射模式过近似覆盖"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/engines/TemplateAIEngine.ts",
+   "event": "template_ai_stream_${…}_usage",
+   "count": 1,
+   "reason": "TemplateAIEngine 无任何 import 方、也不调用任何命令（死代码）；_start/_error/_cancelled 后缀被通用 `${…}_start` 等发射模式过近似覆盖"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/chat/workspace/events.ts",
+   "event": "workspace_subagent_retry",
+   "count": 1,
+   "reason": "Rust 与 host 均无发射点（前端事件表残留）"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/notes/aiReview.ts",
+   "event": "canvas:ai-edit-request",
+   "count": 1,
+   "reason": "Rust canvas_executor.rs:1742 suggestion 模式 emit；host notes/canvas 只实现 apply_ops 写入主路径，未发射"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/notes/hooks/useCanvasAIEditHandler.ts",
+   "event": "canvas:ai-edit-request",
+   "count": 1,
+   "reason": "Rust canvas_executor.rs:1742 suggestion 模式 emit；host notes/canvas 只实现 apply_ops 写入主路径，未发射"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/notes/NotesContext.tsx",
+   "event": "canvas:note-updated",
+   "count": 1,
+   "reason": "Rust 与 host 均无发射点"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/pomodoro/miniWindow.ts",
+   "event": "tauri://created",
+   "count": 1,
+   "reason": "W06 窗口策略不创建新窗口，Electron shell 不发射 WebviewWindow 创建事件；番茄钟迷你窗创建路径不可达"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/features/pomodoro/miniWindow.ts",
+   "event": "tauri://error",
+   "count": 1,
+   "reason": "同 tauri://created"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/hooks/useExamSheetProgress.ts",
+   "event": "exam_sheet_progress",
+   "count": 1,
+   "reason": "Rust 与 Host 都没有发出端（审计 V03 §3.3 死监听，行为与 Rust 相同）；经 useTauriEventListener 的 attach 注册，V03 后纳入扫描"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/hooks/useTauriDragAndDrop.ts",
+   "event": "tauri://file-drop",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/hooks/useTauriDragAndDrop.ts",
+   "event": "tauri://file-drop-cancelled",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/hooks/useTauriDragAndDrop.ts",
+   "event": "tauri://file-drop-hover",
+   "count": 1,
+   "reason": "Tauri v1 事件名，Tauri v2 起就不再发出（Rust 侧无发射点）；只在 onDragDropEvent 不可用时作为第二层回退注册，主路径与 tauri://drag-* 回退均有发射点。A06 跟进 2 补扫 guardedListen 后纳入"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/mcp-debug/bridge.ts",
+   "event": "mcp-debug-command",
+   "count": 1,
+   "reason": "Rust 与 Host 都没有发出端（X2 审计 host-event-emitter-unproven 已列），MCP 调试桥的遗留死监听，行为与 Rust 相同；动态导入注册，A06 跟进 2 后纳入扫描"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/mcp/mcpService.ts",
+   "event": "mcp-bridge-prompts-request",
+   "count": 1,
+   "reason": "Rust 只发 mcp-bridge-tools-request（dstu-llm llm_manager/mod.rs:8242，Host 对应 mcp_tools_service.ts:49），prompts/resources 三个桥接请求事件 Rust 也从未发出（X2 审计已列），行为与 Rust 相同；动态导入注册，A06 跟进 2 后纳入扫描"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/mcp/mcpService.ts",
+   "event": "mcp-bridge-resource-read-request",
+   "count": 1,
+   "reason": "同 mcp-bridge-prompts-request"
+  },
+  {
+   "rule": "unemitted-event",
+   "file": "src/mcp/mcpService.ts",
+   "event": "mcp-bridge-resources-request",
+   "count": 1,
+   "reason": "同 mcp-bridge-prompts-request"
+  }
+ ]
+}

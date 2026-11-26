@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { run as runManifestGate } from '../../../scripts/electron-migration/gate-checks/plugin-manifest.mjs';
+import { run as runManifestGate } from '../../../scripts/arch/gate-checks/plugin-manifest.mjs';
 import { checkManifest } from '../../../host/kernel/manifest.ts';
 import { describeConformance } from '../../testing/conformance';
 import { APP_VERSION, createUiKernel, examplePackages, installUiHalf, loadExample, REPO_ROOT, type ExampleManifest } from '../../testing/harness';

@@ -8,7 +8,7 @@
 在 X5 工作树根执行；需要现成 Node（本次 v26.5.0）、OpenSSL（本次 3.0.20）和仓库已有 undici。不安装依赖、不构建 Rust。
 
 ```sh
-node /home/dsdev/dev/deep-student/scripts/electron-migration/jobs/job.mjs run -- node host/e2e/streaming/fixed-https/run.ts -- node --import ./host/e2e/streaming/fixed-https/node-proxy.mjs host/e2e/streaming/fixed-https/probe-b.ts
+node host/e2e/streaming/fixed-https/run.ts -- node --import ./host/e2e/streaming/fixed-https/node-proxy.mjs host/e2e/streaming/fixed-https/probe-b.ts
 ```
 
 每次 launcher 创建一个 `127.0.0.1:随机端口` 的 CONNECT 代理、一个独立 TLS 服务和一个权限 0700 的 `/tmp/opencode/x5-ilink-*` 目录。A1/A2/B1/B2 **各起一次 launcher**；它们执行同一固定服务程序、互不共享证书/端口/日志/游标。stdout 首行 `ready/dir/proxy`，末行 `dir/ok/code/signal`。

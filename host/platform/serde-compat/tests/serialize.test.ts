@@ -14,7 +14,7 @@
 //   NaiveDateTime：Debug 格式（naive/time/mod.rs:1504-1529 的 0/3/6/9 位小数）。
 // - to_string_pretty：PrettyFormatter 两空格缩进，`": "`，空容器写 `[]` / `{}`（ser.rs PrettyFormatter）。
 import { describe, expect, it } from 'vitest';
-import { applyToField, applyToVariant } from '../../../../scripts/electron-migration/contracts/lib/case.ts';
+import { applyToField, applyToVariant } from '../../../../scripts/arch/contracts/lib/case.ts';
 import { renameField, renameVariant, rs, RustShapeError, toRustJson, toRustValue } from '../index.ts';
 
 /** dstu-vfs/src/vfs/pdf_processing_service.rs:222-247 ProcessingProgress（rename_all camelCase）。 */

@@ -1,0 +1,3333 @@
+{
+ "description": "FE-A4 前端边界门禁基线（按 规则+文件 计数，只减不增）。见 ui-boundaries.mjs 文件头。",
+ "entries": [
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/hooks/useCommandEvents.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/hooks/useResourceSearch.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/chat.commands.ts",
+   "count": 11
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/dev.commands.ts",
+   "count": 5
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/global.commands.ts",
+   "count": 16
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/learning.commands.ts",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/navigation.commands.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/notes.commands.ts",
+   "count": 5
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/command-palette/modules/settings.commands.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/Card3DPreview.tsx",
+   "count": 5
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/features/imageUpload.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/plugins/blockIdentity/links.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/plugins/mention/types.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/plugins/pdfRef/types.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/plugins/searchHighlight.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/crepe/plugins/wikilink/types.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/EssayGradingWorkbench.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/ModernSidebar.tsx",
+   "count": 20
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/practice/AnswerSheetGrid.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/practice/MockExamMode.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/QuestionBankListView.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/QuestionHistoryView.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/QuestionInlineEditor.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/QuestionStructureManager.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/shared/UnifiedDragDropZone.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/SourcePreviewPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/style-lab/GenerativeUIDemoTab.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/TranslateWorkbench.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/components/UnifiedNotification.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/dev/DevMobileRecoveryFab.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/dev/uiAutomationBridge.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/dstu/folderEvents.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/adapters/tauri/ankiGenerationEvents.ts",
+   "count": 10
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/adapters/tauri/blockEvents.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/adapters/tauri/diagnostics.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/adapters/tauri/sessionEventHandler.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/agent-task/ChangesSection.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/AgentTaskPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/ContextRefsDisplay.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/input-bar/AttachmentPreviewChips.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/input-bar/InputBarUI.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/input-bar/ModelPicker.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/input-bar/usePdfPageRefs.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/MessageItem.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/MindmapCitationCard.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/panels/UnifiedSourcePanel.tsx",
+   "count": 6
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/QbankCitationBadge.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/renderers/MarkdownRenderer.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/components/renderers/rendererCapabilities.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/context/chatInputInbox.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/context/selectionRef.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/core/store/restoreActions.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/attachmentPipelineTestPlugin.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/chatAnkiIntegrationTestPlugin.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/chatInteractionTestPlugin.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/chatV2Logger.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/citationTestPlugin.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/multiVariantTestPlugin.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/subagentTestPlugin.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/templateDesignerDebug.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/debug/workspaceOrchestrationTestPlugin.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/hooks/useFavoriteChatModels.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/hooks/useImagePreviewsFromRefs.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/hooks/useMultiTemplateLoader.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/kbScope/kbScope.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/navigation/pendingChatNavigation.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/chatPdfFocus.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/ChatV2Page.tsx",
+   "count": 8
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/ensureActiveChatSession.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/useChatPageEvents.ts",
+   "count": 8
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/useSessionEdit.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/pages/useSessionLifecycle.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/blocks/ankiCardsBlock.tsx",
+   "count": 5
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/blocks/memory.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/blocks/qbankQuestionsBlock.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/blocks/toolResults.tsx",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/chat/ModelPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/plugins/events/ankiCards.ts",
+   "count": 6
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/readiness/autoAssignModel.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/skills/components/SkillSelector.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/skills/skillBundles.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/skills/skillEnableStorage.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/skills/skillTrustStorage.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/skills/skillUsageStats.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/chat/utils/contextRefPreview.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/flashcards/cardSource.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/generative-ui/handlers/learningActionHandlers.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/generative-ui/handlers/openResourceActionHandlers.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/generative-ui/utils/dispatchCanvasAIEditRequest.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/apps/views/EpubPreview.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/apps/views/FileContentView.tsx",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/apps/views/media/mediaRefEvents.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/apps/views/TextbookContentView.tsx",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/components/finder/FinderFileList.tsx",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/components/finder/useSelectionBox.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/hooks/useVfsContextInject.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/LearningHubNavigationContext.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/LearningHubPage.tsx",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/mistakeBook/mistakeBookNavigation.ts",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/navigation/pendingLearningHubIntent.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/navigation/quickAccessRequest.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/sidebar/useSidebarChatActions.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/useReferenceToChat.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/learning-hub/views/MemoryView.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/media-handout/useGenerateHandout.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/media-studio/components/MediaLibraryPage.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/media-studio/mediaStudioNavigation.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/mindmap/components/mindmap/MindMapEmbed.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/mindmap/utils/mindmapPreferences.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/mindmap/utils/openNodeRef.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/components/NoteRelationPreview.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/createFromWikilink.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/findQueryBridge.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/headingTargetBridge.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/noteEditorHost.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/noteOrigin.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/noteRelations.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/NotesContext.tsx",
+   "count": 7
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/NotesContextPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/NotesCrepeEditor.tsx",
+   "count": 10
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/quoteTarget.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/notes/wikilinkNotesCache.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/pdf/components/PdfRelatedPanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/pdf/components/TextbookPdfViewer.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/AnkiConnectSettingsSection.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/data-governance/ChatSessionArchiveTab.tsx",
+   "count": 5
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/GeneralTab.tsx",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/mcp-editor/mcpServerOps.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/McpEditorSection.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/openaiCodexAuthClient.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/SiliconFlowSection.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/useSettingsConfig.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/settings/components/WorkbenchSettingsSection.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/study-time/studyTimeTracker.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/todo/automationCreateRequest.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/todo/components/main/detail/linkedResources.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/todo/openTodoItem.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/agent/drivers/fsrsDriver.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/agent/drivers/noteDriver.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/agent/drivers/qbankDriver.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/browser/register.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/chat/newSession.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/chat/register.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/content/pdfFocusAck.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/content/register.ts",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/content/ResourceAppWorkspace.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx",
+   "count": 6
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/apps/preview/FilePreviewAppWindow.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/AgentControlCenter.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/DesktopContextMenu.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/desktopNameStore.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/EmptyDesktop.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/WallpaperManagerDialog.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/components/WorkbenchEventBridge.tsx",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/core/legacyNavigationMap.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/core/nativeSurfaceEvents.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/core/snapshot.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/features/workbench/hooks/useWorkbenchShortcuts.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/hooks/useAppInitialization.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/hooks/useSystemSettings.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/hooks/useTauriDragAndDrop.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/hooks/useTheme.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/hooks/useVendorModels.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/logging/errorReporter.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/actionRecorder.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/asserter.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/errorCapture.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/networkMonitor.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/performanceMonitor.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp-debug/core/storeDebugger.ts",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp/mcpService.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/mcp/tauriStdioTransport.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/menu/menuEventBridge.ts",
+   "count": 3
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/quick-assistant/config.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/quick-assistant/QuickAssistantWindow.tsx",
+   "count": 2
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/quick-assistant/window.ts",
+   "count": 4
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/services/ankiApiAdapter.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/services/templateRenderService.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/shared/notes/saveTextAsNote.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/stores/superAgentEnabledStore.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/utils/chatV2DomainEventBridge.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/utils/opencodeGo.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/utils/pdfDebug.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/utils/pendingMemoryLocate.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/utils/testBridge.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/voice-input/config.ts",
+   "count": 1
+  },
+  {
+   "rule": "bare-custom-event",
+   "file": "src/voice-input/history.ts",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/agentSurface.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/AnkiTasksApp.tsx",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/AnkiTasksApp.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/AnkiTasksApp.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/components/FailedTasksPanel.tsx",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/components/SessionRow.tsx",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/anki-tasks/components/SessionRow.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/browser/controlModeSync.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/browser/gates.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/browser/hooks/useBrowserSession.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/api/taskWorkspaceApi.ts",
+   "scope": "src/features/browser",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/AgentTaskPanel.tsx",
+   "scope": "src/features/browser",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/AgentTaskPanel.tsx",
+   "scope": "src/features/generative-ui",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/AttachmentPreview.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/AttachmentUploader.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/ChatContainer.tsx",
+   "scope": "src/features/learning-today",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/ContextRefsDisplay.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/groups/GroupEditorDialog.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/AttachmentPanelBody.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/AttachmentPreviewChips.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/ComposerPanelOverlay.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/InputBarUI.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/libraryAttachmentProcessing.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/input-bar/useInputBarV2.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/MediaCitationBadge.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/MessageItem.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/MindmapCitationCard.tsx",
+   "scope": "src/features/mindmap",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/panels/UnifiedSourcePanel.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/panels/UnifiedSourcePanel.tsx",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/panels/UnifiedSourcePanel.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/QbankCitationBadge.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/renderers/CodeBlock.tsx",
+   "scope": "src/features/sandbox",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/renderers/CodeBlock.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/components/renderers/streamingSmoothing.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/context/definitions/image.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/context/selectionRef.ts",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/core/store/artifactRegistry.ts",
+   "scope": "src/features/generative-ui",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/core/store/createChatStore.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/core/store/sessionActions.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/debug/attachmentPipelineTestPlugin.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/kbScope/KbScopePickerHost.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/ChatV2Page.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/ChatV2Page.tsx",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/ChatV2Page.tsx",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/openResourceMapping.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageEvents.ts",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageEvents.ts",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageEvents.ts",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageEvents.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageLayout.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/pages/useChatPageLayout.tsx",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/ankiCardsBlock.tsx",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/ankiCardsBlock.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/generativeUI.tsx",
+   "scope": "src/features/generative-ui",
+   "count": 8
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/insightRecall.tsx",
+   "scope": "src/features/insights",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/memory.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/blocks/workbenchOpsBlock.tsx",
+   "scope": "src/features/workbench",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/events/approval.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/plugins/events/generativeUI.ts",
+   "scope": "src/features/generative-ui",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/skills/artifactSkeleton.ts",
+   "scope": "src/features/generative-ui",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/chat/utils/citationRemarkPlugin.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/cardMathPreview.tsx",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/cardSource.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/cardSource.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/cardSource.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/library/cardMediaSource.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/library/exportLibrary.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/library/LibraryCardRow.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/flashcards/screens/ReviewSessionScreen.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/components/GenerativeMarkdownBody.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/components/MindmapEmbedBlock.tsx",
+   "scope": "src/features/mindmap",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/handlers/notesEditActionHandlers.ts",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/handlers/openResourceActionHandlers.ts",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/handlers/workbenchLearningHandlers.ts",
+   "scope": "src/features/learning-today",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/handlers/workbenchLearningHandlers.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/utils/buildNoteEditSuggestionIntent.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/generative-ui/utils/dispatchCanvasAIEditRequest.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/UnifiedAppPanel.tsx",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/UnifiedAppPanel.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/EpubPreview.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/EssayContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/ExamContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 5
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/FileContentView.tsx",
+   "scope": "src/features/pdf",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/ImageContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/media/mediaCards.ts",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/media/MediaStudyView.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/media/MediaStudyView.tsx",
+   "scope": "src/features/media-handout",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/media/MediaStudyView.tsx",
+   "scope": "src/features/media-studio",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/media/MediaStudyView.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+   "scope": "src/features/notes",
+   "count": 9
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/PreviewContext.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/previewPersistence.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/RichDocumentPreview.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/TextbookContentView.tsx",
+   "scope": "src/features/pdf",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/TranslationContentView.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/TranslationContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/apps/views/useExamDueReviewCount.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/closeTabGate.ts",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/finder/DesktopView.tsx",
+   "scope": "src/features/workbench",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/finder/FinderQuickAccess.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/finder/FinderToolbar.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/finder/NotesLearningViewTabs.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/LearningHubContextMenu.tsx",
+   "scope": "src/features/workbench",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/MemoryFolderBanner.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/components/TabBar.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/hooks/useVfsContextInject.ts",
+   "scope": "src/features/chat",
+   "count": 9
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/icons/IllustratedResourceIcons.tsx",
+   "scope": "src/features/workbench",
+   "count": 9
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/LearningHubPage.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/LearningHubPage.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/LearningHubPage.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/LearningHubSidebar.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/mistakeBook/mistakeBookNavigation.ts",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/mistakeBook/MistakeBookView.tsx",
+   "scope": "src/features/flashcards",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/mistakeBook/MistakeBookView.tsx",
+   "scope": "src/features/learning-today",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/mistakeBook/MistakeRedoOverlay.tsx",
+   "scope": "src/features/learning-today",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/sidebar/moveActions.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/sidebar/sidebarConstants.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/sidebar/SidebarContentArea.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/sidebar/trashActions.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/sidebar/useSidebarChatActions.ts",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/types.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/types.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/useReferenceToChat.ts",
+   "scope": "src/features/chat",
+   "count": 16
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/utils/exportResource.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/views/memoryDomainRefresh.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-hub/views/MemoryView.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/DueMistakesReviewOverlay.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/openTodayReview.ts",
+   "scope": "src/features/flashcards",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/openTodayReview.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/todayLearning.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/todayLearning.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/learning-today/weeklyReport.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-handout/api.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/api.ts",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaLibraryPage.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaLibraryPage.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaLibraryRow.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaStudyPage.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaStudyTabs.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 6
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaStudyTabs.tsx",
+   "scope": "src/features/media-handout",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/components/MediaStudyTabs.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/importMedia.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/mediaChat.ts",
+   "scope": "src/features/chat",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/mediaChat.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/MediaStudioApp.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/mediaStudioNavigation.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/media-studio/useMediaLibrary.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/mindmap/components/agent/MindmapAgentSuggestionBar.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/mindmap/components/mindmap/MindMapResourcePicker.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/mindmap/components/shared/NodeRefCard.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/mindmap/components/toolbar/FormatBar.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/mindmap/utils/openNodeRef.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/AIDiffPanel.tsx",
+   "scope": "src/features/generative-ui",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/components/NoteLearningPropertiesSection.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/components/NoteRelationPreview.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/components/NoteRelationPreview.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/components/NotesEditorHeader.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/generateCardsFromNote.ts",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/noteDocxExport.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/noteDocxExport.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/noteEditorHost.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/noteOrigin.ts",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/NotesContext.tsx",
+   "scope": "src/features/chat",
+   "count": 6
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/NotesContextPanel.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/NotesCrepeEditor.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/NotesCrepeEditor.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/NotesCrepeEditor.tsx",
+   "scope": "src/features/workbench",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/notes/noteToMindmap.ts",
+   "scope": "src/features/mindmap",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/components/EnhancedPdfViewer.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/components/PdfReader.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/components/PdfRegionCapture.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/components/PdfRelatedPanel.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/components/PdfSelectionActions.tsx",
+   "scope": "src/features/chat",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pdf/selectionStudyActions.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pomodoro/components/GlobalPomodoroWidget.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/pomodoro/stores/usePomodoroStore.ts",
+   "scope": "src/features/todo",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/AutomationSettingsSection.tsx",
+   "scope": "src/features/todo",
+   "count": 6
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/data-governance/ChatSessionArchiveTab.tsx",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/DataGovernanceDashboard.tsx",
+   "scope": "src/features/data-recovery",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/GeneralTab.tsx",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/MarkdownEditorWindowSettings.tsx",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/ModelsTab.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/PdfSettingsSection.tsx",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/RendererCapabilitiesSection.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/Settings.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/SettingsSidebar.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/useSettingsVendorState.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/vendorModelService.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/wallpaperLibrary.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/workbenchMode.ts",
+   "scope": "src/features/workbench",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/WorkbenchSettingsSection.tsx",
+   "scope": "src/features/browser",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/settings/components/WorkbenchSettingsSection.tsx",
+   "scope": "src/features/workbench",
+   "count": 12
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/template-management/TemplateManagementApp.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/automationNlParser.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/AutomationList.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/AutomationRunHistory.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/AutomationRunHistory.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/AutomationScheduleEditor.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/AutomationTemplates.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/automation/scheduleMath.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/main/detail/FocusHistorySection.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/main/detail/LinkedResourcesSection.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/main/TodoItemDetail.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/main/TodoItemRow.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoAutomationWorkspace.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoAutomationWorkspace.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoContentView.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoContentView.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoMainPanel.tsx",
+   "scope": "src/features/learning-today",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoMainPanel.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/todoShellNav.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoShellSidebar.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/components/TodoSidebar.tsx",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/hooks/useAutomationRunNotifications.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/hooks/useAutomationRunNotifications.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/openTodoItem.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/reminderScheduler.ts",
+   "scope": "src/features/learning-today",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/todo/stores/useAutomationStore.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/finderDriver.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/fsrsDriver.ts",
+   "scope": "src/features/flashcards",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/mindmapDriver.ts",
+   "scope": "src/features/mindmap",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/pomodoroDriver.ts",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/sandboxDriver.ts",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/drivers/todoDriver.ts",
+   "scope": "src/features/todo",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/integrationManifest.ts",
+   "scope": "src/features/pdf",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/agent/noteBinding.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/ai-dashboard/agentManifest.ts",
+   "scope": "src/features/learning-today",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/ai-dashboard/AiDashboardAppWindow.tsx",
+   "scope": "src/features/generative-ui",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/ai-dashboard/AiDashboardAppWindow.tsx",
+   "scope": "src/features/learning-today",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/browser/agentManifest.ts",
+   "scope": "src/features/browser",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/browser/BrowserAppWindow.tsx",
+   "scope": "src/features/browser",
+   "count": 6
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/browser/register.tsx",
+   "scope": "src/features/browser",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/agentManifest.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/ChatAppWindow.tsx",
+   "scope": "src/features/chat",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/ChatSessionSurface.tsx",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/ChatSessionSurface.tsx",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/ChatSessionWindow.tsx",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/newSession.ts",
+   "scope": "src/features/chat",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/chat/register.ts",
+   "scope": "src/features/chat",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/content/ContentAppWindow.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/content/pdfFocusAck.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/content/register.ts",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/content/ResourceAppWorkspace.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/content/typeMap.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/agentManifest.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/filesActivation.ts",
+   "scope": "src/features/learning-hub",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/FilesAppWindow.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/useFilesHoverPreview.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/useFilesViewTransition.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/files/useResourceDragOut.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/mindmap/agentManifest.ts",
+   "scope": "src/features/mindmap",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/mindmap/MindmapAppWindow.tsx",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/mindmap/register.ts",
+   "scope": "src/features/mindmap",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/agentManifest.ts",
+   "scope": "src/features/mindmap",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/backlinksBackend.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/graph/NotesGraphTab.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/InsightsSection.tsx",
+   "scope": "src/features/insights",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NoteCustomPropsEditor.tsx",
+   "scope": "src/features/notes",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx",
+   "scope": "src/features/notes",
+   "count": 4
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NotesPropertiesTab.tsx",
+   "scope": "src/features/notes",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx",
+   "scope": "src/features/mindmap",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx",
+   "scope": "src/features/notes",
+   "count": 9
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/tree/flatten.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/tree/TreeRow.tsx",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/wikilinkRenameSync.ts",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/WorkbenchNotesLibraryDialog.tsx",
+   "scope": "src/features/notes",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/notes/workspaceRegistry.ts",
+   "scope": "src/features/mindmap",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/preview/FilePreviewAppWindow.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/preview/previewShellUtils.ts",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/preview/quickLook.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/sandbox/agentManifest.ts",
+   "scope": "src/features/sandbox",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/sandbox/register.tsx",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/sandbox/SandboxAppWindow.tsx",
+   "scope": "src/features/sandbox",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/agentManifests.ts",
+   "scope": "src/features/flashcards",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/agentManifests.ts",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/agentManifests.ts",
+   "scope": "src/features/todo",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/FlashcardsAppWindow.tsx",
+   "scope": "src/features/flashcards",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/flashcardsDueSource.ts",
+   "scope": "src/features/flashcards",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/MediaStudioAppWindow.tsx",
+   "scope": "src/features/media-studio",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/PomodoroAppWindow.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/pomodoroSource.ts",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/PomodoroWindowSettings.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/register.tsx",
+   "scope": "src/features/flashcards",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/register.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/SettingsAppWindow.tsx",
+   "scope": "src/features/settings",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/SkillsAppWindow.tsx",
+   "scope": "src/features/skills-management",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/taskDashboardAgentActions.ts",
+   "scope": "src/features/anki",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/taskDashboardAgentActions.ts",
+   "scope": "src/features/anki-tasks",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/TaskDashboardAppWindow.tsx",
+   "scope": "src/features/anki-tasks",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/TemplatesAppWindow.tsx",
+   "scope": "src/features/template-management",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/todoActivation.ts",
+   "scope": "src/features/todo",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/todoAgendaSource.ts",
+   "scope": "src/features/todo",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/apps/system/TodoAppWindow.tsx",
+   "scope": "src/features/todo",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/AppsPanel.tsx",
+   "scope": "src/features/browser",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/DesktopAgendaWidget.tsx",
+   "scope": "src/features/todo",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/DesktopAiBriefingWidget.tsx",
+   "scope": "src/features/generative-ui",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/DesktopAiBriefingWidget.tsx",
+   "scope": "src/features/learning-today",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/DesktopShortcuts.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 3
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBar.tsx",
+   "scope": "src/features/learning-today",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBar.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBar.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBarClock.tsx",
+   "scope": "src/features/todo",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBarItems.tsx",
+   "scope": "src/features/pomodoro",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/StatusBarItems.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/WallpaperManagerDialog.tsx",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/WorkbenchEventBridge.tsx",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/WorkbenchEventBridge.tsx",
+   "scope": "src/features/learning-hub",
+   "count": 1
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/components/WorkbenchEventBridge.tsx",
+   "scope": "src/features/notes",
+   "count": 2
+  },
+  {
+   "rule": "cross-feature-import",
+   "file": "src/features/workbench/core/legacyNavigationMap.ts",
+   "scope": "src/features/chat",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/plugins/translation/engine.ts",
+   "scope": "src/plugin-runtime/contracts",
+   "count": 2
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/plugins/translation/index.ts",
+   "scope": "src/plugin-runtime/contracts",
+   "count": 2
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/plugins/translation/index.ts",
+   "scope": "src/plugin-runtime/host.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/plugins/translation/policy.ts",
+   "scope": "src/plugin-runtime/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/anki/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/anki/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/anki/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/app/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/app/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 2
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/app/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/chat/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/chat/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/chat/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/entries.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/entries.ts",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/markdown.tsx",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/menu.ts",
+   "scope": "src/dstu/types.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/content/menu.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/dev/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/dev/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/dev/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/genui/index.ts",
+   "scope": "src/features/generative-ui",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/genui/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/host-unavailable.tsx",
+   "scope": "src/components/system-status",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/host-unavailable.tsx",
+   "scope": "src/stores/systemStatusStore.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/install.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/learning-hub/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/learning-hub/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/learning-hub/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/navigation/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/navigation/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/navigation/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/notes/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/notes/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/notes/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/index.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/isolation.tsx",
+   "scope": "src/components/ErrorBoundary.tsx",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/isolation.tsx",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/navigation.ts",
+   "scope": "src/features/settings",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/navigation.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/navigation.ts",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/search.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/SectionContent.tsx",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/SectionContent.tsx",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/sections.tsx",
+   "scope": "src/command-palette/components",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/sections.tsx",
+   "scope": "src/components/DataImportExport.tsx",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/sections.tsx",
+   "scope": "src/features/settings",
+   "count": 17
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/settings/sections.tsx",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/index.ts",
+   "scope": "src/components/icons",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/index.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/index.ts",
+   "scope": "src/ui-plugins/official",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/navigation.ts",
+   "scope": "src/app/navigation",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/navigation.ts",
+   "scope": "src/types/navigation.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/navigation.ts",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/navigation.ts",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/RegisteredViewLayer.tsx",
+   "scope": "src/app/components",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/RegisteredViewLayer.tsx",
+   "scope": "src/ui-kernel/contracts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/renderNavigationIcon.tsx",
+   "scope": "src/components/ErrorBoundary.tsx",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/shell/renderNavigationIcon.tsx",
+   "scope": "src/ui-kernel/slots.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/todo/index.ts",
+   "scope": "src/command-palette/contribute.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/todo/index.ts",
+   "scope": "src/command-palette/modules",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/todo/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/workbench/index.ts",
+   "scope": "src/features/workbench",
+   "count": 1
+  },
+  {
+   "rule": "plugin-import-boundary",
+   "file": "src/ui-plugins/official/workbench/index.ts",
+   "scope": "src/ui-kernel/kernel.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/app/hooks/useFrontendErrorCapture.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/context-menu/TextContextMenu.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/DataImportExport.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/ErrorBoundary.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/TopLevelFallback.tsx",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/TranslateWorkbench.tsx",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/components/translation/SourcePanel.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/learning-hub/utils/exportResource.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/mindmap/constants/shortcuts.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/mindmap/views/outline/outlineShared.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/pdf/components/EnhancedPdfViewer.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/settings/components/constants.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/workbench/apps/preview/FilePreviewAppWindow.tsx",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/workbench/core/liquidGlassLens.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/workbench/core/materialTier.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/features/workbench/core/scheduler.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/hooks/useKeyboardHeight.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/lib/scroll-platform.ts",
+   "count": 4
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/logging/errorReporter.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/mcp/tauriStdioTransport.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/menu/menuEventBridge.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/utils/fileManager.ts",
+   "count": 2
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/utils/heicConversion.ts",
+   "count": 1
+  },
+  {
+   "rule": "ua-sniffing",
+   "file": "src/utils/urlOpener.ts",
+   "count": 1
+  }
+ ]
+}

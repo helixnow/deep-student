@@ -1,0 +1,170 @@
+{
+ "description": "运行时导入环基线（Host 插件 api.ts 的值导入闭包内、处于环上的导入边，按 导入方→被导入方 计数，只减不增）。见 import-cycles.mjs 文件头。",
+ "entries": [
+  {
+   "file": "host/plugins/agent-orchestration/api.ts",
+   "to": "host/plugins/agent-orchestration/src/custom-agent-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-orchestration/src/custom-agent-executor.ts",
+   "to": "host/plugins/agent-workspace/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/api.ts",
+   "to": "host/plugins/agent-skills/src/tools/general-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/api.ts",
+   "to": "host/plugins/agent-skills/src/tools/ptc-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/api.ts",
+   "to": "host/plugins/agent-skills/src/tools/ptc-runtime.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/api.ts",
+   "to": "host/plugins/agent-skills/src/tools/ptc-tool-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/api.ts",
+   "to": "host/plugins/agent-skills/src/tools/skills-tool-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/src/tools/general-executor.ts",
+   "to": "host/plugins/agent-workspace/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/src/tools/ptc-executor.ts",
+   "to": "host/plugins/agent-skills/src/tools/ptc-runtime.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/src/tools/ptc-runtime.ts",
+   "to": "host/plugins/agent-orchestration/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/src/tools/ptc-tool-executor.ts",
+   "to": "host/plugins/agent-skills/src/tools/ptc-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-skills/src/tools/skills-tool-executor.ts",
+   "to": "host/plugins/chat/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-workspace/api.ts",
+   "to": "host/plugins/agent-workspace/src/tools/workspace-fs-contribution.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/agent-workspace/src/tools/workspace-fs-contribution.ts",
+   "to": "host/plugins/chat/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/api.ts",
+   "to": "host/plugins/chat/src/grants.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/api.ts",
+   "to": "host/plugins/chat/src/tool-policy.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/api.ts",
+   "to": "host/plugins/chat/src/workspace-runtime.ts",
+   "count": 2
+  },
+  {
+   "file": "host/plugins/chat/src/grants.ts",
+   "to": "host/plugins/chat/src/tool-policy.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/src/tool-policy.ts",
+   "to": "host/plugins/agent-orchestration/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/src/tool-policy.ts",
+   "to": "host/plugins/agent-skills/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/src/workspace-actions.ts",
+   "to": "host/plugins/agent-workspace/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chat/src/workspace-runtime.ts",
+   "to": "host/plugins/chat/src/workspace-actions.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/api.ts",
+   "to": "host/plugins/chatanki/src/executors.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/apkg-executor.ts",
+   "to": "host/plugins/chatanki/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/apkg-executor.ts",
+   "to": "host/plugins/chatanki/src/apkg-import.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/apkg-import.ts",
+   "to": "host/plugins/chatanki/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/card-batch-executor.ts",
+   "to": "host/plugins/chatanki/src/get-cards-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/executors.ts",
+   "to": "host/plugins/chatanki/src/apkg-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/executors.ts",
+   "to": "host/plugins/chatanki/src/card-batch-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/executors.ts",
+   "to": "host/plugins/chatanki/src/get-cards-executor.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/chatanki/src/get-cards-executor.ts",
+   "to": "host/plugins/chatanki/api.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/sync-providers/api.ts",
+   "to": "host/plugins/sync-providers/src/config.ts",
+   "count": 1
+  },
+  {
+   "file": "host/plugins/sync-providers/src/config.ts",
+   "to": "host/plugins/sync-providers/api.ts",
+   "count": 1
+  }
+ ]
+}

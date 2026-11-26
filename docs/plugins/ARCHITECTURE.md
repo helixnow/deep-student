@@ -19,7 +19,7 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 ```
 
 依赖只能自上而下：业务插件依赖平台服务和其他插件**发布的服务**，平台服务不依赖业务插件。门禁
-（`scripts/electron-migration/boundaries.mjs`）机械保证这一点：插件之间只能 import 对方的 `api.ts`；原生模块只能出现在平台层。
+（`scripts/arch/boundaries.mjs`）机械保证这一点：插件之间只能 import 对方的 `api.ts`；原生模块只能出现在平台层。
 
 ## 2. 扩展点
 
