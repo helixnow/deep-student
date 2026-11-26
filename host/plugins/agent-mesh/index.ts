@@ -26,6 +26,11 @@ import {
   type SteerMeshTurnInput,
   type SwarmControlInput,
 } from './api.ts';
+import {
+  type ChatTimelinePort,
+  NativeTurnTimelineSession,
+  prepareNativeTurnTimeline,
+} from './src/chat-timeline-bridge.ts';
 import { createMeshOrchestrator, type MeshOrchestratorOptions } from './src/orchestrator.ts';
 import {
   ConcreteAdapterRegistryPort,
@@ -174,7 +179,15 @@ export default definePlugin({
 
     ctx.inject(['chatSession'], (inner) => {
       const cancelHook = inner.chatSession.registerEmergencyCancelHook(orchestrator);
-      inner.effect(() => () => cancelHook.dispose());
+      orchestrator.setChatTimelinePort({
+        database: inner.chatSession.database,
+        backendEvents: ctx.backendEvents,
+        logger,
+      });
+      inner.effect(() => () => {
+        orchestrator.setChatTimelinePort(null);
+        cancelHook.dispose();
+      });
     });
 
     ctx.effect(() => () => {
@@ -367,5 +380,7 @@ export {
   ConcreteMeshBridgeServerPort,
   AgentMeshToolExecutor,
   registerMeshPromptHook,
+  NativeTurnTimelineSession,
+  prepareNativeTurnTimeline,
 };
-export type { MeshOrchestratorOptions };
+export type { MeshOrchestratorOptions, ChatTimelinePort };

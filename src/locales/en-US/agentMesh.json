@@ -1,4 +1,12 @@
 {
+  "picker": {
+    "localCodingCli": "Local Coding CLI",
+    "cloudModels": "Cloud Chat Models",
+    "builtinEngine": "Built-in Assistant",
+    "switchToBuiltin": "Switch to Built-in Model",
+    "cliBadge": "CLI",
+    "noCliInstalled": "No local coding CLI detected"
+  },
   "mention": {
     "agentsSection": "Coding & Collaboration Agents",
     "modelsSection": "Chat Models",
@@ -26,14 +34,15 @@
     }
   },
   "workspace": {
-    "selectFolder": "Select Folder",
+    "selectFolder": "Select Project Folder",
+    "browseFolder": "Browse Local Folder…",
     "boundFolderTitle": "Project folder: {{path}}",
     "popoverTitle": "Link Local Project Folder",
     "popoverDesc": "Edits in-place by default with non-invasive hidden snapshots for instant revert.",
     "pathPlaceholder": "Enter or paste local project path, e.g. ~/projects/app",
     "browseNative": "Choose Folder…",
-    "applyPath": "Apply",
-    "clearBinding": "Clear",
+    "applyPath": "Bind",
+    "clearBinding": "Clear Binding",
     "isolatedBranch": "Use isolated Git worktree",
     "dialogTitle": "Select working directory for external coding CLI"
   },
@@ -42,6 +51,27 @@
     "steeredNotice": "Sent live guidance to {{agent}}",
     "queuedWhileRunning": "{{agent}} is running; message queued (click Steer to inject immediately)",
     "hostUnavailable": "External coding CLI bridge is unavailable on this platform"
+  },
+  "diffStrip": {
+    "summary": "{{agent}} modified {{count}} files",
+    "viewChanges": "View Changes",
+    "hideChanges": "Hide Changes",
+    "revertTurn": "Revert Turn",
+    "reverted": "Reverted",
+    "summarize": "Summarize",
+    "summarizePrompt": "Please summarize the key implementation changes made by {{agent}} ({{files}}) and highlight takeaways worth saving as notes or flashcards.",
+    "loadingDiff": "Loading diff…",
+    "noPatch": "No patch details available"
+  },
+  "approvalBar": {
+    "title": "{{agent}} requests {{tool}}",
+    "toolOnlyTitle": "Approve {{tool}}",
+    "target": "Target: {{target}}",
+    "command": "Command: {{command}}",
+    "reason": "Reason: {{reason}}",
+    "allowOnce": "Allow Once",
+    "allowSession": "Allow in Session",
+    "deny": "Deny"
   },
   "inlineCard": {
     "defaultWorkspace": "Workspace",

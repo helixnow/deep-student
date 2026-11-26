@@ -2,7 +2,7 @@
  * Composer 底部工具栏（从 InputBarUI.tsx 拆出）
  *
  * 左侧：加号菜单（附件/技能/MCP/对话控制）+ 宿主插槽 + 快捷键提示；
- * 右侧：上下文水位环、推理强度/运行时模型菜单、媒体处理指示、
+ * 右侧：上下文水位环、T3 Code 风格模型与推理强度胶囊选择器、媒体处理指示、
  * 工具插槽与发送/停止按钮。
  *
  * 纯展示组件：交互副作用（面板互斥、发送、停止）全部通过回调上抛。
@@ -12,13 +12,11 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from '
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
-  ArrowLeft,
   ArrowUp,
   Square,
   Lightning,
   CircleNotch,
-  CaretDown,
-  CaretRight,
+  TerminalWindow,
 } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -27,12 +25,6 @@ import {
   AppMenu,
   AppMenuTrigger,
   AppMenuContent,
-  AppMenuItem,
-  AppMenuGroup,
-  AppMenuSub,
-  AppMenuSubTrigger,
-  AppMenuSubContent,
-  AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -44,9 +36,8 @@ import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import type { PermissionPreset } from '../../core/types/store';
 import type { ReasoningLevelOption, ReasoningLevel } from '@/utils/reasoning';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
-import { ThinkingDepthSlider } from './ThinkingDepthSlider';
 import {
-  RuntimeModelSubmenuBody,
+  CLI_ENGINE_ID_PREFIX,
   type RuntimeModelMultiSelectConfig,
   type RuntimeModelOption,
 } from './RuntimeModelSubmenuBody';
@@ -55,6 +46,25 @@ import {
   resolveContextUsageLevel,
   type ContextUsageLevel,
 } from '../ContextUsageRing';
+
+const LazyT3ModelSelectorPopover = React.lazy(() => import('./T3ModelSelectorPopover'));
+
+function resolveTriggerCliBrandIconId(rawId?: string | null): string {
+  const normalized = (rawId ?? '')
+    .replace(new RegExp(`^${CLI_ENGINE_ID_PREFIX}`), '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return '';
+  if (normalized.includes('codex') || normalized === 'openai') return 'openai';
+  if (normalized.includes('claude') || normalized === 'anthropic') return 'anthropic';
+  if (normalized.includes('opencode')) return 'opencode';
+  if (normalized === 'agy' || normalized.includes('antigravity') || normalized.includes('gemini')) {
+    return 'google';
+  }
+  if (normalized === 'dsh' || normalized.includes('deepseek')) return 'deepseek';
+  if (normalized.includes('qwen')) return 'qwen';
+  return '';
+}
 
 // ============================================================================
 // 样式常量（P1-3 触控目标：图标视觉尺寸不变，coarse pointer 下控件本体撑成
@@ -102,7 +112,7 @@ function ResizingThinkingLabel({ text }: { text: string }) {
   return (
     <span
       data-testid="thinking-runtime-state-label"
-      className="relative inline-block whitespace-nowrap text-left text-[color:var(--text-muted)] opacity-70"
+      className="relative inline-block max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium text-[color:var(--text-primary)]"
     >
       <span
         className="t-resize inline-block whitespace-nowrap"
@@ -249,6 +259,8 @@ export interface ComposerToolbarProps {
   onCompactContext?: () => void | Promise<void>;
   isCompactingContext: boolean;
   compactContextStatus: 'success' | 'not-needed' | 'skipped' | 'error' | null;
+  authorityMode?: string;
+  authorityAskBlockedHint?: boolean;
   permissionPreset: PermissionPreset;
   onPermissionPresetChange?: (
     preset: PermissionPreset,
@@ -302,6 +314,7 @@ export interface ComposerToolbarProps {
   runtimeModelProviderLabel?: string;
   runtimeModelIconId?: string;
   runtimeCurrentModelId?: string | null;
+  runtimeModelUnavailable?: boolean;
   runtimeModelOptions: RuntimeModelOption[];
   /** runtime 子菜单内的多选（并行回答）配置；不提供则隐藏多选开关 */
   runtimeModelMultiSelect?: RuntimeModelMultiSelectConfig;
@@ -384,6 +397,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   runtimeModelProviderLabel,
   runtimeModelIconId,
   runtimeCurrentModelId,
+  runtimeModelUnavailable = false,
   runtimeModelOptions: rawRuntimeModelOptions,
   onSelectRuntimeModel,
   runtimeModelMultiSelect,
@@ -399,87 +413,79 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   disabledSend,
   sendBlockedReason,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
+  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'agentMesh']);
 
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
   const tooltipDisabled = isMobile;
   const studyUiSendButtonAriaLabel = t('chatV2:inputBar.sendMessage');
 
-  // ── 推理/模型菜单派生值 ──
+  // ── 推理/模型选择器派生值（T3 Code 胶囊风格） ──
+  const isExternalCliEngine = Boolean(runtimeCurrentModelId?.startsWith(CLI_ENGINE_ID_PREFIX));
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
   const resolveThinkingDepthLabel = useCallback(
     (option: ReasoningLevelOption) => t(option.labelKey, option.defaultLabel),
     [t]
   );
   const selectedThinkingDepthOption =
-    !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
+    !isExternalCliEngine && !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
       ? thinkingDepthOptions.find((o) => o.value === thinkingDepthValue)
       : undefined;
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
     ? resolveThinkingDepthLabel(selectedThinkingDepthOption)
     : compactThinkingStateLabel;
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
       : runtimeModelLabel
     : undefined;
-  const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
-        label: chooseRuntimeModelLabel,
-        current: runtimeModelAccessibleCurrent,
-      })
-    : chooseRuntimeModelLabel;
-  const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
-        label: chooseRuntimeModelLabel,
-        current: runtimeModelAccessibleCurrent,
-      })
-    : chooseRuntimeModelLabel;
   const thinkingRuntimeTitle = [
     runtimeModelAccessibleCurrent ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}` : undefined,
-    thinkingStateLabel,
+    isExternalCliEngine ? undefined : thinkingStateLabel,
   ].filter(Boolean).join(' · ') || thinkingStateLabel;
   const hasThinkingDepthMenu = !!(
+    !isExternalCliEngine &&
     !thinkingUnsupported &&
     compactThinkingStateLabel &&
     onSetThinkingDepth &&
     thinkingDepthOptions &&
     thinkingDepthOptions.length > 0
   );
-  const hasThinkingUnsupportedMenu = !!(compactThinkingStateLabel && thinkingUnsupported);
+  const hasThinkingUnsupportedMenu = !!(!isExternalCliEngine && compactThinkingStateLabel && thinkingUnsupported);
   const runtimeModelOptions = useMemo(
     () => rawRuntimeModelOptions.filter((option) => (option.id ?? '').trim() !== '' && (option.label ?? '').trim() !== ''),
     [rawRuntimeModelOptions]
   );
   const hasRuntimeModelMenu = runtimeModelOptions.length > 0 || hasModelPanel;
-  const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
-  const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
-  const thinkingRuntimeTriggerLabel = resolvedThinkingTriggerLabel || runtimeModelLabel || runtimeModelTitle;
+  const hasThinkingToggleMenu = !!(
+    !isExternalCliEngine &&
+    !thinkingUnsupported &&
+    compactThinkingStateLabel &&
+    (onSetThinkingDepth || onToggleThinking)
+  );
+  const hasThinkingRuntimeMenu =
+    hasThinkingDepthMenu ||
+    hasThinkingToggleMenu ||
+    hasThinkingUnsupportedMenu ||
+    hasRuntimeModelMenu ||
+    isExternalCliEngine;
 
-  const handleTurnThinkingOn = useCallback(() => {
-    if (enableThinking) return;
-    onToggleThinking?.();
-  }, [enableThinking, onToggleThinking]);
+  // T3 Code 胶囊优先展示模型 / 编程 CLI 名称；未传模型名称时平滑退回推理档位文案
+  const thinkingRuntimeTriggerLabel =
+    runtimeModelLabel || resolvedThinkingTriggerLabel || runtimeModelTitle;
 
-  const handleTurnThinkingOff = useCallback(() => {
-    if (!thinkingCanDisable) return;
-    if (!enableThinking) return;
-    if (onSetThinkingDepth) {
-      onSetThinkingDepth('off');
-      return;
+  const resolvedTriggerBrandIconId = useMemo(() => {
+    if (isExternalCliEngine) {
+      return resolveTriggerCliBrandIconId(runtimeCurrentModelId || runtimeModelLabel);
     }
-    onToggleThinking?.();
-  }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
+    return runtimeModelIconId || runtimeModelLabel || '';
+  }, [isExternalCliEngine, runtimeCurrentModelId, runtimeModelIconId, runtimeModelLabel]);
 
-  // 移动端窄屏下用单层菜单内钻替代横向级联飞出子菜单，避免子菜单与父菜单叠压
-  const [mobileModelPickerOpen, setMobileModelPickerOpen] = useState(false);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
 
   const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
-    // 子菜单搜索词由 RuntimeModelSubmenuBody 自持，随子菜单卸载自然清空
-    setMobileModelPickerOpen(false);
+    setIsModelMenuOpen(open);
     if (open) onThinkingMenuWillOpen();
   }, [onThinkingMenuWillOpen]);
 
@@ -563,243 +569,114 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           </ContextUsagePopover>
         )}
 
-        {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
-        {onToggleThinking && (
+        {/* T3 Code 风格模型与推理强度触发胶囊 */}
+        {(onToggleThinking || hasRuntimeModelMenu || isExternalCliEngine) && (
           <span
             ref={runtimeModelTriggerRef}
             className={cn(
-              'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-ui font-semibold leading-none',
+              'relative inline-flex h-8 min-w-0 max-w-[15rem] shrink-0 items-center rounded-[var(--radius-shell-control)] text-xs font-medium leading-none',
               // coarse 下外壳随内部触发器抬到 44 高，避免子元素纵向溢出行盒
               coarseSolidTouchHeightClass,
-              enableThinking && !thinkingUnsupported
-                ? 'text-[color:var(--text-primary)]'
-                : 'text-[color:var(--text-muted)]'
+              'text-[color:var(--text-primary)]'
             )}
             data-testid="thinking-runtime-control"
             data-reasoning-effort={
-              !enableThinking || thinkingUnsupported
+              isExternalCliEngine || !enableThinking || thinkingUnsupported
                 ? 'none'
                 : (thinkingDepthValue ?? 'medium')
             }
           >
             {hasThinkingRuntimeMenu ? (
-              <AppMenu onOpenChange={handleThinkingRuntimeMenuOpenChange}>
+              <AppMenu open={isModelMenuOpen} onOpenChange={handleThinkingRuntimeMenuOpenChange}>
                 <AppMenuTrigger asChild>
                   <button
                     type="button"
                     data-testid="thinking-runtime-menu-trigger"
                     className={cn(
-                      'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                      'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-muted/65 px-2.5 text-xs font-medium text-[color:var(--text-primary)] transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
                       coarseSolidTouchHeightClass
                     )}
                     title={thinkingRuntimeTitle}
                     aria-label={
-                      thinkingUnsupported
-                        ? t('chatV2:inputBar.thinkingUnsupported')
-                        : hasThinkingDepthMenu
-                        ? t('chatV2:inputBar.thinkingDepthMenu')
-                        : t('chatV2:inputBar.thinking')
+                      runtimeModelAccessibleCurrent
+                        ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}`
+                        : thinkingUnsupported
+                          ? t('chatV2:inputBar.thinkingUnsupported')
+                          : hasThinkingDepthMenu
+                            ? t('chatV2:inputBar.thinkingDepthMenu')
+                            : t('chatV2:inputBar.chooseRuntimeModel')
                     }
                   >
-                    {runtimeModelIconId ? (
+                    {isExternalCliEngine && !resolvedTriggerBrandIconId ? (
+                      <TerminalWindow
+                        size={15}
+                        weight="duotone"
+                        className="shrink-0 text-primary"
+                      />
+                    ) : resolvedTriggerBrandIconId ? (
                       <ProviderIcon
-                        modelId={runtimeModelIconId}
+                        modelId={resolvedTriggerBrandIconId}
                         size={15}
                         showTooltip={false}
-                        variant="mono"
-                        className="shrink-0 text-[color:var(--text-primary)] opacity-90"
+                        variant="color"
+                        renderMode="glyph"
+                        className="shrink-0"
                       />
                     ) : (
-                      <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 text-[color:var(--text-primary)] opacity-90" />
+                      <Lightning
+                        size={15}
+                        weight={enableThinking && !thinkingUnsupported ? 'fill' : 'bold'}
+                        className="shrink-0 text-[color:var(--text-primary)] opacity-90"
+                      />
                     )}
                     <ResizingThinkingLabel text={thinkingRuntimeTriggerLabel} />
-                    <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
+                    {runtimeModelUnavailable && (
+                      <span
+                        data-testid="thinking-runtime-unavailable-badge"
+                        className="shrink-0 rounded border border-border/80 bg-background/80 px-1 py-px text-2xs font-normal leading-tight text-muted-foreground"
+                      >
+                        {t('chatV2:modelPicker.t3.unavailable', { defaultValue: '不可用' })}
+                      </span>
+                    )}
                   </button>
                 </AppMenuTrigger>
                 <AppMenuContent
                   align="end"
-                  width={hasRuntimeModelMenu ? (isMobile && mobileModelPickerOpen ? 280 : 232) : 176}
+                  sideOffset={8}
+                  width="auto"
                   className={cn(
-                    isMobile && mobileModelPickerOpen && 'w-[min(288px,calc(100vw-24px))] max-w-[min(288px,calc(100vw-24px))] p-1'
+                    '!overflow-hidden !rounded-2xl !border !border-border/80 !bg-popover !p-0 !shadow-xl',
+                    isMobile
+                      ? 'w-[min(356px,calc(100vw-16px))] max-w-[min(356px,calc(100vw-16px))]'
+                      : 'w-[min(588px,calc(100vw-24px))] max-w-[min(588px,calc(100vw-24px))]'
                   )}
                 >
-                  {isMobile && mobileModelPickerOpen && runtimeModelOptions.length > 0 ? (
-                    <div data-testid="mobile-runtime-model-drilldown">
-                      <AppMenuItem
-                        icon={<ArrowLeft size={14} />}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          setMobileModelPickerOpen(false);
-                        }}
-                      >
-                        {t('chatV2:inputBar.backToThinkingMenu', { defaultValue: '返回推理与模型' })}
-                      </AppMenuItem>
-                      <AppMenuSeparator />
-                      <RuntimeModelSubmenuBody
-                        options={runtimeModelOptions}
-                        currentModelId={runtimeCurrentModelId}
-                        onSelect={onSelectRuntimeModel}
-                        multiSelect={runtimeModelMultiSelect}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                  {hasThinkingUnsupportedMenu ? (
-                    <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
-                      <AppMenuItem disabled>
-                        {t('chatV2:inputBar.thinkingUnsupportedDescription')}
-                      </AppMenuItem>
-                    </AppMenuGroup>
-                  ) : hasThinkingDepthMenu ? (
-                    thinkingCanDisable ? (
-                      <AppMenuGroup>
-                        <ThinkingDepthSlider
-                          options={thinkingDepthOptions}
-                          value={thinkingDepthValue}
-                          enabled={!!enableThinking}
-                          onChange={(next) => onSetThinkingDepth(next)}
-                          offLabel={t('chatV2:inputBar.thinkingOff')}
-                          efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}
-                          smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}
-                          resolveOptionLabel={resolveThinkingDepthLabel}
-                          ariaLabel={t('chatV2:inputBar.thinkingDepthMenu')}
-                        />
-                      </AppMenuGroup>
-                    ) : (
-                      // 不可关闭推理的模型：滑块必带"关闭"档，退回菜单列表以保留 thinkingCanDisable 语义
-                      <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
-                        {thinkingDepthOptions.map((option) => (
-                          <AppMenuItem
-                            key={option.value}
-                            checked={!!enableThinking && thinkingDepthValue === option.value}
-                            onClick={() => onSetThinkingDepth(option.value)}
-                          >
-                            {resolveThinkingDepthLabel(option)}
-                          </AppMenuItem>
-                        ))}
-                      </AppMenuGroup>
-                    )
-                  ) : hasThinkingToggleMenu ? (
-                    <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
-                      <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                        {t('chatV2:inputBar.thinkingOn')}
-                      </AppMenuItem>
-                      {thinkingCanDisable && (
-                        <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                          {t('chatV2:inputBar.thinkingOff')}
-                        </AppMenuItem>
-                      )}
-                    </AppMenuGroup>
-                  ) : null}
-                  {(hasThinkingToggleMenu || hasThinkingUnsupportedMenu) && hasRuntimeModelMenu && (
-                    <AppMenuSeparator />
-                  )}
-                  {hasRuntimeModelMenu && (
-                    <AppMenuGroup label={runtimeModelTitle}>
-                      {runtimeModelOptions.length > 0 ? (
-                        isMobile ? (
-                          <AppMenuItem
-                            aria-label={runtimeModelSwitchLabel}
-                            className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                            title={runtimeModelSwitchTitle}
-                            suffix={<CaretRight size={14} className="opacity-60" />}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              setMobileModelPickerOpen(true);
-                            }}
-                          >
-                            {runtimeModelLabel ? (
-                              <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                <span
-                                  className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                  title={runtimeModelLabel}
-                                >
-                                  {runtimeModelLabel}
-                                </span>
-                                {runtimeModelProviderLabel && (
-                                  <span
-                                    className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
-                                    title={runtimeModelProviderLabel}
-                                  >
-                                    {runtimeModelProviderLabel}
-                                  </span>
-                                )}
-                              </span>
-                            ) : (
-                              chooseRuntimeModelLabel
-                            )}
-                          </AppMenuItem>
-                        ) : (
-                        <AppMenuSub openOnClick>
-                          <AppMenuSubTrigger
-                            aria-label={runtimeModelSwitchLabel}
-                            className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                            title={runtimeModelSwitchTitle}
-                          >
-                            {runtimeModelLabel ? (
-                              <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                <span
-                                  className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                  title={runtimeModelLabel}
-                                >
-                                  {runtimeModelLabel}
-                                </span>
-                                {runtimeModelProviderLabel && (
-                                  <span
-                                    className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
-                                    title={runtimeModelProviderLabel}
-                                  >
-                                    {runtimeModelProviderLabel}
-                                  </span>
-                                )}
-                              </span>
-                            ) : (
-                              chooseRuntimeModelLabel
-                            )}
-                          </AppMenuSubTrigger>
-                          <AppMenuSubContent className="flex max-h-[calc(var(--app-menu-available-height,100dvh)-16px)] w-[min(264px,calc(100vw-24px))] max-w-[min(264px,calc(100vw-24px))] flex-col overflow-hidden p-1">
-                            <RuntimeModelSubmenuBody
-                              options={runtimeModelOptions}
-                              currentModelId={runtimeCurrentModelId}
-                              onSelect={onSelectRuntimeModel}
-                              multiSelect={runtimeModelMultiSelect}
-                            />
-                          </AppMenuSubContent>
-                        </AppMenuSub>
-                        )
-                      ) : (
-                        <AppMenuItem
-                          aria-label={runtimeModelSwitchLabel}
-                          className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                          title={runtimeModelSwitchTitle}
-                          onClick={() => onOpenRuntimeModelPanel()}
-                        >
-                          {runtimeModelLabel ? (
-                            <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                              <span
-                                className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                title={runtimeModelLabel}
-                              >
-                                {runtimeModelLabel}
-                              </span>
-                              {runtimeModelProviderLabel && (
-                                <span
-                                  className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
-                                  title={runtimeModelProviderLabel}
-                                >
-                                  {runtimeModelProviderLabel}
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            chooseRuntimeModelLabel
-                          )}
-                        </AppMenuItem>
-                      )}
-                    </AppMenuGroup>
-                  )}
-                    </>
-                  )}
+                  <React.Suspense fallback={<div className="h-[372px] w-full" />}>
+                    <LazyT3ModelSelectorPopover
+                      options={runtimeModelOptions}
+                      currentModelId={runtimeCurrentModelId}
+                      activeModelLabel={runtimeModelLabel}
+                      activeModelProviderLabel={runtimeModelProviderLabel}
+                      isExternalCliEngine={isExternalCliEngine}
+                      onSelectModel={onSelectRuntimeModel}
+                      hasModelPanel={hasModelPanel}
+                      onOpenRuntimeModelPanel={onOpenRuntimeModelPanel}
+                      multiSelect={runtimeModelMultiSelect}
+                      enableThinking={enableThinking}
+                      thinkingUnsupported={thinkingUnsupported}
+                      thinkingCanDisable={thinkingCanDisable}
+                      thinkingDepthOptions={thinkingDepthOptions}
+                      thinkingDepthValue={thinkingDepthValue}
+                      onToggleThinking={onToggleThinking}
+                      onSetThinkingDepth={onSetThinkingDepth}
+                      sessionId={sessionId}
+                      permissionPreset={permissionPreset}
+                      onPermissionPresetChange={onPermissionPresetChange}
+                      onRequestClose={() => setIsModelMenuOpen(false)}
+                      isMobile={isMobile}
+                      disabled={isStreaming}
+                    />
+                  </React.Suspense>
                 </AppMenuContent>
               </AppMenu>
             ) : (

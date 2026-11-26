@@ -216,6 +216,56 @@ async function isExecutableFile(
   }
 }
 
+export function buildStandardPosixBinDirs(homeDir?: string): string[] {
+  const trimmedHome = homeDir?.trim() ?? '';
+  return [
+    ...(trimmedHome
+      ? [
+          path.posix.join(trimmedHome, '.local', 'bin'),
+          path.posix.join(trimmedHome, '.grok', 'bin'),
+          path.posix.join(trimmedHome, '.bun', 'bin'),
+          path.posix.join(trimmedHome, '.cargo', 'bin'),
+        ]
+      : []),
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+  ];
+}
+
+export function augmentPosixUserPath(
+  rawPath: string | undefined,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === 'win32') {
+    return rawPath ?? '';
+  }
+  const segments = (rawPath ?? '').split(':').filter((seg) => seg.length > 0);
+  const seen = new Set(segments);
+  for (const extraDir of buildStandardPosixBinDirs(homeDir)) {
+    if (!seen.has(extraDir)) {
+      seen.add(extraDir);
+      segments.push(extraDir);
+    }
+  }
+  return segments.join(':');
+}
+
+export function augmentEnvWithPosixUserPath(
+  env: Readonly<Record<string, string | undefined>>,
+  homeDir: string = env.HOME ?? os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string | undefined> {
+  if (platform === 'win32') {
+    return { ...env };
+  }
+  const next: Record<string, string | undefined> = { ...env };
+  const pathKey = Object.keys(next).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
+  next[pathKey] = augmentPosixUserPath(next[pathKey], homeDir, platform);
+  return next;
+}
+
 export async function resolveExecutableOnPath(
   command: string,
   env: Readonly<Record<string, string | undefined>>,
@@ -250,8 +300,12 @@ export async function resolveExecutableOnPath(
 
   const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path');
   const rawPath = pathKey ? (env[pathKey] ?? '') : '';
+  const effectivePath =
+    platform === 'win32'
+      ? rawPath
+      : augmentPosixUserPath(rawPath, env.HOME ?? os.homedir(), platform);
   const delimiter = platform === 'win32' ? ';' : ':';
-  const dirs = rawPath.split(delimiter).filter((dir) => dir.length > 0);
+  const dirs = effectivePath.split(delimiter).filter((dir) => dir.length > 0);
 
   for (const dir of dirs) {
     const joined = platform === 'win32' ? path.win32.join(dir, trimmed) : path.posix.join(dir, trimmed);
@@ -269,7 +323,12 @@ export function createDefaultProbeCommandRunner(
   platform: NodeJS.Platform = process.platform,
 ): ProbeCommandRunner {
   return async (command, args, options): Promise<ProbeCommandResult> => {
-    const resolvedPath = await resolveExecutableOnPath(command, options.env, platform);
+    const augmentedEnv = augmentEnvWithPosixUserPath(
+      options.env,
+      options.env.HOME ?? os.homedir(),
+      platform,
+    );
+    const resolvedPath = await resolveExecutableOnPath(command, augmentedEnv, platform);
     if (!resolvedPath) {
       return {
         exitCode: null,
@@ -281,7 +340,7 @@ export function createDefaultProbeCommandRunner(
     }
 
     const cleanEnv: NodeJS.ProcessEnv = {};
-    for (const [k, v] of Object.entries(options.env)) {
+    for (const [k, v] of Object.entries(augmentedEnv)) {
       if (v !== undefined) cleanEnv[k] = v;
     }
     delete cleanEnv.CLAUDECODE;
@@ -439,13 +498,24 @@ export class CliAgentProber {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     this.commandRunner = options.commandRunner ?? createDefaultProbeCommandRunner(platform);
     this.fileExists = options.fileExists ?? defaultFileExists;
-    this.env = options.env ?? process.env;
     this.homeDir = options.homeDir ?? os.homedir();
+    this.env = augmentEnvWithPosixUserPath(options.env ?? process.env, this.homeDir, platform);
     this.now = options.now ?? Date.now;
   }
 
   invalidateCache(): void {
     this.cachedResult = null;
+  }
+
+  getCachedAgent(id: string): DetectedCliAgent | undefined {
+    const cleanId = id.trim().replace(/^@+/, '');
+    if (!cleanId || !this.cachedResult) return undefined;
+    const found = this.cachedResult.agents.find((agent) => agent.id === cleanId);
+    if (!found) return undefined;
+    return {
+      ...found,
+      capabilities: { ...found.capabilities },
+    };
   }
 
   async probeAll(input: ProbeAllInput = {}): Promise<DetectedCliAgent[]> {

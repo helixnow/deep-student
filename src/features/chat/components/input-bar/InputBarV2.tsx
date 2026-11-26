@@ -52,19 +52,28 @@ import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props } from './types';
 import {
+  isExternalCliMentionItem,
   useModelMentionAutocomplete,
   type AgentMentionItem,
   type AgentMentionStatus,
 } from './useModelMentionAutocomplete';
+import { CLI_ENGINE_ID_PREFIX } from './RuntimeModelSubmenuBody';
+import { ModelMentionChips } from './ModelMentionChip';
+const LazyExternalCliApprovalBar = React.lazy(() =>
+  import('./ExternalCliApprovalBar').then((m) => ({ default: m.ExternalCliApprovalBar })),
+);
 import {
   isAgentMeshHostConnected,
   normalizeAgentHandle,
   probeAgents,
   resolveAgentDisplayName,
   selectActiveExternalThreadForSession,
+  selectSelectedCliForSession,
   useAgentMeshStore,
   type DetectedMeshAgent,
 } from '@/features/agent-mesh';
+
+export { CLI_ENGINE_ID_PREFIX };
 import { useRecentChatModels } from '../../hooks/useRecentChatModels';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
@@ -968,11 +977,28 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const activeExternalThread = useAgentMeshStore((meshState) =>
       selectActiveExternalThreadForSession(meshState, sessionId),
     );
+    const selectedCliAgentId = useAgentMeshStore((meshState) =>
+      selectSelectedCliForSession(meshState, sessionId),
+    );
 
     const installedExternalAgents = useMemo(
       () => meshAgents.filter((agent) => agent.driverKind !== 'builtin' && agent.installed),
       [meshAgents],
     );
+
+    const selectedSessionCliAgent = useMemo(
+      () =>
+        selectedCliAgentId
+          ? installedExternalAgents.find(
+              (a) =>
+                a.id === selectedCliAgentId ||
+                normalizeAgentHandle(a.handle || a.id) === selectedCliAgentId,
+            ) ?? null
+          : null,
+      [installedExternalAgents, selectedCliAgentId],
+    );
+    const selectedSessionCliAgentRef = useRef<DetectedMeshAgent | null>(selectedSessionCliAgent);
+    selectedSessionCliAgentRef.current = selectedSessionCliAgent;
 
     const sessionMeshThreads = useMemo(() => {
       if (!sessionThreadIds || sessionThreadIds.length === 0) return [];
@@ -1035,7 +1061,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setChatParams({ modelDisplayName: resolvedStoredModelDisplayName });
     }, [modelDisplayName, resolvedStoredModelDisplayName, setChatParams]);
 
+    const runtimeCurrentModelId = selectedSessionCliAgent
+      ? `${CLI_ENGINE_ID_PREFIX}${selectedSessionCliAgent.id}`
+      : model2OverrideId;
+
     const runtimeModelLabel = useMemo(() => {
+      if (selectedSessionCliAgent) {
+        return resolveAgentDisplayName(selectedSessionCliAgent.id, selectedSessionCliAgent.name);
+      }
       return (
         getModelDisplayLabel(runtimeOverrideModelInfo) ||
         (model2OverrideId ? resolvedStoredModelDisplayName : undefined) ||
@@ -1046,6 +1079,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         undefined
       );
     }, [
+      selectedSessionCliAgent,
       currentModelInfo,
       model2OverrideId,
       effectiveUnpinnedModelId,
@@ -1053,8 +1087,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       runtimeOverrideModelInfo,
     ]);
     const runtimeModelProviderLabel = useMemo(
-      () => getModelProviderLabel(activeRuntimeModelInfo),
-      [activeRuntimeModelInfo]
+      () =>
+        selectedSessionCliAgent
+          ? t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' })
+          : getModelProviderLabel(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo, selectedSessionCliAgent, t]
     );
     const runtimeModelIconId = useMemo(() => {
       return (
@@ -1126,8 +1163,30 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, []);
 
-    // 🆕 单选模式：选中即替换会话模型并关闭面板
+    // 🆕 单选本地编程 CLI 引擎（T3-Code 风格：写入会话级 selectedCliBySession，不污染 LLM model2OverrideId）
+    const handleSelectCliAgent = useCallback(
+      (agentId: string) => {
+        if (sessionId) {
+          useAgentMeshStore.getState().setSelectedCliForSession(sessionId, agentId);
+        }
+        setSelectedModels([]);
+        setCompareMode(false);
+        store.getState().setPanelState('model', false);
+      },
+      [sessionId, store],
+    );
+
+    const handleClearSessionCli = useCallback(() => {
+      if (sessionId) {
+        useAgentMeshStore.getState().setSelectedCliForSession(sessionId, null);
+      }
+    }, [sessionId]);
+
+    // 🆕 单选模式：选中常规 LLM 即清除会话 CLI 引擎并替换会话模型、关闭面板
     const handlePickSingleModel = useCallback((model: ModelInfo) => {
+      if (sessionId) {
+        useAgentMeshStore.getState().setSelectedCliForSession(sessionId, null);
+      }
       setChatParams({
         model2OverrideId: model.id,
         modelDisplayName: model.model || model.name || model.id,
@@ -1136,7 +1195,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setSelectedModels([]);
       setCompareMode(false);
       store.getState().setPanelState('model', false);
-    }, [recordSelection, setChatParams, store]);
+    }, [recordSelection, sessionId, setChatParams, store]);
 
     // 🆕 对比/重试模式行点击：切换选中
     const handleToggleCompareModel = useCallback((model: ModelInfo) => {
@@ -1201,6 +1260,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       opts.clearSelectedModels = clearSelectedModels;
       opts.getSelectedAgents = () => selectedAgentsRef.current;
       opts.clearSelectedAgents = clearSelectedAgents;
+      opts.getSelectedSessionCli = () => selectedSessionCliAgentRef.current;
       // ★ PDF 页码引用
       opts.buildPdfRefTags = buildPdfRefTags;
       opts.getSelectedPagesContext = getSelectedPagesContext;
@@ -1590,14 +1650,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 移动端面板已改为 composer 内联展开（P0-1），不存在底部抽屉形态
     const renderModelPanel = useMemo(() => {
       const RuntimeModelPanel = modePlugin?.renderModelPanel;
-      if (!RuntimeModelPanel && (!availableModels || availableModels.length === 0)) {
+      const hasAvailableModels = Boolean(availableModels && availableModels.length > 0);
+      const hasExternalCliAgents = installedExternalAgents.length > 0;
+      if (!RuntimeModelPanel && !hasAvailableModels && !hasExternalCliAgents) {
         return undefined;
       }
 
       return (options?: { hideHeader?: boolean; onClose?: () => void }) => {
         const hideHeader = options?.hideHeader ?? false;
         const handleClose = options?.onClose ?? handleCloseModelPanel;
-        if (availableModels && availableModels.length > 0) {
+        if (hasAvailableModels || hasExternalCliAgents) {
           // 推导面板模式：retry 强制 compare；显式 compareMode 或已有 selectedModels 时进入 compare
           const pickerMode: ModelPickerMode =
             compareMode || selectedModels.length > 0 ? 'compare' : 'single';
@@ -1606,10 +1668,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
               mode={pickerMode}
               onModeChange={handleCompareModeChange}
               allowCompareToggle={multiModelSelectEnabled}
-              singleSelectedId={model2OverrideId}
+              singleSelectedId={selectedSessionCliAgent ? null : model2OverrideId}
               compareSelected={selectedModels}
               onSelectSingle={handlePickSingleModel}
               onToggleCompare={handleToggleCompareModel}
+              externalCliAgents={installedExternalAgents}
+              selectedCliAgentId={selectedSessionCliAgent?.id ?? null}
+              onSelectCliAgent={handleSelectCliAgent}
               onClose={handleClose}
               disabled={isStreaming}
               hideHeader={hideHeader}
@@ -1624,12 +1689,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       };
     }, [
       availableModels,
+      installedExternalAgents,
+      selectedSessionCliAgent,
       compareMode,
       selectedModels,
       multiModelSelectEnabled,
       model2OverrideId,
       handleCompareModeChange,
       handlePickSingleModel,
+      handleSelectCliAgent,
       handleToggleCompareModel,
       handleCloseModelPanel,
       handleRetryWithModels,
@@ -1640,9 +1708,19 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     ]);
 
     const runtimeModelOptions = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return [];
+      const cliOptions = installedExternalAgents.map((agent) => ({
+        id: `${CLI_ENGINE_ID_PREFIX}${agent.id}`,
+        label: resolveAgentDisplayName(agent.id, agent.name),
+        providerId: '__coding_cli__',
+        providerLabel: t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' }),
+        iconId: agent.id,
+        isExternalCli: true,
+      }));
+      if (!availableModels || availableModels.length === 0) {
+        return cliOptions;
+      }
       const recentRankById = new Map(recentModels.map((model, index) => [model.id, index] as const));
-      return availableModels.map((model) => ({
+      const llmOptions = availableModels.map((model) => ({
         id: model.id,
         label: model.model || model.name || model.id,
         providerLabel: model.vendorName,
@@ -1651,7 +1729,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         isRecent: recentRankById.has(model.id),
         recentRank: recentRankById.get(model.id),
       }));
-    }, [availableModels, recentModels]);
+      return cliOptions.length > 0 ? [...cliOptions, ...llmOptions] : llmOptions;
+    }, [availableModels, installedExternalAgents, recentModels, t]);
 
     // 🆕 runtime 模型子菜单内的多选（并行回答）：复用 ModelPicker compare 模式的同一份状态与回调，
     // 不改变发送路径（发送时仍读取 selectedModels → parallelModelIds）
@@ -1680,10 +1759,17 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     ]);
 
     const handleSelectRuntimeModel = useCallback((modelId: string) => {
+      if (modelId.startsWith(CLI_ENGINE_ID_PREFIX)) {
+        const cliAgentId = modelId.slice(CLI_ENGINE_ID_PREFIX.length).trim();
+        if (cliAgentId) {
+          handleSelectCliAgent(cliAgentId);
+        }
+        return;
+      }
       const selected = availableModels?.find((model) => model.id === modelId);
       if (!selected) return;
       handlePickSingleModel(selected);
-    }, [availableModels, handlePickSingleModel]);
+    }, [availableModels, handlePickSingleModel, handleSelectCliAgent]);
 
     // 高级设置面板渲染函数
     const renderAdvancedPanel = useMemo(() => {
@@ -1844,7 +1930,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       ragEnabled,
       knowledgeBaseProactive,
       runtimeModelLabel,
-      runtimeCurrentModelId: model2OverrideId,
+      runtimeCurrentModelId,
       runtimeModelOptions,
       pluginWorkshopActive: activeSkillIds.includes('dstu-plugin-development'),
       textbookOpen,
@@ -1864,7 +1950,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       ragEnabled,
       knowledgeBaseProactive,
       runtimeModelLabel,
-      model2OverrideId,
+      runtimeCurrentModelId,
       runtimeModelOptions,
       activeSkillIds,
       textbookOpen,
@@ -1946,6 +2032,52 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         await sendMessage();
       }
     }, [store, activeSkillIds, activateSkill, steerMessage, abortStream, sendMessage]);
+
+    const hasExternalMentionChip = Boolean(
+      modelMentionState?.selectedModels.some(isExternalCliMentionItem),
+    );
+    const showSessionCliWorkspaceRow = Boolean(selectedSessionCliAgent) && !hasExternalMentionChip;
+    const pendingExternalApproval = activeExternalThread?.pendingApproval ?? null;
+
+    const mergedComposerInlinePanel = useMemo(() => {
+      if (!composerInlinePanel && !showSessionCliWorkspaceRow && !pendingExternalApproval) {
+        return undefined;
+      }
+      return (
+        <div className="flex w-full flex-col gap-2">
+          {composerInlinePanel}
+          {pendingExternalApproval && activeExternalThread && (
+            <React.Suspense fallback={null}>
+              <LazyExternalCliApprovalBar
+                thread={activeExternalThread}
+                approval={pendingExternalApproval}
+              />
+            </React.Suspense>
+          )}
+          {showSessionCliWorkspaceRow && selectedSessionCliAgent && (
+            <ModelMentionChips
+              models={[]}
+              onRemove={handleDeselectModel}
+              disabled={isStreaming}
+              sessionId={sessionId}
+              sessionCliAgent={selectedSessionCliAgent}
+              onClearSessionCli={handleClearSessionCli}
+              className="mb-0"
+            />
+          )}
+        </div>
+      );
+    }, [
+      activeExternalThread,
+      composerInlinePanel,
+      handleClearSessionCli,
+      handleDeselectModel,
+      isStreaming,
+      pendingExternalApproval,
+      selectedSessionCliAgent,
+      sessionId,
+      showSessionCliWorkspaceRow,
+    ]);
 
     const ResolvedInputBarUI = InputBarUIModule.InputBarUI;
 
@@ -2044,7 +2176,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         leftAccessory={mergedLeftAccessory}
         extraButtonsRight={mergedRightAccessory}
         inputToolSlot={inputToolSlot}
-        composerInlinePanel={composerInlinePanel}
+        composerInlinePanel={mergedComposerInlinePanel}
         className={className}
         autoFocus={autoFocus}
         // 模式插件面板
@@ -2074,7 +2206,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         runtimeModelLabel={runtimeModelLabel}
         runtimeModelProviderLabel={runtimeModelProviderLabel}
         runtimeModelIconId={runtimeModelIconId}
-        runtimeCurrentModelId={model2OverrideId}
+        runtimeCurrentModelId={runtimeCurrentModelId}
         runtimeModelOptions={runtimeModelOptions}
         onSelectRuntimeModel={handleSelectRuntimeModel}
         runtimeModelMultiSelect={runtimeModelMultiSelect}
@@ -2112,7 +2244,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         onRemovePdfPageRef={removePdfPageRef}
         onClearPdfPageRefs={clearPdfPageRefs}
         // ★ U01：缺失 AI 模型 / API 密钥一键引导
-        missingApiKey={missingApiKey && !selectedAgents.some((agent) => agent.isExternalCli)}
+        missingApiKey={
+          missingApiKey &&
+          !selectedSessionCliAgent &&
+          !selectedAgents.some((agent) => agent.isExternalCli)
+        }
         onOpenApiSettings={handleOpenApiSettings}
         suppressDraftRestore={isDataLoaded === false}
         latestPersistedUserText={latestPersistedUserText}

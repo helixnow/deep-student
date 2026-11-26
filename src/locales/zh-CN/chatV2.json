@@ -2313,7 +2313,15 @@
     "favoriteFailed": "收藏状态保存失败，请稍后重试",
     "multiSelectCount": "已选 {{count}} 个 · 发送时并行回答",
     "multiSelectEmpty": "勾选多个模型，发送时并行回答",
-    "removeSelected": "移除 {{model}}"
+    "removeSelected": "移除 {{model}}",
+    "favoriteModel": "收藏 {{name}}",
+    "unfavoriteModel": "取消收藏 {{name}}",
+    "t3": {
+      "searchPlaceholder": "搜索模型...",
+      "noReasoningEffort": "没有可选的推理强度",
+      "unavailable": "不可用",
+      "emptyFavorites": "暂无收藏模型，悬停模型右侧点击星标即可收藏"
+    }
   },
   "workspace": {
     "title": "工作区",

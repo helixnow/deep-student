@@ -199,6 +199,28 @@ describe('dstu.agent-mesh Official UI Plugin, Inline SwarmCapsuleBar & Native Me
     const { container, rerender } = render(<AgentTaskPanel store={taskStore} />);
     expect(container.firstChild).toBeNull();
 
+    // Single-agent active external CLI threads without an active swarm MUST NOT wake AgentTaskPanel or SwarmCapsuleBar
+    act(() => {
+      useAgentMeshWorkbenchStore.getState().applySessionSnapshot('sess-cap-1', {
+        swarm: null,
+        threads: [
+          {
+            threadId: 'th-solo-codex',
+            chatSessionId: 'sess-cap-1',
+            agentId: 'codex',
+            rosterName: 'codex',
+            status: 'running',
+            childSubagents: [],
+            activeBgTasks: [],
+            humanControlled: false,
+          },
+        ],
+      });
+    });
+    rerender(<AgentTaskPanel store={taskStore} />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId('swarm-capsule-bar')).toBeNull();
+
     act(() => {
       useAgentMeshWorkbenchStore.getState().applySessionSnapshot('sess-cap-1', {
         swarm: {
@@ -248,7 +270,7 @@ describe('dstu.agent-mesh Official UI Plugin, Inline SwarmCapsuleBar & Native Me
     });
 
     rerender(<AgentTaskPanel store={taskStore} />);
-    const capsule = screen.getByTestId('swarm-capsule-bar');
+    const capsule = await screen.findByTestId('swarm-capsule-bar');
     expect(capsule).toHaveTextContent('蜂群协作中');
     expect(capsule).toHaveTextContent('Claude(运行中)');
     expect(capsule).toHaveTextContent('Codex(等待 2 子代理)');

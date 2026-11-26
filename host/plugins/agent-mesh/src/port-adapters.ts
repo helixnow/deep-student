@@ -246,7 +246,7 @@ function wrapConcreteAdapter(inner: AdapterExternalCodingAdapter): ContractExter
 export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
   readonly registry: ExternalAdapterRegistry;
   private readonly knownTemplateSignatures = new Map<string, string>();
-  private readonly wrappedAdapters = new Map<AdapterExternalCodingAdapter, ContractExternalCodingAdapter>();
+  private wrappedAdapters = new WeakMap<AdapterExternalCodingAdapter, ContractExternalCodingAdapter>();
 
   constructor(options: ExternalAdapterRegistryOptions = {}) {
     this.registry = new ExternalAdapterRegistry(options);
@@ -311,7 +311,7 @@ export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
   }
 
   async dispose(): Promise<void> {
-    this.wrappedAdapters.clear();
+    this.wrappedAdapters = new WeakMap();
     this.knownTemplateSignatures.clear();
     await this.registry.dispose();
   }

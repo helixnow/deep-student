@@ -270,4 +270,69 @@ describe('CliAgentProber', () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('augments macOS Finder GUI PATH with ~/.grok/bin & ~/.local/bin while keeping explicit PATH overrides first, and exposes getCachedAgent', async () => {
+    if (process.platform === 'win32') return;
+
+    const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), 'dstu-probe-home-'));
+    const overrideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dstu-probe-override-'));
+    try {
+      const grokBin = path.join(fakeHome, '.grok', 'bin');
+      const localBin = path.join(fakeHome, '.local', 'bin');
+      await fs.mkdir(grokBin, { recursive: true });
+      await fs.mkdir(localBin, { recursive: true });
+
+      const codexInGrok = path.join(grokBin, 'codex');
+      await fs.writeFile(
+        codexInGrok,
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "codex-cli 0.120.0"; exit 0; fi\nif [ "$1" = "app-server" ]; then echo "Usage: codex app-server"; exit 0; fi\nexit 0\n',
+        { mode: 0o755 },
+      );
+
+      const claudeInLocal = path.join(localBin, 'claude');
+      await fs.writeFile(
+        claudeInLocal,
+        '#!/bin/sh\necho "2.2.0 (Claude Code)"\n',
+        { mode: 0o755 },
+      );
+
+      const claudeOverride = path.join(overrideDir, 'claude');
+      await fs.writeFile(
+        claudeOverride,
+        '#!/bin/sh\necho "9.9.9 (Override Claude)"\n',
+        { mode: 0o755 },
+      );
+
+      // Minimal Finder-like PATH (/usr/bin:/bin) + explicit overrideDir first
+      const prober = new CliAgentProber({
+        env: {
+          HOME: fakeHome,
+          PATH: `${overrideDir}:/usr/bin:/bin`,
+          OPENAI_API_KEY: 'sk-openai-test',
+          ANTHROPIC_API_KEY: 'sk-ant-test',
+        },
+        homeDir: fakeHome,
+        platform: 'darwin',
+      });
+
+      expect(prober.getCachedAgent('codex')).toBeUndefined();
+
+      const detected = await prober.probeAll();
+      const codex = prober.getCachedAgent('codex');
+      expect(codex).toBeDefined();
+      expect(codex?.installed).toBe(true);
+      expect(codex?.resolvedPath).toBe(codexInGrok);
+      expect(codex?.version).toBe('0.120.0');
+
+      // Explicit PATH entry (`overrideDir`) must take priority over `~/.local/bin`!
+      const claude = prober.getCachedAgent('claude');
+      expect(claude?.installed).toBe(true);
+      expect(claude?.resolvedPath).toBe(claudeOverride);
+      expect(claude?.version).toBe('9.9.9');
+      expect(detected.find((a) => a.id === 'claude')?.resolvedPath).toBe(claudeOverride);
+    } finally {
+      await fs.rm(fakeHome, { recursive: true, force: true });
+      await fs.rm(overrideDir, { recursive: true, force: true });
+    }
+  });
 });

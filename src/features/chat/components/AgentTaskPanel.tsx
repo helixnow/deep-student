@@ -45,6 +45,7 @@ import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor28, coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { motion, AnimatePresence } from 'framer-motion';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -94,7 +95,7 @@ import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatB
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { resolveGenerativeUIChatActionHandlers } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { AnkiCardsBlock } from '../plugins/blocks/ankiCardsBlock';
-import { SwarmCapsuleBar, useAgentMeshWorkbenchStore } from '@/features/agent-mesh';
+import { LazySwarmCapsuleBar, useAgentMeshWorkbenchStore } from '@/features/agent-mesh';
 
 // 兼容既有消费方/测试的提取函数出口（实现已迁移到 agent-task/extractors）
 export {
@@ -213,18 +214,13 @@ export const AgentTaskPanel: React.FC<Props> = ({
     expanded && openArtifactId ? state.blocks.get(openArtifactId) : undefined,
   );
   const sessionId = useStore(store, (s) => s.sessionId);
-  const hasActiveMeshOrSwarm = useAgentMeshWorkbenchStore((s) => {
-    if (!sessionId) return false;
-    const sw = s.swarmBySession[sessionId];
-    if (sw && sw.status !== 'completed') return true;
-    const ths = s.threadsBySession[sessionId] ?? [];
-    return ths.some(
-      (th) =>
-        th.status === 'running' ||
-        th.status === 'waiting_children' ||
-        th.status === 'waiting_approval',
-    );
-  });
+  const hasActiveMeshOrSwarm = useAgentMeshWorkbenchStore((s) =>
+    Boolean(
+      sessionId &&
+        s.swarmBySession[sessionId] &&
+        s.swarmBySession[sessionId].status !== 'completed',
+    ),
+  );
   useEffect(() => {
     useAgentMeshWorkbenchStore.getState().setActiveSessionId(sessionId ?? null);
   }, [sessionId]);
@@ -535,7 +531,11 @@ export const AgentTaskPanel: React.FC<Props> = ({
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
       <div className="mx-auto max-w-[var(--chat-thread-max-w)]">
-        <SwarmCapsuleBar sessionId={sessionId} />
+        {hasActiveMeshOrSwarm && (
+          <React.Suspense fallback={null}>
+            <LazySwarmCapsuleBar sessionId={sessionId} />
+          </React.Suspense>
+        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             Collapsed pill / Expanded header bar
@@ -554,7 +554,10 @@ export const AgentTaskPanel: React.FC<Props> = ({
               size="sm"
               onClick={() => setExpanded(true)}
               aria-expanded={false}
-              className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-2 [@media(pointer:coarse)]:after:-inset-y-3.5 [@media(pointer:coarse)]:after:content-['']"
+              className={cn(
+                '!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none',
+                coarseHitClassFor28,
+              )}
             >
               <PillIcon size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
               {running && (
@@ -618,7 +621,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
                   {baseLabel}
                 </span>
                 {has && (
-                  <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
+                  <span className="text-caption tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
                     {done}/{total}
                   </span>
                 )}
@@ -627,7 +630,10 @@ export const AgentTaskPanel: React.FC<Props> = ({
                   onClick={() => setExpanded(false)}
                   // ★ 触控目标：18px 视觉不变（caret 10 + p-1 8，leading-none 无 strut），
                   // 触屏 -inset-3.5 → 46px 命中（原 -inset-3 只有 42px）
-                  className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']"
+                  className={cn(
+                    '!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative',
+                    coarseHitClassForBadge16,
+                  )}
                   aria-label={t('agentPanel.collapsePanel')}
                   aria-expanded={true}
                 >
@@ -648,15 +654,16 @@ export const AgentTaskPanel: React.FC<Props> = ({
                   ) : (
                     <span />
                   )}
-                  <button
-                    type="button"
+                  <DsButton
+                    variant="outline"
+                    size="sm"
                     data-testid="toggle-project-knowledge-dag-drawer"
                     aria-expanded={dagDrawerOpen}
                     onClick={() => setDagDrawerOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    className="!h-auto !gap-1 rounded border-border/35 bg-background/60 !px-2 !py-0.5 text-caption font-normal text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                   >
                     <span>{tr('agentPanel.dagTopologyView', 'DAG 拓扑视图')}</span>
-                  </button>
+                  </DsButton>
                 </div>
               )}
               {has && <PlanSteps steps={steps} />}
@@ -678,7 +685,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
               {showSources && (
                 <>
                   <SectionDivider />
-                  <div className="flex min-w-0 items-center gap-2 px-4 py-2 text-[11px]">
+                  <div className="flex min-w-0 items-center gap-2 px-4 py-2 text-caption">
                     <span className="flex-shrink-0 text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none">
                       {t('agentPanel.sources')}
                       <span className="ml-1.5 normal-case tracking-normal font-normal font-mono tabular-nums">{sources.length}</span>
@@ -715,19 +722,20 @@ export const AgentTaskPanel: React.FC<Props> = ({
                   </SectionLabel>
                   <div className="px-4 pb-2">
                     {browserDownloads.map((download) => (
-                      <button
+                      <DsButton
                         key={download.id}
-                        type="button"
+                        variant="ghost"
+                        size="sm"
                         disabled={download.state !== 'completed'}
                         onClick={() => void revealResultFile(download.rootId, download.relativePath)}
                         // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
-                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60 [@media(pointer:coarse)]:h-11"
+                        className="!flex !h-7 w-full min-w-0 !justify-start !gap-2 !rounded-[5px] !border-none !bg-transparent !px-2 text-left text-caption font-normal text-foreground hover:!bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60"
                         title={download.locator}
                       >
                         <DownloadSimple size={12} className="shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{download.filename}</span>
                         <span className="shrink-0 text-2xs text-[color:var(--text-muted)]">{download.state}</span>
-                      </button>
+                      </DsButton>
                     ))}
                   </div>
                 </>
@@ -748,11 +756,12 @@ export const AgentTaskPanel: React.FC<Props> = ({
                       const isOpen = openArtifactId === entry.artifactId;
                       return (
                         <div key={entry.artifactId}>
-                          <button
-                            type="button"
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
                             onClick={() => openArtifact(entry)}
                             aria-expanded={expandable ? isOpen : undefined}
-                            className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                            className="!flex !h-7 w-full min-w-0 !justify-start !gap-2 !rounded-[5px] !border-none !bg-transparent !px-2 text-left text-caption font-normal text-foreground hover:!bg-[color:var(--interactive-hover)]"
                             title={entry.title}
                           >
                             <ArtifactIcon size={12} className="shrink-0 text-[color:hsl(var(--primary))]" />
@@ -771,7 +780,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
                                 )}
                               />
                             )}
-                          </button>
+                          </DsButton>
                           {expandable && isOpen && (
                             <div className="mb-2 mt-1 rounded-[6px] border border-[color:var(--border-soft)] bg-[color:var(--composer-panel-surface)] p-2">
                               {renderArtifactDetail(entry)}
@@ -804,12 +813,12 @@ export const AgentTaskPanel: React.FC<Props> = ({
               {/* ── 区 7：完成 — 总结 + 变更/产物计数一体叙事（单一 footer） ── */}
               {showCompletion && (
                 <div className="flex-shrink-0 space-y-1 border-t border-[color:var(--composer-panel-border)] px-4 py-2.5">
-                  <div className="flex items-center gap-1.5 text-[12px] font-medium text-[color:hsl(var(--success))]">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-[color:hsl(var(--success))]">
                     <CheckCircle size={14} weight="fill" />
                     {t('completion.title')}
                   </div>
                   {completionNarrative && (
-                    <p className="m-0 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[color:var(--text-secondary)]">
+                    <p className="m-0 whitespace-pre-wrap break-words text-xs leading-relaxed text-[color:var(--text-secondary)]">
                       {completionNarrative}
                     </p>
                   )}
@@ -837,11 +846,12 @@ export const AgentTaskPanel: React.FC<Props> = ({
               {showWorkspaceResults && workspacePage && (
                 <>
                   <SectionDivider />
-                  <button
-                    type="button"
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setWorkspaceExpanded((prev) => !prev)}
                     aria-expanded={workspaceExpanded}
-                    className="flex w-full items-center gap-1.5 px-4 pt-2 pb-1 text-left text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none hover:text-[color:var(--text-primary)]"
+                    className="!flex !h-auto w-full !justify-start !gap-1.5 !border-none !bg-transparent !px-4 !pt-2 !pb-1 text-left text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none hover:!bg-transparent hover:text-[color:var(--text-primary)]"
                   >
                     <span>{t('agentPanel.workspaceFiles')}</span>
                     <span className="normal-case tracking-normal font-normal">
@@ -851,14 +861,19 @@ export const AgentTaskPanel: React.FC<Props> = ({
                       size={10}
                       className={cn('transition-transform', workspaceExpanded && 'rotate-180')}
                     />
-                  </button>
+                  </DsButton>
                   {workspaceExpanded && (
                     <div className="px-4 pb-2">
                       <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-2xs text-[color:var(--text-muted)]">
                         {workspacePage.relativePath && (
-                          <button type="button" onClick={openWorkspaceParent} className="inline-flex shrink-0 items-center hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:min-h-11">
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={openWorkspaceParent}
+                            className="inline-flex !h-auto shrink-0 items-center !border-none !bg-transparent !p-0 text-2xs font-normal text-[color:var(--text-muted)] hover:!bg-transparent hover:text-[color:var(--text-primary)]"
+                          >
                             .. /
-                          </button>
+                          </DsButton>
                         )}
                         <span className="truncate font-mono">{workspacePage.relativePath || '/'}</span>
                       </div>
@@ -866,14 +881,15 @@ export const AgentTaskPanel: React.FC<Props> = ({
                         {workspacePage.entries.map((entry) => {
                           const isDirectory = entry.kind === 'directory';
                           return (
-                            <button
+                            <DsButton
                               key={`${entry.kind}:${entry.relativePath}`}
-                              type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => isDirectory
                                 ? void loadWorkspacePage(entry.relativePath)
                                 : void revealResultFile('workspace', entry.relativePath)}
                               // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
-                              className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                              className="!flex !h-7 w-full min-w-0 !justify-start !gap-2 !rounded-[5px] !border-none !bg-transparent !px-2 text-left text-caption font-normal text-foreground hover:!bg-[color:var(--interactive-hover)]"
                               title={entry.relativePath}
                             >
                               {isDirectory ? <FolderOpen size={12} /> : <FileIcon size={12} />}
@@ -881,25 +897,26 @@ export const AgentTaskPanel: React.FC<Props> = ({
                               {entry.sizeBytes != null && (
                                 <span className="shrink-0 text-2xs text-[color:var(--text-muted)]">{entry.sizeBytes} B</span>
                               )}
-                            </button>
+                            </DsButton>
                           );
                         })}
                       </div>
                       {workspacePage.nextCursor && (
-                        <button
-                          type="button"
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
                           disabled={workspaceLoading}
                           onClick={() => void loadWorkspacePage(
                             workspacePage.relativePath,
                             workspacePage.nextCursor ?? undefined,
                             true,
                           )}
-                          className="mt-1 inline-flex items-center px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+                          className="mt-1 inline-flex !h-auto items-center !border-none !bg-transparent !px-2 !py-0.5 text-2xs font-normal text-[color:hsl(var(--primary))] hover:!bg-transparent disabled:opacity-50"
                         >
                           {workspaceLoading
                             ? t('agentPanel.loadingFiles')
                             : t('agentPanel.loadMoreFiles')}
-                        </button>
+                        </DsButton>
                       )}
                       {workspacePage.truncated && !workspacePage.nextCursor && (
                         <div className="px-2 pt-1 text-2xs text-[color:var(--text-muted)]">

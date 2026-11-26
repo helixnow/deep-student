@@ -13,7 +13,7 @@ import { Robot, TerminalWindow, UsersThree, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
-import { WorkspaceFolderPill } from '@/features/agent-mesh';
+import { WorkspaceFolderPill, resolveAgentDisplayName } from '@/features/agent-mesh';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import {
   isAgentMentionItem,
@@ -182,6 +182,12 @@ export interface ModelMentionChipsProps {
   onRemove: (modelId: string) => void;
   /** 是否禁用 */
   disabled?: boolean;
+  /** 会话 ID（供会话级 CLI 引擎模式绑定工作目录） */
+  sessionId?: string | null;
+  /** 当前会话绑定的本地编程 CLI 引擎（T3-Code 引擎切换） */
+  sessionCliAgent?: { id: string; name: string } | null;
+  /** 清除当前会话绑定的 CLI 引擎（回到常规 LLM） */
+  onClearSessionCli?: () => void;
   /** 自定义类名 */
   className?: string;
 }
@@ -190,16 +196,63 @@ export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
   models,
   onRemove,
   disabled = false,
+  sessionId,
+  sessionCliAgent,
+  onClearSessionCli,
   className,
 }) => {
-  if (models.length === 0) {
+  const { t } = useTranslation(['common', 'chatV2', 'agentMesh']);
+  const firstExternalAgent = models.find(isExternalCliMentionItem);
+  const showWorkspacePill = Boolean(firstExternalAgent) || Boolean(sessionCliAgent);
+
+  if (models.length === 0 && !sessionCliAgent) {
     return null;
   }
 
-  const firstExternalAgent = models.find(isExternalCliMentionItem);
+  const effectiveSessionId = sessionId ?? firstExternalAgent?.sessionId;
+  const sessionCliDisplayName = sessionCliAgent
+    ? resolveAgentDisplayName(sessionCliAgent.id, sessionCliAgent.name)
+    : '';
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-1.5 mb-1', className)}>
+    <div
+      data-testid={models.length === 0 && sessionCliAgent ? 'session-cli-workspace-bar' : undefined}
+      className={cn('flex flex-wrap items-center gap-1.5 mb-1', className)}
+    >
+      {models.length === 0 && sessionCliAgent && (
+        <span
+          data-testid={`session-cli-engine-badge-${sessionCliAgent.id}`}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border border-border/45 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-foreground select-none',
+            disabled && 'opacity-60',
+          )}
+        >
+          <TerminalWindow size={12} weight="duotone" className="shrink-0 text-primary" />
+          <span className="max-w-[130px] truncate">{sessionCliDisplayName}</span>
+          {!disabled && onClearSessionCli && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClearSessionCli();
+              }}
+              className={cn(
+                'ml-0.5 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative',
+                coarseHitClassForBadge16,
+              )}
+              aria-label={t('chatV2:common.removeNamed', {
+                name: sessionCliDisplayName,
+                defaultValue: `移除 ${sessionCliDisplayName}`,
+              })}
+            >
+              <X size={10} weight="bold" />
+            </DsButton>
+          )}
+        </span>
+      )}
       {models.map((model) => (
         <ModelMentionChip
           key={model.id}
@@ -208,9 +261,9 @@ export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
           disabled={disabled}
         />
       ))}
-      {firstExternalAgent && (
+      {showWorkspacePill && (
         <WorkspaceFolderPill
-          sessionId={firstExternalAgent.sessionId}
+          sessionId={effectiveSessionId}
           disabled={disabled}
         />
       )}
