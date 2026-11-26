@@ -109,6 +109,7 @@ import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { resetPersistedWorkbenchSnapshots, resetUiLayoutCache } from '@/utils/uiLayoutReset';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { useSetMobileHeaderActiveView } from '@/components/layout/MobileHeaderContext';
+import { asResourceType } from '@/shared/resource-types/lookup';
 
 const WORKBENCH_MOBILE_HEADER_VIEW_BY_TYPE_ID: Readonly<Record<string, string>> = {
   chat: 'chat-v2',
@@ -122,19 +123,13 @@ const WORKBENCH_MOBILE_HEADER_VIEW_BY_TYPE_ID: Readonly<Record<string, string>> 
   taskDashboard: 'task-dashboard',
   sandbox: 'sandbox-workbench',
   media: 'media',
-  textbook: 'learning-hub',
-  exam: 'learning-hub',
-  translation: 'learning-hub',
-  essay: 'learning-hub',
-  image: 'learning-hub',
-  file: 'learning-hub',
-  mindmap: 'learning-hub',
   'file-preview': 'learning-hub',
 };
 
 /** 将工作台焦点窗口 typeId 映射到 MobileHeaderContext 的视图 ID（供 360px 窄视口顶栏同步） */
 export function workbenchTypeIdToMobileHeaderViewId(typeId: string | null | undefined): string | null {
   if (!typeId) return null;
+  if (asResourceType(typeId) !== null) return 'learning-hub';
   return WORKBENCH_MOBILE_HEADER_VIEW_BY_TYPE_ID[typeId] ?? null;
 }
 

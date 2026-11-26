@@ -116,7 +116,7 @@ export function useLearningHeatmap(months: number = 12): UseLearningHeatmapResul
         endDate,
       });
       if (reqSeq !== requestSeqRef.current) return;
-      setData(result);
+      setData(Array.isArray(result) ? result : []);
     } catch (err: unknown) {
       if (reqSeq !== requestSeqRef.current) return;
       console.error('[useLearningHeatmap] Failed to load data:', err);

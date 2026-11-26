@@ -30,6 +30,10 @@ vi.mock('../ShadApiEditModal', async () => {
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
+    i18n: {
+      language: 'zh-CN',
+      resolvedLanguage: 'zh-CN',
+    },
   }),
   initReactI18next: {
     type: '3rdParty',

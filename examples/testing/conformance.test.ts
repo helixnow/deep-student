@@ -6,9 +6,9 @@ import { examplePackages } from './harness';
 
 const examples = examplePackages();
 
-it('examples/plugins has the four examples', () => {
+it('examples/plugins has the expected examples', () => {
   expect(examples.map((e) => e.pkg.deepStudent.id))
-    .toEqual(['example.web-search', 'example.word-of-day', 'example.study-goal', 'example.translation-prompt']);
+    .toEqual(['example.web-search', 'example.word-of-day', 'example.kaoyan-math-pack', 'example.study-goal', 'example.translation-prompt']);
 });
 
 describe.each(examples.map((e) => [e.pkg.deepStudent.id, e] as const))('%s', (_id, { dir, dirName, pkg }) => {

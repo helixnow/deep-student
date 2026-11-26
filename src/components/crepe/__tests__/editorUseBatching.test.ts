@@ -1,6 +1,6 @@
 /**
  * FE-B5: `applyCrepePlugins` registers the official stack with one `editor.use` per `editor.extensions` entry (21 calls,
- * 54 Milkdown plugins). Registering the same flattened list with a single `use` builds the same editor on real
+ * 55 Milkdown plugins). Registering the same flattened list with a single `use` builds the same editor on real
  * Crepe 7.22: before `create()` Milkdown's `use` only appends to its plugin store, and `create()` prepares and runs
  * that store in insertion order. Compared here: plugin setup / run / ready order relative to `create()`, ProseMirror
  * plugin order (priority), schema, remark chain, input rules, node and mark views, key handling, the parsed document,
@@ -180,12 +180,12 @@ describe('FE-B5: one editor.use per entry or one editor.use for the whole stack'
     for (const root of roots) root.remove();
   });
 
-  it('hands Milkdown the same 54 plugins, as 21 calls or as one', async () => {
+  it('hands Milkdown the same 55 plugins, as 21 calls or as one', async () => {
     const grouped = await build(perEntry, defaultPluginOptions, officialEditorExtensionEntries);
     const single = await build(singleUse, defaultPluginOptions, officialEditorExtensionEntries);
     expect(grouped.uses).toHaveLength(21);
-    expect(grouped.uses.reduce((sum, size) => sum + size, 0)).toBe(54);
-    expect(single.uses).toEqual([54]);
+    expect(grouped.uses.reduce((sum, size) => sum + size, 0)).toBe(55);
+    expect(single.uses).toEqual([55]);
   }, 60_000);
 
   for (const [name, options] of Object.entries(OPTION_VARIANTS)) {
@@ -206,8 +206,8 @@ describe('FE-B5: one editor.use per entry or one editor.use for the whole stack'
       const create = events.indexOf('create');
       expect(events.slice(0, create).every((event) => event === 'use')).toBe(true);
       expect(events.at(-1)).toBe('created');
-      expect(events.filter((event) => event.startsWith('setup '))).toHaveLength(54);
-      expect(events.filter((event) => event.startsWith('ready '))).toHaveLength(54);
+      expect(events.filter((event) => event.startsWith('setup '))).toHaveLength(55);
+      expect(events.filter((event) => event.startsWith('ready '))).toHaveLength(55);
     }
     expect(groupedEvents.filter((event) => event === 'use')).toHaveLength(21);
     expect(singleEvents.filter((event) => event === 'use')).toHaveLength(1);
@@ -226,7 +226,7 @@ describe('FE-B5: one editor.use per entry or one editor.use for the whole stack'
     expect(grouped.errors).toEqual(['broken-factory: factory', 'broken-setup: setup', 'broken-run: run']);
     expect(single.errors).toEqual(grouped.errors);
     expect(grouped.uses).toHaveLength(23);
-    expect(single.uses).toEqual([56]);
+    expect(single.uses).toEqual([57]);
     expect(snapshot(single.crepe)).toEqual(snapshot(grouped.crepe));
   }, 60_000);
 

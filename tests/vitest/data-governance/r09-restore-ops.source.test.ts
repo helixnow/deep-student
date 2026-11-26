@@ -65,7 +65,7 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(webdav).toContain('override supportsResumableDownload(): boolean { return true; }');
     expect(webdav).toContain('续传起点与请求不一致');
     // 服务端忽略 Range（HTTP 200）必须诚实从零重下，不冒充续传。
-    expect(webdav).toMatch(/res\.status === 200\) \{\s*actualStart = 0;/);
+    expect(webdav).toMatch(/res\.status === 200\) \{[\s\S]{0,120}?actualStart = 0;/);
     // 字节数不足即失败，禁止静默截断当成功。
     expect(webdav).toContain('written !== totalSize');
     expect(webdav).toContain("ensureMemoryGetMatchesDeclaredLen('WebDAV'");

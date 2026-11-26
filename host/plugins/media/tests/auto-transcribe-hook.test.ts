@@ -133,13 +133,14 @@ function uploadRows(h: TestHost, before: number, uploaded: Uploaded): Array<[str
   if (rows[0]?.[0] === 'folders' && rows[0][2] === 'INSERT') rows = rows.slice(1);
   if (rows[0]?.[0] === 'blobs' && rows[0][2] === 'INSERT') rows = rows.slice(1);
   const folderItem = rows[2]?.[1] ?? '';
-  expect(rows.slice(0, 4)).toEqual([
+  // Local-derived `resources` index_status/cache echoes are intentionally suppressed
+  // from `__change_log` (commit 8441daddc), leaving the 3 authoritative INSERT rows.
+  expect(rows.slice(0, 3)).toEqual([
     ['resources', uploaded.file.resourceId, 'INSERT'],
     ['files', uploaded.file.id, 'INSERT'],
     ['folder_items', folderItem, 'INSERT'],
-    ['resources', uploaded.file.resourceId, 'UPDATE'],
   ]);
-  return rows.slice(4);
+  return rows.slice(3);
 }
 
 function terminal(status: string | null): boolean {
@@ -164,7 +165,10 @@ it('short audio stored as a blob starts the media pipeline once ASR is configure
   const fileId = uploaded.file.id;
   await waitFor(() => processingStatus(h, fileId) !== null, 30_000);
   const after = uploadRows(h, before, uploaded);
-  expect(after[0]).toEqual(['files', fileId, 'UPDATE']);
+  // Local-derived `files.processing_status` progress writes are suppressed from `__change_log`
+  // (commit 8441daddc); verify the pipeline started via `processingStatus` and reaches terminal state.
+  expect(processingStatus(h, fileId)).not.toBeNull();
+  expect(after).toEqual([]);
   await waitFor(() => terminal(processingStatus(h, fileId)), 90_000);
 }, 180_000);
 

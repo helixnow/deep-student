@@ -14,7 +14,10 @@ vi.mock('mermaid', () => {
   runtime.mermaidLoads++;
   return { default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: '<svg viewBox="0 0 100 50"><text>mindmap diagram</text></svg>' })) } };
 });
-vi.mock('@/features/chat/components/renderers/RichCodeRenderer', () => ({ RichCodeRenderer: ({ kind, source }: any) => <div data-rich-kind={kind}>{source}</div> }));
+vi.mock('@/features/chat/components/renderers/RichCodeRenderer', () => ({
+  RichCodeRenderer: ({ kind, source }: any) => <div data-rich-kind={kind}>{source}</div>,
+  subscribeDocumentDarkMode: () => () => {},
+}));
 vi.mock('@/components/previews/ChatHtmlPreview', () => ({ ChatHtmlPreview: ({ html, streaming, expanded }: any) => <div data-html-preview data-streaming={String(streaming)} data-expanded={String(expanded)}>{html}</div> }));
 vi.mock('@/utils/lazyPrism', () => ({
   resolvePrismLanguage: () => null,

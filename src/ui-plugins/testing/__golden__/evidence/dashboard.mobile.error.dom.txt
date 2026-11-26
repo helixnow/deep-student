@@ -8,7 +8,7 @@
         <div .bg-[color:var(--shell-workspace-panel)].flex.flex-col.flex-shrink-0.h-full.overflow-x-hidden.relative.z-[1]>
           <button .absolute.appearance-none.bg-[color:var(--overlay)].border-0.duration-[var(--panel-close-dur,350ms)].ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))].inset-0.motion-reduce:transition-none.p-0.transition-opacity aria-hidden="true" aria-label="关闭侧边栏" data-mobile-sidebar-mask="true" tabindex="-1" type="button" />
           <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
-            <div .flex-1.min-h-0.overflow-hidden>
+            <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
               <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
                 <div .os-size-observer>
                   <div .os-size-observer-listener />

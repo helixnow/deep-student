@@ -1,8 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
-import { TRANSPARENT_PIXEL_DATA_URL } from '@/components/anki/utils/cardMedia';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 
 const card: AnkiCard = {
@@ -36,10 +35,13 @@ const template: CustomAnkiTemplate = {
 };
 
 describe('AnkiTemplateCardFace', () => {
-  it('renders template math with native MathML and Anki card styles inside the sandbox', () => {
+  it('renders template math with native MathML and Anki card styles inside the sandbox', async () => {
     const mathTemplate = { ...template, front_template: '<div>{{Text}}</div><code>\\(raw\\)</code>', css_style: '.card { color: red; }' };
     const mathCard = { ...card, extra_fields: { Text: 'Energy \\(E=mc^2\\) <img src="bad" onerror="alert(1)">' } };
     const view = render(<AnkiTemplateCardFace card={mathCard} template={mathTemplate} side="front" />);
+    await waitFor(() => {
+      expect(view.container.querySelector('iframe')).not.toBeNull();
+    });
     const doc = new DOMParser().parseFromString(view.container.querySelector('iframe')!.getAttribute('srcdoc')!, 'text/html');
     expect(doc.body.classList.contains('card')).toBe(true);
     expect(doc.querySelector('math')).not.toBeNull();
@@ -123,7 +125,7 @@ describe('AnkiTemplateCardFace', () => {
     document.documentElement.removeAttribute('data-theme');
   });
 
-  it('never emits raw unresolved relative image src into srcdoc before media resolves (G17 CSP zero-error)', () => {
+  it('never emits raw unresolved relative image src into srcdoc before media resolves (G17 CSP zero-error)', async () => {
     const imgCard: AnkiCard = {
       ...card,
       id: 'card-csp-pending',
@@ -136,10 +138,20 @@ describe('AnkiTemplateCardFace', () => {
     const { container } = render(
       <AnkiTemplateCardFace card={imgCard} template={null} side="front" compact={false} interactiveFrame />,
     );
-    const srcdoc = container.querySelector('iframe')?.getAttribute('srcdoc') ?? '';
+    // While inline relative images are resolving, AnkiTemplateCardFace shows the
+    // non-collapsing loading placeholder instead of mounting a pending iframe,
+    // ensuring raw relative `src="real_protein_plots.png"` never triggers a CSP error.
+    expect(screen.getByTestId('anki-card-media-loading')).toHaveAttribute('aria-busy', 'true');
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(container.innerHTML).not.toContain('src="real_protein_plots.png"');
+
+    // Once media resolution settles, the iframe mounts safely without raw relative img src
+    // and keeps the interactive sound button intact.
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).not.toBeNull();
+    });
+    const srcdoc = container.querySelector('iframe')!.getAttribute('srcdoc') ?? '';
     expect(srcdoc).not.toContain('src="real_protein_plots.png"');
-    expect(srcdoc).toContain(`src="${TRANSPARENT_PIXEL_DATA_URL}"`);
-    expect(srcdoc).toContain('data-anki-media-pending="1"');
     expect(srcdoc).toContain('<button type="button" class="anki-sound anki-sound-btn"');
   });
 

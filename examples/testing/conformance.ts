@@ -3,7 +3,7 @@
  * profile 条目 id、UI 半的元数据，以及按 package.json 的 build:ui 实际构建出的 UI 模块只依赖宿主共享的模块。
  * examples/testing/conformance.test.ts 对仓库里的每个示例调用，examples/scripts/__tests__/create-plugin.test.ts 对脚手架生成的插件调用。
  */
-import { readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { beforeAll, expect, it } from 'vitest';
@@ -48,9 +48,17 @@ export function describeConformance({ dir, pkg, gateFile }: ConformanceTarget): 
     expect(assertInstallable(pkg, { appVersion: APP_VERSION, platform: 'desktop', installed: new Map() })).toMatchObject({ id, version: pkg.version });
   });
 
-  it('exports a Host module that matches the manifest', async () => {
+  it('exports a Host module that matches the manifest (or valid declarative assets for Tier 1)', async () => {
     const startup = checkManifest(pkg, { appVersion: APP_VERSION, context: 'community-startup' });
     if (!startup.ok) throw startup.error;
+    if (!pkg.deepStudent.host && pkg.deepStudent.tier === 'declarative') {
+      const assets = Object.values(pkg.deepStudent.declarative ?? {}).flat();
+      expect(assets.length).toBeGreaterThan(0);
+      for (const rel of assets) {
+        expect(existsSync(path.join(dir, rel)), `missing declarative asset ${rel}`).toBe(true);
+      }
+      return;
+    }
     const plugin = (await import(pathToFileURL(path.join(dir, pkg.deepStudent.host!)).href)).default as HostPlugin<any>;
     expect(checkPluginModule(startup.manifest, plugin)).toBeNull();
     expect(plugin.meta.platforms).toEqual(pkg.deepStudent.platforms);
@@ -59,7 +67,11 @@ export function describeConformance({ dir, pkg, gateFile }: ConformanceTarget): 
   });
 
   it('only has profile entries for its own id', () => {
-    const ids = profilesOf(dir).flatMap((file) => (JSON.parse(readFileSync(file, 'utf8')).plugins as { id: string }[]).map((e) => e.id));
+    const profiles = profilesOf(dir);
+    if (profiles.length === 0 && !pkg.deepStudent.host && pkg.deepStudent.tier === 'declarative') {
+      return;
+    }
+    const ids = profiles.flatMap((file) => (JSON.parse(readFileSync(file, 'utf8')).plugins as { id: string }[]).map((e) => e.id));
     expect(ids.length).toBeGreaterThan(0);
     expect(new Set(ids)).toEqual(new Set([id]));
   });

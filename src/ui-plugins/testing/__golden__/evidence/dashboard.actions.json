@@ -54,7 +54,7 @@
         "1:一键生成明日待办": {
           "navigations": [],
           "events": [
-            "showGlobalNotification{action,borderTone,icon,message,progress,title,type}={\"type\":\"error\",\"message\":\"生成明日待办失败，请重试\"}"
+            "showGlobalNotification{action,borderTone,icon,message,progress,replaceKey,title,type}={\"type\":\"error\",\"message\":\"生成明日待办失败，请重试\"}"
           ],
           "ipc": [
             "todo_list_lists()"

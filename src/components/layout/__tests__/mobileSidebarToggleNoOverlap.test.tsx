@@ -71,7 +71,7 @@ function mockViewport(width: number, height = 800) {
 
 function FloatingMenuTriggerHost({ onMenuClick }: { onMenuClick: () => void }) {
   useMobileHeader(
-    'essay-test',
+    'learning-hub',
     {
       showMenu: true,
       floatingMenuButton: true,

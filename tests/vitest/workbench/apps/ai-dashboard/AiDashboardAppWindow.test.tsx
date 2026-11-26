@@ -61,12 +61,12 @@ describe('AiDashboardAppWindow', () => {
     vi.clearAllMocks();
   });
 
-  it('renders dashboard window with briefing stats', () => {
+  it('renders dashboard window with briefing stats', async () => {
     render(<AiDashboardAppWindow windowId="w1" onTitleChange={vi.fn()} isVisible />);
     const dashboard = screen.getByTestId('wb-ai-dashboard-window');
     expect(dashboard).toBeInTheDocument();
     expect(screen.getByText('AI 学习仪表盘')).toBeInTheDocument();
-    expect(screen.getAllByText('到期闪卡').length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText('到期闪卡')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('进行中制卡').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);

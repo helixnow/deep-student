@@ -40,8 +40,10 @@ it('memory_write leaves the Rust change-log rows for root folder, target folder 
   const db = storage.database('vfs');
   const written = await host.invoke('memory_write', { folderPath: '偏好', title: 'm1', content: '用户喜欢跑步' }) as MemoryWriteOutput;
 
+  // Local-derived trailing `resources` index_status UPDATE echo is suppressed
+  // from `__change_log` (commit 8441daddc), leaving the 8 authoritative sync rows.
   const rows = db.all<{ table_name: string; operation: string; record_id: string }>(
-    'SELECT table_name, operation, record_id FROM __change_log ORDER BY id LIMIT 9');
+    'SELECT table_name, operation, record_id FROM __change_log ORDER BY id LIMIT 8');
   const folders = db.all<{ id: string; parent_id: string | null; title: string }>(
     'SELECT id, parent_id, title FROM folders ORDER BY rowid LIMIT 2');
   const resourceId = written.resourceId;
@@ -56,7 +58,6 @@ it('memory_write leaves the Rust change-log rows for root folder, target folder 
     ['INSERT', 'note_document_formats', written.noteId],
     ['INSERT', 'note_document_revisions', expect.stringMatching(/^nrev_/)],
     ['INSERT', 'folder_items', expect.stringMatching(/^fi_/)],
-    ['UPDATE', 'resources', resourceId],
   ]);
   expect(db.pluck<string>('SELECT folder_id FROM folder_items WHERE item_id = ?1', [written.noteId])).toBe(folders[1]!.id);
 });

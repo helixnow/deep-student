@@ -63,13 +63,13 @@ jobs:
       - run: node scripts/generate-version.mjs
       - name: Type check (authoritative tsc and tsgo)
         if: matrix.task == 'typecheck'
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: |
-          npx tsc --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsc.log" 2>&1 &
-          TSC_PID=$!
-          npx tsgo --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsgo.log" 2>&1 &
-          TSGO_PID=$!
-          TSC_CODE=0; wait "$TSC_PID" || TSC_CODE=$?
-          TSGO_CODE=0; wait "$TSGO_PID" || TSGO_CODE=$?
+          TSGO_CODE=0
+          npx tsgo --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsgo.log" 2>&1 || TSGO_CODE=$?
+          TSC_CODE=0
+          npx tsc --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsc.log" 2>&1 || TSC_CODE=$?
           cat "$RUNNER_TEMP/tsc.log" "$RUNNER_TEMP/tsgo.log"
           test "$TSC_CODE" -eq 0 && test "$TSGO_CODE" -eq 0
       - if: matrix.task == 'lint'

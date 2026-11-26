@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEEP_STUDENT_BUILD_NUMBER: '20000'
-      NODE_OPTIONS: '--max-old-space-size=4096'
+      NODE_OPTIONS: '--max-old-space-size=6144'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38

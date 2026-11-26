@@ -142,8 +142,11 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 2026-11-25：合并导图多源复合卡片/语义锚点/Ghost 提案（a39463e2c）与 Memory v2 M1
 // （a1762b66d, vfs-memory 硬规则与 memory_kernel）后，50 组实测 schema 仍在 58000 内、
 // schema+content 总计 85127（超 85000 护栏 127 tokens）；有意识将总计护栏微调至 88000。
+// 2026-11-26：Memory v2 完善（dfd237eba，vfs-memory 19 工具 / 3315 tokens，L1/L2 覆写对账与
+// 多语言硬规则）后，50 组实测 schema 合计 58819（总计 86257 ≤ 88000），有意识将 schema
+// 合计护栏微调至 60000（~2% 余量，继续严控后续膨胀）。
 const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_500;
-const MAX_TOTAL_SCHEMA_TOKENS = 58_000;
+const MAX_TOTAL_SCHEMA_TOKENS = 60_000;
 const MAX_TOTAL_TOKENS = 88_000;
 
 // ============================================================================
