@@ -1,6 +1,6 @@
 {
   "generatedBy": "scripts/licenses/collect-frontend-bundle-packages.mjs",
-  "packageLockSha256": "7d498bef367b10c80b98ef685b0bdf59f3b2dce3132a13b816e9df8ddb56db26",
+  "packageLockSha256": "63fb0c1d6b430ccc5890ab2259847cdbfcc4c7f12e341de4aad5818e0e478eee",
   "packages": [
     {
       "path": "node_modules/@babel/runtime",
@@ -277,7 +277,7 @@
     },
     {
       "path": "node_modules/@mermaid-js/parser",
-      "version": "1.2.1",
+      "version": "1.1.1",
       "via": [
         "bundle"
       ]
@@ -917,28 +917,28 @@
     },
     {
       "path": "node_modules/@vue/reactivity",
-      "version": "3.5.46",
+      "version": "3.5.40",
       "via": [
         "bundle"
       ]
     },
     {
       "path": "node_modules/@vue/runtime-core",
-      "version": "3.5.46",
+      "version": "3.5.40",
       "via": [
         "bundle"
       ]
     },
     {
       "path": "node_modules/@vue/runtime-dom",
-      "version": "3.5.46",
+      "version": "3.5.40",
       "via": [
         "bundle"
       ]
     },
     {
       "path": "node_modules/@vue/shared",
-      "version": "3.5.46",
+      "version": "3.5.40",
       "via": [
         "bundle"
       ]
@@ -1072,7 +1072,7 @@
     },
     {
       "path": "node_modules/cytoscape",
-      "version": "3.35.0",
+      "version": "3.33.4",
       "via": [
         "bundle"
       ]
@@ -1324,7 +1324,7 @@
     },
     {
       "path": "node_modules/dayjs",
-      "version": "1.11.23",
+      "version": "1.11.20",
       "via": [
         "bundle"
       ]
@@ -1451,13 +1451,6 @@
     {
       "path": "node_modules/extend",
       "version": "3.0.2",
-      "via": [
-        "bundle"
-      ]
-    },
-    {
-      "path": "node_modules/fastdom",
-      "version": "1.0.12",
       "via": [
         "bundle"
       ]
@@ -1808,7 +1801,7 @@
     },
     {
       "path": "node_modules/mermaid",
-      "version": "11.17.2",
+      "version": "11.15.0",
       "via": [
         "bundle"
       ]
@@ -2216,7 +2209,7 @@
     },
     {
       "path": "node_modules/prosemirror-view",
-      "version": "1.44.0",
+      "version": "1.41.8",
       "via": [
         "bundle"
       ]
@@ -2946,7 +2939,7 @@
     },
     {
       "path": "node_modules/zod",
-      "version": "4.6.7",
+      "version": "4.4.3",
       "via": [
         "bundle"
       ]
