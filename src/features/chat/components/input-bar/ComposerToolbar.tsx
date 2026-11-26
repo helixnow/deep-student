@@ -8,7 +8,7 @@
  * 纯展示组件：交互副作用（面板互斥、发送、停止）全部通过回调上抛。
  */
 
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -29,6 +29,7 @@ import {
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { detectProviderBrand, type ProviderBrand } from '@/utils/providerIconEngine';
 import type { ContextWindowUsage } from './contextWindowUsage';
 import { formatContextTokenAmount } from './contextWindowUsage';
 import type { ContextCompactionInfo } from './contextCompactionInfo';
@@ -41,6 +42,7 @@ import {
   type RuntimeModelMultiSelectConfig,
   type RuntimeModelOption,
 } from './RuntimeModelSubmenuBody';
+import type { T3PopoverLayoutTier } from './T3ModelSelectorPopover';
 import { ContextUsagePopover } from './ContextUsagePopover';
 import {
   resolveContextUsageLevel,
@@ -48,6 +50,19 @@ import {
 } from '../ContextUsageRing';
 
 const LazyT3ModelSelectorPopover = React.lazy(() => import('./T3ModelSelectorPopover'));
+
+const TRIGGER_MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<ProviderBrand>([
+  'openai',
+  'opencode',
+  'xai',
+  'ollama',
+  'flux',
+  'ideogram',
+  'midjourney',
+  'runway',
+  'replicate',
+  'suno',
+]);
 
 function resolveTriggerCliBrandIconId(rawId?: string | null): string {
   const normalized = (rawId ?? '')
@@ -64,6 +79,88 @@ function resolveTriggerCliBrandIconId(rawId?: string | null): string {
   if (normalized === 'dsh' || normalized.includes('deepseek')) return 'deepseek';
   if (normalized.includes('qwen')) return 'qwen';
   return '';
+}
+
+interface T3PopoverLayoutState {
+  width: number;
+  height: number;
+  tier: T3PopoverLayoutTier;
+}
+
+/**
+ * 按当前聊天列宽度与触发器上下安全净空计算锁定的弹窗尺寸与断点档位：
+ * - 宽度绑定聊天列宽度（避让左侧边栏与右侧分屏工作台），打开期间切换供应商宽度恒定不闪烁；
+ * - 高度预留桌面端顶部标题栏（52px）与窗口底边安全边距，空会话居中输入框同样完整展示不裁切。
+ */
+function computeT3PopoverLayout(
+  triggerEl: HTMLElement | null,
+  isMobile: boolean,
+): T3PopoverLayoutState {
+  if (typeof window === 'undefined') {
+    return {
+      width: isMobile ? 356 : 568,
+      height: 360,
+      tier: isMobile ? 'compact' : 'wide',
+    };
+  }
+
+  const vv = window.visualViewport;
+  const viewportWidth = vv?.width && vv.width > 0 ? vv.width : window.innerWidth || 1024;
+  const viewportHeight = vv?.height && vv.height > 0 ? vv.height : window.innerHeight || 768;
+
+  const chatPaneEl = (triggerEl?.closest('main') ??
+    triggerEl?.closest('.unified-input-docked')) as HTMLElement | null;
+  const paneRect = chatPaneEl?.getBoundingClientRect();
+  const paneWidth =
+    paneRect && paneRect.width > 0 ? paneRect.width : viewportWidth;
+  const triggerRect = triggerEl?.getBoundingClientRect();
+
+  // align="end" 下浮层右边缘对齐触发器右边缘：左界不得越过聊天列左边缘（避免压住左侧导航栏）
+  const rightAnchoredSpan =
+    triggerRect && triggerRect.right > 0 && paneRect && paneRect.width > 0
+      ? Math.floor(triggerRect.right - paneRect.left - 12)
+      : paneWidth - 16;
+
+  const maxAllowedWidth = Math.max(
+    268,
+    Math.floor(
+      Math.min(
+        viewportWidth - 16,
+        paneWidth - 16,
+        rightAnchoredSpan > 240 ? rightAnchoredSpan : paneWidth - 16,
+      ),
+    ),
+  );
+
+  let tier: T3PopoverLayoutTier;
+  let width: number;
+  if (!isMobile && maxAllowedWidth >= 510) {
+    tier = 'wide';
+    width = Math.min(568, maxAllowedWidth);
+  } else if (!isMobile && maxAllowedWidth >= 388) {
+    tier = 'medium';
+    width = maxAllowedWidth;
+  } else {
+    tier = 'compact';
+    width = Math.min(392, maxAllowedWidth);
+  }
+
+  const idealHeight = tier === 'compact' ? 364 : 356;
+  let height = idealHeight;
+
+  if (triggerRect && (triggerRect.width > 0 || triggerRect.height > 0 || triggerRect.top > 0)) {
+    const safeTop = isMobile ? 12 : 52;
+    const safeBottom = 12;
+    const appMenuGap = 6;
+    const usableAbove = Math.floor(triggerRect.top - appMenuGap - safeTop);
+    const usableBelow = Math.floor(viewportHeight - safeBottom - (triggerRect.bottom + appMenuGap));
+    const bestVerticalSpace = Math.max(usableAbove, usableBelow);
+    if (bestVerticalSpace > 0) {
+      height = Math.max(176, Math.min(idealHeight, bestVerticalSpace));
+    }
+  }
+
+  return { width, height, tier };
 }
 
 // ============================================================================
@@ -112,7 +209,7 @@ function ResizingThinkingLabel({ text }: { text: string }) {
   return (
     <span
       data-testid="thinking-runtime-state-label"
-      className="relative inline-block max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium text-[color:var(--text-primary)]"
+      className="relative inline-block max-w-[7.5rem] sm:max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium text-[color:var(--text-primary)]"
     >
       <span
         className="t-resize inline-block whitespace-nowrap"
@@ -482,12 +579,57 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     return runtimeModelIconId || runtimeModelLabel || '';
   }, [isExternalCliEngine, runtimeCurrentModelId, runtimeModelIconId, runtimeModelLabel]);
 
+  const resolvedTriggerBrand = useMemo(
+    () => (resolvedTriggerBrandIconId ? detectProviderBrand(resolvedTriggerBrandIconId) : 'generic'),
+    [resolvedTriggerBrandIconId]
+  );
+  const triggerUsesMonoBrand =
+    resolvedTriggerBrand === 'anthropic' || TRIGGER_MONO_CURRENT_COLOR_BRANDS.has(resolvedTriggerBrand);
+
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [popoverLayout, setPopoverLayout] = useState<T3PopoverLayoutState>(() =>
+    computeT3PopoverLayout(null, isMobile)
+  );
+
+  const syncPopoverLayout = useCallback(() => {
+    const next = computeT3PopoverLayout(runtimeModelTriggerRef.current, isMobile);
+    setPopoverLayout((prev) =>
+      prev.width === next.width && prev.height === next.height && prev.tier === next.tier
+        ? prev
+        : next
+    );
+  }, [isMobile, runtimeModelTriggerRef]);
 
   const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      syncPopoverLayout();
+      onThinkingMenuWillOpen();
+    }
     setIsModelMenuOpen(open);
-    if (open) onThinkingMenuWillOpen();
-  }, [onThinkingMenuWillOpen]);
+  }, [onThinkingMenuWillOpen, syncPopoverLayout]);
+
+  // 菜单展开期间监听窗口与聊天列容器尺寸变化（分屏开合 / 侧栏折叠 / 窗口拖拽），实时收敛自适应宽度与净空高度
+  useEffect(() => {
+    if (!isModelMenuOpen || typeof window === 'undefined') return undefined;
+    syncPopoverLayout();
+
+    const handleResize = () => syncPopoverLayout();
+    window.addEventListener('resize', handleResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', handleResize, { passive: true });
+
+    const chatPaneEl = runtimeModelTriggerRef.current?.closest('.unified-input-docked') as HTMLElement | null;
+    const ro =
+      typeof ResizeObserver !== 'undefined' && chatPaneEl
+        ? new ResizeObserver(handleResize)
+        : null;
+    if (chatPaneEl && ro) ro.observe(chatPaneEl);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      ro?.disconnect();
+    };
+  }, [isModelMenuOpen, runtimeModelTriggerRef, syncPopoverLayout]);
 
   return (
     <div className="flex items-center justify-between gap-2">
@@ -574,7 +716,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           <span
             ref={runtimeModelTriggerRef}
             className={cn(
-              'relative inline-flex h-8 min-w-0 max-w-[15rem] shrink-0 items-center rounded-[var(--radius-shell-control)] text-xs font-medium leading-none',
+              'relative inline-flex h-8 min-w-0 max-w-[11rem] sm:max-w-[15rem] shrink-0 items-center rounded-[var(--radius-shell-control)] text-xs font-medium leading-none',
               // coarse 下外壳随内部触发器抬到 44 高，避免子元素纵向溢出行盒
               coarseSolidTouchHeightClass,
               'text-[color:var(--text-primary)]'
@@ -618,9 +760,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                         modelId={resolvedTriggerBrandIconId}
                         size={15}
                         showTooltip={false}
-                        variant="color"
-                        renderMode="glyph"
-                        className="shrink-0"
+                        variant={triggerUsesMonoBrand ? 'mono' : 'color'}
+                        renderMode={triggerUsesMonoBrand ? 'default' : 'glyph'}
+                        style={resolvedTriggerBrand === 'anthropic' ? { color: '#D97757' } : undefined}
+                        className="shrink-0 text-foreground"
                       />
                     ) : (
                       <Lightning
@@ -642,16 +785,12 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                 </AppMenuTrigger>
                 <AppMenuContent
                   align="end"
-                  sideOffset={8}
-                  width="auto"
-                  className={cn(
-                    '!overflow-hidden !rounded-2xl !border !border-border/80 !bg-popover !p-0 !shadow-xl',
-                    isMobile
-                      ? 'w-[min(356px,calc(100vw-16px))] max-w-[min(356px,calc(100vw-16px))]'
-                      : 'w-[min(588px,calc(100vw-24px))] max-w-[min(588px,calc(100vw-24px))]'
-                  )}
+                  width={popoverLayout.width}
+                  className="!max-w-none !min-w-0 !overflow-hidden !rounded-2xl !border !border-border/80 !bg-popover !p-0 !shadow-xl"
                 >
-                  <React.Suspense fallback={<div className="h-[372px] w-full" />}>
+                  <React.Suspense
+                    fallback={<div style={{ height: popoverLayout.height }} className="w-full" />}
+                  >
                     <LazyT3ModelSelectorPopover
                       options={runtimeModelOptions}
                       currentModelId={runtimeCurrentModelId}
@@ -674,6 +813,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                       onPermissionPresetChange={onPermissionPresetChange}
                       onRequestClose={() => setIsModelMenuOpen(false)}
                       isMobile={isMobile}
+                      layoutTier={popoverLayout.tier}
+                      lockedHeight={popoverLayout.height}
                       disabled={isStreaming}
                     />
                   </React.Suspense>

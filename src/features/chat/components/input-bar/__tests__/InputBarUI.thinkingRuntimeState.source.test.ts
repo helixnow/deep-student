@@ -109,8 +109,8 @@ describe('InputBarUI T3 Code model & thinking runtime selector source contract',
     expect(providerIconEnd).toBeGreaterThan(providerIconStart);
     expect(providerIconSource).toContain('modelId={resolvedTriggerBrandIconId}');
     expect(providerIconSource).toContain('size={15}');
-    expect(providerIconSource).toContain('variant="color"');
-    expect(providerIconSource).toContain('renderMode="glyph"');
+    expect(providerIconSource).toContain("variant={triggerUsesMonoBrand ? 'mono' : 'color'}");
+    expect(providerIconSource).toContain("renderMode={triggerUsesMonoBrand ? 'default' : 'glyph'}");
   });
 
   it('places attachment on the left and model/reasoning pill in the right action cluster before send', () => {

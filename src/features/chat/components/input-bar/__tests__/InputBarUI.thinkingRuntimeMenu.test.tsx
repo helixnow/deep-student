@@ -311,4 +311,70 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
     await user.click(screen.getByTestId('t3-permission-option-cautious'));
     expect(onPermissionPresetChange).toHaveBeenCalledWith('cautious', undefined);
   });
+
+  it('locks popover width and height across provider switches without jitter and adapts layout tier to viewport width', async () => {
+    const user = userEvent.setup();
+    const prevInnerWidth = window.innerWidth;
+
+    try {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 460 });
+      window.dispatchEvent(new Event('resize'));
+
+      renderInputBar({
+        enableThinking: false,
+        thinkingStateLabel: '推理: 关闭',
+        thinkingDepthOptions: [],
+        onToggleThinking: vi.fn(),
+        runtimeModelOptions: [
+          {
+            id: 'claude-opus-5.5',
+            label: 'Claude Opus 5.5',
+            providerLabel: 'Anthropic',
+            iconId: 'claude-opus-5.5',
+          },
+          {
+            id: 'deepseek-v4-ultra-long-enterprise-preview-name',
+            label: 'deepseek-v4-ultra-long-enterprise-preview-name',
+            providerLabel: 'DeepSeek',
+            iconId: 'deepseek-v4',
+          },
+        ],
+        runtimeModelLabel: 'Claude Opus 5.5',
+        runtimeModelProviderLabel: 'Anthropic',
+        runtimeCurrentModelId: 'claude-opus-5.5',
+      });
+
+      await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+      const selector = await screen.findByTestId('t3-model-selector');
+      expect(selector).toHaveAttribute('data-layout-tier', 'medium');
+
+      const menuShell = selector.closest('.app-menu-content') as HTMLElement;
+      const initialWidth = menuShell.style.width;
+      const initialHeight = selector.style.height;
+      expect(initialWidth).toBe('444px');
+
+      // Switching between Anthropic, DeepSeek (long label), and empty Favorites keeps exact width & height
+      await user.click(screen.getByTestId('t3-rail-group-brand:deepseek'));
+      expect(menuShell.style.width).toBe(initialWidth);
+      expect(selector.style.height).toBe(initialHeight);
+
+      await user.click(screen.getByTestId('t3-rail-favorites'));
+      expect(menuShell.style.width).toBe(initialWidth);
+      expect(selector.style.height).toBe(initialHeight);
+
+      // Narrowing to 360px switches cleanly to compact tier
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 360 });
+      fireEvent(window, new Event('resize'));
+      await waitFor(() => {
+        expect(selector).toHaveAttribute('data-layout-tier', 'compact');
+      });
+      expect(screen.getByTestId('t3-reasoning-pane-mobile')).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        writable: true,
+        value: prevInnerWidth,
+      });
+    }
+  });
 });
