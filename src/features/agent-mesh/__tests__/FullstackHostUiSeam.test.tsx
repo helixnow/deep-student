@@ -306,6 +306,13 @@ describe('Fullstack Host <-> UI Seam (dstu.agent-mesh)', () => {
         ).toBe('waiting_approval');
       });
 
+      // Single external CLI turn without active /swarm MUST NOT render SwarmCapsuleBar
+      const { unmount: unmountSoloCapsule } = render(
+        <SwarmCapsuleBar sessionId="sess-fullstack" />,
+      );
+      expect(screen.queryByTestId('swarm-capsule-bar')).toBeNull();
+      unmountSoloCapsule();
+
       // 3) Respond approval using frontend `decision: 'allow_session'` -> Host translates to `{ approved: true, scope: 'session' }`!
       await agentMeshHost.respondApproval({
         threadId,

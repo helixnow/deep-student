@@ -3,9 +3,11 @@
 // are terminated cleanly without leaving orphan background processes.
 
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
+import os from 'node:os';
 import type { Readable, Writable } from 'node:stream';
 import path from 'node:path';
 import type { McpInjectionSpec } from './adapter-types.ts';
+import { augmentPosixUserPath } from './probe.ts';
 
 export interface SpawnedProcessLike {
   readonly pid?: number | undefined;
@@ -138,6 +140,7 @@ export function buildInjectedSubprocessEnv(options: {
   readonly extraEnv?: Readonly<Record<string, string | undefined>>;
   readonly mcp?: McpInjectionSpec;
   readonly platform?: NodeJS.Platform;
+  readonly homeDir?: string;
 }): NodeJS.ProcessEnv {
   const platform = options.platform ?? process.platform;
   const delimiter = platform === 'win32' ? ';' : ':';
@@ -184,6 +187,12 @@ export function buildInjectedSubprocessEnv(options: {
         merged[pathKey] = deduped.join(delimiter);
       }
     }
+  }
+
+  if (platform !== 'win32') {
+    const pathKey = Object.keys(merged).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
+    const homeDir = options.homeDir ?? merged.HOME ?? os.homedir();
+    merged[pathKey] = augmentPosixUserPath(merged[pathKey], homeDir, platform);
   }
 
   return merged;

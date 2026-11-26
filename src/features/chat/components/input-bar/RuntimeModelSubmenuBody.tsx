@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, Star, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, Star, TerminalWindow, X } from '@phosphor-icons/react';
 import {
   AppMenuCheckboxItem,
   AppMenuGroup,
@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import { useFavoriteChatModels } from '../../hooks/useFavoriteChatModels';
 
+export const CLI_ENGINE_ID_PREFIX = 'cli-agent:';
+
 export interface RuntimeModelOption {
   id: string;
   label: string;
@@ -35,6 +37,8 @@ export interface RuntimeModelOption {
   isRecent?: boolean;
   /** 最近选择中的名次（0 = 最近一次），用于「最近」分区按时间排序 */
   recentRank?: number;
+  /** 是否为本地外部编程 CLI 引擎（如 cli-agent:codex） */
+  isExternalCli?: boolean;
 }
 
 export interface RuntimeModelMultiSelectConfig {
@@ -124,17 +128,29 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
   );
 
   const sections = useMemo<Section[]>(() => {
+    // 对比多选模式下隐藏外部 CLI 行，避免多模型对比被 CLI 引擎 ID 污染
+    const modeFiltered = multiActive
+      ? sanitizedOptions.filter(
+          (model) => !model.isExternalCli && !model.id.startsWith(CLI_ENGINE_ID_PREFIX),
+        )
+      : sanitizedOptions;
+
     const filtered = keyword
-      ? sanitizedOptions.filter((model) => [model.label, model.providerLabel, model.id]
+      ? modeFiltered.filter((model) => [model.label, model.providerLabel, model.id]
         .filter((value): value is string => typeof value === 'string' && value.length > 0)
         .join(' ')
         .toLowerCase()
         .includes(keyword))
-      : sanitizedOptions;
+      : modeFiltered;
 
     const result: Section[] = [];
-    // 收藏：只取仍可用的模型（已删除/失效模型的收藏静默忽略），保持列表原有顺序（供应商顺序）
-    const favorites = filtered.filter((model) => favoriteIds.has(model.id));
+    // 收藏：只取仍可用的 LLM 模型（已删除/失效模型的收藏静默忽略），保持列表原有顺序（供应商顺序）
+    const favorites = filtered.filter(
+      (model) =>
+        !model.isExternalCli &&
+        !model.id.startsWith(CLI_ENGINE_ID_PREFIX) &&
+        favoriteIds.has(model.id),
+    );
     if (favorites.length > 0) {
       result.push({
         key: '__favorites__',
@@ -144,7 +160,13 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
     }
     if (!keyword) {
       const recent = filtered
-        .filter((model) => model.isRecent && !favoriteIds.has(model.id))
+        .filter(
+          (model) =>
+            !model.isExternalCli &&
+            !model.id.startsWith(CLI_ENGINE_ID_PREFIX) &&
+            model.isRecent &&
+            !favoriteIds.has(model.id),
+        )
         .sort((a, b) => (a.recentRank ?? Number.MAX_SAFE_INTEGER) - (b.recentRank ?? Number.MAX_SAFE_INTEGER));
       if (recent.length > 0) {
         result.push({ key: '__recent__', label: t('chatV2:inputBar.runtimeModelRecent'), models: recent });
@@ -160,7 +182,7 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
     });
     result.push(...providerGroups.values());
     return result;
-  }, [favoriteIds, keyword, otherProviderLabel, sanitizedOptions, t]);
+  }, [favoriteIds, keyword, multiActive, otherProviderLabel, sanitizedOptions, t]);
 
   const handleToggleFavorite = useCallback((modelId: string) => {
     void toggleFavorite(modelId).then((result) => {
@@ -194,20 +216,25 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
   );
 
   const renderRow = (model: RuntimeModelOption, sectionKey: string) => {
-    const favorite = favoriteIds.has(model.id);
+    const isCliRow = Boolean(model.isExternalCli || model.id.startsWith(CLI_ENGINE_ID_PREFIX));
+    const favorite = !isCliRow && favoriteIds.has(model.id);
     const favoriteLabel = favorite
       ? t('chatV2:modelPicker.unfavorite')
       : t('chatV2:modelPicker.favorite');
-    const icon = model.iconId ? (
+    const icon = isCliRow ? (
+      <TerminalWindow size={14} weight="duotone" className="text-primary" />
+    ) : model.iconId ? (
       <ProviderIcon modelId={model.iconId} size={14} showTooltip={false} variant="mono" />
     ) : undefined;
 
     const row = multiActive ? (
       <AppMenuCheckboxItem
         checked={selectedIdSet.has(model.id)}
-        disabled={disabled}
-        onCheckedChange={() => multiSelect?.onToggle(model.id)}
-        onKeyDown={(event) => handleRowKeyDown(event, model.id)}
+        disabled={disabled || isCliRow}
+        onCheckedChange={() => {
+          if (!isCliRow) multiSelect?.onToggle(model.id);
+        }}
+        onKeyDown={isCliRow ? undefined : (event) => handleRowKeyDown(event, model.id)}
         className="min-w-0 flex-1"
         data-model-id={model.id}
       >
@@ -222,7 +249,7 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
         checked={model.id === currentModelId}
         disabled={disabled}
         onClick={() => onSelect?.(model.id)}
-        onKeyDown={(event) => handleRowKeyDown(event, model.id)}
+        onKeyDown={isCliRow ? undefined : (event) => handleRowKeyDown(event, model.id)}
         className="min-w-0 flex-1"
         data-model-id={model.id}
       >
@@ -233,35 +260,37 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
     return (
       <div key={`${sectionKey}:${model.id}`} className="group/model-row flex min-w-0 items-center" role="none">
         {row}
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          tabIndex={-1}
-          aria-label={`${favoriteLabel}: ${model.label}`}
-          aria-pressed={favorite}
-          title={`${favoriteLabel} (F)`}
-          data-testid="runtime-model-favorite-toggle"
-          onMouseDown={(event) => {
-            // 保持焦点在当前行/搜索框，避免菜单焦点跳动
-            event.preventDefault();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            handleToggleFavorite(model.id);
-          }}
-          className={cn(
-            'ml-0.5 !h-6 !w-6 shrink-0 rounded-[var(--menu-shell-row-radius)] [&_svg]:!h-[13px] [&_svg]:!w-[13px]',
-            favorite
-              ? 'text-warning opacity-100'
-              : 'text-[color:var(--menu-shell-muted-foreground)] opacity-0 group-hover/model-row:opacity-100 group-focus-within/model-row:opacity-100 focus-visible:opacity-100',
-            // 触屏无 hover：星标常显且触控热区扩大到 ≥44px（--touch-target-size），避免 24px 按钮误触
-            '[@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:[&_svg]:!h-4 [@media(pointer:coarse)]:[&_svg]:!w-4'
-          )}
-        >
-          <Star size={13} weight={favorite ? 'fill' : 'regular'} />
-        </DsButton>
+        {!isCliRow && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            tabIndex={-1}
+            aria-label={`${favoriteLabel}: ${model.label}`}
+            aria-pressed={favorite}
+            title={`${favoriteLabel} (F)`}
+            data-testid="runtime-model-favorite-toggle"
+            onMouseDown={(event) => {
+              // 保持焦点在当前行/搜索框，避免菜单焦点跳动
+              event.preventDefault();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              handleToggleFavorite(model.id);
+            }}
+            className={cn(
+              'ml-0.5 !h-6 !w-6 shrink-0 rounded-[var(--menu-shell-row-radius)] [&_svg]:!h-[13px] [&_svg]:!w-[13px]',
+              favorite
+                ? 'text-warning opacity-100'
+                : 'text-[color:var(--menu-shell-muted-foreground)] opacity-0 group-hover/model-row:opacity-100 group-focus-within/model-row:opacity-100 focus-visible:opacity-100',
+              // 触屏无 hover：星标常显且触控热区扩大到 ≥44px（--touch-target-size），避免 24px 按钮误触
+              '[@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:[&_svg]:!h-4 [@media(pointer:coarse)]:[&_svg]:!w-4'
+            )}
+          >
+            <Star size={13} weight={favorite ? 'fill' : 'regular'} />
+          </DsButton>
+        )}
       </div>
     );
   };

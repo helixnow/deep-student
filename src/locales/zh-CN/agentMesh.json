@@ -1,4 +1,12 @@
 {
+  "picker": {
+    "localCodingCli": "本地编程 CLI",
+    "cloudModels": "云端对话模型",
+    "builtinEngine": "内置学习助手",
+    "switchToBuiltin": "切回内置模型",
+    "cliBadge": "CLI",
+    "noCliInstalled": "未检测到本机编程 CLI"
+  },
   "mention": {
     "agentsSection": "编程与协同代理",
     "modelsSection": "对话模型",
@@ -26,14 +34,15 @@
     }
   },
   "workspace": {
-    "selectFolder": "选择目录",
+    "selectFolder": "选择项目目录",
+    "browseFolder": "浏览本地文件夹…",
     "boundFolderTitle": "当前协作目录：{{path}}",
     "popoverTitle": "关联本地项目目录",
     "popoverDesc": "默认在原目录直接修改，每轮自动生成无侵入隐藏快照以便随时回退。",
     "pathPlaceholder": "输入或粘贴本地项目路径，如 ~/projects/app",
     "browseNative": "选择文件夹…",
-    "applyPath": "确定",
-    "clearBinding": "清除",
+    "applyPath": "绑定",
+    "clearBinding": "清除绑定",
     "isolatedBranch": "使用独立 Git 工作树",
     "dialogTitle": "选择外部编程工具的工作目录"
   },
@@ -42,6 +51,27 @@
     "steeredNotice": "已向 {{agent}} 发送实时引导指令",
     "queuedWhileRunning": "{{agent}} 正在运行，消息已加入队列（可点「引导」立即注入）",
     "hostUnavailable": "外部编程 CLI 服务未就绪，请检查桌面端内置插件状态"
+  },
+  "diffStrip": {
+    "summary": "{{agent}} 修改了 {{count}} 个文件",
+    "viewChanges": "查看改动",
+    "hideChanges": "收起改动",
+    "revertTurn": "回退此轮",
+    "reverted": "已回退",
+    "summarize": "让主代理总结",
+    "summarizePrompt": "请结合刚才 {{agent}} 的代码改动（{{files}}），帮我总结核心实现原理，并指出值得记入笔记或制成闪卡的要点。",
+    "loadingDiff": "正在读取差异…",
+    "noPatch": "暂无补丁详情"
+  },
+  "approvalBar": {
+    "title": "{{agent}} 请求执行 {{tool}}",
+    "toolOnlyTitle": "请求执行 {{tool}}",
+    "target": "目标：{{target}}",
+    "command": "命令：{{command}}",
+    "reason": "原因：{{reason}}",
+    "allowOnce": "允许一次",
+    "allowSession": "本会话允许",
+    "deny": "拒绝"
   },
   "inlineCard": {
     "defaultWorkspace": "当前工作区",

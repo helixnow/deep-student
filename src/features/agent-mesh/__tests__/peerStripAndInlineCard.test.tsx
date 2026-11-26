@@ -2,6 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import i18n from '@/i18n';
+import { APP_EVENTS, addAppEventListener, type ChatV2SetInputDetail } from '@/events';
 import zhAgentMesh from '@/locales/zh-CN/agentMesh.json';
 import enAgentMesh from '@/locales/en-US/agentMesh.json';
 import {
@@ -278,5 +279,129 @@ describe('InlineExternalTurnCard, PeerExchangeStrip & SessionMeshStreamSection',
     expect(screen.getByTestId('peer-exchange-strip-trigger').textContent).toContain(
       'Claude Code → Codex CLI · 交接实现与 3 个改动文件',
     );
+  });
+
+  it('suppresses InlineExternalTurnCard for timelineMode="native_chat" while running or 0-diff, and renders sleek 1-line diff/revert strip when files changed', async () => {
+    const revertCheckpointSpy = vi.fn(async () => ({
+      revertedPaths: ['src/raft/log.ts'],
+      skippedUserModifiedPaths: [],
+    }));
+    registerAgentMeshHostBridge({
+      revertCheckpoint: revertCheckpointSpy,
+    });
+
+    // 1. Running native_chat turn -> 0 DOM nodes in SessionMeshStreamSection (no alien gray card!)
+    act(() => {
+      useAgentMeshStore.getState().upsertThread({
+        threadId: 'thr-native-1',
+        chatSessionId: 'sess-native',
+        agentId: 'codex',
+        agentName: 'Codex CLI',
+        rootPath: '/Users/heli/projects/deep-raft',
+        status: 'running',
+        timelineMode: 'native_chat',
+        assistantText: 'Streaming natively in MessageList...',
+        toolCalls: [],
+        childSubagents: [],
+        activeBgTaskCount: 0,
+        pendingApproval: null,
+        diffSummary: null,
+        humanControlled: false,
+        createdAt: 1000,
+        updatedAt: 1000,
+      });
+    });
+
+    const { container, rerender } = render(<SessionMeshStreamSection sessionId="sess-native" />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId('inline-external-turn-thr-native-1')).toBeNull();
+    expect(screen.queryByTestId('mesh-turn-diff-strip-thr-native-1')).toBeNull();
+
+    // 2. Completed native_chat turn with 0 file changes -> STILL 0 DOM nodes!
+    act(() => {
+      useAgentMeshStore.getState().patchThread('thr-native-1', {
+        status: 'idle',
+        diffSummary: {
+          filesChanged: 0,
+          totalAdditions: 0,
+          totalDeletions: 0,
+          files: [],
+        },
+      });
+    });
+    rerender(<SessionMeshStreamSection sessionId="sess-native" />);
+    expect(container.firstChild).toBeNull();
+
+    // 3. Completed native_chat turn with modified files -> renders 1-line diff & checkpoint strip
+    act(() => {
+      useAgentMeshStore.getState().patchThread('thr-native-1', {
+        status: 'idle',
+        lastCheckpointId: 'cp-native-1',
+        diffSummary: {
+          filesChanged: 2,
+          totalAdditions: 31,
+          totalDeletions: 6,
+          checkpointId: 'cp-native-1',
+          files: [
+            {
+              path: 'src/raft/log.ts',
+              status: 'modified',
+              additions: 24,
+              deletions: 6,
+              patch: '@@ -10,6 +10,24 @@\n+export function appendEntries() {}',
+            },
+            {
+              path: 'src/raft/log.test.ts',
+              status: 'added',
+              additions: 7,
+              deletions: 0,
+            },
+          ],
+        },
+      });
+    });
+    rerender(<SessionMeshStreamSection sessionId="sess-native" />);
+
+    expect(screen.queryByTestId('inline-external-turn-thr-native-1')).toBeNull();
+    const diffStrip = screen.getByTestId('mesh-turn-diff-strip-thr-native-1');
+    expect(diffStrip).toHaveTextContent('Codex CLI 修改了 2 个文件');
+    expect(diffStrip).toHaveTextContent('+31');
+    expect(diffStrip).toHaveTextContent('-6');
+
+    // Expandable file list & patches (`查看改动`)
+    fireEvent.click(screen.getByTestId('mesh-turn-diff-toggle'));
+    expect(screen.getByTestId('mesh-turn-diff-files')).toHaveTextContent('src/raft/log.ts');
+    expect(screen.getByTestId('mesh-turn-diff-patch')).toHaveTextContent(
+      '+export function appendEntries() {}',
+    );
+
+    // Summarize button dispatches CHAT_V2_SET_INPUT
+    const dispatched: ChatV2SetInputDetail[] = [];
+    const off = addAppEventListener(APP_EVENTS.CHAT_V2_SET_INPUT, (detail) => {
+      dispatched.push(detail);
+    });
+    try {
+      fireEvent.click(screen.getByTestId('mesh-turn-diff-explain-btn'));
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0]?.content).toContain('Codex CLI');
+      expect(dispatched[0]?.content).toContain('src/raft/log.ts');
+    } finally {
+      off();
+    }
+
+    // Revert turn checkpoint -> switches button to `已回退` muted badge
+    fireEvent.click(screen.getByTestId('mesh-turn-diff-revert-btn'));
+    await waitFor(() => {
+      expect(revertCheckpointSpy).toHaveBeenCalledWith({
+        chatSessionId: 'sess-native',
+        checkpointId: 'cp-native-1',
+        threadId: 'thr-native-1',
+        rootPath: '/Users/heli/projects/deep-raft',
+      });
+    });
+
+    rerender(<SessionMeshStreamSection sessionId="sess-native" />);
+    expect(screen.queryByTestId('mesh-turn-diff-revert-btn')).toBeNull();
+    expect(screen.getByTestId('mesh-turn-diff-reverted')).toHaveTextContent('已回退');
   });
 });

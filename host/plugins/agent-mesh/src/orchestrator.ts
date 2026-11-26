@@ -14,6 +14,8 @@
  * - `AgentKillSwitch` emergency stop hook + startup orphan crash reconciliation
  */
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import path from 'node:path';
 import type {
   AgentMeshService,
@@ -30,6 +32,11 @@ import type {
   SteerMeshTurnResult,
   SwarmControlInput,
 } from '../api.ts';
+import {
+  prepareNativeTurnTimeline,
+  type ChatTimelinePort,
+  type NativeTurnTimelineSession,
+} from './chat-timeline-bridge.ts';
 import {
   DEFAULT_BUILTIN_COORDINATOR_AGENT,
   type AdapterRegistryPort,
@@ -91,12 +98,31 @@ function isFileMutatingTool(toolName: string): boolean {
   return /(?:^|[._:/-])(edit|write|patch|create_file|delete_file|replace)(?:$|[._:/-])/.test(lower);
 }
 
+function isFilesystemRootPath(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (!trimmed || trimmed === '/' || trimmed === '\\') {
+    return true;
+  }
+  const resolved = path.resolve(trimmed);
+  if (resolved === '/') {
+    return true;
+  }
+  if (process.platform === 'win32') {
+    const winResolved = path.win32.resolve(trimmed);
+    if (winResolved === path.win32.parse(winResolved).root) {
+      return true;
+    }
+  }
+  return false;
+}
+
 interface QueuedTurnTask {
   id: string;
   prompt: string;
   contextText: string | null;
   ownedGlobs: string[];
   readOnly: boolean;
+  nativeTimeline?: NativeTurnTimelineSession | null;
   signal?: AbortSignal;
   resolveCompletion: (result: CompletedTurnOutcome) => void;
   rejectCompletion: (error: unknown) => void;
@@ -124,6 +150,7 @@ interface ThreadActorState {
   activeTurnAbort: AbortController | null;
   activeAdapter: ExternalCodingAdapter | null;
   mainTurnSettled: boolean;
+  lastTurnError: string | null;
   quiescenceResolvers: Array<() => void>;
   idleResolvers: Array<() => void>;
   turnCounter: number;
@@ -149,6 +176,7 @@ export interface MeshOrchestratorOptions {
   fileLeases?: FileLeasePort;
   bridgeServer?: MeshBridgeServerPort;
   studyContextReader?: StudyContextReaderPort;
+  chatTimeline?: ChatTimelinePort | null;
   killSwitch?: () => MeshKillSwitchPort | undefined;
   onCoordinatorWake?: (notification: CoordinatorWakeNotification) => Promise<void> | void;
   emitEvent?: (event: AgentMeshEvent) => void;
@@ -196,21 +224,28 @@ export class MeshOrchestrator implements AgentMeshService {
   private readonly emitEventFn: ((event: AgentMeshEvent) => void) | undefined;
   private readonly logger: MeshLoggerLike;
   private readonly approvalLeaseWaitMs: number;
+  private readonly appDataDir: string | undefined;
+  private readonly inMemoryDb: boolean;
+  private chatTimelinePort: ChatTimelinePort | null;
 
   private readonly actors = new Map<string, ThreadActorState>();
   private readonly sessionApprovedTools = new Map<string, Set<string>>();
   private readonly coordinatorNotifications = new Map<string, CoordinatorWakeNotification[]>();
   private cachedAgents: DetectedCliAgent[] = [DEFAULT_BUILTIN_COORDINATOR_AGENT];
+  private initialProbeCompleted = false;
   private globalTurnSeq = 0;
   private disposed = false;
 
   constructor(options: MeshOrchestratorOptions = {}) {
     this.logger = options.logger ?? { warn: () => undefined };
+    this.appDataDir = options.appDataDir;
+    this.inMemoryDb = Boolean(options.inMemoryDb ?? !options.appDataDir);
+    this.chatTimelinePort = options.chatTimeline ?? null;
     this.storage =
       options.storage ??
       new AgentMeshStorage({
         appDataDir: options.appDataDir,
-        inMemory: options.inMemoryDb ?? !options.appDataDir,
+        inMemory: this.inMemoryDb,
       });
     const checkpointStorageDir =
       options.appDataDir && options.appDataDir !== ':memory:' && !options.inMemoryDb
@@ -246,6 +281,31 @@ export class MeshOrchestrator implements AgentMeshService {
     });
 
     this.bridgeServer.bindCallbacks?.(this.createBridgeCallbacks());
+  }
+
+  setChatTimelinePort(port: ChatTimelinePort | null): void {
+    this.chatTimelinePort = port;
+  }
+
+  resolveSafeWorkspaceRoot(
+    chatSessionId: string,
+    requestedRootPath?: string | null,
+    boundRootPath?: string | null,
+  ): string {
+    const candidate = (requestedRootPath?.trim() || boundRootPath?.trim() || '').trim();
+    if (candidate.length > 0 && !isFilesystemRootPath(candidate)) {
+      return candidate;
+    }
+    const baseDir =
+      this.appDataDir && this.appDataDir !== ':memory:' && !this.inMemoryDb
+        ? path.join(this.appDataDir, 'agent-mesh-workspaces')
+        : path.join(os.tmpdir(), 'dstu-agent-mesh-workspaces');
+    const sessionDir = path.join(
+      baseDir,
+      chatSessionId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'default',
+    );
+    fs.mkdirSync(sessionDir, { recursive: true });
+    return sessionDir;
   }
 
   // ---- Emergency Stop Hook (`ChatSessionService.registerEmergencyCancelHook`) ----
@@ -285,6 +345,7 @@ export class MeshOrchestrator implements AgentMeshService {
     const hasBuiltin = detected.some((a) => a.id === 'deepstudent');
     const merged = hasBuiltin ? [...detected] : [DEFAULT_BUILTIN_COORDINATOR_AGENT, ...detected];
     this.cachedAgents = merged;
+    this.initialProbeCompleted = true;
     this.emit({ type: 'agents_probed', agents: merged });
     return merged;
   }
@@ -347,8 +408,13 @@ export class MeshOrchestrator implements AgentMeshService {
     }
 
     const existingBinding = this.storage.getWorkspaceBinding(chatSessionId);
-    const rootPath = (rawInput.rootPath?.trim() || existingBinding?.rootPath || process.cwd()).trim();
-    if (!existingBinding && rawInput.rootPath?.trim()) {
+    const explicitRootPath = rawInput.rootPath?.trim() ?? '';
+    const rootPath = this.resolveSafeWorkspaceRoot(
+      chatSessionId,
+      explicitRootPath || null,
+      existingBinding?.rootPath ?? null,
+    );
+    if (!existingBinding && explicitRootPath.length > 0 && !isFilesystemRootPath(explicitRootPath)) {
       const bound = this.storage.setWorkspaceBinding(chatSessionId, rootPath);
       this.emit({ type: 'workspace_bound', chatSessionId, binding: bound });
     }
@@ -364,6 +430,23 @@ export class MeshOrchestrator implements AgentMeshService {
       rawInput.resumeSessionId !== undefined
         ? rawInput.resumeSessionId
         : (reusable?.externalSessionId ?? null);
+
+    let nativeTimeline: NativeTurnTimelineSession | null = null;
+    if (rawInput.timelineMode === 'native_chat' && this.chatTimelinePort) {
+      nativeTimeline = prepareNativeTurnTimeline({
+        port: this.chatTimelinePort,
+        chatSessionId,
+        agentId,
+        rosterName,
+        prompt,
+        userPrompt: rawInput.userPrompt,
+        userMessageId: rawInput.userMessageId,
+        assistantMessageId: rawInput.assistantMessageId,
+        skipUserMessageSave: rawInput.skipUserMessageSave,
+        cachedAgents: this.cachedAgents,
+        customTemplates: this.storage.listCustomTemplates(),
+      });
+    }
 
     const record = this.storage.upsertThread({
       threadId,
@@ -392,6 +475,7 @@ export class MeshOrchestrator implements AgentMeshService {
       contextText: rawInput.contextText ?? null,
       ownedGlobs: rawInput.ownedGlobs ?? [],
       readOnly: rawInput.readOnly === true,
+      nativeTimeline,
       signal: rawInput.signal,
       resolveCompletion: completionResolve,
       rejectCompletion: completionReject,
@@ -408,6 +492,7 @@ export class MeshOrchestrator implements AgentMeshService {
         status: completed.status,
         queued: false,
         thread: this.toThreadSnapshot(finalRecord),
+        ...(nativeTimeline ? { nativeTimelineAttached: true } : {}),
         assistantText: completed.assistantText,
         checkpointAfter: completed.checkpointAfter,
         diff: completed.diff,
@@ -425,6 +510,7 @@ export class MeshOrchestrator implements AgentMeshService {
       status: latestRecord.status,
       queued: wasBusy,
       thread: this.toThreadSnapshot(latestRecord),
+      ...(nativeTimeline ? { nativeTimelineAttached: true } : {}),
     };
   }
 
@@ -582,6 +668,7 @@ export class MeshOrchestrator implements AgentMeshService {
       if (actor) {
         while (actor.queue.length > 0) {
           const dropped = actor.queue.shift()!;
+          dropped.nativeTimeline?.cancelQueued(`Interrupted: ${reason}`);
           dropped.rejectCompletion(new Error(`Interrupted: ${reason}`));
         }
         await this.interruptActiveTaskOnly(actor, reason);
@@ -1115,7 +1202,11 @@ export class MeshOrchestrator implements AgentMeshService {
     }
 
     const binding = this.storage.getWorkspaceBinding(chatSessionId);
-    const rootPath = (input.rootPath?.trim() || binding?.rootPath || process.cwd()).trim();
+    const rootPath = this.resolveSafeWorkspaceRoot(
+      chatSessionId,
+      input.rootPath,
+      binding?.rootPath ?? null,
+    );
 
     // 1) Release caller's file leases so the downstream agent can edit handed-off files cleanly!
     await this.fileLeases.releaseAgentLeases(fromAgent.toLowerCase(), input.fromThreadId);
@@ -1192,6 +1283,7 @@ export class MeshOrchestrator implements AgentMeshService {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.chatTimelinePort = null;
     this.swarm.dispose();
     for (const actor of this.actors.values()) {
       await this.interruptActiveTaskOnly(actor, 'host_disposing');
@@ -1223,6 +1315,7 @@ export class MeshOrchestrator implements AgentMeshService {
         activeTurnAbort: null,
         activeAdapter: null,
         mainTurnSettled: false,
+        lastTurnError: null,
         quiescenceResolvers: [],
         idleResolvers: [],
         turnCounter: 0,
@@ -1263,20 +1356,39 @@ export class MeshOrchestrator implements AgentMeshService {
     actor: ThreadActorState,
     task: QueuedTurnTask,
   ): Promise<CompletedTurnOutcome> {
-    this.ensureKillSwitchClear();
+    const timeline = task.nativeTimeline ?? null;
+    try {
+      this.ensureKillSwitchClear();
+    } catch (killErr) {
+      const msg = killErr instanceof Error ? killErr.message : String(killErr);
+      timeline?.finalizeTurn({ status: 'failed', error: msg });
+      throw killErr;
+    }
+
     const record = this.storage.getThread(actor.threadId);
     if (!record) {
-      throw new Error(`AGENT_MESH_THREAD_NOT_FOUND: ${actor.threadId}`);
+      const missingMsg = `AGENT_MESH_THREAD_NOT_FOUND: ${actor.threadId}`;
+      timeline?.finalizeTurn({ status: 'failed', error: missingMsg });
+      throw new Error(missingMsg);
+    }
+
+    if (this.cachedAgents.length <= 1 && !this.initialProbeCompleted) {
+      this.initialProbeCompleted = true;
+      await this.probeAgents().catch(() => undefined);
     }
 
     const customTemplates = this.storage.listCustomTemplates();
     const adapter = this.adapters.getAdapter(record.agentId, customTemplates);
     if (!adapter) {
+      const unavailableMsg = `AGENT_MESH_ADAPTER_UNAVAILABLE: CLI adapter "${record.agentId}" is not available`;
       this.storage.updateThreadPatch(actor.threadId, { status: 'failed' });
       this.swarm.setMemberActivity(record.chatSessionId, record.rosterName, { status: 'failed' });
       this.emitThreadUpdated(actor.threadId);
-      throw new Error(`AGENT_MESH_ADAPTER_UNAVAILABLE: CLI adapter "${record.agentId}" is not available`);
+      timeline?.finalizeTurn({ status: 'failed', error: unavailableMsg });
+      throw new Error(unavailableMsg);
     }
+
+    timeline?.beginStream();
 
     const turnSeq = ++this.globalTurnSeq;
     actor.turnCounter += 1;
@@ -1287,6 +1399,7 @@ export class MeshOrchestrator implements AgentMeshService {
     actor.activeBgTasks.clear();
     actor.pendingApproval = null;
     actor.mainTurnSettled = false;
+    actor.lastTurnError = null;
 
     const abortController = new AbortController();
     actor.activeTurnAbort = abortController;
@@ -1295,163 +1408,183 @@ export class MeshOrchestrator implements AgentMeshService {
     const onExternalAbort = () => abortController.abort();
     task.signal?.addEventListener('abort', onExternalAbort, { once: true });
 
-    // Pre-acquire declared ownedGlobs leases if provided.
-    if (task.ownedGlobs.length > 0 && !task.readOnly) {
-      await this.fileLeases.acquireLease({
-        rootPath: record.rootPath,
-        patterns: task.ownedGlobs,
-        holderAgentId: record.rosterName,
-        threadId: record.threadId,
-        waitMs: 2_000,
-      });
-      this.emitLeasesUpdated(record.rootPath);
-    }
-
-    this.storage.updateThreadPatch(actor.threadId, { status: 'running' });
-    this.swarm.setMemberActivity(record.chatSessionId, record.rosterName, {
-      activeChildCount: 0,
-      activeBgTaskCount: 0,
-      status: 'working',
-      threadId: record.threadId,
-    });
-    this.emitThreadUpdated(actor.threadId);
-
-    // 1) Capture BEFORE hidden checkpoint (GIT_INDEX_FILE or non-git SHA-256 fallback).
-    const beforeCheckpoint = await this.checkpoints.captureCheckpoint({
-      chatSessionId: record.chatSessionId,
-      threadId: record.threadId,
-      agentId: record.agentId,
-      rosterName: record.rosterName,
-      rootPath: record.rootPath,
-      turnSeq,
-      kind: 'before',
-    });
-    this.storage.saveCheckpoint(beforeCheckpoint);
-    this.emit({
-      type: 'checkpoint_captured',
-      chatSessionId: record.chatSessionId,
-      checkpoint: beforeCheckpoint,
-    });
-
-    // 2) Issue scoped dual-channel MCP + CLI shim session token.
-    const mcpSpec = await this.bridgeServer.issueAgentSession({
-      chatSessionId: record.chatSessionId,
-      agentId: record.agentId,
-      rosterName: record.rosterName,
-      threadId: record.threadId,
-      rootPath: record.rootPath,
-    });
-
-    const fullPrompt = task.contextText
-      ? `${task.prompt}\n\n<study_context>\n${neutralizeUntrusted(task.contextText, 12_000)}\n</study_context>`
-      : task.prompt;
-
+    let beforeCheckpoint: MeshCheckpointRecord | null = null;
+    let afterCheckpoint: MeshCheckpointRecord | null = null;
+    let diff: MeshDiffReport | null = null;
     let terminalStatus: MeshThreadStatus = 'idle';
     let turnFailureError: string | null = null;
 
     try {
-      const refreshedThread = this.storage.getThread(actor.threadId)!;
-      const streamOrHandle = await adapter.startOrResumeTurn({
+      // Pre-acquire declared ownedGlobs leases if provided.
+      if (task.ownedGlobs.length > 0 && !task.readOnly) {
+        await this.fileLeases.acquireLease({
+          rootPath: record.rootPath,
+          patterns: task.ownedGlobs,
+          holderAgentId: record.rosterName,
+          threadId: record.threadId,
+          waitMs: 2_000,
+        });
+        this.emitLeasesUpdated(record.rootPath);
+      }
+
+      this.storage.updateThreadPatch(actor.threadId, { status: 'running' });
+      this.swarm.setMemberActivity(record.chatSessionId, record.rosterName, {
+        activeChildCount: 0,
+        activeBgTaskCount: 0,
+        status: 'working',
         threadId: record.threadId,
-        cwd: record.rootPath,
-        prompt: fullPrompt,
-        resumeSessionId: refreshedThread.externalSessionId,
-        mcp: mcpSpec,
-        env: mcpSpec.envVars,
-        signal: abortController.signal,
-        readOnly: task.readOnly,
-        onEvent: (ev) => this.handleAdapterRuntimeEvent(actor, record, ev),
+      });
+      this.emitThreadUpdated(actor.threadId);
+
+      // 1) Capture BEFORE hidden checkpoint (GIT_INDEX_FILE or non-git SHA-256 fallback).
+      beforeCheckpoint = await this.checkpoints.captureCheckpoint({
+        chatSessionId: record.chatSessionId,
+        threadId: record.threadId,
+        agentId: record.agentId,
+        rosterName: record.rosterName,
+        rootPath: record.rootPath,
+        turnSeq,
+        kind: 'before',
+      });
+      this.storage.saveCheckpoint(beforeCheckpoint);
+      this.emit({
+        type: 'checkpoint_captured',
+        chatSessionId: record.chatSessionId,
+        checkpoint: beforeCheckpoint,
       });
 
-      if (streamOrHandle && Symbol.asyncIterator in Object(streamOrHandle)) {
-        for await (const ev of streamOrHandle as AsyncIterable<NormalizedRuntimeEvent>) {
-          this.handleAdapterRuntimeEvent(actor, record, ev);
+      // 2) Issue scoped dual-channel MCP + CLI shim session token.
+      const mcpSpec = await this.bridgeServer.issueAgentSession({
+        chatSessionId: record.chatSessionId,
+        agentId: record.agentId,
+        rosterName: record.rosterName,
+        threadId: record.threadId,
+        rootPath: record.rootPath,
+      });
+
+      const fullPrompt = task.contextText
+        ? `${task.prompt}\n\n<study_context>\n${neutralizeUntrusted(task.contextText, 12_000)}\n</study_context>`
+        : task.prompt;
+
+      try {
+        const refreshedThread = this.storage.getThread(actor.threadId)!;
+        const streamOrHandle = await adapter.startOrResumeTurn({
+          threadId: record.threadId,
+          cwd: record.rootPath,
+          prompt: fullPrompt,
+          resumeSessionId: refreshedThread.externalSessionId,
+          mcp: mcpSpec,
+          env: mcpSpec.envVars,
+          signal: abortController.signal,
+          readOnly: task.readOnly,
+          onEvent: (ev) => this.handleAdapterRuntimeEvent(actor, record, ev, timeline),
+        });
+
+        if (streamOrHandle && Symbol.asyncIterator in Object(streamOrHandle)) {
+          for await (const ev of streamOrHandle as AsyncIterable<NormalizedRuntimeEvent>) {
+            this.handleAdapterRuntimeEvent(actor, record, ev, timeline);
+          }
+        } else if (
+          streamOrHandle &&
+          typeof streamOrHandle === 'object' &&
+          'events' in streamOrHandle &&
+          streamOrHandle.events
+        ) {
+          for await (const ev of streamOrHandle.events) {
+            this.handleAdapterRuntimeEvent(actor, record, ev, timeline);
+          }
+          if (streamOrHandle.completion) {
+            await streamOrHandle.completion;
+          }
         }
-      } else if (
-        streamOrHandle &&
-        typeof streamOrHandle === 'object' &&
-        'events' in streamOrHandle &&
-        streamOrHandle.events
-      ) {
-        for await (const ev of streamOrHandle.events) {
-          this.handleAdapterRuntimeEvent(actor, record, ev);
+
+        actor.mainTurnSettled = true;
+
+        // 3) Quiescence Gate (Spec §IV.1): NEVER settle checkpoint, release leases, or park
+        // while nested child subagents or background tasks are still running!
+        if (this.actorHasActiveChildren(actor) && !abortController.signal.aborted) {
+          this.storage.updateThreadPatch(actor.threadId, { status: 'waiting_children' });
+          if (this.storage.getSwarmMember(record.chatSessionId, record.rosterName)) {
+            this.swarm.settleMemberTurn(record.chatSessionId, record.rosterName, {
+              hasActiveChildren: true,
+            });
+          }
+          this.emitThreadUpdated(actor.threadId);
+          await this.waitForActorQuiescence(actor, abortController.signal);
         }
-        if (streamOrHandle.completion) {
-          await streamOrHandle.completion;
+
+        if (abortController.signal.aborted) {
+          terminalStatus = 'stopped';
+        } else if (this.storage.getThread(actor.threadId)?.status === 'failed') {
+          terminalStatus = 'failed';
         }
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          terminalStatus = 'stopped';
+        } else {
+          terminalStatus = 'failed';
+          turnFailureError = error instanceof Error ? error.message : String(error);
+        }
+      } finally {
+        await this.bridgeServer.revokeAgentSession(record.threadId);
+        // Release file leases ONLY AFTER full quiescence!
+        await this.fileLeases.releaseAgentLeases(record.rosterName, record.threadId);
+        this.emitLeasesUpdated(record.rootPath);
       }
 
-      actor.mainTurnSettled = true;
+      // 4) Capture AFTER hidden checkpoint & compute per-turn diff attribution!
+      afterCheckpoint = await this.checkpoints.captureCheckpoint({
+        chatSessionId: record.chatSessionId,
+        threadId: record.threadId,
+        agentId: record.agentId,
+        rosterName: record.rosterName,
+        rootPath: record.rootPath,
+        turnSeq,
+        kind: 'after',
+      });
+      this.storage.saveCheckpoint(afterCheckpoint);
+      this.emit({
+        type: 'checkpoint_captured',
+        chatSessionId: record.chatSessionId,
+        checkpoint: afterCheckpoint,
+      });
 
-      // 3) Quiescence Gate (Spec §IV.1): NEVER settle checkpoint, release leases, or park
-      // while nested child subagents or background tasks are still running!
-      if (this.actorHasActiveChildren(actor) && !abortController.signal.aborted) {
-        this.storage.updateThreadPatch(actor.threadId, { status: 'waiting_children' });
-        if (this.storage.getSwarmMember(record.chatSessionId, record.rosterName)) {
-          this.swarm.settleMemberTurn(record.chatSessionId, record.rosterName, {
-            hasActiveChildren: true,
-          });
-        }
-        this.emitThreadUpdated(actor.threadId);
-        await this.waitForActorQuiescence(actor, abortController.signal);
-      }
-
-      if (abortController.signal.aborted) {
-        terminalStatus = 'stopped';
-      } else if (this.storage.getThread(actor.threadId)?.status === 'failed') {
-        terminalStatus = 'failed';
-      }
-    } catch (error) {
-      if (abortController.signal.aborted) {
-        terminalStatus = 'stopped';
-      } else {
-        terminalStatus = 'failed';
-        turnFailureError = error instanceof Error ? error.message : String(error);
-      }
+      diff = await this.checkpoints.diffCheckpoints(
+        record.rootPath,
+        beforeCheckpoint.ref,
+        afterCheckpoint.ref,
+        record.agentId,
+      );
+      actor.diffSummary = {
+        filesChanged: diff.files.length,
+        additions: diff.totalAdditions,
+        deletions: diff.totalDeletions,
+      };
+    } catch (setupOrCheckpointErr) {
+      terminalStatus = abortController.signal.aborted ? 'stopped' : 'failed';
+      turnFailureError =
+        turnFailureError ??
+        (setupOrCheckpointErr instanceof Error
+          ? setupOrCheckpointErr.message
+          : String(setupOrCheckpointErr));
     } finally {
       task.signal?.removeEventListener('abort', onExternalAbort);
       actor.activeTurnAbort = null;
       actor.activeAdapter = null;
-      await this.bridgeServer.revokeAgentSession(record.threadId);
-      // Release file leases ONLY AFTER full quiescence!
-      await this.fileLeases.releaseAgentLeases(record.rosterName, record.threadId);
-      this.emitLeasesUpdated(record.rootPath);
     }
-
-    // 4) Capture AFTER hidden checkpoint & compute per-turn diff attribution!
-    const afterCheckpoint = await this.checkpoints.captureCheckpoint({
-      chatSessionId: record.chatSessionId,
-      threadId: record.threadId,
-      agentId: record.agentId,
-      rosterName: record.rosterName,
-      rootPath: record.rootPath,
-      turnSeq,
-      kind: 'after',
-    });
-    this.storage.saveCheckpoint(afterCheckpoint);
-    this.emit({
-      type: 'checkpoint_captured',
-      chatSessionId: record.chatSessionId,
-      checkpoint: afterCheckpoint,
-    });
-
-    const diff = await this.checkpoints.diffCheckpoints(
-      record.rootPath,
-      beforeCheckpoint.ref,
-      afterCheckpoint.ref,
-      record.agentId,
-    );
-    actor.diffSummary = {
-      filesChanged: diff.files.length,
-      additions: diff.totalAdditions,
-      deletions: diff.totalDeletions,
-    };
 
     this.storage.updateThreadPatch(actor.threadId, {
       status: terminalStatus,
-      lastCheckpointId: afterCheckpoint.checkpointId,
+      ...(afterCheckpoint ? { lastCheckpointId: afterCheckpoint.checkpointId } : {}),
     });
     this.emitThreadUpdated(actor.threadId);
+
+    // Finalize Native Chat V2 Timeline BEFORE resolving turn completion or throwing!
+    timeline?.finalizeTurn({
+      status: terminalStatus,
+      diff,
+      error: turnFailureError ?? actor.lastTurnError,
+    });
 
     // 5) Settle swarm member if registered in a swarm session!
     const swarmMember = this.storage.getSwarmMember(record.chatSessionId, record.rosterName);
@@ -1485,7 +1618,10 @@ export class MeshOrchestrator implements AgentMeshService {
     actor: ThreadActorState,
     record: MeshThreadRecord,
     event: NormalizedRuntimeEvent,
+    timeline?: NativeTurnTimelineSession | null,
   ): void {
+    timeline?.handleRuntimeEvent(event);
+
     switch (event.type) {
       case 'assistant_delta': {
         actor.assistantText += event.text;
@@ -1592,6 +1728,7 @@ export class MeshOrchestrator implements AgentMeshService {
         break;
       }
       case 'turn_error': {
+        actor.lastTurnError = event.error;
         this.storage.updateThreadPatch(actor.threadId, { status: 'failed' });
         this.emitThreadUpdated(actor.threadId);
         break;

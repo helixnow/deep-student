@@ -106,29 +106,32 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
   const handleBrowseNative = useCallback(async () => {
     try {
       const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
-      const selected = await dialogOpen({
-        directory: true,
-        multiple: false,
-        title: t('agentMesh:workspace.dialogTitle', {
-          defaultValue: '选择外部编程工具的工作目录',
-        }),
-      });
+      const selected = await dialogOpen({ directory: true, multiple: false });
       if (typeof selected === 'string' && selected.trim()) {
-        setDraftPath(selected.trim());
-        await applyBinding(selected.trim(), isolatedBranch);
+        const trimmed = selected.trim();
+        setDraftPath(trimmed);
+        await setWorkspaceBinding({
+          chatSessionId: effectiveSessionId,
+          rootPath: trimmed,
+          isolatedBranch,
+        });
+        setOpen(false);
       }
     } catch {
       inputRef.current?.focus();
     }
-  }, [applyBinding, isolatedBranch, t]);
+  }, [effectiveSessionId, isolatedBranch]);
 
   const folderLabel = formatWorkspaceFolderBasename(binding?.rootPath);
+  const selectFolderLabel = t('agentMesh:workspace.selectFolder', {
+    defaultValue: '选择项目目录',
+  });
   const pillTitle = binding?.rootPath
     ? t('agentMesh:workspace.boundFolderTitle', {
         path: binding.rootPath,
         defaultValue: '当前协作目录：{{path}}',
       })
-    : t('agentMesh:workspace.selectFolder', { defaultValue: '选择目录' });
+    : selectFolderLabel;
 
   return (
     <div ref={containerRef} className={cn('relative inline-flex items-center', className)}>
@@ -153,7 +156,7 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
       >
         <FolderOpen size={12} weight="duotone" className="shrink-0 text-muted-foreground" />
         <span className="max-w-[120px] truncate">
-          {folderLabel || t('agentMesh:workspace.selectFolder', { defaultValue: '选择目录' })}
+          {folderLabel || selectFolderLabel}
         </span>
         {binding?.isolatedBranch && (
           <GitBranch size={11} className="shrink-0 text-primary" aria-hidden="true" />
@@ -196,6 +199,19 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
             })}
           </p>
 
+          <DsButton
+            variant="secondary"
+            size="sm"
+            data-testid="workspace-folder-browse-btn"
+            onClick={() => void handleBrowseNative()}
+            className="mb-2.5 !h-8 w-full justify-center gap-1.5 text-xs font-medium"
+          >
+            <FolderOpen size={14} weight="duotone" className="shrink-0" />
+            <span>
+              {t('agentMesh:workspace.browseFolder', { defaultValue: '浏览本地文件夹…' })}
+            </span>
+          </DsButton>
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -218,7 +234,7 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
             <div className="flex items-center justify-between gap-2 px-0.5 py-0.5">
               <span id={switchLabelId} className="text-xs text-muted-foreground">
                 {t('agentMesh:workspace.isolatedBranch', {
-                  defaultValue: '使用独立 Git 工作树',
+                  defaultValue: '独立分支',
                 })}
               </span>
               <Switch
@@ -229,44 +245,29 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
               />
             </div>
 
-            <div className="flex items-center justify-between gap-1.5 pt-0.5">
-              <DsButton
-                variant="outline"
-                size="sm"
-                data-testid="workspace-folder-browse-btn"
-                onClick={() => void handleBrowseNative()}
-                className="!h-7 !px-2.5 text-xs"
-              >
-                <FolderOpen size={13} className="mr-1 shrink-0" />
-                <span>
-                  {t('agentMesh:workspace.browseNative', { defaultValue: '选择文件夹…' })}
-                </span>
-              </DsButton>
-
-              <div className="flex items-center gap-1.5">
-                {binding?.rootPath && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    data-testid="workspace-folder-clear-btn"
-                    onClick={() => void applyBinding('', false)}
-                    className="!h-7 !px-2 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {t('agentMesh:workspace.clearBinding', { defaultValue: '清除' })}
-                  </DsButton>
-                )}
+            <div className="flex items-center justify-end gap-1.5 pt-0.5">
+              {binding?.rootPath && (
                 <DsButton
-                  type="submit"
-                  variant="primary"
+                  variant="ghost"
                   size="sm"
-                  disabled={!draftPath.trim()}
-                  data-testid="workspace-folder-apply-btn"
-                  className="!h-7 !px-3 text-xs"
+                  data-testid="workspace-folder-clear-btn"
+                  onClick={() => void applyBinding('', false)}
+                  className="!h-7 !px-2 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  <Check size={12} className="mr-1 shrink-0" />
-                  <span>{t('agentMesh:workspace.applyPath', { defaultValue: '确定' })}</span>
+                  {t('agentMesh:workspace.clearBinding', { defaultValue: '清除绑定' })}
                 </DsButton>
-              </div>
+              )}
+              <DsButton
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={!draftPath.trim()}
+                data-testid="workspace-folder-apply-btn"
+                className="!h-7 !px-3 text-xs"
+              >
+                <Check size={12} className="mr-1 shrink-0" />
+                <span>{t('agentMesh:workspace.applyPath', { defaultValue: '绑定' })}</span>
+              </DsButton>
             </div>
           </form>
         </div>

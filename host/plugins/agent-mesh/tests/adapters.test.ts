@@ -132,7 +132,20 @@ describe('ProcessTreeSupervisor & buildInjectedSubprocessEnv', () => {
     expect(env.DSTU_MESH_TOKEN).toBe('mesh-secret-tok');
     expect(env.DSTU_SESSION).toBe('sess-1');
     expect(env.CUSTOM_FLAG).toBe('yes');
-    expect(env.PATH).toBe('/tmp/dstu-shim/bin:/usr/bin:/bin');
+    expect(env.PATH).toBe(
+      [
+        '/tmp/dstu-shim/bin',
+        '/usr/bin',
+        '/bin',
+        '/Users/dev/.local/bin',
+        '/Users/dev/.grok/bin',
+        '/Users/dev/.bun/bin',
+        '/Users/dev/.cargo/bin',
+        '/opt/homebrew/bin',
+        '/opt/homebrew/sbin',
+        '/usr/local/bin',
+      ].join(':'),
+    );
   });
 
   it('escalates POSIX process-group signals SIGINT -> SIGTERM -> SIGKILL across -pid when stubborn', async () => {
@@ -1251,6 +1264,103 @@ describe('GenericCliAdapter & ExternalAdapterRegistry', () => {
 
     // Direct constructor check for GenericCliAdapter requiring template when driver='custom'
     expect(() => new GenericCliAdapter({ driver: 'custom' })).toThrow();
+
+    await registry.dispose();
+  });
+
+  it('forwards prober resolvedPath to ClaudeAdapter, CodexAdapter, and GenericCliAdapter even if getAdapter was called before probeAgents', async () => {
+    const spawnedCommands: string[] = [];
+
+    const registry = new ExternalAdapterRegistry({
+      proberOptions: {
+        fileExists: async () => false,
+        env: { ANTHROPIC_API_KEY: 'sk-ant', OPENAI_API_KEY: 'sk-oai', PATH: '/usr/bin:/bin' },
+        homeDir: '/Users/dev',
+        commandRunner: async (cmd, args) => {
+          if (cmd === 'claude' && args[0] === '--version') {
+            return {
+              exitCode: 0,
+              stdout: '2.1.90 (Claude Code)',
+              stderr: '',
+              resolvedPath: '/Users/dev/.local/bin/claude',
+            };
+          }
+          if (cmd === 'codex' && args[0] === '--version') {
+            return {
+              exitCode: 0,
+              stdout: 'codex-cli 0.119.0',
+              stderr: '',
+              resolvedPath: '/Users/dev/.grok/bin/codex',
+            };
+          }
+          if (cmd === 'codex' && args[0] === 'app-server') {
+            return {
+              exitCode: 2,
+              stdout: '',
+              stderr: 'unrecognized subcommand app-server',
+              resolvedPath: '/Users/dev/.grok/bin/codex',
+            };
+          }
+          if (cmd === 'agy' && args[0] === '--version') {
+            return {
+              exitCode: 0,
+              stdout: 'agy 2.1.0',
+              stderr: '',
+              resolvedPath: '/opt/homebrew/bin/agy',
+            };
+          }
+          return { exitCode: null, stdout: '', stderr: '', notFound: true };
+        },
+      },
+      supervisorOptions: {
+        registerExitHook: false,
+        spawnPort: (cmd) => {
+          spawnedCommands.push(cmd);
+          const proc = new SimulatedChildProcess();
+          setImmediate(() => {
+            proc.stdout.write('ok\n');
+            proc.exitCode = 0;
+            proc.emit('close', 0, null);
+          });
+          return proc;
+        },
+      },
+    });
+
+    // Call getAdapter BEFORE probeAgents runs (cached with default bare command)
+    const preProbeCodex = registry.getAdapter('codex');
+    const preProbeClaude = registry.getAdapter('claude');
+    expect(preProbeCodex).toBeDefined();
+    expect(preProbeClaude).toBeDefined();
+
+    // Now probeAgents discovers absolute paths in ~/.grok/bin, ~/.local/bin, /opt/homebrew/bin
+    await registry.probeAgents(true);
+
+    // Subsequent getAdapter must recreate idle adapters with the probed resolvedPath!
+    const postProbeCodex = registry.getAdapter('codex');
+    const postProbeClaude = registry.getAdapter('claude');
+    const postProbeAgy = registry.getAdapter('agy');
+    expect(postProbeCodex).not.toBe(preProbeCodex);
+    expect(postProbeClaude).not.toBe(preProbeClaude);
+    expect((postProbeAgy as GenericCliAdapter).template.command).toBe('/opt/homebrew/bin/agy');
+
+    await collectEvents(
+      registry.startTurn('claude', {
+        threadId: 'th-claude-path',
+        cwd: '/workspace/demo',
+        prompt: 'ping claude',
+      }),
+    );
+    await collectEvents(
+      registry.startTurn('agy', {
+        threadId: 'th-agy-path',
+        cwd: '/workspace/demo',
+        prompt: 'ping agy',
+      }),
+    );
+
+    expect(spawnedCommands).toContain('/Users/dev/.local/bin/claude');
+    expect(spawnedCommands).toContain('/opt/homebrew/bin/agy');
 
     await registry.dispose();
   });

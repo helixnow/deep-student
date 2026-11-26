@@ -125,7 +125,7 @@ export const SwarmCapsuleBar: React.FC<SwarmCapsuleBarProps> = ({ sessionId, cla
     [threads],
   );
 
-  const isActive = Boolean(sid) && (Boolean(swarm && swarm.status !== 'completed') || activeThreads.length > 0);
+  const isActive = Boolean(sid) && Boolean(swarm && swarm.status !== 'completed');
 
   const diffTotals = useMemo(() => {
     if (checkpoints.length > 0) {

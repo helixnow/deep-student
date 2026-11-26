@@ -1,3 +1,15 @@
+import React from 'react';
+
+export const LazySwarmCapsuleBar = React.lazy(() =>
+  import('./components/SwarmCapsuleBar').then((m) => ({ default: m.SwarmCapsuleBar })),
+);
+
+export const LazySessionMeshStreamSection = React.lazy(() =>
+  import('./components/SessionMeshStreamSection').then((m) => ({
+    default: m.SessionMeshStreamSection,
+  })),
+);
+
 export {
   resolveAgentDisplayName,
   normalizeAgentHandle,

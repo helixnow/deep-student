@@ -45,6 +45,7 @@ export {
 
 export interface CreateExternalAdapterOptions {
   readonly driver: ExternalAgentDriverKind;
+  readonly command?: string;
   readonly template?: CustomCliTemplate;
   readonly processSupervisor?: ProcessTreeSupervisor;
   readonly safetyIdleTimeoutMs?: number;
@@ -52,7 +53,7 @@ export interface CreateExternalAdapterOptions {
   readonly codex?: CodexAdapterOptions;
   readonly opencode?: OpenCodeAdapterOptions;
   readonly pi?: PiAdapterOptions;
-  readonly generic?: GenericCliAdapterOptions;
+  readonly generic?: GenericCliAdapterOptions & { readonly command?: string };
 }
 
 export function createExternalCodingAdapter(
@@ -64,48 +65,65 @@ export function createExternalCodingAdapter(
   switch (options.driver) {
     case 'claude':
       return new ClaudeAdapter({
+        ...(options.command ? { command: options.command } : {}),
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
         ...options.claude,
       });
     case 'codex':
       return new CodexAdapter({
+        ...(options.command ? { command: options.command } : {}),
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
         ...options.codex,
       });
     case 'opencode':
       return new OpenCodeAdapter({
+        ...(options.command ? { command: options.command } : {}),
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
         ...options.opencode,
       });
     case 'pi':
       return new PiAdapter({
+        ...(options.command ? { command: options.command } : {}),
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
         ...options.pi,
       });
     case 'agy':
-    case 'dsh':
+    case 'dsh': {
+      const baseTemplate =
+        options.template ?? options.generic?.template ?? BUILT_IN_GENERIC_TEMPLATES[options.driver];
+      const cmdOverride = options.generic?.command ?? options.command;
+      const effectiveTemplate =
+        cmdOverride && baseTemplate.command !== cmdOverride
+          ? { ...baseTemplate, command: cmdOverride }
+          : baseTemplate;
       return new GenericCliAdapter({
+        ...options.generic,
         driver: options.driver,
-        template: options.template,
+        template: effectiveTemplate,
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
-        ...options.generic,
       });
+    }
     case 'custom': {
-      const tpl = options.template ?? options.generic?.template;
-      if (!tpl) {
+      const baseTpl = options.template ?? options.generic?.template;
+      if (!baseTpl) {
         throw new Error('Custom CLI driver requires a CustomCliTemplate');
       }
+      const cmdOverride = options.generic?.command ?? options.command;
+      const tpl =
+        cmdOverride && baseTpl.command !== cmdOverride
+          ? { ...baseTpl, command: cmdOverride }
+          : baseTpl;
       return new GenericCliAdapter({
+        ...options.generic,
         driver: 'custom',
         template: tpl,
         processSupervisor: sharedSupervisor,
         safetyIdleTimeoutMs,
-        ...options.generic,
       });
     }
   }
@@ -123,6 +141,7 @@ export class ExternalAdapterRegistry {
 
   private readonly safetyIdleTimeoutMs: number | undefined;
   private readonly adapters = new Map<string, ExternalCodingAdapter>();
+  private readonly adapterResolvedCommands = new Map<string, string | undefined>();
   private readonly templates = new Map<string, CustomCliTemplate>();
   private readonly activeThreadToAdapter = new Map<string, ExternalCodingAdapter>();
 
@@ -133,8 +152,10 @@ export class ExternalAdapterRegistry {
   }
 
   registerCustomTemplate(template: CustomCliTemplate): void {
+    const key = `custom:${template.id}`;
     this.templates.set(template.id, template);
-    this.adapters.delete(`custom:${template.id}`);
+    this.adapters.delete(key);
+    this.adapterResolvedCommands.delete(key);
     this.prober.invalidateCache();
   }
 
@@ -144,6 +165,7 @@ export class ExternalAdapterRegistry {
     const existing = this.adapters.get(key);
     if (existing) {
       this.adapters.delete(key);
+      this.adapterResolvedCommands.delete(key);
       void existing.dispose();
     }
     this.prober.invalidateCache();
@@ -157,32 +179,77 @@ export class ExternalAdapterRegistry {
   }
 
   getAdapter(agentIdOrDriver: string): ExternalCodingAdapter {
-    const cached = this.adapters.get(agentIdOrDriver);
-    if (cached) return cached;
+    const cachedProbed = this.prober.getCachedAgent(agentIdOrDriver);
+    const resolvedCmd = cachedProbed?.resolvedPath || undefined;
+
+    const existing = this.adapters.get(agentIdOrDriver);
+    if (existing) {
+      const prevCmd = this.adapterResolvedCommands.get(agentIdOrDriver);
+      const shouldRecreate = resolvedCmd !== undefined && prevCmd !== resolvedCmd;
+      const inUse = [...this.activeThreadToAdapter.values()].includes(existing);
+      if (!shouldRecreate || inUse) {
+        return existing;
+      }
+      this.adapters.delete(agentIdOrDriver);
+      this.adapterResolvedCommands.delete(agentIdOrDriver);
+      void existing.dispose();
+    }
 
     if (agentIdOrDriver.startsWith('custom:')) {
       const templateId = agentIdOrDriver.slice('custom:'.length);
-      const template = this.templates.get(templateId);
-      if (!template) {
+      const baseTemplate = this.templates.get(templateId);
+      if (!baseTemplate) {
         throw new Error(`Unknown custom CLI template: ${templateId}`);
       }
+      const template =
+        resolvedCmd && baseTemplate.command !== resolvedCmd
+          ? { ...baseTemplate, command: resolvedCmd }
+          : baseTemplate;
       const adapter = createExternalCodingAdapter({
         driver: 'custom',
+        command: resolvedCmd,
         template,
         processSupervisor: this.supervisor,
         safetyIdleTimeoutMs: this.safetyIdleTimeoutMs,
+        generic: {
+          driver: 'custom',
+          template,
+          ...(resolvedCmd ? { command: resolvedCmd } : {}),
+        },
       });
       this.adapters.set(agentIdOrDriver, adapter);
+      this.adapterResolvedCommands.set(agentIdOrDriver, resolvedCmd);
       return adapter;
     }
 
     const driver = agentIdOrDriver as ExternalAgentDriverKind;
+    const genericBase =
+      driver === 'agy' || driver === 'dsh' ? BUILT_IN_GENERIC_TEMPLATES[driver] : undefined;
+    const genericTemplate =
+      genericBase && resolvedCmd ? { ...genericBase, command: resolvedCmd } : genericBase;
+
     const adapter = createExternalCodingAdapter({
       driver,
+      command: resolvedCmd,
+      template: genericTemplate,
       processSupervisor: this.supervisor,
       safetyIdleTimeoutMs: this.safetyIdleTimeoutMs,
+      claude: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
+      codex: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
+      opencode: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
+      pi: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
+      ...(driver === 'agy' || driver === 'dsh'
+        ? {
+            generic: {
+              driver,
+              template: genericTemplate,
+              ...(resolvedCmd ? { command: resolvedCmd } : {}),
+            },
+          }
+        : {}),
     });
     this.adapters.set(agentIdOrDriver, adapter);
+    this.adapterResolvedCommands.set(agentIdOrDriver, resolvedCmd);
     return adapter;
   }
 
@@ -239,6 +306,7 @@ export class ExternalAdapterRegistry {
     this.activeThreadToAdapter.clear();
     await Promise.all([...this.adapters.values()].map((adapter) => adapter.dispose()));
     this.adapters.clear();
+    this.adapterResolvedCommands.clear();
     await this.supervisor.dispose();
   }
 }

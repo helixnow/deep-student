@@ -65,7 +65,9 @@ import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 // P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
 import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
-import { BlockingInteractionBar } from './BlockingInteractionBar';
+const LazyBlockingInteractionBar = React.lazy(() =>
+  import('./BlockingInteractionBar').then((m) => ({ default: m.BlockingInteractionBar })),
+);
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
@@ -3429,11 +3431,13 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         )}
 
         {pendingApprovalRequest ? (
-          <BlockingInteractionBar
-            interaction={pendingApprovalRequest}
-            sessionId={sessionId || ''}
-            restoreFocusRef={textareaRef}
-          />
+          <React.Suspense fallback={null}>
+            <LazyBlockingInteractionBar
+              interaction={pendingApprovalRequest}
+              sessionId={sessionId || ''}
+              restoreFocusRef={textareaRef}
+            />
+          </React.Suspense>
         ) : (
           <>
         {/* 输入区域 */}
@@ -3845,6 +3849,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           runtimeModelProviderLabel={runtimeModelProviderLabel}
           runtimeModelIconId={runtimeModelIconId}
           runtimeCurrentModelId={runtimeCurrentModelId}
+          runtimeModelUnavailable={Boolean(missingApiKey)}
           runtimeModelOptions={runtimeModelOptions}
           onSelectRuntimeModel={onSelectRuntimeModel}
           runtimeModelMultiSelect={runtimeModelMultiSelect}

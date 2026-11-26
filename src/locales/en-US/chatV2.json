@@ -2313,7 +2313,15 @@
     "favoriteFailed": "Could not save favorite. Please try again.",
     "multiSelectCount": "{{count}} selected · answered in parallel on send",
     "multiSelectEmpty": "Check several models to answer in parallel",
-    "removeSelected": "Remove {{model}}"
+    "removeSelected": "Remove {{model}}",
+    "favoriteModel": "Favorite {{name}}",
+    "unfavoriteModel": "Unfavorite {{name}}",
+    "t3": {
+      "searchPlaceholder": "Search models...",
+      "noReasoningEffort": "No configurable reasoning effort",
+      "unavailable": "Unavailable",
+      "emptyFavorites": "No favorite models yet. Hover a model and click the star to save one."
+    }
   },
   "workspace": {
     "title": "Workspace",

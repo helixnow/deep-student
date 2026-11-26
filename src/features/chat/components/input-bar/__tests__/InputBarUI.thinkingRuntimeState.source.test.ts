@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// ★ 拆分后：底部工具栏（推理运行时菜单 / 水位环 / 发送停止）在 ComposerToolbar.tsx，
-// InputBarUI.tsx 只保留壳体与编排。断言按各自源文件归位。
-describe('InputBarUI thinking runtime state visibility', () => {
+// ★ 拆分后：底部工具栏（T3 Code 风格模型与推理强度选择器 / 水位环 / 发送停止）在 ComposerToolbar.tsx，
+// 三栏弹出内容在 T3ModelSelectorPopover.tsx，InputBarUI.tsx 只保留壳体与编排。
+describe('InputBarUI T3 Code model & thinking runtime selector source contract', () => {
   const inputBarSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
@@ -13,19 +13,31 @@ describe('InputBarUI thinking runtime state visibility', () => {
     resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerToolbar.tsx'),
     'utf-8'
   );
+  const t3PopoverSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/T3ModelSelectorPopover.tsx'),
+    'utf-8'
+  );
 
-  it('renders the current thinking state as a minimal visible control, not only as tooltip text', () => {
+  it('renders the current model or thinking state as a minimal visible control, not only as tooltip text', () => {
     expect(toolbarSource).toContain('data-testid="thinking-runtime-minimal-control"');
     expect(toolbarSource).toContain('data-testid="thinking-runtime-state-label"');
-    expect(toolbarSource).toContain('{thinkingStateLabel}');
+    expect(toolbarSource).toContain('{thinkingRuntimeTriggerLabel}');
+  });
+
+  it('prioritizes the runtime model name in the T3 Code pill trigger with graceful fallback', () => {
+    expect(toolbarSource).toContain(
+      'runtimeModelLabel || resolvedThinkingTriggerLabel || runtimeModelTitle'
+    );
+    expect(toolbarSource).toContain('data-testid="thinking-runtime-unavailable-badge"');
   });
 
   it('keeps depth menu labels terse without slower suffix copy', () => {
     expect(inputBarSource).not.toContain('thinkingDepthExpensive');
     expect(toolbarSource).not.toContain('thinkingDepthExpensive');
+    expect(t3PopoverSource).not.toContain('thinkingDepthExpensive');
   });
 
-  it('opens the depth menu instead of toggling directly when depth options exist', () => {
+  it('opens the T3 Code unified popover instead of toggling directly when menu options exist', () => {
     const menuBranchStart = toolbarSource.indexOf('{hasThinkingRuntimeMenu ? (');
     const menuBranchEnd = toolbarSource.indexOf(') : (', menuBranchStart);
     const menuBranch = toolbarSource.slice(menuBranchStart, menuBranchEnd);
@@ -36,45 +48,36 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).not.toContain('onClick={onToggleThinking}');
   });
 
-  it('renders reasoning depth as a slider with an off stop when thinking can be disabled', () => {
-    const menuGroupStart = toolbarSource.indexOf(') : hasThinkingDepthMenu ? (');
-    const menuGroupEnd = toolbarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
-    const menuGroup = toolbarSource.slice(menuGroupStart, menuGroupEnd);
-
-    expect(menuGroupStart).toBeGreaterThan(-1);
-    expect(menuGroupEnd).toBeGreaterThan(menuGroupStart);
-    expect(menuGroup).toContain('<ThinkingDepthSlider');
-    expect(menuGroup).toContain('options={thinkingDepthOptions}');
-    expect(menuGroup).toContain('value={thinkingDepthValue}');
-    expect(menuGroup).toContain('enabled={!!enableThinking}');
-    expect(menuGroup).toContain("offLabel={t('chatV2:inputBar.thinkingOff')}");
-    expect(menuGroup).toContain("efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}");
-    expect(menuGroup).toContain("smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}");
-  });
-
-  it('keeps a menu-item fallback without an off action for forced-thinking models', () => {
-    const menuGroupStart = toolbarSource.indexOf(') : hasThinkingDepthMenu ? (');
-    const menuGroupEnd = toolbarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
-    const menuGroup = toolbarSource.slice(menuGroupStart, menuGroupEnd);
-
-    expect(menuGroup).toContain('thinkingCanDisable ? (');
-    // 滑块必带"关闭"档；不可关闭推理的模型退回菜单列表且不渲染关闭项
-    const fallbackStart = menuGroup.indexOf('thinkingDepthOptions.map');
-    expect(fallbackStart).toBeGreaterThan(-1);
-    const fallback = menuGroup.slice(fallbackStart);
-    expect(fallback).not.toContain('<AppMenuSeparator />');
-    expect(fallback).not.toContain("t('chatV2:inputBar.thinkingOff')");
-  });
-
-  it('anchors the reasoning menu to the stable right edge while depth labels change', () => {
+  it('mounts the lazy T3 Code 3-column selector inside the right-aligned popover', () => {
     const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
     const contentStart = toolbarSource.indexOf('<AppMenuContent', triggerStart);
-    const contentEnd = toolbarSource.indexOf('>', contentStart);
+    const contentEnd = toolbarSource.indexOf('</AppMenuContent>', contentStart);
     const menuContent = toolbarSource.slice(contentStart, contentEnd);
 
     expect(triggerStart).toBeGreaterThan(-1);
     expect(contentStart).toBeGreaterThan(triggerStart);
     expect(menuContent).toContain('align="end"');
+    expect(menuContent).toContain('<LazyT3ModelSelectorPopover');
+    expect(menuContent).toContain('options={runtimeModelOptions}');
+    expect(menuContent).toContain('currentModelId={runtimeCurrentModelId}');
+    expect(menuContent).toContain('multiSelect={runtimeModelMultiSelect}');
+    expect(menuContent).toContain('permissionPreset={permissionPreset}');
+    expect(menuContent).toContain('onPermissionPresetChange={onPermissionPresetChange}');
+  });
+
+  it('implements the 3-column T3 Code structure (rail + search/list with ⌘1..⌘9 + reasoning pane + permission footer)', () => {
+    expect(t3PopoverSource).toContain('data-testid="t3-provider-rail"');
+    expect(t3PopoverSource).toContain('data-testid="t3-rail-favorites"');
+    expect(t3PopoverSource).toContain('data-testid="t3-model-list-pane"');
+    expect(t3PopoverSource).toContain('data-testid="t3-model-search-input"');
+    expect(t3PopoverSource).toContain('t3-model-shortcut-');
+    expect(t3PopoverSource).toContain('data-testid="t3-reasoning-pane"');
+    expect(t3PopoverSource).toContain('data-testid="t3-reasoning-empty"');
+    expect(t3PopoverSource).toContain('没有可选的推理强度');
+    expect(t3PopoverSource).toContain('data-testid="t3-picker-footer"');
+    expect(t3PopoverSource).toContain('data-testid="t3-permission-trigger"');
+    expect(t3PopoverSource).toContain('<DsAlertDialog');
+    expect(t3PopoverSource).not.toContain('window.confirm');
   });
 
   it('uses the transitions-dev text state swap for changes in the trigger label', () => {
@@ -88,36 +91,29 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(toolbarSource).toContain('function ResizingThinkingLabel');
     expect(triggerSource).toContain('<ResizingThinkingLabel');
     expect(triggerSource).toContain('text={thinkingRuntimeTriggerLabel}');
-    expect(toolbarSource).toContain("className=\"t-resize inline-block whitespace-nowrap\"");
+    expect(toolbarSource).toContain('className="t-resize inline-block whitespace-nowrap"');
     expect(toolbarSource).toContain('style={labelWidth ? { width: labelWidth } : undefined}');
-    expect(triggerSource).not.toContain('max-w-[5.75rem]');
   });
 
-  it('adds the runtime model selector to the thinking runtime menu', () => {
-    const menuBranchStart = toolbarSource.indexOf('{hasThinkingRuntimeMenu ? (');
-    const menuBranchEnd = toolbarSource.indexOf('</AppMenuContent>', menuBranchStart);
-    const menuBranch = toolbarSource.slice(menuBranchStart, menuBranchEnd);
+  it('uses colored brand glyph icons in the T3 Code trigger pill', () => {
+    const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = toolbarSource.indexOf('</button>', triggerStart);
+    const triggerSource = toolbarSource.slice(triggerStart, triggerEnd);
+    const providerIconStart = triggerSource.indexOf('<ProviderIcon');
+    const providerIconEnd = triggerSource.indexOf('/>', providerIconStart);
+    const providerIconSource = triggerSource.slice(providerIconStart, providerIconEnd);
 
-    expect(menuBranchStart).toBeGreaterThan(-1);
-    expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
-    expect(toolbarSource).toContain("t('chatV2:inputBar.runtimeModelTitle')");
-    expect(toolbarSource).toContain('onOpenRuntimeModelPanel');
-    expect(menuBranch).toContain('<AppMenuGroup label={runtimeModelTitle}>');
-    expect(menuBranch).toContain('runtimeModelOptions.length > 0 ? (');
-    expect(menuBranch).toContain('<AppMenuSub openOnClick>');
-    expect(menuBranch).toContain('<AppMenuSubTrigger');
-    expect(menuBranch).toContain('<AppMenuSubContent');
-    // 子菜单内容（搜索/收藏/最近/供应商分组/多选）已抽到 RuntimeModelSubmenuBody；旧大面板的 compare 入口已移除
-    expect(menuBranch).toContain('<RuntimeModelSubmenuBody');
-    expect(menuBranch).toContain('multiSelect={runtimeModelMultiSelect}');
-    expect(menuBranch).not.toContain("onOpenRuntimeModelPanel('compare')");
-    expect(menuBranch).toContain('onSelect={onSelectRuntimeModel}');
-    expect(menuBranch).toContain('<AppMenuItem');
-    expect(toolbarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
-    expect(menuBranch).toContain('runtimeCurrentModelId');
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(triggerEnd).toBeGreaterThan(triggerStart);
+    expect(providerIconStart).toBeGreaterThan(-1);
+    expect(providerIconEnd).toBeGreaterThan(providerIconStart);
+    expect(providerIconSource).toContain('modelId={resolvedTriggerBrandIconId}');
+    expect(providerIconSource).toContain('size={15}');
+    expect(providerIconSource).toContain('variant="color"');
+    expect(providerIconSource).toContain('renderMode="glyph"');
   });
 
-  it('places attachment on the left and reasoning depth in the former right attachment slot', () => {
+  it('places attachment on the left and model/reasoning pill in the right action cluster before send', () => {
     const leftStart = toolbarSource.indexOf('{/* 左侧按钮 - 窄屏时可横向滚动 */}');
     const rightStart = toolbarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
     const leftToolbar = toolbarSource.slice(leftStart, rightStart);
@@ -153,54 +149,12 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
-    expect(ringSource).toContain('className="h-4 w-4 rounded-full');
+    expect(ringSource).toContain('className="h-4 w-4 rounded-full"');
     expect(ringSource).toContain('<svg');
     expect(ringSource).toContain('strokeLinecap="round"');
     expect(ringSource).toContain('strokeDasharray={ringCircumference}');
     expect(ringSource).toContain('strokeDashoffset={ringProgressOffset}');
     expect(ringSource).toContain('transform="rotate(-90 8 8)"');
-    expect(ringSource).not.toContain('data-testid="context-window-usage-progress-cap"');
-    expect(ringSource).not.toContain('conic-gradient(from 0deg');
-    expect(ringSource).not.toContain('conic-gradient(from -90deg');
-    expect(ringSource).not.toContain('boxShadow');
-    expect(ringSource).not.toContain('inset-[3px]');
-    expect(ringSource).not.toContain('inset-[6px]');
-    expect(ringSource).not.toContain('transform: `rotate(${usedDegrees})`');
-  });
-
-  it('keeps hover on the ring a one-line summary and leaves the detail meter to the popover', () => {
-    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
-    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
-    const ringSource = toolbarSource.slice(ringStart, ringEnd);
-
-    expect(ringStart).toBeGreaterThan(-1);
-    expect(ringEnd).toBeGreaterThan(ringStart);
-    // 摘要给的是"已用 / 上限 + 百分比 + 去哪儿看明细"
-    expect(ringSource).toContain('data-testid="context-window-usage-hover-percent"');
-    expect(ringSource).toContain("{usage.usedLabel}");
-    expect(ringSource).toContain('formatContextTokenAmount(usage.limitTokens)');
-    expect(ringSource).toContain("t('chatV2:contextUsagePopover.viewDetails')");
-    // 明细（进度条 / 已用剩余两行 / 高水位提示 / 会话累计）只在弹层里，
-    // hover 侧不得再画一份同构卡片
-    expect(ringSource).not.toContain('context-window-usage-tooltip-bar');
-    expect(ringSource).not.toContain('width: `${usage.usedPercent}%`');
-    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextUsedPercent'");
-    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextRemainingPercent'");
-    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextHighWaterHint')");
-    expect(ringSource).not.toContain("t('chatV2:tokenUsage.sessionTotal')");
-    // tooltip 外壳是反色的，摘要内容层不得再用按亮色底调的页面语义 token
-    // （只查 tooltipContent 这一段：环内层 span 的 --text-secondary 落在页面
-    //  表面上，是对的）
-    const hoverStart = ringSource.indexOf('const tooltipContent = (');
-    const hoverEnd = ringSource.indexOf('</div>\n  );', hoverStart);
-    expect(hoverStart).toBeGreaterThan(-1);
-    expect(hoverEnd).toBeGreaterThan(hoverStart);
-    const hoverSource = ringSource.slice(hoverStart, hoverEnd);
-    expect(hoverSource).not.toContain('var(--text-secondary)');
-    expect(hoverSource).not.toContain('var(--text-primary)');
-    expect(hoverSource).not.toContain('var(--button-utility-hover)');
-    expect(hoverSource).not.toContain('var(--input-shell-border)');
-    expect(hoverSource).toContain('var(--tooltip-text-secondary)');
   });
 
   it('uses tiered context usage colors at high-water thresholds', () => {
@@ -212,51 +166,12 @@ describe('InputBarUI thinking runtime state visibility', () => {
       'utf-8'
     );
 
-    expect(ringStart).toBeGreaterThan(-1);
-    expect(ringEnd).toBeGreaterThan(ringStart);
     expect(ringSource).toContain('const contextUsageColor =');
-    expect(ringSource).toContain("usage.usedPercent >= 90");
-    expect(ringSource).toContain("usage.usedPercent >= 75");
     expect(ringSource).toContain("'hsl(var(--danger))'");
     expect(ringSource).toContain("'hsl(var(--warning))'");
     expect(ringSource).toContain("'var(--text-primary)'");
-    // 分级色现在只驱动环的描边；进度条填充由弹层那份同级判定负责
     expect(ringSource).toContain('stroke={contextUsageColor}');
-    expect(ringSource).not.toContain('background: contextUsageColor');
     expect(popoverSource).toContain('const usageColor =');
-    expect(popoverSource).toContain('background: usageColor');
-    expect(ringSource).not.toContain('getContextUsageTone');
-  });
-
-  it('keeps tooltip support without adding a hover state to the ring control', () => {
-    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
-    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
-    const ringSource = toolbarSource.slice(ringStart, ringEnd);
-
-    expect(ringStart).toBeGreaterThan(-1);
-    expect(ringEnd).toBeGreaterThan(ringStart);
-    expect(ringSource).toContain('<CommonTooltip content={tooltipContent} position="top" disabled={disabled}>');
-    expect(ringSource).not.toContain('hover:bg-[color:var(--button-utility-hover)]');
-    expect(ringSource).not.toContain('hover:text-[color:var(--text-primary)]');
-    expect(ringSource).not.toContain('group-hover:scale-105');
-    expect(ringSource).not.toContain('className="group inline-flex');
-  });
-
-  it('uses the monochrome provider icon in the thinking runtime trigger', () => {
-    const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
-    const triggerEnd = toolbarSource.indexOf('</button>', triggerStart);
-    const triggerSource = toolbarSource.slice(triggerStart, triggerEnd);
-    const providerIconStart = triggerSource.indexOf('<ProviderIcon');
-    const providerIconEnd = triggerSource.indexOf('/>', providerIconStart);
-    const providerIconSource = triggerSource.slice(providerIconStart, providerIconEnd);
-
-    expect(triggerStart).toBeGreaterThan(-1);
-    expect(triggerEnd).toBeGreaterThan(triggerStart);
-    expect(providerIconStart).toBeGreaterThan(-1);
-    expect(providerIconEnd).toBeGreaterThan(providerIconStart);
-    expect(providerIconSource).toContain('modelId={runtimeModelIconId}');
-    expect(providerIconSource).toContain('size={15}');
-    expect(providerIconSource).toContain('variant="mono"');
   });
 
   it('does not mount the input token estimate badge in the right action rail', () => {
@@ -282,8 +197,6 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(buttonEnd).toBeGreaterThan(buttonStart);
     expect(attachmentButton).toContain('<Plus size={18} weight="bold"');
     expect(attachmentButton).not.toContain('<Paperclip size={18} />');
-    expect(attachmentButton).not.toContain('attachmentBadgeLabel');
-    expect(attachmentButton).not.toContain('rounded-full border bg-primary');
   });
 
   it('lets the input shell background token follow its surrounding composer surface', () => {

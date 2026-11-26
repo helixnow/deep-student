@@ -24,6 +24,12 @@ import { QueuedMessageStack } from '@/features/chat/components/input-bar/QueuedM
 import type { QueuedMessage } from '@/features/chat/core/types/queue';
 import type { ModelInfo } from '@/features/chat/utils/parseModelMentions';
 
+const dialogOpenMock = vi.fn<() => Promise<string | string[] | null>>(async () => null);
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: () => dialogOpenMock(),
+}));
+
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
 }));
@@ -318,9 +324,12 @@ describe('Agent Mesh Composer @agent Mention, Folder Pill & Routing', () => {
 
     expect(screen.getByTestId('agent-mention-chip-claude')).toBeTruthy();
     const pill = screen.getByTestId('workspace-folder-pill');
-    expect(pill.textContent).toContain('选择目录');
+    expect(pill.textContent).toContain('选择项目目录');
 
     fireEvent.click(pill);
+    expect(screen.getByTestId('workspace-folder-browse-btn').textContent).toContain(
+      '浏览本地文件夹…',
+    );
     const input = screen.getByTestId('workspace-folder-path-input');
     fireEvent.change(input, { target: { value: '/Users/dev/raft-lab' } });
     fireEvent.click(screen.getByTestId('workspace-folder-apply-btn'));
@@ -333,6 +342,24 @@ describe('Agent Mesh Composer @agent Mention, Folder Pill & Routing', () => {
       });
     });
     expect(screen.getByTestId('workspace-folder-pill').textContent).toContain('raft-lab');
+
+    // 1-click native system directory picker immediately binds folder and closes popover
+    dialogOpenMock.mockResolvedValueOnce('/Users/dev/native-picked-project');
+    fireEvent.click(screen.getByTestId('workspace-folder-pill'));
+    expect(screen.getByTestId('workspace-folder-popover')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('workspace-folder-browse-btn'));
+
+    await waitFor(() => {
+      expect(setBindingSpy).toHaveBeenCalledWith({
+        chatSessionId: 'sess-mesh-1',
+        rootPath: '/Users/dev/native-picked-project',
+        isolatedBranch: false,
+      });
+    });
+    expect(screen.queryByTestId('workspace-folder-popover')).toBeNull();
+    expect(screen.getByTestId('workspace-folder-pill').textContent).toContain(
+      'native-picked-project',
+    );
   });
 
   it('fast-paths 1 external @agent directly to agentMesh.startTurn with PDF context, and wires QueuedMessageStack Steer to agentMesh.steerTurn while running', async () => {
@@ -420,7 +447,7 @@ describe('Agent Mesh Composer @agent Mention, Folder Pill & Routing', () => {
         chatSessionId: 'sess-mesh-1',
         agentId: 'claude',
         cwd: '/Users/dev/raft-lab',
-        userPrompt: '修复选举超时死锁测试',
+        userPrompt: '@claude 修复选举超时死锁测试\n[PDF@paper-raft:4]',
         pdfRefTags: '[PDF@paper-raft:4]',
       }),
     );

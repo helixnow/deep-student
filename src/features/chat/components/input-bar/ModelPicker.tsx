@@ -23,7 +23,9 @@ import {
   CaretDown,
   CaretRight,
   Check,
+  TerminalWindow,
 } from '@phosphor-icons/react';
+import { resolveAgentDisplayName } from '@/features/agent-mesh';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -115,6 +117,11 @@ export interface ModelPickerProps {
   /** 紧凑模式：用于 app menu 子菜单，收窄宽度和高度 */
   compact?: boolean;
 
+  // 本地编程 CLI 引擎扩展（T3-Code 风格单选切换）
+  externalCliAgents?: ReadonlyArray<{ id: string; name: string; version?: string }>;
+  selectedCliAgentId?: string | null;
+  onSelectCliAgent?: (agentId: string) => void;
+
   // Retry 模式
   /** 待重试的消息 ID（存在时进入重试模式，强制 compare） */
   retryMessageId?: string | null;
@@ -140,10 +147,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   disabled = false,
   hideHeader,
   compact = false,
+  externalCliAgents,
+  selectedCliAgentId,
+  onSelectCliAgent,
   retryMessageId,
   onRetry,
 }) => {
-  const { t, i18n } = useTranslation(['chatV2', 'chat_host', 'common']);
+  const { t, i18n } = useTranslation(['chatV2', 'chat_host', 'common', 'agentMesh']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
   // 📱 移动端也默认显示头部：面板在 composer 内联展开（无外层抽屉标题栏），
@@ -444,13 +454,29 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
       : t('chatV2:modelPicker.singleHint');
 
   // ----- render -----
+  const filteredExternalCliAgents = useMemo(() => {
+    if (effectiveMode !== 'single' || isRetryMode || !externalCliAgents || externalCliAgents.length === 0) {
+      return [];
+    }
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return externalCliAgents;
+    return externalCliAgents.filter((agent) => {
+      const displayName = resolveAgentDisplayName(agent.id, agent.name);
+      const haystack = `${displayName} ${agent.name} ${agent.id} ${agent.version ?? ''}`.toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [effectiveMode, externalCliAgents, isRetryMode, searchTerm]);
+
+  const hasCliAgents = filteredExternalCliAgents.length > 0;
   const hasModels = sortedAndFiltered.length > 0;
+  const hasAnyOptions = hasModels || hasCliAgents;
   const systemBadge = t('chat_host:model_panel.badges.system_default');
   const systemBadgeTooltip = t('chat_host:model_panel.badges.system_default_tooltip');
 
   const renderRow = (option: NormalizedModel) => {
     const isCompareSelected = compareSelectedIds.has(option.id);
-    const isSingleSelected = effectiveMode === 'single' && singleSelectedId === option.id;
+    const isSingleSelected =
+      effectiveMode === 'single' && !selectedCliAgentId && singleSelectedId === option.id;
     const isHighlighted = effectiveMode === 'compare' ? isCompareSelected : isSingleSelected;
     const isDefault = option.id === defaultModelId;
 
@@ -736,12 +762,83 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           trackOffsetBottom={6}
         >
           <div className="space-y-0.5">
-            {loading ? (
+            {loading && !hasCliAgents ? (
               <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
                 {t('common:loading')}
               </div>
-            ) : hasModels ? (
+            ) : hasAnyOptions ? (
               <>
+              {hasCliAgents && (
+                <div className="space-y-0.5" data-section="local-coding-cli">
+                  <div className="flex items-center gap-1 px-[var(--menu-shell-row-padding-x)] py-1 text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]">
+                    <TerminalWindow size={12} weight="duotone" className="text-primary" aria-hidden />
+                    {t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' })}
+                  </div>
+                  {filteredExternalCliAgents.map((agent) => {
+                    const isSelectedCli = selectedCliAgentId === agent.id;
+                    const displayName = resolveAgentDisplayName(agent.id, agent.name);
+                    return (
+                      <DsButton
+                        key={`cli-agent:${agent.id}`}
+                        variant="ghost"
+                        disabled={disabled}
+                        data-testid={`model-picker-cli-agent-${agent.id}`}
+                        aria-pressed={isSelectedCli || undefined}
+                        onClick={() => {
+                          if (disabled) return;
+                          onSelectCliAgent?.(agent.id);
+                          onClose();
+                        }}
+                        className={cn(
+                          'group !h-auto w-full !justify-start items-start gap-[var(--menu-shell-row-gap)] rounded-[var(--menu-shell-row-radius)] border text-left font-normal transition-colors',
+                          '!px-[var(--menu-shell-row-padding-x)] !py-[var(--menu-shell-row-padding-y)]',
+                          isSelectedCli
+                            ? [
+                                'border-[color:color-mix(in_hsl,var(--menu-shell-border)_60%,var(--button-primary-border)_40%)]',
+                                'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_90%,var(--button-primary-surface)_10%)]',
+                                'text-[color:var(--menu-shell-foreground)]',
+                                'hover:bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--button-primary-surface)_16%)]',
+                              ]
+                            : [
+                                'border-transparent bg-transparent',
+                                'hover:bg-[color:var(--menu-shell-row-hover)]',
+                              ],
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                            isSelectedCli
+                              ? 'text-[color:var(--menu-shell-foreground)] opacity-90'
+                              : 'text-transparent opacity-0',
+                          )}
+                          aria-hidden
+                        >
+                          {isSelectedCli && <Check size={14} weight="bold" />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className={cn('flex w-full min-w-0 items-center', compact ? 'gap-1' : 'gap-1.5')}>
+                            <TerminalWindow size={15} weight="duotone" className="shrink-0 text-primary" />
+                            <span
+                              className={cn(
+                                'truncate font-medium text-[color:var(--menu-shell-foreground)]',
+                                compact ? 'text-xs leading-4' : isMobile ? 'text-ui leading-4' : 'text-xs leading-4',
+                              )}
+                            >
+                              {displayName}
+                            </span>
+                          </span>
+                          {agent.version && (
+                            <span className="mt-0.5 block truncate text-2xs text-[color:var(--menu-shell-muted-foreground)]">
+                              {agent.version}
+                            </span>
+                          )}
+                        </span>
+                      </DsButton>
+                    );
+                  })}
+                </div>
+              )}
               {favoriteOptions.length > 0 && (
                 <div className="space-y-0.5" data-section="favorites">
                   <div className="flex items-center gap-1 px-[var(--menu-shell-row-padding-x)] py-1 text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]">
