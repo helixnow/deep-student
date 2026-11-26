@@ -535,8 +535,13 @@
       "titleTruncated": "{{name}} · {{status}} · {{truncation}}"
     },
     "slashCommand": {
-      "title": "技能命令",
-      "active": "已激活"
+      "title": "斜杠指令与技能",
+      "active": "已激活",
+      "backToCommands": "返回指令列表",
+      "groupControl": "常用控制",
+      "groupStudy": "学习与记忆",
+      "groupPlugin": "插件与学习包",
+      "groupSkill": "技能工作流"
     }
   },
   "queue": {
@@ -2911,5 +2916,307 @@
     "openResourcesLabel": "打开学习资源库",
     "openFlashcardsLabel": "前往闪卡复习",
     "dismiss": "收起引导"
+  },
+  "slashCommands": {
+    "common": {
+      "enable": "开启",
+      "disable": "关闭",
+      "onBadge": "已开启",
+      "offBadge": "已关闭",
+      "busyStreaming": "当前正在生成回复，请等待完成后再执行此命令",
+      "loading": "正在加载..."
+    },
+    "goal": {
+      "label": "目标模式",
+      "description": "创建跨轮自驱推进的学习目标，或暂停/恢复/清除当前目标",
+      "argHint": "<目标描述 | pause | resume | clear>",
+      "emptyHint": "请输入学习目标描述，例如：/goal 今晚把第3章错题全部弄懂",
+      "noActiveGoal": "当前会话暂无进行中的目标",
+      "statusToast": "当前目标：{{objective}}（{{status}} · 已用 {{tokens}} tokens）",
+      "pausedToast": "已暂停当前会话目标自动续跑",
+      "resumedToast": "已恢复当前会话目标自动续跑",
+      "clearedToast": "已清除当前会话目标",
+      "updatedToast": "已更新当前会话目标",
+      "sub": {
+        "status": "查看目标状态",
+        "statusDesc": "显示当前目标描述、状态与 Token 消耗",
+        "pause": "暂停目标",
+        "pauseDesc": "暂停跨轮自动续跑推进",
+        "resume": "继续目标",
+        "resumeDesc": "恢复已暂停或挂起的目标推进",
+        "clear": "清除目标",
+        "clearDesc": "移除当前会话的持久目标"
+      }
+    },
+    "plan": {
+      "label": "规划模式",
+      "description": "切换先出计划再执行的门控模式，或附带任务直接发起规划",
+      "argHint": "[任务描述 | on | off]",
+      "enabledToast": "已开启规划模式：AI 修改前将先给出分步方案供你确认",
+      "disabledToast": "已退出规划模式",
+      "sub": {
+        "on": "开启规划模式",
+        "onDesc": "执行写操作前必须先经计划卡片确认",
+        "off": "退出规划模式",
+        "offDesc": "切回常规问答执行模式"
+      }
+    },
+    "compact": {
+      "description": "精简早期历史以释放上下文空间，支持指定保留重点或撤销压缩",
+      "argHint": "[保留重点 | undo]",
+      "noActiveToUndo": "当前会话没有可撤销的上下文压缩记录",
+      "undoSuccess": "已撤销最近一次上下文压缩，原始历史视图已恢复",
+      "focusAppliedToast": "压缩关注重点已记录：{{focus}}",
+      "sub": {
+        "undo": "撤销最近压缩",
+        "undoDesc": "恢复被压缩摘要替代的原始消息视图"
+      }
+    },
+    "new": {
+      "label": "新建对话",
+      "description": "在当前学习空间新建干净会话（可附带首条提问）",
+      "argHint": "[首条问题]"
+    },
+    "think": {
+      "label": "推理强度",
+      "description": "零鼠标切换思考开关与推理深度档位",
+      "argHint": "[off | minimal | low | medium | high | xhigh | max]",
+      "switchedOff": "已关闭深度推理模式",
+      "switchedLevel": "已切换推理强度为：{{level}}",
+      "sub": {
+        "off": "关闭推理",
+        "minimal": "最低",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "xhigh": "极高",
+        "max": "最高"
+      }
+    },
+    "mode": {
+      "label": "执行权限",
+      "description": "切换本会话工具与命令执行的审批档位",
+      "argHint": "<cautious | relaxed | full>",
+      "switchedToast": "执行权限已切换为：{{mode}}"
+    },
+    "model": {
+      "label": "切换模型",
+      "description": "快速切换当前会话的默认对话模型",
+      "argHint": "[模型名]",
+      "openPanel": "打开模型选择面板",
+      "switchedToast": "当前会话模型已切换为：{{model}}"
+    },
+    "branch": {
+      "label": "会话分叉",
+      "description": "从当前最新一轮派生新分支会话，探索不同解法不破坏原记录",
+      "argHint": "[新探索思路]",
+      "emptySession": "当前会话暂无消息，无需分叉",
+      "success": "已从当前进度创建新分支会话"
+    },
+    "undo": {
+      "label": "撤回上轮",
+      "description": "撤回最近一轮问答并将你的提问退回输入框重新编辑",
+      "emptySession": "当前会话没有可撤回的消息",
+      "success": "已撤回上一轮问答，原提问已恢复至输入框"
+    },
+    "web": {
+      "label": "联网搜索",
+      "description": "开关当前会话的外部网页搜索能力",
+      "enabledToast": "已开启当前会话联网搜索",
+      "disabledToast": "已关闭当前会话联网搜索"
+    },
+    "kb": {
+      "label": "知识库检索",
+      "description": "开关本地资料检索、主动检索或选择知识库目录范围",
+      "proactiveBadge": "主动检索",
+      "enabledToast": "已开启本地知识库检索",
+      "disabledToast": "已关闭本地知识库检索",
+      "proactiveEnabledToast": "已开启知识库主动检索（优先查阅本地资料）",
+      "proactiveDisabledToast": "已关闭知识库主动检索",
+      "sub": {
+        "on": "开启知识库检索",
+        "off": "关闭知识库检索",
+        "proactive": "切换主动检索",
+        "scope": "选择检索目录范围..."
+      }
+    },
+    "context": {
+      "label": "会话状态",
+      "description": "零成本查看当前模型、上下文水位、权限、技能与目标概览",
+      "cardTitle": "当前会话状态与上下文概览",
+      "windowLabel": "上下文水位",
+      "switchesLabel": "检索与联网",
+      "switchesValue": "知识库 {{rag}} · 联网 {{web}}",
+      "extensionsLabel": "扩展与累计用量",
+      "extensionsValue": "技能 {{skills}} · 连接器 {{mcp}} · {{tokens}} tok",
+      "goalMeta": "（{{status}} · 已用 {{tokens}} tokens）"
+    },
+    "export": {
+      "label": "导出会话",
+      "description": "将当前对话导出为 Markdown、JSON 或完整迁移快照",
+      "sub": {
+        "markdown": "导出为 Markdown (.md)",
+        "json": "导出为 JSON (.json)",
+        "snapshot": "导出完整迁移快照 (.deepstudent.json)"
+      }
+    },
+    "rename": {
+      "label": "重命名会话",
+      "description": "直接修改当前会话标题",
+      "argHint": "<新标题>",
+      "emptyHint": "请在命令后输入新标题，例如：/rename 线代特征值专题",
+      "success": "会话已重命名为：{{title}}"
+    },
+    "mcp": {
+      "label": "连接器面板",
+      "description": "打开当前会话的外部 MCP 工具连接器面板",
+      "emptyToast": "当前尚未配置外部 MCP 连接器，可在「设置 → MCP」中添加"
+    },
+    "skills": {
+      "label": "技能管理",
+      "description": "打开技能选择面板，或使用 /skills clear 清空已固定技能",
+      "argHint": "[clear]",
+      "clearedToast": "已清空当前会话手动固定的全部技能",
+      "sub": {
+        "clear": "清空已固定技能",
+        "clearDesc": "取消本会话所有手动激活的技能"
+      }
+    },
+    "doctor": {
+      "label": "环境自检",
+      "description": "一键检查模型配置、检索开关、记忆内核与插件健康状态",
+      "cardTitle": "学习工作台环境自检",
+      "checkModel": "对话模型服务",
+      "modelMissing": "尚未配置可用模型，请前往「设置 → 模型服务」",
+      "checkRetrieval": "检索与联网通路",
+      "retrievalDetail": "联网搜索：{{web}} · 本地知识库：{{rag}}",
+      "checkMemory": "长期记忆内核",
+      "memoryDetail": "硬规则 {{rules}} 条 · 活跃薄弱点 {{weaknesses}} 项",
+      "available": "已就绪",
+      "checkPlugins": "插件与运行模式",
+      "safeModeActive": "当前处于安全模式（第三方插件已暂停）",
+      "degradedPlugins": "检测到 {{count}} 个降级异常插件",
+      "pluginsHealthy": "运行正常"
+    },
+    "help": {
+      "label": "指令帮助",
+      "description": "查看全部斜杠指令分类速查与输入栏快捷键",
+      "cardTitle": "斜杠指令速查（点击任意指令可直接填入）",
+      "shortcutSummary": "@模型 多模型对比 · 双击 Esc 停止生成"
+    },
+    "btw": {
+      "label": "旁路快问",
+      "description": "顺手查概念/公式/生词，独立浮窗秒答，绝不污染主对话上下文",
+      "argHint": "<顺手一问>",
+      "emptyHint": "请输入想顺手查询的问题，例如：/btw 雅可比行列式的几何意义是什么？",
+      "cardTitle": "旁路小纸条",
+      "isolatedBadge": "不写入会话上下文",
+      "thinking": "正在快速解答...",
+      "insertToChat": "填入主对话",
+      "toFlashcard": "转为闪卡",
+      "llmPrompt": "你正在学习工作台的「旁路小纸条」中回答学习者的顺手追问。请直接、精炼、清晰地解答以下问题（必要时给一个直观例子或核心公式，不要寒暄废话）：\n\n{{question}}"
+    },
+    "remember": {
+      "label": "记住硬规则",
+      "description": "一键写入 Memory v2 互动硬规则（支持 [数学]/[英语]/[作文] 作用域前缀）",
+      "argHint": "[作用域:] <互动规则>",
+      "emptyHint": "请输入要永久记住的互动规则，例如：/remember 数学：先讲几何直觉再列推导",
+      "savedToast": "已写入长期记忆硬规则（下一轮对话起立即生效）"
+    },
+    "learn": {
+      "label": "提炼规则",
+      "description": "从刚才的对话纠偏中自动提炼一条互动硬规则，确认后存入记忆内核",
+      "argHint": "[补充说明]",
+      "emptySession": "当前会话暂无对话内容可供提炼，也可直接使用 /remember <规则>",
+      "cardTitle": "从最近对话提炼长期互动规则",
+      "distilling": "正在提炼规则建议...",
+      "inputPlaceholder": "确认或微调要写入长期记忆内核的一句话规则...",
+      "saveButton": "保存为必遵硬规则",
+      "llmPrompt": "请根据下面最近几轮学习者与助手的对话（以及补充提示：{{hint}}），站在学习者角度提炼出 1 条简短、具体、可复用的「AI 互动硬规则」（不超过 60 字，只输出规则正文一句话，不要任何前缀解释或引号）：\n\n{{context}}"
+    },
+    "feynman": {
+      "label": "费曼考官",
+      "description": "让 AI 扮演挑剔考官连环追问直觉盲区与边界条件，检验是否真懂",
+      "argHint": "[知识点或概念]"
+    },
+    "tutor": {
+      "label": "苏格拉底导学",
+      "description": "开启引导式提问辅导，分步提示启发思考而不直接剧透答案",
+      "argHint": "[题目或疑问]"
+    },
+    "anki": {
+      "label": "一键制卡",
+      "description": "提炼本轮重点难点或资料，生成高质量 FSRS-6 复习闪卡入库",
+      "argHint": "[主题或张数要求]"
+    },
+    "quiz": {
+      "label": "生成测验",
+      "description": "结合当前资料与活跃薄弱点当场出题自测或写入题目集",
+      "argHint": "[考点或题量]"
+    },
+    "mindmap": {
+      "label": "生成导图",
+      "description": "将当前对话脉络或章节内容整理为结构化思维导图",
+      "argHint": "[主题]"
+    },
+    "handout": {
+      "label": "整理讲义",
+      "description": "把课堂字幕或零散答疑整理成带出处/时间戳回链的 Markdown 讲义笔记",
+      "argHint": "[讲义主题]"
+    },
+    "grade": {
+      "label": "作文批改",
+      "description": "选用考研、雅思、高考或通用标准进行逐维评分与润色",
+      "argHint": "[kaoyan | ielts | gaokao]",
+      "sub": {
+        "general": "通用写作评分与润色",
+        "kaoyan": "考研英语作文标准",
+        "ielts": "雅思写作（IELTS）四维标准",
+        "gaokao": "高考作文评分标准"
+      }
+    },
+    "memory": {
+      "label": "记忆内核",
+      "description": "查看当前生效硬规则与薄弱点、切换隐私模式或运行梳理建议",
+      "cardTitle": "长期记忆内核速览",
+      "privacyActiveBadge": "隐私模式已开启",
+      "privacyEnabledToast": "已开启隐私模式：暂停读取、注入与提取个人记忆",
+      "privacyDisabledToast": "已关闭隐私模式：恢复长期记忆内核注入",
+      "rulesCount": "互动硬规则：{{count}} 条（预算 {{used}}/{{max}} 字）",
+      "weaknessCount": "活跃薄弱点：{{count}} 项",
+      "hygieneSummary": "梳理扫描完成：共发现 {{count}} 条优化/合并建议，可前往「AI 记忆」一键确认。",
+      "unavailable": "记忆内核暂不可用",
+      "sub": {
+        "inspect": "预览生效记忆",
+        "inspectDesc": "查看当前硬规则预算与薄弱点统计",
+        "privacy": "切换隐私模式",
+        "privacyDesc": "暂停或恢复记忆读取与自动提取",
+        "clean": "运行记忆梳理",
+        "cleanDesc": "检测冗余、冲突规则与过期薄弱点"
+      }
+    },
+    "today": {
+      "label": "今日冲刺",
+      "description": "汇总今日到期闪卡、错题与薄弱点，一键生成可执行复习排期"
+    },
+    "read": {
+      "label": "边读边问",
+      "description": "一键切换桌面教材伴读侧栏或资源阅读面板"
+    },
+    "schedule": {
+      "label": "定时任务",
+      "description": "用自然语言创建每日错题复盘、定时提醒等自动化任务",
+      "argHint": "<时间与任务描述>",
+      "emptyHint": "请描述定时任务，例如：/schedule 每天晚上 21:30 汇总今日错题"
+    },
+    "workshop": {
+      "label": "插件工坊",
+      "description": "开启或退出 AI 插件工坊模式，一句话定制专属学习插件",
+      "argHint": "[插件需求描述]"
+    },
+    "dspack": {
+      "workflowDescription": "来自学习包「{{pack}}」的声明式学习工作流",
+      "workflowPrompt": "请按学习包「{{pack}}」中的「{{workflow}}」工作流执行。{{input}}"
+    }
   }
 }

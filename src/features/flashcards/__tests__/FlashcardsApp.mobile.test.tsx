@@ -69,21 +69,12 @@ describe('FlashcardsApp 360px mobile navigation tabs', () => {
     });
   });
 
-  it('renders the top Today/Library/Statistics tab bar on mobile and switches cleanly to Library', () => {
+  it('hides the desktop top tab bar on mobile so navigation stays in the sliding drawer', () => {
     render(<FlashcardsApp />);
 
-    const todayTab = screen.getByTestId('fc-tab-today');
-    const libraryTab = screen.getByTestId('fc-tab-library');
-    const statsTab = screen.getByTestId('fc-tab-settings');
-
-    expect(todayTab).toBeVisible();
-    expect(libraryTab).toBeVisible();
-    expect(statsTab).toBeVisible();
+    expect(screen.queryByTestId('fc-tab-today')).toBeNull();
+    expect(screen.queryByTestId('fc-tab-library')).toBeNull();
+    expect(screen.queryByTestId('fc-tab-settings')).toBeNull();
     expect(screen.getByTestId('today-screen')).toBeInTheDocument();
-
-    fireEvent.click(libraryTab);
-
-    expect(useFsrsReviewStore.getState().screen).toBe('library');
-    expect(screen.getByTestId('library-screen')).toBeInTheDocument();
   });
 });

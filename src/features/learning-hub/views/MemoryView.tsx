@@ -1220,11 +1220,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     );
   }
 
-  // ========== 渲染：未配置根文件夹 - 简洁风格（内核面板始终可用） ==========
+  // ========== 渲染：未配置根文件夹 - 简洁风格 ==========
   if (!config?.memoryRootFolderId) {
     return (
-      <div className={cn('flex flex-col h-full overflow-y-auto p-6 gap-6', className)}>
-        <MemoryKernelPanel refreshSignal={0} />
+      <div className={cn('flex flex-col items-center justify-center h-full overflow-y-auto p-6', className)}>
         <div className="flex flex-col items-center justify-center flex-1 p-4">
         <MemoryIcon size={48} className="text-muted-foreground/40 mb-4" />
         <h2 className="text-lg font-medium mb-1.5">
@@ -1899,8 +1898,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             )}
           </AnimatePresence>
 
-          {/* 记忆体系 v2：AI 常驻印象（L1 硬规则 + 学习者画像 + 预算 + 历史回滚） */}
-          <MemoryKernelPanel refreshSignal={memories.length} />
+          {/* 记忆体系 v2：AI 常驻印象（默认收起为单行折叠条，与下方画像/日志面板同构） */}
+          <MemoryKernelPanel defaultExpanded={false} refreshSignal={memories.length} />
 
           {/* 画像汇总 */}
           <AnimatePresence initial={false}>

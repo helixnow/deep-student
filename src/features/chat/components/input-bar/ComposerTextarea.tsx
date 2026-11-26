@@ -13,9 +13,9 @@
 
 import { isAndroid } from '@/utils/platform';
 import React, { useCallback, useEffect, useRef } from 'react';
-import type { UseSkillSlashCommandsReturn } from './SkillSlashPopover';
+import type { SlashApplyTrigger, UseSkillSlashCommandsReturn } from './SkillSlashPopover';
 import { shouldHandleSkillSlashKey } from './SkillSlashPopover';
-import { shouldHandleModelMentionKey } from './ModelMentionPopover';
+import { shouldHandleModelMentionKey } from './useModelMentionAutocomplete';
 import type { ModelMentionState, ModelMentionActions } from './types';
 import { INPUT_BAR_CONFIG } from './inputBarConfig';
 import { cn } from '@/lib/utils';
@@ -50,7 +50,7 @@ export interface ComposerTextareaProps {
 
   skillSlash: UseSkillSlashCommandsReturn;
   /** 补全应用：返回是否成功应用（父级同步输入值与光标） */
-  applySkillSlashSelection: (index?: number) => boolean;
+  applySkillSlashSelection: (index?: number, trigger?: SlashApplyTrigger) => boolean;
   modelMentionState?: ModelMentionState;
   modelMentionActions?: ModelMentionActions;
 }
@@ -293,7 +293,8 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
                 return;
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
-                if (applySkillSlashSelection()) {
+                const trigger: SlashApplyTrigger = e.key === 'Tab' ? 'tab' : 'enter';
+                if (applySkillSlashSelection(undefined, trigger)) {
                   e.preventDefault();
                   return;
                 }

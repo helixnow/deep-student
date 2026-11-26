@@ -66,6 +66,10 @@
       "module": "../../electron/index.ts"
     },
     {
+      "id": "dstu.agent-mesh",
+      "module": "../plugins/agent-mesh/index.ts"
+    },
+    {
       "id": "dstu.agent-orchestration",
       "module": "../plugins/agent-orchestration/index.ts"
     },

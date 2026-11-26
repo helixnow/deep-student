@@ -1,0 +1,718 @@
+// Silent non-blocking CLI capability prober for Agent Mesh.
+// Detects PATH installation, semantic version, auth hints, and protocol capabilities
+// for claude, codex, opencode, pi, agy, dsh, and user-defined custom CLI templates.
+
+import { spawn as nodeSpawn } from 'node:child_process';
+import * as fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type {
+  AdapterCapabilities,
+  CliAuthStatus,
+  CustomCliTemplate,
+  DetectedCliAgent,
+  ExternalAgentDriverKind,
+} from './adapter-types.ts';
+
+export const DEFAULT_PROBE_TTL_MS = 30_000;
+const DEFAULT_COMMAND_TIMEOUT_MS = 3_500;
+const MAX_PROBE_OUTPUT_BYTES = 16_384;
+
+export interface ProbeCommandOptions {
+  readonly timeoutMs: number;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}
+
+export interface ProbeCommandResult {
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly notFound?: boolean;
+  readonly timedOut?: boolean;
+  readonly resolvedPath?: string | null;
+}
+
+export type ProbeCommandRunner = (
+  command: string,
+  args: readonly string[],
+  options: ProbeCommandOptions,
+) => Promise<ProbeCommandResult>;
+
+export type FileExistsPort = (filePath: string) => Promise<boolean>;
+
+export interface CliProberOptions {
+  readonly ttlMs?: number;
+  readonly timeoutMs?: number;
+  readonly commandRunner?: ProbeCommandRunner;
+  readonly fileExists?: FileExistsPort;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly homeDir?: string;
+  readonly platform?: NodeJS.Platform;
+  readonly now?: () => number;
+}
+
+export interface ProbeAllInput {
+  readonly forceRefresh?: boolean;
+  readonly customTemplates?: readonly CustomCliTemplate[];
+}
+
+interface BuiltInCliDescriptor {
+  readonly id: Exclude<ExternalAgentDriverKind, 'custom'>;
+  readonly displayName: string;
+  readonly command: string;
+  readonly versionArgs: readonly string[];
+  readonly capabilities: AdapterCapabilities;
+}
+
+export const DRIVER_DEFAULT_CAPABILITIES: Readonly<
+  Record<ExternalAgentDriverKind, AdapterCapabilities>
+> = {
+  claude: {
+    streamingEvents: true,
+    midTurnSteer: true,
+    interrupt: true,
+    approvalCallback: true,
+    sessionResume: true,
+    sessionFork: true,
+    nativeSubagentTree: true,
+    backgroundTaskEvents: true,
+    mcpInjection: true,
+  },
+  codex: {
+    streamingEvents: true,
+    midTurnSteer: true,
+    interrupt: true,
+    approvalCallback: true,
+    sessionResume: true,
+    sessionFork: false,
+    nativeSubagentTree: true,
+    backgroundTaskEvents: true,
+    mcpInjection: true,
+  },
+  opencode: {
+    streamingEvents: true,
+    midTurnSteer: false,
+    interrupt: true,
+    approvalCallback: false,
+    sessionResume: true,
+    sessionFork: false,
+    nativeSubagentTree: true,
+    backgroundTaskEvents: false,
+    mcpInjection: true,
+  },
+  pi: {
+    streamingEvents: true,
+    midTurnSteer: true,
+    interrupt: true,
+    approvalCallback: true,
+    sessionResume: true,
+    sessionFork: false,
+    nativeSubagentTree: true,
+    backgroundTaskEvents: true,
+    mcpInjection: true,
+  },
+  agy: {
+    streamingEvents: true,
+    midTurnSteer: false,
+    interrupt: true,
+    approvalCallback: false,
+    sessionResume: true,
+    sessionFork: false,
+    nativeSubagentTree: false,
+    backgroundTaskEvents: false,
+    mcpInjection: true,
+  },
+  dsh: {
+    streamingEvents: true,
+    midTurnSteer: false,
+    interrupt: true,
+    approvalCallback: false,
+    sessionResume: true,
+    sessionFork: false,
+    nativeSubagentTree: false,
+    backgroundTaskEvents: false,
+    mcpInjection: true,
+  },
+  custom: {
+    streamingEvents: true,
+    midTurnSteer: false,
+    interrupt: true,
+    approvalCallback: false,
+    sessionResume: false,
+    sessionFork: false,
+    nativeSubagentTree: false,
+    backgroundTaskEvents: false,
+    mcpInjection: true,
+  },
+};
+
+const BUILT_IN_DESCRIPTORS: readonly BuiltInCliDescriptor[] = [
+  {
+    id: 'claude',
+    displayName: 'Claude Code',
+    command: 'claude',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.claude,
+  },
+  {
+    id: 'codex',
+    displayName: 'Codex CLI',
+    command: 'codex',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.codex,
+  },
+  {
+    id: 'opencode',
+    displayName: 'OpenCode',
+    command: 'opencode',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.opencode,
+  },
+  {
+    id: 'pi',
+    displayName: 'Pi Agent',
+    command: 'pi',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.pi,
+  },
+  {
+    id: 'agy',
+    displayName: 'Antigravity CLI',
+    command: 'agy',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.agy,
+  },
+  {
+    id: 'dsh',
+    displayName: 'DeepSeek Harness',
+    command: 'dsh',
+    versionArgs: ['--version'],
+    capabilities: DRIVER_DEFAULT_CAPABILITIES.dsh,
+  },
+];
+
+async function defaultFileExists(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
+  } catch (err) {
+    return err instanceof Error ? false : false;
+  }
+}
+
+async function isExecutableFile(
+  candidatePath: string,
+  platform: NodeJS.Platform,
+): Promise<boolean> {
+  try {
+    const stat = await fs.stat(candidatePath);
+    if (!stat.isFile()) return false;
+    if (platform === 'win32') return true;
+    await fs.access(candidatePath, fsConstants.X_OK);
+    return true;
+  } catch (err) {
+    return err instanceof Error ? false : false;
+  }
+}
+
+export async function resolveExecutableOnPath(
+  command: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | null> {
+  const trimmed = command.trim();
+  if (!trimmed) return null;
+
+  const hasSeparator = trimmed.includes('/') || (platform === 'win32' && trimmed.includes('\\'));
+  const pathExtensions =
+    platform === 'win32'
+      ? (env.PATHEXT ?? env.PathExt ?? '.COM;.EXE;.BAT;.CMD')
+          .split(';')
+          .filter((ext) => ext.length > 0)
+      : [''];
+
+  const candidatesForBase = (base: string): string[] => {
+    if (platform !== 'win32') return [base];
+    const ext = path.win32.extname(base);
+    if (ext.length > 0) return [base];
+    return [base, ...pathExtensions.map((suffix) => `${base}${suffix.toLowerCase()}`), ...pathExtensions.map((suffix) => `${base}${suffix.toUpperCase()}`)];
+  };
+
+  if (hasSeparator) {
+    for (const candidate of candidatesForBase(trimmed)) {
+      if (await isExecutableFile(candidate, platform)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path');
+  const rawPath = pathKey ? (env[pathKey] ?? '') : '';
+  const delimiter = platform === 'win32' ? ';' : ':';
+  const dirs = rawPath.split(delimiter).filter((dir) => dir.length > 0);
+
+  for (const dir of dirs) {
+    const joined = platform === 'win32' ? path.win32.join(dir, trimmed) : path.posix.join(dir, trimmed);
+    for (const candidate of candidatesForBase(joined)) {
+      if (await isExecutableFile(candidate, platform)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function createDefaultProbeCommandRunner(
+  platform: NodeJS.Platform = process.platform,
+): ProbeCommandRunner {
+  return async (command, args, options): Promise<ProbeCommandResult> => {
+    const resolvedPath = await resolveExecutableOnPath(command, options.env, platform);
+    if (!resolvedPath) {
+      return {
+        exitCode: null,
+        stdout: '',
+        stderr: '',
+        notFound: true,
+        resolvedPath: null,
+      };
+    }
+
+    const cleanEnv: NodeJS.ProcessEnv = {};
+    for (const [k, v] of Object.entries(options.env)) {
+      if (v !== undefined) cleanEnv[k] = v;
+    }
+    delete cleanEnv.CLAUDECODE;
+    delete cleanEnv.CLAUDE_CODE_ENTRYPOINT;
+    delete cleanEnv.NODE_OPTIONS;
+    cleanEnv.CI = '1';
+    cleanEnv.NO_COLOR = '1';
+
+    const isWinBatch =
+      platform === 'win32' &&
+      (resolvedPath.toLowerCase().endsWith('.cmd') || resolvedPath.toLowerCase().endsWith('.bat'));
+    const spawnFile = isWinBatch
+      ? path.win32.join(cleanEnv.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
+      : resolvedPath;
+    const spawnArgs = isWinBatch
+      ? ['/d', '/s', '/c', `"${[`"${resolvedPath}"`, ...args].join(' ')}"`]
+      : [...args];
+
+    return new Promise<ProbeCommandResult>((resolve) => {
+      let settled = false;
+      let timedOut = false;
+      let stdout = '';
+      let stderr = '';
+
+      const finish = (result: ProbeCommandResult): void => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+
+      let child: ReturnType<typeof nodeSpawn>;
+      try {
+        child = nodeSpawn(spawnFile, spawnArgs, {
+          env: cleanEnv,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+          windowsVerbatimArguments: isWinBatch,
+        });
+      } catch (err) {
+        const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code) : '';
+        finish({
+          exitCode: null,
+          stdout: '',
+          stderr: err instanceof Error ? err.message : String(err),
+          notFound: code === 'ENOENT' || code === 'EACCES',
+          resolvedPath: null,
+        });
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        try {
+          child.kill('SIGKILL');
+        } catch (err) {
+          if (err instanceof Error) {
+            // Process already exited while timer fired.
+          }
+        }
+      }, Math.max(100, options.timeoutMs));
+      timer.unref?.();
+
+      child.stdout?.on('data', (chunk: Buffer | string) => {
+        if (stdout.length < MAX_PROBE_OUTPUT_BYTES) {
+          stdout += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        }
+      });
+
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        if (stderr.length < MAX_PROBE_OUTPUT_BYTES) {
+          stderr += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        }
+      });
+
+      child.once('error', (err) => {
+        clearTimeout(timer);
+        const code = 'code' in err ? String((err as NodeJS.ErrnoException).code) : '';
+        finish({
+          exitCode: null,
+          stdout,
+          stderr: err.message,
+          notFound: code === 'ENOENT' || code === 'EACCES',
+          timedOut,
+          resolvedPath: code === 'ENOENT' ? null : resolvedPath,
+        });
+      });
+
+      child.once('close', (exitCode) => {
+        clearTimeout(timer);
+        finish({
+          exitCode,
+          stdout,
+          stderr,
+          timedOut,
+          resolvedPath,
+        });
+      });
+    });
+  };
+}
+
+export function extractSemanticVersion(rawOutput: string): string | null {
+  const cleaned = rawOutput.trim();
+  if (!cleaned) return null;
+  const semverMatch = /\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/u.exec(cleaned);
+  if (semverMatch?.[1]) {
+    return semverMatch[1];
+  }
+  const firstLine = cleaned.split(/\r?\n/u)[0]?.trim() ?? '';
+  return firstLine.length > 0 && firstLine.length <= 64 ? firstLine : null;
+}
+
+function hasNonEmptyEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const val = env[key];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function fingerprintTemplates(templates: readonly CustomCliTemplate[]): string {
+  if (templates.length === 0) return '';
+  return templates
+    .map((t) => `${t.id}:${t.name}:${t.command}:${(t.resumeArgsTemplate ?? []).length}`)
+    .join('|');
+}
+
+export class CliAgentProber {
+  private readonly ttlMs: number;
+  private readonly timeoutMs: number;
+  private readonly commandRunner: ProbeCommandRunner;
+  private readonly fileExists: FileExistsPort;
+  private readonly env: Readonly<Record<string, string | undefined>>;
+  private readonly homeDir: string;
+  private readonly now: () => number;
+
+  private cachedResult: {
+    readonly key: string;
+    readonly expiresAt: number;
+    readonly agents: readonly DetectedCliAgent[];
+  } | null = null;
+  private inflight: {
+    readonly key: string;
+    readonly promise: Promise<DetectedCliAgent[]>;
+  } | null = null;
+
+  constructor(options: CliProberOptions = {}) {
+    const platform = options.platform ?? process.platform;
+    this.ttlMs = options.ttlMs ?? DEFAULT_PROBE_TTL_MS;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    this.commandRunner = options.commandRunner ?? createDefaultProbeCommandRunner(platform);
+    this.fileExists = options.fileExists ?? defaultFileExists;
+    this.env = options.env ?? process.env;
+    this.homeDir = options.homeDir ?? os.homedir();
+    this.now = options.now ?? Date.now;
+  }
+
+  invalidateCache(): void {
+    this.cachedResult = null;
+  }
+
+  async probeAll(input: ProbeAllInput = {}): Promise<DetectedCliAgent[]> {
+    const templates = input.customTemplates ?? [];
+    const cacheKey = fingerprintTemplates(templates);
+    const currentTime = this.now();
+
+    if (
+      !input.forceRefresh &&
+      this.cachedResult &&
+      this.cachedResult.key === cacheKey &&
+      currentTime < this.cachedResult.expiresAt
+    ) {
+      return [...this.cachedResult.agents];
+    }
+
+    if (!input.forceRefresh && this.inflight && this.inflight.key === cacheKey) {
+      return this.inflight.promise;
+    }
+
+    const promise = this.executeProbeAll(templates).finally(() => {
+      if (this.inflight?.promise === promise) {
+        this.inflight = null;
+      }
+    });
+    this.inflight = { key: cacheKey, promise };
+    return promise;
+  }
+
+  private async executeProbeAll(
+    customTemplates: readonly CustomCliTemplate[],
+  ): Promise<DetectedCliAgent[]> {
+    const builtInPromises = BUILT_IN_DESCRIPTORS.map((desc) => this.probeBuiltIn(desc));
+    const customPromises = customTemplates.map((tpl) => this.probeCustomTemplate(tpl));
+    const agents = await Promise.all([...builtInPromises, ...customPromises]);
+
+    const cacheKey = fingerprintTemplates(customTemplates);
+    this.cachedResult = {
+      key: cacheKey,
+      expiresAt: this.now() + Math.max(0, this.ttlMs),
+      agents,
+    };
+    return [...agents];
+  }
+
+  private async safeRun(command: string, args: readonly string[], timeoutMs = this.timeoutMs): Promise<ProbeCommandResult> {
+    try {
+      return await this.commandRunner(command, args, {
+        timeoutMs,
+        env: this.env,
+      });
+    } catch (err) {
+      return {
+        exitCode: null,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : String(err),
+        notFound: true,
+        resolvedPath: null,
+      };
+    }
+  }
+
+  private async probeBuiltIn(desc: BuiltInCliDescriptor): Promise<DetectedCliAgent> {
+    const probedAt = this.now();
+    const res = await this.safeRun(desc.command, desc.versionArgs);
+    const combinedOutput = `${res.stdout}\n${res.stderr}`.trim();
+    const version = extractSemanticVersion(combinedOutput);
+    const installed = !res.notFound && !res.timedOut && (res.exitCode === 0 || version !== null);
+
+    if (!installed) {
+      return {
+        id: desc.id,
+        driver: desc.id,
+        displayName: desc.displayName,
+        command: desc.command,
+        resolvedPath: null,
+        installed: false,
+        version: null,
+        authStatus: 'unknown',
+        capabilities: { ...desc.capabilities },
+        probedAt,
+      };
+    }
+
+    const capabilities = await this.detectRefinedCapabilities(desc);
+    const auth = await this.detectAuthHint(desc.id, desc.command);
+
+    return {
+      id: desc.id,
+      driver: desc.id,
+      displayName: desc.displayName,
+      command: desc.command,
+      resolvedPath: res.resolvedPath ?? desc.command,
+      installed: true,
+      version,
+      authStatus: auth.status,
+      authHint: auth.hint,
+      capabilities,
+      probedAt,
+    };
+  }
+
+  private async detectRefinedCapabilities(
+    desc: BuiltInCliDescriptor,
+  ): Promise<AdapterCapabilities> {
+    if (desc.id !== 'codex') {
+      return { ...desc.capabilities };
+    }
+
+    // Verify whether this Codex installation supports `codex app-server`.
+    const helpRes = await this.safeRun(desc.command, ['app-server', '--help'], Math.min(2_000, this.timeoutMs));
+    const combined = `${helpRes.stdout}\n${helpRes.stderr}`.toLowerCase();
+    const lacksAppServer =
+      helpRes.notFound === true ||
+      (helpRes.exitCode !== 0 &&
+        (combined.includes('unrecognized subcommand') ||
+          combined.includes('unknown command') ||
+          combined.includes('invalid subcommand')));
+
+    if (lacksAppServer) {
+      return {
+        ...desc.capabilities,
+        midTurnSteer: false,
+        approvalCallback: false,
+      };
+    }
+    return { ...desc.capabilities };
+  }
+
+  private async detectAuthHint(
+    driver: Exclude<ExternalAgentDriverKind, 'custom'>,
+    command: string,
+  ): Promise<{ status: CliAuthStatus; hint?: string }> {
+    if (driver === 'claude') {
+      const envKey = hasNonEmptyEnv(this.env, [
+        'ANTHROPIC_API_KEY',
+        'CLAUDE_CODE_OAUTH_TOKEN',
+        'ANTHROPIC_AUTH_TOKEN',
+      ]);
+      if (envKey) {
+        return { status: 'authenticated', hint: `Configured via ${envKey}` };
+      }
+      if (
+        (await this.fileExists(path.join(this.homeDir, '.claude', '.credentials.json'))) ||
+        (await this.fileExists(path.join(this.homeDir, '.claude.json')))
+      ) {
+        return { status: 'authenticated', hint: 'Claude Code local credentials detected' };
+      }
+      const statusRes = await this.safeRun(command, ['auth', 'status'], 1_800);
+      const out = `${statusRes.stdout}\n${statusRes.stderr}`.toLowerCase();
+      if (statusRes.exitCode === 0 && (out.includes('"loggedin":true') || out.includes('"loggedin": true') || (out.includes('logged in') && !out.includes('not logged in')))) {
+        return { status: 'authenticated', hint: 'Logged in via claude auth' };
+      }
+      if (out.includes('"loggedin":false') || out.includes('not logged in')) {
+        return { status: 'unauthenticated', hint: 'Run `claude auth login` or set ANTHROPIC_API_KEY' };
+      }
+      return { status: 'unknown', hint: 'Verify login with `claude auth status`' };
+    }
+
+    if (driver === 'codex') {
+      const envKey = hasNonEmptyEnv(this.env, ['OPENAI_API_KEY', 'CODEX_API_KEY']);
+      if (envKey) {
+        return { status: 'authenticated', hint: `Configured via ${envKey}` };
+      }
+      if (await this.fileExists(path.join(this.homeDir, '.codex', 'auth.json'))) {
+        return { status: 'authenticated', hint: 'Codex auth.json detected' };
+      }
+      const statusRes = await this.safeRun(command, ['login', 'status'], 1_800);
+      const out = `${statusRes.stdout}\n${statusRes.stderr}`.toLowerCase();
+      if (statusRes.exitCode === 0 && (out.includes('logged in') && !out.includes('not logged in'))) {
+        return { status: 'authenticated', hint: 'Logged in via codex login' };
+      }
+      if (out.includes('not logged in')) {
+        return { status: 'unauthenticated', hint: 'Run `codex login` or set OPENAI_API_KEY' };
+      }
+      return { status: 'unknown', hint: 'Run `codex login` if prompted' };
+    }
+
+    if (driver === 'opencode') {
+      const envKey = hasNonEmptyEnv(this.env, [
+        'ANTHROPIC_API_KEY',
+        'OPENAI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'GEMINI_API_KEY',
+        'OPENROUTER_API_KEY',
+      ]);
+      if (envKey) {
+        return { status: 'authenticated', hint: `Configured via ${envKey}` };
+      }
+      const xdgData = this.env.XDG_DATA_HOME || path.join(this.homeDir, '.local', 'share');
+      if (await this.fileExists(path.join(xdgData, 'opencode', 'auth.json'))) {
+        return { status: 'authenticated', hint: 'OpenCode auth store detected' };
+      }
+      return { status: 'unknown', hint: 'Configure provider via `opencode auth login`' };
+    }
+
+    if (driver === 'pi') {
+      const envKey = hasNonEmptyEnv(this.env, [
+        'ANTHROPIC_API_KEY',
+        'OPENAI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'GEMINI_API_KEY',
+      ]);
+      if (envKey) {
+        return { status: 'authenticated', hint: `Configured via ${envKey}` };
+      }
+      if (await this.fileExists(path.join(this.homeDir, '.pi', 'agent', 'auth.json'))) {
+        return { status: 'authenticated', hint: 'Pi Agent auth.json detected' };
+      }
+      return { status: 'unknown', hint: 'Set provider API key or sign in with `pi`' };
+    }
+
+    if (driver === 'agy') {
+      const envKey = hasNonEmptyEnv(this.env, ['GEMINI_API_KEY', 'GOOGLE_API_KEY']);
+      if (envKey) {
+        return { status: 'authenticated', hint: `Configured via ${envKey}` };
+      }
+      if (await this.fileExists(path.join(this.homeDir, '.gemini', 'antigravity', 'settings.json'))) {
+        return { status: 'authenticated', hint: 'Antigravity profile detected' };
+      }
+      return { status: 'unknown', hint: 'Ensure Antigravity CLI is signed in' };
+    }
+
+    // dsh
+    const dshEnv = hasNonEmptyEnv(this.env, ['DEEPSEEK_API_KEY', 'DSH_API_KEY', 'OPENAI_API_KEY']);
+    if (dshEnv) {
+      return { status: 'authenticated', hint: `Configured via ${dshEnv}` };
+    }
+    if (
+      (await this.fileExists(path.join(this.homeDir, '.dsh', 'config.json'))) ||
+      (await this.fileExists(path.join(this.homeDir, '.config', 'dsh', 'auth.json')))
+    ) {
+      return { status: 'authenticated', hint: 'DeepSeek Harness config detected' };
+    }
+    return { status: 'unknown', hint: 'Set DEEPSEEK_API_KEY or configure dsh' };
+  }
+
+  private async probeCustomTemplate(template: CustomCliTemplate): Promise<DetectedCliAgent> {
+    const probedAt = this.now();
+    const res = await this.safeRun(template.command, ['--version']);
+    const combinedOutput = `${res.stdout}\n${res.stderr}`.trim();
+    const version = extractSemanticVersion(combinedOutput);
+    const installed = !res.notFound && !res.timedOut && (res.exitCode === 0 || version !== null || res.resolvedPath !== null);
+
+    const capabilities: AdapterCapabilities = {
+      ...DRIVER_DEFAULT_CAPABILITIES.custom,
+      sessionResume: Boolean(template.resumeArgsTemplate && template.resumeArgsTemplate.length > 0),
+      ...template.capabilitiesOverride,
+    };
+
+    const templateAuthKey = template.env
+      ? Object.keys(template.env).find((k) => /(API_KEY|TOKEN|SECRET)/iu.test(k) && Boolean(template.env?.[k]))
+      : undefined;
+
+    return {
+      id: `custom:${template.id}`,
+      driver: 'custom',
+      displayName: template.name,
+      command: template.command,
+      resolvedPath: installed ? (res.resolvedPath ?? template.command) : null,
+      installed,
+      version: installed ? version : null,
+      authStatus: templateAuthKey ? 'authenticated' : 'unknown',
+      authHint: templateAuthKey ? `Template env sets ${templateAuthKey}` : undefined,
+      capabilities,
+      probedAt,
+      templateId: template.id,
+    };
+  }
+}

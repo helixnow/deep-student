@@ -6,6 +6,11 @@ import type { ChatStore } from '../../core/types/store';
 import { QueuedMessageBubble } from './QueuedMessageBubble';
 import { QueueErrorBar } from './QueueErrorBar';
 import type { QueuedMessage } from '../../core/types/queue';
+import {
+  selectActiveExternalThreadForSession,
+  steerTurn,
+  useAgentMeshStore,
+} from '@/features/agent-mesh';
 
 // Stable empty-array reference. We need this so that older mock stores in
 // existing tests (which don't declare `queuedMessages`) don't get a fresh
@@ -29,6 +34,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   // 仅订阅 queuedMessages：inputValue / attachments / sessionStatus 只在点击时才需要，
   // 通过 store.getState() 即时读取，避免每次按键都重渲染整个队列堆叠
   const {
+    sessionId,
     queuedMessages,
     removeQueued,
     swapQueueWithDraft,
@@ -42,6 +48,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   } = useStore(
     store,
     useShallow((s) => ({
+      sessionId: s.sessionId,
       queuedMessages: s.queuedMessages ?? EMPTY_QUEUE,
       removeQueued: s.removeQueued,
       swapQueueWithDraft: s.swapQueueWithDraft,
@@ -55,6 +62,11 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     })),
   );
 
+  const activeExternalThread = useAgentMeshStore((meshState) =>
+    selectActiveExternalThreadForSession(meshState, sessionId),
+  );
+  const effectiveAllowSteer = allowSteer || Boolean(activeExternalThread);
+
   const handleClick = useCallback((id: string) => {
     const state = store.getState();
     const draftEmpty = !state.inputValue.trim() && state.attachments.length === 0;
@@ -63,6 +75,26 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   }, [store, recallToDraft, swapQueueWithDraft]);
 
   const handleSteer = useCallback(async (id: string) => {
+    const currentSessionId = store.getState().sessionId;
+    const currentExternalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      currentSessionId,
+    );
+    if (currentExternalThread) {
+      const queuedItem = (store.getState().queuedMessages ?? []).find((q) => q.id === id);
+      if (queuedItem) {
+        markSteered?.(id);
+        await steerTurn({
+          threadId: currentExternalThread.threadId,
+          chatSessionId: currentSessionId || currentExternalThread.chatSessionId,
+          text: queuedItem.content,
+          priority: 'correction',
+        });
+        removeQueued(id);
+        return;
+      }
+    }
+
     // Mark as steered first so the flag survives the promote → dequeue chain
     // and propagates to the resulting user message's _meta.steered.
     markSteered?.(id);
@@ -78,7 +110,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       // Already idle: no transition will fire, so trigger dequeue explicitly.
       void maybeDequeue?.();
     }
-  }, [markSteered, promoteQueued, abortStream, store, maybeDequeue]);
+  }, [markSteered, promoteQueued, removeQueued, abortStream, store, maybeDequeue]);
 
   if (queuedMessages.length === 0) return null;
 
@@ -98,7 +130,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
         <QueuedMessageBubble
           key={item.id}
           item={item}
-          allowSteer={allowSteer && item.status === 'pending'}
+          allowSteer={effectiveAllowSteer && item.status === 'pending'}
           onClick={() => handleClick(item.id)}
           onSteer={() => void handleSteer(item.id)}
           onDelete={() => removeQueued(item.id)}

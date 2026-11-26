@@ -9013,6 +9013,28 @@
         "type": "string"
       },
       "frontend": "app"
+    },
+    {
+      "name": "vfs_update_file_content",
+      "lane": "L13-vfs-api",
+      "async": true,
+      "args": [
+        {
+          "key": "params",
+          "rustName": "params",
+          "schema": {
+            "$ref": "#/$defs/VfsUpdateFileContentParams"
+          },
+          "optional": false
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/VfsUpdateFileContentResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
     }
   ],
   "events": [
@@ -18378,6 +18400,63 @@
       ],
       "additionalProperties": false,
       "x-rust": "dstu_vfs::vfs::handlers::VfsUploadFileResult"
+    },
+    "VfsUpdateFileContentParams": {
+      "type": "object",
+      "properties": {
+        "fileId": {
+          "type": "string"
+        },
+        "base64Content": {
+          "type": "string"
+        },
+        "syncOriginalPath": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "fileId",
+        "base64Content"
+      ]
+    },
+    "VfsUpdateFileContentResult": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/VfsFile"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "originalPathSynced": {
+          "type": "boolean"
+        },
+        "originalPathError": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "file",
+        "sha256",
+        "originalPathSynced"
+      ],
+      "additionalProperties": false
     },
     "dstu_vfs__vfs__handlers__BatchIndexResult": {
       "type": "object",

@@ -22,6 +22,8 @@ export type { MessageSkillAttributionSnapshot };
 
 export interface SkillAttributionPillProps {
   className?: string;
+  /** Compact icon-only presentation for narrow mobile footers (keeps accessible sr-only summary). */
+  compact?: boolean;
   messageId?: string;
   sessionId?: string | null;
   variantId?: string | null;
@@ -37,6 +39,7 @@ export interface SkillAttributionPillProps {
 
 export const SkillAttributionPill: React.FC<SkillAttributionPillProps> = ({
   className,
+  compact = false,
   messageId,
   sessionId,
   variantId,
@@ -135,15 +138,16 @@ export const SkillAttributionPill: React.FC<SkillAttributionPillProps> = ({
             data-testid="skill-attribution-pill"
             aria-haspopup="dialog"
             className={cn(
-              'pointer-events-auto inline-flex items-center gap-1 rounded-full border border-border/50 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground',
-              open && 'border-primary/50 bg-primary/10 text-primary',
+              'pointer-events-auto inline-flex items-center gap-1 rounded-md py-0.5 text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/50 hover:text-foreground',
+              compact ? 'px-1' : 'px-1.5',
+              open && 'bg-muted/70 text-foreground',
             )}
             title={t('skills:attribution.pillTitle', {
               defaultValue: '查看生成本条回复时使用的技能快照',
             })}
           >
-            <Lightning className="h-3 w-3 shrink-0 text-primary" />
-            <span className="max-w-[160px] truncate">
+            <Lightning className="h-3 w-3 shrink-0 opacity-75" />
+            <span className={compact ? 'sr-only' : 'max-w-[160px] truncate'}>
               {t('skills:title', { defaultValue: '技能' })} · {pillSummary}
             </span>
           </button>

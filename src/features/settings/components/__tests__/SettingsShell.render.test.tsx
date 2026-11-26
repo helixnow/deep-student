@@ -5,6 +5,11 @@ import { UiKernel } from '@/ui-kernel/kernel';
 import { UiKernelProvider } from '@/ui-kernel/react';
 import settingsPlugin from '@/ui-plugins/official/settings';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import {
+  MobileHeaderProvider,
+  MobileLayoutProvider,
+  useSetMobileHeaderActiveView,
+} from '@/components/layout';
 import { Settings } from '../Settings';
 
 /**
@@ -112,24 +117,49 @@ afterEach(() => {
   state.lang = 'zh-CN';
 });
 
+function ActiveSettingsView({ props }: { props: Partial<React.ComponentProps<typeof Settings>> }) {
+  const setActiveView = useSetMobileHeaderActiveView();
+  React.useLayoutEffect(() => {
+    setActiveView('settings');
+  }, [setActiveView]);
+  return <Settings onBack={() => {}} isActive {...props} />;
+}
+
 async function renderSettings(props: Partial<React.ComponentProps<typeof Settings>> = {}) {
   const kernel = new UiKernel();
   await kernel.install(settingsPlugin, { origin: 'builtin' });
   const view = render(
     <UiKernelProvider kernel={kernel}>
-      <Settings onBack={() => {}} isActive {...props} />
+      <MobileLayoutProvider>
+        <MobileHeaderProvider>
+          <ActiveSettingsView props={props} />
+        </MobileHeaderProvider>
+      </MobileLayoutProvider>
     </UiKernelProvider>,
   );
   return { view, kernel };
 }
 
 describe('Settings shell renders', () => {
-  it('mounts the desktop workspace with the section content area', async () => {
+  it('mounts the desktop workspace without standalone category or About headings', async () => {
     state.mobile = false;
     state.small = false;
+    useSettingsShellStore.setState({ activeTab: 'apis' });
     const { view, kernel } = await renderSettings();
+    await waitFor(() => {
+      expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
+    });
     expect(view.container.querySelector('[data-wb-settings-content-ready]')).not.toBeNull();
-    expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
+    expect(view.container.querySelector('#settings-main-content h1')).toBeNull();
+
+    act(() => {
+      useSettingsShellStore.getState().setActiveTab('about');
+    });
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-wb-settings-active-tab="about"]')).not.toBeNull();
+    });
+    expect(view.container.querySelector('#settings-main-content h1')).toBeNull();
+
     view.unmount();
     await kernel.dispose();
   });
@@ -164,9 +194,9 @@ describe('Settings shell renders', () => {
   });
 
   it.each([
-    { lng: 'en-US' as const, expectedAriaLabel: 'Back to settings' },
-    { lng: 'zh-CN' as const, expectedAriaLabel: '返回设置' },
-  ])('G11b: mounts the mobile section list and exposes localized Back aria-label in $lng', async ({ lng, expectedAriaLabel }) => {
+    { lng: 'en-US' as const },
+    { lng: 'zh-CN' as const },
+  ])('keeps a single UnifiedMobileHeader without duplicate subpage header or pinned cloud sync banners in $lng', async ({ lng }) => {
     state.lang = lng;
     state.mobile = true;
     state.small = true;
@@ -174,16 +204,22 @@ describe('Settings shell renders', () => {
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
     expect(view.container.querySelector('[data-wb-settings-content-ready]')).not.toBeNull();
 
+    // Mobile Settings root must NOT hang extra cloud sync shortcut / quick-sync bars below the top header
+    expect(view.queryByTestId('settings-mobile-cloud-sync-shortcut')).toBeNull();
+    expect(view.queryByTestId('settings-mobile-quick-sync-now-btn')).toBeNull();
+    expect(view.container.querySelectorAll('[data-mobile-shell="header"]')).toHaveLength(1);
+
     const categories = view.container.querySelector('[data-settings-category-list]') as HTMLElement;
     fireEvent.click(within(categories).getAllByRole('button')[0]!);
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="content"]')).not.toBeNull());
     expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
 
-    const backBtn = view.getByTestId('settings-mobile-back');
-    expect(backBtn).toHaveAttribute('aria-label', expectedAriaLabel);
-    expect(backBtn.className).toContain('!min-h-[44px]');
-    expect(backBtn.className).toContain('!min-w-[44px]');
-
+    // Mobile Settings subpages must reuse the single UnifiedMobileHeader, never rendering a second subpage header
+    expect(view.queryByTestId('settings-mobile-subpage-header')).toBeNull();
+    expect(view.queryByTestId('settings-mobile-right-header')).toBeNull();
+    const header = view.container.querySelector('[data-mobile-shell="header"]') as HTMLElement;
+    expect(header).not.toBeNull();
+    const backBtn = within(header).getAllByRole('button')[0]!;
     fireEvent.click(backBtn);
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
 
@@ -191,7 +227,7 @@ describe('Settings shell renders', () => {
     await kernel.dispose();
   });
 
-  it('shows a visible mobile back button on the About subpage in en-US and returns to the category list', async () => {
+  it('returns to the category list from the About subpage via the single UnifiedMobileHeader back button', async () => {
     state.lang = 'en-US';
     state.mobile = true;
     state.small = true;
@@ -203,8 +239,10 @@ describe('Settings shell renders', () => {
     fireEvent.click(within(aboutFooter).getByRole('button'));
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="content"]')).not.toBeNull());
 
-    const backBtn = view.getByTestId('settings-mobile-back');
-    expect(backBtn).toHaveAttribute('aria-label', 'Back to settings');
+    expect(view.queryByTestId('settings-mobile-subpage-header')).toBeNull();
+    const header = view.container.querySelector('[data-mobile-shell="header"]') as HTMLElement;
+    expect(header).not.toBeNull();
+    const backBtn = within(header).getAllByRole('button')[0]!;
     fireEvent.click(backBtn);
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
 

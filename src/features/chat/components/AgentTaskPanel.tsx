@@ -94,6 +94,7 @@ import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatB
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { resolveGenerativeUIChatActionHandlers } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { AnkiCardsBlock } from '../plugins/blocks/ankiCardsBlock';
+import { SwarmCapsuleBar, useAgentMeshWorkbenchStore } from '@/features/agent-mesh';
 
 // 兼容既有消费方/测试的提取函数出口（实现已迁移到 agent-task/extractors）
 export {
@@ -212,6 +213,21 @@ export const AgentTaskPanel: React.FC<Props> = ({
     expanded && openArtifactId ? state.blocks.get(openArtifactId) : undefined,
   );
   const sessionId = useStore(store, (s) => s.sessionId);
+  const hasActiveMeshOrSwarm = useAgentMeshWorkbenchStore((s) => {
+    if (!sessionId) return false;
+    const sw = s.swarmBySession[sessionId];
+    if (sw && sw.status !== 'completed') return true;
+    const ths = s.threadsBySession[sessionId] ?? [];
+    return ths.some(
+      (th) =>
+        th.status === 'running' ||
+        th.status === 'waiting_children' ||
+        th.status === 'waiting_approval',
+    );
+  });
+  useEffect(() => {
+    useAgentMeshWorkbenchStore.getState().setActiveSessionId(sessionId ?? null);
+  }, [sessionId]);
   const streaming = useStore(store, (s) => (s.activeBlockIds?.size ?? 0) > 0);
   const hasRuntimeActivity = useStore(store, (s) => getBlocksDigest(s.blocks).runtimeActivity);
   const todoBlocks = useStore(store, (s) => getBlocksDigest(s.blocks).todoBlocks);
@@ -492,7 +508,8 @@ export const AgentTaskPanel: React.FC<Props> = ({
     setExpanded(true);
   }, [has, streaming, steps, isSmallScreen]);
 
-  if (!has && !hasRuntimeActivity && artifacts.length === 0) return null;
+  const hasBuiltinPanelContent = has || hasRuntimeActivity || artifacts.length > 0;
+  if (!hasBuiltinPanelContent && !hasActiveMeshOrSwarm) return null;
 
   const showSources = sources.length > 0;
   const showArtifacts = artifacts.length > 0;
@@ -518,11 +535,12 @@ export const AgentTaskPanel: React.FC<Props> = ({
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
       <div className="mx-auto max-w-[var(--chat-thread-max-w)]">
+        <SwarmCapsuleBar sessionId={sessionId} />
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             Collapsed pill / Expanded header bar
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {!expanded && (
+        {hasBuiltinPanelContent && !expanded && (
           <div
             className={cn(
               'flex w-fit items-center gap-2 h-7 px-2.5',
@@ -575,7 +593,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
             Expanded panel: plan / sources / runtime / results / changes / completion
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <AnimatePresence>
-          {expanded && (
+          {hasBuiltinPanelContent && expanded && (
             <motion.div
               initial={{ opacity: 0, y: -4, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

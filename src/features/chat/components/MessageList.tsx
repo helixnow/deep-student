@@ -43,6 +43,11 @@ import { useStreamPreferences } from './renderers/StreamPreferencesContext';
 import { BlockRenderSkipContext } from './renderers/blockRenderSkip';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
+import {
+  SessionMeshStreamSection,
+  selectHasSessionMeshActivity,
+  useAgentMeshStore,
+} from '@/features/agent-mesh';
 
 // ============================================================================
 // 常量定义
@@ -314,6 +319,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 订阅消息顺序（已通过 useMessageOrder 内部的引用缓存优化）
   const messageOrder = useMessageOrder(store);
+  const chatSessionId = useStore(store, (s) => s.sessionId);
+  const hasSessionMeshActivity = useAgentMeshStore((meshState) =>
+    selectHasSessionMeshActivity(meshState, chatSessionId),
+  );
 
   // 历史分页状态（顶部横幅 + 滚动自动触发）
   const hasMoreHistory = useStore(store, (s) => s.hasMoreHistory);
@@ -1163,8 +1172,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
     hasMarkedFirstRenderScheduledRef.current = true;
   }
 
-  // 空状态
-  if (forceEmptyPreview || messageOrder.length === 0) {
+  // 空状态（当存在活跃或历史外部 CLI 回合 / 智能体交流折页时展示内联对话流而非空白欢迎页）
+  if (forceEmptyPreview || (messageOrder.length === 0 && !hasSessionMeshActivity)) {
     const variantKey = emptyStateGroupName
       ? 'messageList.empty.primaryActionInGroupVariants'
       : 'messageList.empty.primaryActionVariants';
@@ -1479,6 +1488,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           </BlockRenderSkipContext.Provider>
         </div>
       )}
+      <SessionMeshStreamSection sessionId={chatSessionId} />
     </CustomScrollArea>
     {/* 回到底部浮动按钮（P0-4: 键盘/输入栏遮挡时整体上抬，始终锚定在输入栏上沿） */}
     <div

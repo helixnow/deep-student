@@ -94,6 +94,9 @@ import { useChatHeaderSession } from './app/shell/useChatHeaderSession';
 
 import { useSlot } from './ui-kernel/react';
 import type { ShellView } from './ui-kernel/contracts/shell';
+import type { SettingsSection } from './ui-kernel/contracts/settings';
+import { resolveSettingsBreadcrumbLabel } from './ui-plugins/official/settings/navigation';
+import { useSettingsShellStore } from './stores/settingsShellStore';
 import { RegisteredViewLayer } from './ui-plugins/official/shell/RegisteredViewLayer';
 import { resolveShellView } from './ui-plugins/official/shell/navigation';
 import { rememberCardsHubView } from './app/navigation/cardsHub';
@@ -449,6 +452,14 @@ function App() {
       : rawKey;
     return t(resolvedKey);
   }, [activeShell?.chatHeader, activeView?.titleKey, activeViewOwner, currentChatHeaderTitle, i18n, t]);
+  const settingsSectionEntries = useSlot<SettingsSection>('settings.sections');
+  const activeSettingsTab = useSettingsShellStore((state) => state.activeTab);
+  const desktopShellHeaderBreadcrumb = useMemo(() => {
+    if (currentView !== 'settings') return null;
+    return resolveSettingsBreadcrumbLabel(settingsSectionEntries, activeSettingsTab, t, {
+      isMobile: isMobilePlatform(),
+    }) ?? null;
+  }, [activeSettingsTab, currentView, settingsSectionEntries, t]);
   const cardsHubMobileTabs = useMemo(() => (
     isSmallScreen && activeShell?.cardsHubTabs ? (
       <CardsHubTabs variant="mobile" currentView={currentView} onNavigate={handleMobileAppNavigate} />
@@ -508,6 +519,7 @@ function App() {
       unifiedGoBack={unifiedGoBack}
       unifiedGoForward={unifiedGoForward}
       desktopShellViewLabel={desktopShellViewLabel}
+      desktopShellHeaderBreadcrumb={desktopShellHeaderBreadcrumb}
       cardsHubMobileTabs={cardsHubMobileTabs}
       handleViewChange={handleViewChange}
       setCurrentView={setCurrentView}

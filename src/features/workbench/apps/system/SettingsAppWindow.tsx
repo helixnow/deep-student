@@ -4,8 +4,12 @@
  * 内容区始终渲染真实设置界面；高密度列表由设置模块自身按需加载并虚拟化。
  * ⌘/Ctrl+F：窗口聚焦时把焦点送进侧栏设置搜索框（上千个设置项的快速定位入口）。
  */
-import React, { Suspense, useEffect } from 'react';
+import React, { Suspense, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSlot } from '@/ui-kernel/react';
+import type { SettingsSection } from '@/ui-kernel/contracts/settings';
+import { resolveSettingsBreadcrumbLabel } from '@/ui-kernel/settingsBreadcrumb';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import type { AppWindowProps } from '../../core/types';
 import { WbSysFade, WorkbenchSidebarLayout, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
@@ -30,12 +34,19 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
   requestClose,
   renderThrottleMs: _renderThrottleMs = 0,
 }) => {
-  const { t } = useTranslation('workbench');
+  const { t } = useTranslation(['workbench', 'settings', 'common']);
   const { ref, sizeClass } = useWbSysSize();
+  const sectionEntries = useSlot<SettingsSection>('settings.sections');
+  const activeTab = useSettingsShellStore((state) => state.activeTab);
+  const activeBreadcrumb = useMemo(
+    () => resolveSettingsBreadcrumbLabel(sectionEntries, activeTab, t, { isMobile: false }),
+    [sectionEntries, activeTab, t],
+  );
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.settings'));
-  }, [onTitleChange, t]);
+    const baseTitle = t('workbench:apps.settings');
+    onTitleChange(activeBreadcrumb ? `${baseTitle} / ${activeBreadcrumb}` : baseTitle);
+  }, [activeBreadcrumb, onTitleChange, t]);
 
   // ⌘/Ctrl+F → 聚焦侧栏设置搜索。门禁：本窗聚焦（data-focused）且事件发生在窗内；
   // capture 阶段消费，抢在 WebView 原生查找 / 其他全局监听之前。

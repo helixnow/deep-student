@@ -87,9 +87,26 @@ export interface FileContentResult {
   found: boolean;
 }
 
+export interface UpdateFileContentParams {
+  fileId: string;
+  base64Content: string;
+  syncOriginalPath?: boolean | null;
+}
+
+export interface UpdateFileContentResult {
+  file: VfsFile;
+  sha256: string;
+  originalPathSynced: boolean;
+  originalPathError?: string;
+}
+
 export const vfsFileApi = {
   async upload(params: UploadFileParams): Promise<UploadFileResult> {
     return invoke('vfs_upload_file', { params });
+  },
+
+  async updateContent(params: UpdateFileContentParams): Promise<UpdateFileContentResult> {
+    return invoke('vfs_update_file_content', { params });
   },
 
   async get(fileId: string): Promise<VfsFile | null> {

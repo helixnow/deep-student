@@ -20,7 +20,6 @@ import {
   SortAscending,
   SortDescending,
   SquaresFour,
-  UploadSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
@@ -269,7 +268,6 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   searchPlaceholder,
   searchDisabled = false,
   onNewFolder,
-  onImportFiles,
   createMenuItems,
   titlebarMode = false,
 }: FinderToolbarProps) {
@@ -395,27 +393,6 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     </AppMenu>
   ) : null;
 
-  const resolvedImportFiles =
-    onImportFiles ??
-    (React.isValidElement<{ onNewTextbook?: () => void }>(createMenuItems)
-      ? createMenuItems.props.onNewTextbook
-      : undefined);
-
-  const importButton = resolvedImportFiles ? (
-    <DsButton
-      variant="ghost"
-      size="sm"
-      onClick={resolvedImportFiles}
-      data-testid="finder-toolbar-import"
-      className="pointer-events-auto relative !h-8 shrink-0 gap-1.5 rounded-xl bg-primary/10 px-2.5 text-xs font-medium text-primary hover:bg-primary/15 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']"
-      title={t('finder.toolbar.newTextbook')}
-      aria-label={t('finder.toolbar.newTextbook')}
-    >
-      <UploadSimple size={15} aria-hidden="true" />
-      <span>{t('finder.toolbar.newTextbook')}</span>
-    </DsButton>
-  ) : null;
-
   const createMenu = createMenuItems ? (
     <AppMenu>
       <AppMenuTrigger asChild>
@@ -439,14 +416,12 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   const utilityButtons = isCompact ? (
     <>
       {viewModeToggle}
-      {importButton}
       {createMenu}
       {overflowMenu}
     </>
   ) : (
     <>
       {viewModeToggle}
-      {importButton}
       {createMenu}
 
       {onSortChange && (

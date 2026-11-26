@@ -180,6 +180,15 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   pluginWorkshopToolsSkill,
 ];
 
+// Internal model-facing tool bundles are progressively loaded by the agent runtime
+// (or activated programmatically by dedicated slash workflows like /goal, /anki, /quiz)
+// and should not clutter user-facing `/` skill autocomplete unless explicitly opted in.
+for (const skill of allBuiltinToolSkills) {
+  if (skill.userInvocable === undefined) {
+    skill.userInvocable = false;
+  }
+}
+
 // The result-returning browser bridge is implemented for Windows WebView2 and
 // macOS WKWebView. Other runtimes fail closed and do not advertise tools that
 // can only return BRIDGE_UNSUPPORTED.

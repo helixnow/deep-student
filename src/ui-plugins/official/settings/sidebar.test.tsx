@@ -10,7 +10,7 @@ import { defineUiPlugin, UiKernel } from '@/ui-kernel/kernel';
 import type { SettingsSection } from '@/ui-kernel/contracts/settings';
 import settingsPlugin from './index';
 import { settingsIcon } from './isolation';
-import { settingsNavigation } from './navigation';
+import { resolveSettingsBreadcrumbLabel, settingsNavigation } from './navigation';
 import golden from './__golden__/settings.json';
 
 const state = vi.hoisted(() => ({ mobile: false, reveal: vi.fn() }));
@@ -193,6 +193,25 @@ describe('real desktop settings shell sidebar consumes settings.sections', () =>
     await act(async () => { await kernel.unload('community.mobile'); });
     expect(within(categories()).getAllByRole('button')).toHaveLength(6);
     view.unmount();
+    await kernel.dispose();
+  });
+
+  it('resolves topbar breadcrumb labels for categories, About, and plugin-manager alias', async () => {
+    const kernel = new UiKernel();
+    await kernel.install(settingsPlugin, { origin: 'builtin' });
+    const { t } = useTranslation(['settings', 'common']);
+    const entries = () => kernel.slots.list<SettingsSection>('settings.sections');
+
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'apis', t, { isMobile: false })).toBe(t('settings:categories.ai'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'models', t, { isMobile: false })).toBe(t('settings:categories.ai'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'appearance', t, { isMobile: false })).toBe(t('settings:categories.experience'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'memory', t, { isMobile: false })).toBe(t('settings:categories.personalization'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'mcp', t, { isMobile: false })).toBe(t('settings:categories.integrations'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'document-processing', t, { isMobile: false })).toBe(t('settings:categories.workflow'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'data-governance', t, { isMobile: false })).toBe(t('settings:categories.data'));
+    expect(resolveSettingsBreadcrumbLabel(entries(), 'about', t, { isMobile: false })).toBe(t('settings:tabs.about'));
+    expect(resolveSettingsBreadcrumbLabel([], 'apis', t, { isMobile: false })).toBeNull();
+
     await kernel.dispose();
   });
 });

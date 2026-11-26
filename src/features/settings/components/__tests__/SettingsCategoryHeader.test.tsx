@@ -45,10 +45,10 @@ describe('SettingsCategoryHeader', () => {
     vi.restoreAllMocks();
   });
 
-  it('exposes a labeled tablist and exactly one keyboard entry linked to the content panel', () => {
+  it('exposes a labeled tablist without a standalone heading and links one keyboard entry to the content panel', () => {
     render(<Harness initialTab="models" />);
 
-    expect(screen.getByRole('heading', { level: 1, name: '模型与 AI' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: '模型与 AI' })).toHaveAttribute('aria-orientation', 'horizontal');
     const tabs = screen.getAllByRole('tab');
     expect(tabs).toHaveLength(3);
@@ -61,7 +61,7 @@ describe('SettingsCategoryHeader', () => {
     expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
   });
 
-  it('keeps labeled tabs available when the compact layout hides the title', () => {
+  it('keeps labeled tabs available in compact layout without rendering a heading', () => {
     render(<Harness compact />);
 
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
