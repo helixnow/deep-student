@@ -138,7 +138,7 @@
     "@milkdown/prose": "7.22.1",
     "@milkdown/transformer": "7.22.1",
     "@milkdown/utils": "7.22.1",
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@nvq/flowtoken": "2.0.6",
     "@open-spaced-repetition/binding": "0.6.0",
     "@phosphor-icons/react": "^2.1.10",
