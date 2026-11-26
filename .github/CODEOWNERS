@@ -1,0 +1,14 @@
+# Default repository owner
+* @helixnow
+
+# Security-critical, build, release, and governance boundaries
+/.github/                     @helixnow
+/scripts/ci/                  @helixnow
+/scripts/licenses/            @helixnow
+/electron/                    @helixnow
+/host/kernel/                 @helixnow
+/host/platform/secrets/       @helixnow
+/contracts/                   @helixnow
+/resources/app/migrations/    @helixnow
+/resources/app/permissions/   @helixnow
+/resources/legal/             @helixnow

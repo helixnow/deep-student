@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions (Q&A / 使用交流)
+    url: https://github.com/helixnow/deep-student/discussions
+    about: Ask usage questions, share workflows, or discuss ideas before opening a feature request.
+  - name: Security Advisories (安全漏洞私密报告)
+    url: https://github.com/helixnow/deep-student/security/advisories/new
+    about: Report a security vulnerability privately without exposing users to risk.

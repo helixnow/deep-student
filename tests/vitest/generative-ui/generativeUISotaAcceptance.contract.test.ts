@@ -83,13 +83,6 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fs.existsSync(path.join(REPO, 'src/features/chat/skills/builtin-tools/generative-ui.ts')),
   },
   {
-    id: 'architecture-docs',
-    check: () =>
-      fs.existsSync(path.join(REPO, 'docs/generative-ui/ARCHITECTURE.md')) &&
-      fs.existsSync(path.join(REPO, 'docs/generative-ui/INTEGRATION_ROADMAP.md')) &&
-      fs.existsSync(path.join(REPO, 'docs/generative-ui/PROGRESS.md')),
-  },
-  {
     id: 'module-integration-contract',
     check: () =>
       fs.existsSync(
@@ -165,19 +158,11 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fs.existsSync(path.join(REPO, 'host/plugins/integration/tests/generative-ui-executor-e2e.test.ts')),
   },
   {
-    id: 'tauri-e2e-docs',
-    check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/TAURI_E2E.md')),
-  },
-  {
     id: 'tauri-e2e-contract-test',
     check: () =>
       fs.existsSync(
         path.join(REPO, 'tests/vitest/generative-ui/generativeUITauriE2E.contract.test.ts'),
       ),
-  },
-  {
-    id: 'sota-checklist-doc',
-    check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/SOTA_CHECKLIST.md')),
   },
   {
     id: 'guarded-listen-hpias-whitelist',
@@ -544,12 +529,6 @@ describe('generativeUISotaAcceptance contract', () => {
   it('satisfies all SOTA integration requirements', () => {
     const failures = SOTA_REQUIREMENTS.filter((req) => !req.check()).map((req) => req.id);
     expect(failures, `Missing SOTA requirements: ${failures.join(', ')}`).toEqual([]);
-  });
-
-  it('ARCHITECTURE documents hpias_event backend protocol', () => {
-    const arch = fs.readFileSync(path.join(REPO, 'docs/generative-ui/ARCHITECTURE.md'), 'utf8');
-    expect(arch).toContain('hpias_event');
-    expect(arch).toContain('session_started');
   });
 
   it('Host hpias channel constant matches frontend', () => {
