@@ -3,6 +3,7 @@
 import type {
   ApprovalDecisionKind,
   ApprovalResponseInput,
+  CliBinaryOverride,
   CustomCliTemplate,
   DetectedCliAgent,
   ExternalAgentDriverKind,
@@ -141,8 +142,9 @@ export class ExternalAdapterRegistry {
 
   private readonly safetyIdleTimeoutMs: number | undefined;
   private readonly adapters = new Map<string, ExternalCodingAdapter>();
-  private readonly adapterResolvedCommands = new Map<string, string | undefined>();
+  private readonly adapterSignatures = new Map<string, string>();
   private readonly templates = new Map<string, CustomCliTemplate>();
+  private readonly cliOverrides = new Map<string, CliBinaryOverride>();
   private readonly activeThreadToAdapter = new Map<string, ExternalCodingAdapter>();
 
   constructor(options: ExternalAdapterRegistryOptions = {}) {
@@ -155,7 +157,7 @@ export class ExternalAdapterRegistry {
     const key = `custom:${template.id}`;
     this.templates.set(template.id, template);
     this.adapters.delete(key);
-    this.adapterResolvedCommands.delete(key);
+    this.adapterSignatures.delete(key);
     this.prober.invalidateCache();
   }
 
@@ -165,7 +167,33 @@ export class ExternalAdapterRegistry {
     const existing = this.adapters.get(key);
     if (existing) {
       this.adapters.delete(key);
-      this.adapterResolvedCommands.delete(key);
+      this.adapterSignatures.delete(key);
+      void existing.dispose();
+    }
+    this.prober.invalidateCache();
+  }
+
+  setCliOverride(override: CliBinaryOverride): void {
+    const cleanId = override.agentId.trim().replace(/^@+/, '').toLowerCase();
+    if (!cleanId) return;
+    this.cliOverrides.set(cleanId, { ...override, agentId: cleanId });
+    const existing = this.adapters.get(cleanId);
+    if (existing && ![...this.activeThreadToAdapter.values()].includes(existing)) {
+      this.adapters.delete(cleanId);
+      this.adapterSignatures.delete(cleanId);
+      void existing.dispose();
+    }
+    this.prober.invalidateCache();
+  }
+
+  removeCliOverride(agentId: string): void {
+    const cleanId = agentId.trim().replace(/^@+/, '').toLowerCase();
+    if (!cleanId) return;
+    this.cliOverrides.delete(cleanId);
+    const existing = this.adapters.get(cleanId);
+    if (existing && ![...this.activeThreadToAdapter.values()].includes(existing)) {
+      this.adapters.delete(cleanId);
+      this.adapterSignatures.delete(cleanId);
       void existing.dispose();
     }
     this.prober.invalidateCache();
@@ -175,28 +203,39 @@ export class ExternalAdapterRegistry {
     return this.prober.probeAll({
       forceRefresh,
       customTemplates: [...this.templates.values()],
+      cliOverrides: [...this.cliOverrides.values()],
     });
   }
 
   getAdapter(agentIdOrDriver: string): ExternalCodingAdapter {
-    const cachedProbed = this.prober.getCachedAgent(agentIdOrDriver);
-    const resolvedCmd = cachedProbed?.resolvedPath || undefined;
+    const cleanKey = agentIdOrDriver.trim().replace(/^@+/, '');
+    const override = this.cliOverrides.get(cleanKey.toLowerCase());
+    const cachedProbed = this.prober.getCachedAgent(cleanKey);
+    const resolvedCmd =
+      override?.executablePath?.trim() || cachedProbed?.resolvedPath || undefined;
+    const extraArgs = override?.extraArgs ? [...override.extraArgs] : [];
+    const overrideEnv = override?.env ?? {};
+    const signature = JSON.stringify({
+      cmd: resolvedCmd ?? null,
+      extraArgs,
+      env: overrideEnv,
+    });
 
-    const existing = this.adapters.get(agentIdOrDriver);
+    const existing = this.adapters.get(cleanKey);
     if (existing) {
-      const prevCmd = this.adapterResolvedCommands.get(agentIdOrDriver);
-      const shouldRecreate = resolvedCmd !== undefined && prevCmd !== resolvedCmd;
+      const prevSig = this.adapterSignatures.get(cleanKey);
+      const shouldRecreate = prevSig !== signature;
       const inUse = [...this.activeThreadToAdapter.values()].includes(existing);
       if (!shouldRecreate || inUse) {
         return existing;
       }
-      this.adapters.delete(agentIdOrDriver);
-      this.adapterResolvedCommands.delete(agentIdOrDriver);
+      this.adapters.delete(cleanKey);
+      this.adapterSignatures.delete(cleanKey);
       void existing.dispose();
     }
 
-    if (agentIdOrDriver.startsWith('custom:')) {
-      const templateId = agentIdOrDriver.slice('custom:'.length);
+    if (cleanKey.startsWith('custom:')) {
+      const templateId = cleanKey.slice('custom:'.length);
       const baseTemplate = this.templates.get(templateId);
       if (!baseTemplate) {
         throw new Error(`Unknown custom CLI template: ${templateId}`);
@@ -215,18 +254,26 @@ export class ExternalAdapterRegistry {
           driver: 'custom',
           template,
           ...(resolvedCmd ? { command: resolvedCmd } : {}),
+          ...(extraArgs.length > 0 ? { extraArgs } : {}),
         },
       });
-      this.adapters.set(agentIdOrDriver, adapter);
-      this.adapterResolvedCommands.set(agentIdOrDriver, resolvedCmd);
+      this.adapters.set(cleanKey, adapter);
+      this.adapterSignatures.set(cleanKey, signature);
       return adapter;
     }
 
-    const driver = agentIdOrDriver as ExternalAgentDriverKind;
+    const driver = cleanKey as ExternalAgentDriverKind;
     const genericBase =
       driver === 'agy' || driver === 'dsh' ? BUILT_IN_GENERIC_TEMPLATES[driver] : undefined;
-    const genericTemplate =
-      genericBase && resolvedCmd ? { ...genericBase, command: resolvedCmd } : genericBase;
+    const genericTemplate = genericBase
+      ? {
+          ...genericBase,
+          ...(resolvedCmd ? { command: resolvedCmd } : {}),
+          ...(Object.keys(overrideEnv).length > 0
+            ? { env: { ...(genericBase.env ?? {}), ...overrideEnv } }
+            : {}),
+        }
+      : undefined;
 
     const adapter = createExternalCodingAdapter({
       driver,
@@ -234,22 +281,35 @@ export class ExternalAdapterRegistry {
       template: genericTemplate,
       processSupervisor: this.supervisor,
       safetyIdleTimeoutMs: this.safetyIdleTimeoutMs,
-      claude: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
-      codex: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
-      opencode: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
-      pi: { ...(resolvedCmd ? { command: resolvedCmd } : {}) },
+      claude: {
+        ...(resolvedCmd ? { command: resolvedCmd } : {}),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+      },
+      codex: {
+        ...(resolvedCmd ? { command: resolvedCmd } : {}),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+      },
+      opencode: {
+        ...(resolvedCmd ? { command: resolvedCmd } : {}),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+      },
+      pi: {
+        ...(resolvedCmd ? { command: resolvedCmd } : {}),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+      },
       ...(driver === 'agy' || driver === 'dsh'
         ? {
             generic: {
               driver,
               template: genericTemplate,
               ...(resolvedCmd ? { command: resolvedCmd } : {}),
+              ...(extraArgs.length > 0 ? { extraArgs } : {}),
             },
           }
         : {}),
     });
-    this.adapters.set(agentIdOrDriver, adapter);
-    this.adapterResolvedCommands.set(agentIdOrDriver, resolvedCmd);
+    this.adapters.set(cleanKey, adapter);
+    this.adapterSignatures.set(cleanKey, signature);
     return adapter;
   }
 
@@ -306,7 +366,7 @@ export class ExternalAdapterRegistry {
     this.activeThreadToAdapter.clear();
     await Promise.all([...this.adapters.values()].map((adapter) => adapter.dispose()));
     this.adapters.clear();
-    this.adapterResolvedCommands.clear();
+    this.adapterSignatures.clear();
     await this.supervisor.dispose();
   }
 }

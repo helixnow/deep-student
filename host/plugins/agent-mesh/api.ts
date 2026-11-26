@@ -15,6 +15,8 @@ import type {
   BoardMessagePriority,
   BoardSenderKind,
   CheckpointPort,
+  CliBinaryOverride,
+  CliBinaryOverrideInput,
   CoordinatorWakeNotification,
   CustomCliTemplate,
   CustomCliTemplateInput,
@@ -64,6 +66,8 @@ export type {
   BoardMessagePriority,
   BoardSenderKind,
   CheckpointPort,
+  CliBinaryOverride,
+  CliBinaryOverrideInput,
   CoordinatorWakeNotification,
   CustomCliTemplate,
   CustomCliTemplateInput,
@@ -298,6 +302,8 @@ export interface AgentMeshService {
   swarmControl(input: SwarmControlInput): Promise<unknown>;
   saveCustomCliTemplate(input: CustomCliTemplateInput): Promise<CustomCliTemplate>;
   deleteCustomCliTemplate(input: { id: string } | string): Promise<{ deleted: boolean; id: string }>;
+  saveCliOverride(input: CliBinaryOverrideInput): Promise<CliBinaryOverride | null>;
+  deleteCliOverride(input: { agentId: string } | string): Promise<{ deleted: boolean; agentId: string }>;
   askPeer(input: AskPeerInput): Promise<PeerExchangeRecord>;
   handoff(input: HandoffInput): Promise<{ exchange: PeerExchangeRecord; targetTurn: StartMeshTurnResult }>;
 }
@@ -317,6 +323,8 @@ export const AGENT_MESH_REMOTE_METHODS = [
   'swarmControl',
   'saveCustomCliTemplate',
   'deleteCustomCliTemplate',
+  'saveCliOverride',
+  'deleteCliOverride',
   'askPeer',
   'handoff',
 ] as const;

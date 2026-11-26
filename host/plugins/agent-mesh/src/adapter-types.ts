@@ -26,12 +26,23 @@ export interface AdapterCapabilities {
 
 export type CliAuthStatus = 'authenticated' | 'unauthenticated' | 'unknown';
 
+export interface CliBinaryOverride {
+  readonly agentId: string;
+  readonly executablePath?: string | null;
+  readonly extraArgs?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly updatedAt?: string;
+}
+
 export interface DetectedCliAgent {
   readonly id: string;
   readonly driver: ExternalAgentDriverKind;
   readonly displayName: string;
   readonly command: string;
   readonly resolvedPath: string | null;
+  readonly customExecutablePath?: string | null;
+  readonly extraArgs?: readonly string[];
+  readonly probeError?: string | null;
   readonly installed: boolean;
   readonly version: string | null;
   readonly authStatus: CliAuthStatus;

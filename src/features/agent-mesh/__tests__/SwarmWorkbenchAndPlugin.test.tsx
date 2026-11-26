@@ -291,14 +291,39 @@ describe('dstu.agent-mesh Official UI Plugin, Inline SwarmCapsuleBar & Native Me
     });
   });
 
-  it('renders native MeshSettingsSection (excluding builtin @deepstudent, zero standalone studio button) and saves custom CLI tools + safety preferences', async () => {
+  it('renders native MeshSettingsSection (excluding builtin @deepstudent, zero standalone studio button) and saves custom CLI tools, per-CLI path overrides, and safety preferences', async () => {
     const saveCustomCliTemplate = vi.fn(async () => ({ ok: true }));
+    const saveCliOverride = vi.fn(async () => ({ ok: true }));
+    const deleteCliOverride = vi.fn(async () => ({ deleted: true, agentId: 'codex' }));
+    let codexOverridePath: string | null = null;
+    let codexExtraArgs: string[] = [];
+
     detachHost = setMeshWorkbenchHostAdapter({
       probeAgents: async () => [
         { id: 'deepstudent', driver: 'builtin', name: 'DeepStudent', available: true },
         { id: 'claude', driver: 'claude', name: 'Claude Code', available: true, version: '2.1.4' },
+        {
+          id: 'codex',
+          driver: 'codex',
+          name: 'Codex CLI',
+          available: Boolean(codexOverridePath),
+          version: codexOverridePath ? '0.171.0' : null,
+          binaryPath: codexOverridePath,
+          customExecutablePath: codexOverridePath,
+          extraArgs: codexExtraArgs,
+        },
       ],
       saveCustomCliTemplate,
+      saveCliOverride: async (input) => {
+        codexOverridePath = input.executablePath ?? null;
+        codexExtraArgs = input.extraArgs ?? [];
+        return saveCliOverride(input);
+      },
+      deleteCliOverride: async (input) => {
+        codexOverridePath = null;
+        codexExtraArgs = [];
+        return deleteCliOverride(input);
+      },
     });
 
     render(<MeshSettingsSection />);
@@ -308,6 +333,37 @@ describe('dstu.agent-mesh Official UI Plugin, Inline SwarmCapsuleBar & Native Me
     expect(screen.queryByTestId('mesh-settings-agent-deepstudent')).toBeNull();
     expect(screen.queryByTestId('mesh-settings-open-workbench-btn')).toBeNull();
 
+    // Configure per-CLI custom executable path + extra args (T3 Code parity)
+    fireEvent.click(screen.getByTestId('mesh-settings-configure-codex'));
+    fireEvent.change(screen.getByTestId('mesh-settings-override-path-codex'), {
+      target: { value: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex' },
+    });
+    fireEvent.change(screen.getByTestId('mesh-settings-override-args-codex'), {
+      target: { value: '--sandbox workspace-write' },
+    });
+    fireEvent.click(screen.getByTestId('mesh-settings-override-save-codex'));
+
+    await waitFor(() => {
+      expect(saveCliOverride).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'codex',
+          executablePath: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex',
+          extraArgs: ['--sandbox', 'workspace-write'],
+        }),
+      );
+      expect(screen.getByTestId('mesh-settings-custom-path-badge-codex')).toBeInTheDocument();
+      expect(screen.getByTestId('mesh-settings-agent-codex')).toHaveTextContent('已就绪');
+    });
+
+    // Reset override back to auto-detect
+    fireEvent.click(screen.getByTestId('mesh-settings-configure-codex'));
+    fireEvent.click(screen.getByTestId('mesh-settings-override-reset-codex'));
+    await waitFor(() => {
+      expect(deleteCliOverride).toHaveBeenCalledWith({ agentId: 'codex' });
+      expect(screen.queryByTestId('mesh-settings-custom-path-badge-codex')).toBeNull();
+    });
+
+    // Add & edit custom CLI template
     fireEvent.click(screen.getByTestId('mesh-settings-add-custom-btn'));
     fireEvent.change(screen.getByTestId('mesh-settings-custom-id'), { target: { value: 'aider' } });
     fireEvent.change(screen.getByTestId('mesh-settings-custom-name'), { target: { value: 'Aider CLI' } });
@@ -320,6 +376,17 @@ describe('dstu.agent-mesh Official UI Plugin, Inline SwarmCapsuleBar & Native Me
       );
     });
     expect(screen.getByTestId('mesh-settings-custom-item-aider')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('mesh-settings-custom-edit-aider'));
+    fireEvent.change(screen.getByTestId('mesh-settings-custom-command'), {
+      target: { value: '/opt/homebrew/bin/aider' },
+    });
+    fireEvent.click(screen.getByTestId('mesh-settings-custom-save'));
+    await waitFor(() => {
+      expect(saveCustomCliTemplate).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'aider', command: '/opt/homebrew/bin/aider' }),
+      );
+    });
 
     cleanup();
     render(<SwarmCapsuleBar sessionId="sess-push-1" />);

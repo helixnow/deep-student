@@ -29,6 +29,21 @@ export interface AdapterCapabilities {
   mcpInjection: boolean;
 }
 
+export interface CliBinaryOverride {
+  agentId: string;
+  executablePath: string | null;
+  extraArgs: string[];
+  env: Record<string, string>;
+  updatedAt: string;
+}
+
+export interface CliBinaryOverrideInput {
+  agentId: string;
+  executablePath?: string | null;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+}
+
 export interface DetectedCliAgent {
   id: string;
   kind: MeshAgentKind;
@@ -39,6 +54,9 @@ export interface DetectedCliAgent {
   authenticated: boolean;
   version: string | null;
   executablePath?: string | null;
+  customExecutablePath?: string | null;
+  extraArgs?: string[];
+  probeError?: string | null;
   authHint?: string | null;
   defaultModel?: string | null;
   availableModels?: readonly string[];
@@ -171,10 +189,12 @@ export interface AdapterRegistryPort {
   probeAgents(options?: {
     forceRefresh?: boolean;
     customTemplates?: readonly CustomCliTemplate[];
+    cliOverrides?: readonly CliBinaryOverride[];
   }): Promise<DetectedCliAgent[]>;
   getAdapter(
     agentId: string,
     customTemplates?: readonly CustomCliTemplate[],
+    cliOverrides?: readonly CliBinaryOverride[],
   ): ExternalCodingAdapter | null;
   dispose?(): Promise<void> | void;
 }
@@ -528,6 +548,7 @@ export interface MeshSessionSnapshot {
   fileLeases: ActiveFileLease[];
   swarm: SwarmSessionSnapshot | null;
   customTemplates: CustomCliTemplate[];
+  cliOverrides?: CliBinaryOverride[];
 }
 
 export type AgentMeshEvent =
@@ -591,7 +612,8 @@ export type AgentMeshEvent =
       target: string;
       humanControlled: boolean;
     }
-  | { type: 'templates_updated'; templates: CustomCliTemplate[] };
+  | { type: 'templates_updated'; templates: CustomCliTemplate[] }
+  | { type: 'cli_overrides_updated'; overrides: CliBinaryOverride[] };
 
 // ---------------------------------------------------------------------------
 // Default Standalone Port Implementations (Zero-Conflict Fallbacks)

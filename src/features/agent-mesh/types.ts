@@ -39,6 +39,13 @@ export type DetectedAgentRuntimeStatus =
   | 'parked'
   | 'offline';
 
+export interface CliBinaryOverrideInput {
+  agentId: string;
+  executablePath?: string | null;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+}
+
 export interface DetectedMeshAgent {
   /** Canonical identifier, e.g. 'claude', 'codex', 'opencode', 'pi', 'agy', 'dsh', 'deepstudent', or custom ID */
   id: string;
@@ -51,6 +58,10 @@ export interface DetectedMeshAgent {
   authenticated?: boolean;
   version?: string;
   command?: string;
+  executablePath?: string | null;
+  customExecutablePath?: string | null;
+  extraArgs?: string[];
+  probeError?: string | null;
   defaultModel?: string | null;
   availableModels?: string[];
   status?: DetectedAgentRuntimeStatus;
@@ -422,6 +433,8 @@ export interface AgentMeshHostBridge {
   swarmControl?: (input: SwarmControlRequest) => Promise<SwarmSessionState | null>;
   saveCustomCliTemplate?: (template: CustomCliTemplate) => Promise<CustomCliTemplate | void>;
   deleteCustomCliTemplate?: (templateId: string) => Promise<{ ok?: boolean } | void>;
+  saveCliOverride?: (input: CliBinaryOverrideInput) => Promise<unknown>;
+  deleteCliOverride?: (input: { agentId: string } | string) => Promise<{ deleted?: boolean; agentId?: string } | void>;
   askPeer?: (input: AskPeerRequest) => Promise<PeerExchangeRecord | null>;
   handoff?: (input: HandoffRequest) => Promise<{ exchange: PeerExchangeRecord; targetTurn?: unknown } | null>;
 }

@@ -42,6 +42,8 @@ import {
   type AdapterRegistryPort,
   type AgentMeshEvent,
   type CheckpointPort,
+  type CliBinaryOverride,
+  type CliBinaryOverrideInput,
   type CoordinatorWakeNotification,
   type CustomCliTemplate,
   type CustomCliTemplateInput,
@@ -343,7 +345,8 @@ export class MeshOrchestrator implements AgentMeshService {
   async probeAgents(options?: { forceRefresh?: boolean } | boolean): Promise<DetectedCliAgent[]> {
     const forceRefresh = typeof options === 'boolean' ? options : options?.forceRefresh === true;
     const customTemplates = this.storage.listCustomTemplates();
-    const detected = await this.adapters.probeAgents({ forceRefresh, customTemplates });
+    const cliOverrides = this.storage.listCliOverrides();
+    const detected = await this.adapters.probeAgents({ forceRefresh, customTemplates, cliOverrides });
     const hasBuiltin = detected.some((a) => a.id === 'deepstudent');
     const merged = hasBuiltin ? [...detected] : [DEFAULT_BUILTIN_COORDINATOR_AGENT, ...detected];
     this.cachedAgents = merged;
@@ -370,6 +373,29 @@ export class MeshOrchestrator implements AgentMeshService {
     this.emit({ type: 'templates_updated', templates: all });
     await this.probeAgents({ forceRefresh: true });
     return { deleted, id };
+  }
+
+  async saveCliOverride(input: CliBinaryOverrideInput): Promise<CliBinaryOverride | null> {
+    const saved = this.storage.saveCliOverride(input);
+    const all = this.storage.listCliOverrides();
+    this.emit({ type: 'cli_overrides_updated', overrides: all });
+    await this.probeAgents({ forceRefresh: true });
+    return saved;
+  }
+
+  async deleteCliOverride(
+    input: { agentId: string } | string,
+  ): Promise<{ deleted: boolean; agentId: string }> {
+    const agentId =
+      typeof input === 'string'
+        ? input.trim().replace(/^@+/, '').toLowerCase()
+        : String(input?.agentId ?? '').trim().replace(/^@+/, '').toLowerCase();
+    if (!agentId) throw new Error('AGENT_MESH_INVALID_CLI_OVERRIDE: agentId is required');
+    const deleted = this.storage.deleteCliOverride(agentId);
+    const all = this.storage.listCliOverrides();
+    this.emit({ type: 'cli_overrides_updated', overrides: all });
+    await this.probeAgents({ forceRefresh: true });
+    return { deleted, agentId };
   }
 
   // ---- 2. Workspace Directory Binding ---------------------------------------
@@ -825,6 +851,7 @@ export class MeshOrchestrator implements AgentMeshService {
     const fileLeases = this.fileLeases.listActiveLeases(workspaceBinding?.rootPath);
     const swarm = chatSessionId ? this.swarm.getSnapshot(chatSessionId) : null;
     const customTemplates = this.storage.listCustomTemplates();
+    const cliOverrides = this.storage.listCliOverrides();
 
     return {
       chatSessionId,
@@ -836,6 +863,7 @@ export class MeshOrchestrator implements AgentMeshService {
       fileLeases,
       swarm,
       customTemplates,
+      cliOverrides,
     };
   }
 
@@ -1383,7 +1411,8 @@ export class MeshOrchestrator implements AgentMeshService {
     }
 
     const customTemplates = this.storage.listCustomTemplates();
-    const adapter = this.adapters.getAdapter(record.agentId, customTemplates);
+    const cliOverrides = this.storage.listCliOverrides();
+    const adapter = this.adapters.getAdapter(record.agentId, customTemplates, cliOverrides);
     if (!adapter) {
       const unavailableMsg = `AGENT_MESH_ADAPTER_UNAVAILABLE: CLI adapter "${record.agentId}" is not available`;
       this.storage.updateThreadPatch(actor.threadId, { status: 'failed' });

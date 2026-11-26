@@ -138,9 +138,16 @@ describe('ProcessTreeSupervisor & buildInjectedSubprocessEnv', () => {
         '/usr/bin',
         '/bin',
         '/Users/dev/.local/bin',
+        '/Users/dev/.claude/local',
+        '/Users/dev/.opencode/bin',
+        '/Users/dev/.kimi-code/bin',
         '/Users/dev/.grok/bin',
         '/Users/dev/.bun/bin',
         '/Users/dev/.cargo/bin',
+        '/Users/dev/.volta/bin',
+        '/Users/dev/.fnm/current/bin',
+        '/Users/dev/.local/share/mise/shims',
+        '/Users/dev/.asdf/shims',
         '/opt/homebrew/bin',
         '/opt/homebrew/sbin',
         '/usr/local/bin',
@@ -1218,7 +1225,7 @@ describe('GenericCliAdapter & ExternalAdapterRegistry', () => {
     expect(spawnedCalls[0]?.env.DSTU_MESH_TOKEN).toBe('agy-shim-token');
     expect(spawnedCalls[0]?.env.PATH?.startsWith('/tmp/agy-shim-bin')).toBe(true);
 
-    // DSH with resumeSessionId + JSONL auto-detection
+    // DSH headless execution + JSONL auto-detection
     const dshEvents = await collectEvents(
       registry.startTurn('dsh', {
         threadId: 'th-dsh',
@@ -1228,10 +1235,8 @@ describe('GenericCliAdapter & ExternalAdapterRegistry', () => {
       }),
     );
     expect(spawnedCalls[1]?.args).toEqual([
-      'run',
-      '--resume',
-      'dsh-sess-100',
-      '--prompt',
+      '--profile',
+      'headless',
       'Verify invariants',
     ]);
     expect(dshEvents.find((e) => e.type === 'session_bound')).toMatchObject({
@@ -1417,11 +1422,85 @@ describe('GenericCliAdapter & ExternalAdapterRegistry', () => {
     );
 
     expect(capturedInvocations).toHaveLength(2);
-    expect(capturedInvocations[0].args).toEqual(
+    expect(capturedInvocations[0]?.args).toEqual(
       expect.arrayContaining(['--model', 'claude-opus-4-6', '--effort', 'max']),
     );
-    expect(capturedInvocations[1].args).toEqual(
+    expect(capturedInvocations[1]?.args).toEqual(
       expect.arrayContaining(['--model', 'gpt-5.4', '-c', 'model_reasoning_effort="xhigh"']),
     );
+  });
+
+  it('uses verified CLI flags for agy (--conversation) and dsh (--profile headless) and applies registry CLI overrides', async () => {
+    const spawned: Array<{ cmd: string; args: readonly string[] }> = [];
+
+    const registry = new ExternalAdapterRegistry({
+      proberOptions: {
+        fileExists: async () => false,
+        readTextFile: async () => null,
+        commandRunner: async () => ({ exitCode: null, stdout: '', stderr: '', notFound: true }),
+      },
+      supervisorOptions: {
+        registerExitHook: false,
+        spawnPort: (cmd, args) => {
+          spawned.push({ cmd, args: [...args] });
+          const proc = new SimulatedChildProcess();
+          setImmediate(() => {
+            proc.stdout.write('ok\n');
+            proc.exitCode = 0;
+            proc.emit('close', 0, null);
+          });
+          return proc;
+        },
+      },
+    });
+
+    // Apply custom path + extraArgs override to agy
+    registry.setCliOverride({
+      agentId: 'agy',
+      executablePath: '/opt/custom/bin/agy',
+      extraArgs: ['--sandbox'],
+    });
+
+    await collectEvents(
+      registry.startTurn('agy', {
+        threadId: 'th-agy-resume',
+        cwd: '/tmp/proj',
+        prompt: 'continue work',
+        resumeSessionId: 'conv-42',
+      }),
+    );
+
+    await collectEvents(
+      registry.startTurn('dsh', {
+        threadId: 'th-dsh-headless',
+        cwd: '/tmp/proj',
+        prompt: 'summarize repo',
+      }),
+    );
+
+    expect(spawned[0]).toEqual({
+      cmd: '/opt/custom/bin/agy',
+      args: ['--sandbox', '--conversation', 'conv-42', '--prompt', 'continue work'],
+    });
+    expect(spawned[1]).toEqual({
+      cmd: 'dsh',
+      args: ['--profile', 'headless', 'summarize repo'],
+    });
+
+    // Removing override restores default command without extraArgs
+    registry.removeCliOverride('agy');
+    await collectEvents(
+      registry.startTurn('agy', {
+        threadId: 'th-agy-default',
+        cwd: '/tmp/proj',
+        prompt: 'fresh turn',
+      }),
+    );
+    expect(spawned[2]).toEqual({
+      cmd: 'agy',
+      args: ['--prompt', 'fresh turn'],
+    });
+
+    await registry.dispose();
   });
 });
