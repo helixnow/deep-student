@@ -122,7 +122,9 @@ export interface T3ModelSelectorPopoverProps {
   onSetThinkingDepth?: (value: ReasoningLevel | 'off') => void;
   webSearchEnabled?: boolean;
   onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  renderAdvancedPanel?: (options?: { embedded?: boolean; onClose?: () => void }) => React.ReactNode;
   onOpenAdvancedPanel?: () => void;
+  initialView?: 'models' | 'params';
   sessionId?: string;
   permissionPreset: PermissionPreset;
   onPermissionPresetChange?: (
@@ -301,7 +303,9 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   onSetThinkingDepth,
   webSearchEnabled,
   onWebSearchEnabledChange,
+  renderAdvancedPanel,
   onOpenAdvancedPanel,
+  initialView = 'models',
   sessionId,
   permissionPreset,
   onPermissionPresetChange,
@@ -330,7 +334,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   const isMediumTier = effectiveTier === 'medium';
 
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'models' | 'params'>(initialView);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  useEffect(() => {
+    setViewMode(initialView);
+  }, [initialView]);
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [confirmDangerOpen, setConfirmDangerOpen] = useState(false);
   const [permissionSyncing, setPermissionSyncing] = useState(false);
@@ -670,9 +679,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
 
   const activeListLength = drilledCliOption ? cliSubModelRows.length : visibleModels.length;
 
-  // ⌘1..⌘9 / Ctrl+1..Ctrl+9、Escape 返回上级与上下方向键导航
+  // ⌘1..⌘9 / Ctrl+1..Ctrl+9、返回上级与上下方向键导航
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (viewMode === 'params') {
+        return;
+      }
+
       if (
         event.key === 'Backspace' &&
         drilledCliOption &&
@@ -746,6 +759,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       handlePickRow,
       highlightedIndex,
       search,
+      viewMode,
       visibleModels,
     ],
   );
@@ -1107,24 +1121,29 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               data-testid="t3-rail-favorites"
               title={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
               aria-label={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
-              aria-pressed={activeRailKey === FAVORITES_RAIL_KEY && !keyword}
+              aria-pressed={viewMode === 'models' && activeRailKey === FAVORITES_RAIL_KEY && !keyword}
               onClick={() => {
                 setSearch('');
+                setViewMode('models');
                 setDrilledCliAgentId(null);
                 setActiveRailKey((prev) =>
-                  prev === FAVORITES_RAIL_KEY ? ALL_RAIL_KEY : FAVORITES_RAIL_KEY,
+                  viewMode === 'params'
+                    ? FAVORITES_RAIL_KEY
+                    : prev === FAVORITES_RAIL_KEY
+                      ? ALL_RAIL_KEY
+                      : FAVORITES_RAIL_KEY,
                 );
               }}
               className={cn(
                 'relative flex h-8 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                 effectiveTier === 'wide' ? 'w-9' : 'w-8',
-                activeRailKey === FAVORITES_RAIL_KEY && !keyword
+                viewMode === 'models' && activeRailKey === FAVORITES_RAIL_KEY && !keyword
                   ? 'bg-muted/45 text-foreground'
                   : 'text-foreground/80',
               )}
             >
               <Star size={17} weight="fill" />
-              {activeRailKey === FAVORITES_RAIL_KEY && !keyword && (
+              {viewMode === 'models' && activeRailKey === FAVORITES_RAIL_KEY && !keyword && (
                 <span
                   data-testid="t3-rail-active-indicator"
                   className="absolute right-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
@@ -1135,7 +1154,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             <div className="my-0.5 h-px w-6 shrink-0 bg-border/70" aria-hidden="true" />
 
             {railGroups.map((group) => {
-              const isActive = !keyword && activeRailKey === group.key;
+              const isActive = viewMode === 'models' && !keyword && activeRailKey === group.key;
               return (
                 <button
                   key={group.key}
@@ -1146,6 +1165,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   aria-pressed={isActive}
                   onClick={() => {
                     setSearch('');
+                    if (viewMode === 'params') {
+                      setViewMode('models');
+                      setDrilledCliAgentId(null);
+                      setActiveRailKey(group.key);
+                      return;
+                    }
                     if (group.key === CODING_CLI_RAIL_KEY) {
                       if (activeRailKey === CODING_CLI_RAIL_KEY && drilledCliAgentId) {
                         setDrilledCliAgentId(null);
@@ -1181,6 +1206,59 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             })}
           </div>
 
+          {viewMode === 'params' && renderAdvancedPanel ? (
+            <div
+              data-testid="t3-params-pane"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+            >
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="t3-params-back"
+                    onClick={() => setViewMode('models')}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <CaretLeft size={12} weight="bold" className="shrink-0" />
+                    <span className="truncate">
+                      {t('chatV2:modelPicker.t3.backToModels', { defaultValue: '返回模型' })}
+                    </span>
+                  </button>
+                  <span className="text-muted-foreground/50">/</span>
+                  <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+                    <SlidersHorizontal size={13} weight="bold" className="shrink-0 text-primary" />
+                    <span className="truncate">
+                      {t('common:chat_controls', { defaultValue: '对话控制' })}
+                    </span>
+                  </span>
+                </div>
+                {resolvedActiveModelHeading && (
+                  <span
+                    className="max-w-[9rem] shrink-0 truncate rounded bg-muted/70 px-1.5 py-0.5 text-2xs text-muted-foreground"
+                    title={resolvedActiveModelHeading}
+                  >
+                    {resolvedActiveModelHeading}
+                  </span>
+                )}
+              </div>
+
+              {(isExternalCliEngine || Boolean(drilledCliOption)) && (
+                <div className="shrink-0 border-b border-border/50 bg-muted/35 px-3 py-1.5 text-2xs text-muted-foreground">
+                  {t('chatV2:modelPicker.t3.paramsCliNotice', {
+                    defaultValue: '本地编程 CLI 使用自身采样策略，以下参数在切回内置模型时生效',
+                  })}
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2 select-text">
+                {renderAdvancedPanel({
+                  embedded: true,
+                  onClose: () => setViewMode('models'),
+                })}
+              </div>
+            </div>
+          ) : (
+            <>
           {/* 第二栏：搜索 + 模型 / CLI（含二级模型）列表（min-w-0 保证长文案永远省略号收敛） */}
           <div
             data-testid="t3-model-list-pane"
@@ -1522,10 +1600,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
 
-        {/* 窄屏 / 移动端紧凑推理强度单行横条 */}
-        {isCompactTier && (
+        {/* 窄屏 / 移动端紧凑推理强度单行横条（仅模型选择视图展示） */}
+        {isCompactTier && viewMode === 'models' && (
           <div
             data-testid="t3-reasoning-pane-mobile"
             className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5"
@@ -1711,7 +1791,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               </button>
             )}
 
-            {multiSelect && !drilledCliOption && sanitizedOptions.some((o) => !isCliOption(o)) && (
+            {multiSelect && viewMode === 'models' && !drilledCliOption && sanitizedOptions.some((o) => !isCliOption(o)) && (
               <button
                 type="button"
                 role="menuitemcheckbox"
@@ -1739,19 +1819,33 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               </button>
             )}
 
-            {onOpenAdvancedPanel && (
+            {(renderAdvancedPanel || onOpenAdvancedPanel) && (
               <button
                 type="button"
-                role="menuitem"
+                role="menuitemcheckbox"
+                aria-checked={viewMode === 'params'}
                 data-testid="t3-footer-advanced"
                 title={t('common:chat_controls', { defaultValue: '对话控制' })}
                 onClick={() => {
+                  if (renderAdvancedPanel) {
+                    setViewMode((prev) => (prev === 'params' ? 'models' : 'params'));
+                    return;
+                  }
                   onRequestClose?.();
-                  onOpenAdvancedPanel();
+                  onOpenAdvancedPanel?.();
                 }}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                className={cn(
+                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  viewMode === 'params'
+                    ? 'bg-primary/12 font-medium text-primary'
+                    : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+                )}
               >
-                <SlidersHorizontal size={13} weight="regular" className="shrink-0" />
+                <SlidersHorizontal
+                  size={13}
+                  weight={viewMode === 'params' ? 'fill' : 'regular'}
+                  className="shrink-0"
+                />
                 <span className="truncate">
                   {t('chatV2:modelPicker.t3.paramsShort', { defaultValue: '参数' })}
                 </span>

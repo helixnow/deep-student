@@ -380,7 +380,7 @@ describe('CliAgentProber', () => {
           return {
             exitCode: 0,
             stdout:
-              '\r⠋ Fetching available models...\rgemini-4-neon-high             Gemini 4 Neon (High)\nclaude-opus-5-5-high           Claude Opus 5.5 (High)\n',
+              '\r⠋ Fetching available models...\rgemini-4-neon-high\tGemini 4 Neon (High)\nclaude-opus-5-5-high           Claude Opus 5.5 (High)\n',
             stderr: '',
           };
         }

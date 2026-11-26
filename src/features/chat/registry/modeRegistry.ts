@@ -141,7 +141,12 @@ export interface ModePlugin {
   renderModelPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void; closeOnSelect?: boolean }>;
 
   /** 自定义高级设置面板 */
-  renderAdvancedPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
+  renderAdvancedPanel?: ComponentType<{
+    store: StoreApi<ChatStore>;
+    onClose: () => void;
+    sidebarMode?: boolean;
+    embeddedInPopover?: boolean;
+  }>;
 
   /** MCP 工具面板 */
   renderMcpPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;

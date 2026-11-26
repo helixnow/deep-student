@@ -312,7 +312,7 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
     expect(onPermissionPresetChange).toHaveBeenCalledWith('cautious', undefined);
   });
 
-  it('exposes Web Search toggle, Advanced Params launcher, and Danger Full Access confirmation in the T3 footer bar', async () => {
+  it('exposes Web Search toggle, Danger Full Access confirmation, and in-popover morphed Parameters view without opening a separate panel', async () => {
     const user = userEvent.setup();
     const onWebSearchEnabledChange = vi.fn();
     const onSetPanelState = vi.fn();
@@ -331,13 +331,16 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
       runtimeCurrentModelId: 'deepseek-v3.2',
       webSearchEnabled: true,
       onWebSearchEnabledChange,
-      renderAdvancedPanel: () => <div data-testid="advanced-panel" />,
+      renderAdvancedPanel: () => <div data-testid="advanced-panel">Temperature Slider</div>,
       onSetPanelState,
       permissionPreset: 'relaxed',
       onPermissionPresetChange,
     });
 
     await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+    const selector = await screen.findByTestId('t3-model-selector');
+    const initialHeight = selector.style.height;
+
     const webBtn = await screen.findByTestId('t3-footer-web-search');
     expect(webBtn).toHaveAttribute('aria-checked', 'true');
     await user.click(webBtn);
@@ -357,10 +360,19 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
       expect(onPermissionPresetChange).toHaveBeenCalledWith('danger_full_access', true);
     });
 
-    // Clicking 参数 closes the model popover and opens the advanced parameters panel
+    // Clicking 参数 morphs inside T3ModelSelectorPopover (zero separate panel, zero height change)
+    onSetPanelState.mockClear();
     const paramsBtn = screen.getByTestId('t3-footer-advanced');
     await user.click(paramsBtn);
-    expect(onSetPanelState).toHaveBeenCalledWith('advanced', true);
+    expect(onSetPanelState).not.toHaveBeenCalledWith('advanced', true);
+    expect(screen.getByTestId('t3-params-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('advanced-panel')).toHaveTextContent('Temperature Slider');
+    expect(selector.style.height).toBe(initialHeight);
+
+    // Clicking ← 返回模型 morphs right back to the model list
+    await user.click(screen.getByTestId('t3-params-back'));
+    expect(screen.queryByTestId('t3-params-pane')).not.toBeInTheDocument();
+    expect(screen.getByTestId('t3-model-list-pane')).toBeInTheDocument();
   });
 
   it('locks popover width and height across provider switches without jitter and adapts layout tier to viewport width', async () => {

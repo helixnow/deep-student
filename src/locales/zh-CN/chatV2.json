@@ -2330,7 +2330,9 @@
       "cliDefaultTag": "默认",
       "cliCustomModel": "使用自定义模型 \"{{model}}\"",
       "cliEffortDefault": "默认",
-      "backToCliList": "返回编程 CLI"
+      "backToCliList": "返回编程 CLI",
+      "backToModels": "返回模型",
+      "paramsCliNotice": "本地编程 CLI 使用自身采样策略，以下参数在切回内置模型时生效"
     }
   },
   "workspace": {

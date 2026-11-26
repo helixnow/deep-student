@@ -3824,6 +3824,9 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
           mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
+          renderAdvancedPanel={renderAdvancedPanel}
+          advancedPanelRequested={Boolean(panelStates?.advanced)}
+          onConsumeAdvancedPanelRequest={() => onSetPanelState('advanced', false)}
           onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
           pluginWorkshopActive={pluginWorkshopActive}
           onTogglePluginWorkshop={onToggleSkill ? handleTogglePluginWorkshop : undefined}
