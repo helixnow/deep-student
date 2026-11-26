@@ -601,31 +601,75 @@ export function formatWorkspaceFolderBasename(rootPath: string | undefined | nul
 export type CliReasoningEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export const CURATED_CLI_MODELS_BY_DRIVER: Readonly<Record<string, readonly string[]>> = {
-  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-  codex: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'o4-mini'],
+  claude: [
+    'claude-opus-5-5',
+    'claude-sonnet-5-5',
+    'claude-fable-5-2',
+    'claude-haiku-5-5',
+    'claude-fable-5-1',
+    'claude-fable-5',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'fable',
+    'opus',
+    'sonnet',
+    'haiku',
+  ],
+  codex: [
+    'gpt-6.2-sol',
+    'gpt-6.2-astra',
+    'gpt-6.1-terra',
+    'gpt-6.1-sol',
+    'gpt-6-astra',
+    'gpt-6-sol',
+    'gpt-6-luna',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+  ],
   opencode: [
-    'anthropic/claude-sonnet-4-6',
-    'anthropic/claude-opus-4-6',
-    'openai/gpt-5.4',
-    'google/gemini-2.5-pro',
-    'deepseek/deepseek-chat',
+    'opencode-go/gpt-6-luna',
+    'opencode-go/gemini-4-argon',
+    'opencode-go/deepseek-v4-pro',
+    'opencode-go/claude-haiku-5-5',
+    'opencode-go/glm-5.3',
+    'opencode-go/kimi-k3.1-pro',
   ],
   pi: [
-    'claude-sonnet-4-6',
-    'claude-opus-4-6',
-    'gpt-5.4',
-    'gemini-2.5-pro',
+    'claude-sonnet-5-5',
+    'claude-opus-5-5',
+    'gpt-6.2-sol',
+    'gemini-4-neon-high',
+    'deepseek-v4-pro',
+  ],
+  agy: [
+    'gemini-4-neon-high',
+    'gemini-4-neon-medium',
+    'gemini-4-carbon-high',
+    'gemini-4-argon-medium',
+    'gemini-4-hydrogen-high',
+    'gemini-3.8-flash-high',
+    'claude-opus-5-5-high',
+    'claude-sonnet-5-5-high',
+  ],
+  dsh: [
+    'deepseek-v4-pro',
+    'deepseek-v4.1-flash',
+    'deepseek-v4-flash',
+    'deepseek-reasoner',
     'deepseek-chat',
   ],
-  agy: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-  dsh: ['deepseek-chat', 'deepseek-reasoner'],
 };
 
 export const CLI_REASONING_EFFORT_LEVELS_BY_DRIVER: Readonly<
   Record<string, readonly CliReasoningEffortLevel[]>
 > = {
-  claude: ['low', 'medium', 'high', 'max'],
-  codex: ['low', 'medium', 'high', 'xhigh'],
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['low', 'medium', 'high', 'xhigh', 'max'],
+  agy: ['low', 'medium', 'high', 'xhigh', 'max'],
+  pi: ['low', 'medium', 'high', 'xhigh', 'max'],
 };
 
 export function resolveCliAvailableModels(
@@ -645,8 +689,12 @@ export function resolveCliAvailableModels(
     result.push(trimmed);
   };
   push(agent.defaultModel);
-  for (const item of agent.availableModels ?? []) {
-    push(item);
+  const hasProbedCatalog = Boolean(agent.availableModels && agent.availableModels.length > 0);
+  if (hasProbedCatalog) {
+    for (const item of agent.availableModels!) {
+      push(item);
+    }
+    return result;
   }
   for (const item of CURATED_CLI_MODELS_BY_DRIVER[driverKey] ?? []) {
     push(item);
@@ -664,6 +712,12 @@ export function resolveCliReasoningLevels(
   }
   if (normalized === 'codex' || normalized.includes('codex')) {
     return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER.codex;
+  }
+  if (normalized === 'agy' || normalized.includes('antigravity')) {
+    return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER.agy;
+  }
+  if (normalized === 'pi') {
+    return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER.pi;
   }
   return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER[normalized] ?? [];
 }

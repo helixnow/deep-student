@@ -197,25 +197,174 @@ const BUILT_IN_DESCRIPTORS: readonly BuiltInCliDescriptor[] = [
 export const DRIVER_CURATED_MODELS: Readonly<
   Record<Exclude<ExternalAgentDriverKind, 'custom'>, readonly string[]>
 > = {
-  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-  codex: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'o4-mini'],
+  claude: [
+    'claude-opus-5-5',
+    'claude-sonnet-5-5',
+    'claude-fable-5-2',
+    'claude-haiku-5-5',
+    'claude-fable-5-1',
+    'claude-fable-5',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'fable',
+    'opus',
+    'sonnet',
+    'haiku',
+  ],
+  codex: [
+    'gpt-6.2-sol',
+    'gpt-6.2-astra',
+    'gpt-6.1-terra',
+    'gpt-6.1-sol',
+    'gpt-6-astra',
+    'gpt-6-sol',
+    'gpt-6-luna',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+  ],
   opencode: [
-    'anthropic/claude-sonnet-4-6',
-    'anthropic/claude-opus-4-6',
-    'openai/gpt-5.4',
-    'google/gemini-2.5-pro',
-    'deepseek/deepseek-chat',
+    'opencode-go/gpt-6-luna',
+    'opencode-go/gemini-4-argon',
+    'opencode-go/deepseek-v4-pro',
+    'opencode-go/claude-haiku-5-5',
+    'opencode-go/glm-5.3',
+    'opencode-go/kimi-k3.1-pro',
   ],
   pi: [
-    'claude-sonnet-4-6',
-    'claude-opus-4-6',
-    'gpt-5.4',
-    'gemini-2.5-pro',
+    'claude-sonnet-5-5',
+    'claude-opus-5-5',
+    'gpt-6.2-sol',
+    'gemini-4-neon-high',
+    'deepseek-v4-pro',
+  ],
+  agy: [
+    'gemini-4-neon-high',
+    'gemini-4-neon-medium',
+    'gemini-4-carbon-high',
+    'gemini-4-argon-medium',
+    'gemini-4-hydrogen-high',
+    'gemini-3.8-flash-high',
+    'claude-opus-5-5-high',
+    'claude-sonnet-5-5-high',
+  ],
+  dsh: [
+    'deepseek-v4-pro',
+    'deepseek-v4.1-flash',
+    'deepseek-v4-flash',
+    'deepseek-reasoner',
     'deepseek-chat',
   ],
-  agy: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-  dsh: ['deepseek-chat', 'deepseek-reasoner'],
 };
+
+const ANSI_CSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
+
+function stripAnsiAndSpinnerNoise(raw: string): string {
+  return raw
+    .replace(ANSI_CSI_PATTERN, '')
+    .replace(/[\u2800-\u28ff]/g, '')
+    .replace(/\r/g, '\n');
+}
+
+export function parseAgyModelsOutput(rawOutput: string): string[] {
+  const cleaned = stripAnsiAndSpinnerNoise(rawOutput);
+  const models: string[] = [];
+  const seen = new Set<string>();
+  for (const rawLine of cleaned.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^(fetching available models|usage:|available models|flags:|error:|-h\b|--help\b)/i.test(line)) {
+      continue;
+    }
+    const tableMatch = line.match(/^([a-z0-9][a-z0-9._/-]{1,80})(?:\s{2,}.+)?$/i);
+    if (!tableMatch) continue;
+    const id = tableMatch[1]!.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    models.push(id);
+  }
+  return models;
+}
+
+export function parseOpenCodeModelsOutput(rawOutput: string): string[] {
+  const cleaned = stripAnsiAndSpinnerNoise(rawOutput);
+  const models: string[] = [];
+  const seen = new Set<string>();
+  for (const rawLine of cleaned.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^(fetching|loading|usage:|error:|warn)/i.test(line)) continue;
+    // OpenCode outputs `provider/model-id` per line
+    if (/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i.test(line)) {
+      if (!seen.has(line)) {
+        seen.add(line);
+        models.push(line);
+      }
+    }
+  }
+  return models;
+}
+
+export function parsePiListModelsOutput(rawOutput: string): string[] {
+  const cleaned = stripAnsiAndSpinnerNoise(rawOutput);
+  const models: string[] = [];
+  const seen = new Set<string>();
+  for (const rawLine of cleaned.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^(no models available|use \/login|usage:|error:|http|\/)/i.test(line)) continue;
+    const tokenMatch = line.match(/^([a-z0-9][a-z0-9._/-]{2,90})(?:\s+.+)?$/i);
+    if (!tokenMatch) continue;
+    const candidate = tokenMatch[1]!.trim();
+    if (!candidate.includes('-') && !candidate.includes('/')) continue;
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      models.push(candidate);
+    }
+  }
+  return models;
+}
+
+export function parseCodexModelsCacheJson(rawJson: string): string[] {
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    const list = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).models)
+        ? ((parsed as Record<string, unknown>).models as unknown[])
+        : [];
+
+    const entries: Array<{ slug: string; priority: number }> = [];
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      const rec = item as Record<string, unknown>;
+      if (rec.visibility === 'hide') continue;
+      const slug =
+        (typeof rec.slug === 'string' && rec.slug.trim()) ||
+        (typeof rec.id === 'string' && rec.id.trim()) ||
+        (typeof rec.model === 'string' && rec.model.trim()) ||
+        '';
+      if (!slug) continue;
+      const priority = typeof rec.priority === 'number' && Number.isFinite(rec.priority) ? rec.priority : 9_999;
+      entries.push({ slug, priority });
+    }
+
+    entries.sort((a, b) => a.priority - b.priority);
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const entry of entries) {
+      if (!seen.has(entry.slug)) {
+        seen.add(entry.slug);
+        result.push(entry.slug);
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
 
 async function defaultFileExists(filePath: string): Promise<boolean> {
   try {
@@ -229,7 +378,7 @@ async function defaultFileExists(filePath: string): Promise<boolean> {
 async function defaultReadTextFile(filePath: string): Promise<string | null> {
   try {
     const stat = await fs.stat(filePath);
-    if (!stat.isFile() || stat.size > 512_000) return null;
+    if (!stat.isFile() || stat.size > 4_194_304) return null;
     return await fs.readFile(filePath, 'utf8');
   } catch {
     return null;
@@ -637,10 +786,11 @@ export class CliAgentProber {
       };
     }
 
+    const resolvedCmd = res.resolvedPath ?? desc.command;
     const [capabilities, auth, modelCatalog] = await Promise.all([
       this.detectRefinedCapabilities(desc),
       this.detectAuthHint(desc.id, desc.command),
-      this.detectDriverModels(desc.id),
+      this.detectDriverModels(desc.id, desc.command),
     ]);
 
     return {
@@ -648,7 +798,7 @@ export class CliAgentProber {
       driver: desc.id,
       displayName: desc.displayName,
       command: desc.command,
-      resolvedPath: res.resolvedPath ?? desc.command,
+      resolvedPath: resolvedCmd,
       installed: true,
       version,
       authStatus: auth.status,
@@ -662,14 +812,21 @@ export class CliAgentProber {
 
   private async detectDriverModels(
     driver: Exclude<ExternalAgentDriverKind, 'custom'>,
+    resolvedCommand: string,
   ): Promise<{ defaultModel: string | null; availableModels: string[] }> {
     let defaultModel: string | null = null;
-    const probedModels: string[] = [];
+    const liveModels: string[] = [];
+    const configModels: string[] = [];
 
-    const addCandidate = (value: unknown) => {
+    const addLive = (value: unknown) => {
       if (typeof value !== 'string') return;
       const trimmed = value.trim();
-      if (trimmed) probedModels.push(trimmed);
+      if (trimmed) liveModels.push(trimmed);
+    };
+    const addConfig = (value: unknown) => {
+      if (typeof value !== 'string') return;
+      const trimmed = value.trim();
+      if (trimmed) configModels.push(trimmed);
     };
 
     try {
@@ -677,7 +834,7 @@ export class CliAgentProber {
         const envModel = this.env.ANTHROPIC_MODEL?.trim();
         if (envModel) {
           defaultModel = envModel;
-          addCandidate(envModel);
+          addConfig(envModel);
         }
         const rawSettings = await this.readTextFile(
           path.join(this.homeDir, '.claude', 'settings.json'),
@@ -695,37 +852,55 @@ export class CliAgentProber {
           if (!defaultModel && configuredDefault) {
             defaultModel = configuredDefault;
           }
-          addCandidate(parsed.model);
-          addCandidate(settingsEnv?.ANTHROPIC_MODEL);
-          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_OPUS_MODEL);
-          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_SONNET_MODEL);
-          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_HAIKU_MODEL);
-          addCandidate(settingsEnv?.ANTHROPIC_SMALL_FAST_MODEL);
+          addConfig(parsed.model);
+          if (parsed.modelSettings && typeof parsed.modelSettings === 'object') {
+            for (const modelKey of Object.keys(parsed.modelSettings as Record<string, unknown>)) {
+              addConfig(modelKey);
+            }
+          }
+          addConfig(settingsEnv?.ANTHROPIC_MODEL);
+          addConfig(settingsEnv?.ANTHROPIC_DEFAULT_OPUS_MODEL);
+          addConfig(settingsEnv?.ANTHROPIC_DEFAULT_SONNET_MODEL);
+          addConfig(settingsEnv?.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+          addConfig(settingsEnv?.ANTHROPIC_SMALL_FAST_MODEL);
         }
       } else if (driver === 'codex') {
-        const rawToml = await this.readTextFile(
-          path.join(this.homeDir, '.codex', 'config.toml'),
-        );
+        const [rawToml, rawCache, rawCcCatalog] = await Promise.all([
+          this.readTextFile(path.join(this.homeDir, '.codex', 'config.toml')),
+          this.readTextFile(path.join(this.homeDir, '.codex', 'models_cache.json')),
+          this.readTextFile(path.join(this.homeDir, '.codex', 'cc-switch-model-catalog.json')),
+        ]);
         if (rawToml) {
           const modelMatch = rawToml.match(/^\s*model\s*=\s*["']([^"'\r\n]+)["']/m);
           if (modelMatch?.[1]?.trim()) {
             defaultModel = modelMatch[1].trim();
-            addCandidate(defaultModel);
+            addConfig(defaultModel);
+          }
+        }
+        if (rawCache) {
+          for (const slug of parseCodexModelsCacheJson(rawCache)) {
+            addLive(slug);
+          }
+        }
+        if (liveModels.length === 0 && rawCcCatalog) {
+          for (const slug of parseCodexModelsCacheJson(rawCcCatalog)) {
+            addLive(slug);
           }
         }
       } else if (driver === 'opencode') {
         const xdgConfig = this.env.XDG_CONFIG_HOME || path.join(this.homeDir, '.config');
-        const rawJson = await this.readTextFile(
-          path.join(xdgConfig, 'opencode', 'opencode.json'),
-        );
+        const [rawJson, cliModelsRes] = await Promise.all([
+          this.readTextFile(path.join(xdgConfig, 'opencode', 'opencode.json')),
+          this.safeRun(resolvedCommand, ['models'], Math.min(4_000, this.timeoutMs + 1_000)),
+        ]);
         if (rawJson) {
           const parsed = JSON.parse(rawJson) as Record<string, unknown>;
           if (typeof parsed.model === 'string' && parsed.model.trim()) {
             defaultModel = parsed.model.trim();
-            addCandidate(defaultModel);
+            addConfig(defaultModel);
           }
           if (typeof parsed.small_model === 'string' && parsed.small_model.trim()) {
-            addCandidate(parsed.small_model.trim());
+            addConfig(parsed.small_model.trim());
           }
           if (parsed.provider && typeof parsed.provider === 'object') {
             for (const [providerId, providerVal] of Object.entries(
@@ -736,17 +911,23 @@ export class CliAgentProber {
               if (modelsObj && typeof modelsObj === 'object') {
                 for (const modelKey of Object.keys(modelsObj as Record<string, unknown>)) {
                   if (modelKey.trim()) {
-                    addCandidate(`${providerId}/${modelKey.trim()}`);
+                    addConfig(`${providerId}/${modelKey.trim()}`);
                   }
                 }
               }
             }
           }
         }
+        if (!cliModelsRes.notFound && !cliModelsRes.timedOut && cliModelsRes.stdout) {
+          for (const id of parseOpenCodeModelsOutput(cliModelsRes.stdout)) {
+            addLive(id);
+          }
+        }
       } else if (driver === 'pi') {
-        const rawSettings = await this.readTextFile(
-          path.join(this.homeDir, '.pi', 'agent', 'settings.json'),
-        );
+        const [rawSettings, listRes] = await Promise.all([
+          this.readTextFile(path.join(this.homeDir, '.pi', 'agent', 'settings.json')),
+          this.safeRun(resolvedCommand, ['--list-models'], Math.min(3_500, this.timeoutMs)),
+        ]);
         if (rawSettings) {
           const parsed = JSON.parse(rawSettings) as Record<string, unknown>;
           const configured =
@@ -755,18 +936,30 @@ export class CliAgentProber {
             null;
           if (configured) {
             defaultModel = configured;
-            addCandidate(configured);
+            addConfig(configured);
+          }
+        }
+        if (!listRes.notFound && !listRes.timedOut && listRes.exitCode === 0 && listRes.stdout) {
+          for (const id of parsePiListModelsOutput(listRes.stdout)) {
+            addLive(id);
           }
         }
       } else if (driver === 'agy') {
-        const rawSettings = await this.readTextFile(
-          path.join(this.homeDir, '.gemini', 'antigravity', 'settings.json'),
-        );
+        const [rawSettings, agyModelsRes] = await Promise.all([
+          this.readTextFile(path.join(this.homeDir, '.gemini', 'antigravity', 'settings.json')),
+          this.safeRun(resolvedCommand, ['models'], 9_000),
+        ]);
         if (rawSettings) {
           const parsed = JSON.parse(rawSettings) as Record<string, unknown>;
           if (typeof parsed.model === 'string' && parsed.model.trim()) {
             defaultModel = parsed.model.trim();
-            addCandidate(defaultModel);
+            addConfig(defaultModel);
+          }
+        }
+        const combinedAgyOut = `${agyModelsRes.stdout}\n${agyModelsRes.stderr}`;
+        if (!agyModelsRes.notFound && !agyModelsRes.timedOut && combinedAgyOut.trim()) {
+          for (const id of parseAgyModelsOutput(combinedAgyOut)) {
+            addLive(id);
           }
         }
       } else if (driver === 'dsh') {
@@ -777,20 +970,26 @@ export class CliAgentProber {
           const parsed = JSON.parse(rawConfig) as Record<string, unknown>;
           if (typeof parsed.model === 'string' && parsed.model.trim()) {
             defaultModel = parsed.model.trim();
-            addCandidate(defaultModel);
+            addConfig(defaultModel);
           }
         }
       }
     } catch {
-      // Never fail probing due to malformed user config files.
+      // Never fail probing due to malformed user config files or CLI output.
     }
 
+    // When a CLI dynamically reports its own live model catalog (`agy models`, `opencode models`,
+    // `~/.codex/models_cache.json`, `pi --list-models`), use ONLY user config + live catalog so
+    // stale fallback IDs never pollute the list. Fall back to DRIVER_CURATED_MODELS only when
+    // live discovery yielded nothing (e.g. offline, unauthenticated, or CLI lacks a list command).
+    const fallbackModels = liveModels.length > 0 ? [] : DRIVER_CURATED_MODELS[driver];
     const seen = new Set<string>();
     const availableModels: string[] = [];
     for (const item of [
       ...(defaultModel ? [defaultModel] : []),
-      ...probedModels,
-      ...DRIVER_CURATED_MODELS[driver],
+      ...configModels,
+      ...liveModels,
+      ...fallbackModels,
     ]) {
       const clean = item.trim();
       if (!clean || seen.has(clean)) continue;
@@ -803,13 +1002,14 @@ export class CliAgentProber {
 
   private async detectRefinedCapabilities(
     desc: BuiltInCliDescriptor,
+    resolvedCommand = desc.command,
   ): Promise<AdapterCapabilities> {
     if (desc.id !== 'codex') {
       return { ...desc.capabilities };
     }
 
     // Verify whether this Codex installation supports `codex app-server`.
-    const helpRes = await this.safeRun(desc.command, ['app-server', '--help'], Math.min(2_000, this.timeoutMs));
+    const helpRes = await this.safeRun(resolvedCommand, ['app-server', '--help'], Math.min(2_000, this.timeoutMs));
     const combined = `${helpRes.stdout}\n${helpRes.stderr}`.toLowerCase();
     const lacksAppServer =
       helpRes.notFound === true ||

@@ -336,24 +336,28 @@ describe('CliAgentProber', () => {
     }
   });
 
-  it('parses local CLI model configs (~/.claude/settings.json, ~/.codex/config.toml, opencode.json) and merges curated models', async () => {
+  it('parses live CLI model catalogs (agy models, opencode models, codex models_cache.json, claude settings.json) without stale fallback pollution', async () => {
     const mockFiles: Record<string, string> = {
       '/home/dev/.claude/settings.json': JSON.stringify({
+        model: 'fable',
+        modelSettings: {
+          'claude-fable-5-2': { effortLevel: 'high' },
+        },
         env: {
-          ANTHROPIC_MODEL: 'glm-5-coding',
-          ANTHROPIC_SMALL_FAST_MODEL: 'glm-4-air',
+          ANTHROPIC_SMALL_FAST_MODEL: 'claude-haiku-5-5',
         },
       }),
-      '/home/dev/.codex/config.toml': 'model = "gpt-5.4-pro"\nmodel_reasoning_effort = "xhigh"\n',
+      '/home/dev/.codex/config.toml': 'model = "gpt-6.2-sol"\nmodel_reasoning_effort = "xhigh"\n',
+      '/home/dev/.codex/models_cache.json': JSON.stringify({
+        models: [
+          { slug: 'gpt-6.1-terra', visibility: 'list', priority: 2 },
+          { slug: 'gpt-reserve', visibility: 'hide', priority: 0 },
+          { slug: 'gpt-6.2-sol', visibility: 'list', priority: 1 },
+          { slug: 'codex-auto-review', visibility: 'hide', priority: 3 },
+        ],
+      }),
       '/home/dev/.config/opencode/opencode.json': JSON.stringify({
-        model: 'deepseek/deepseek-reasoner',
-        provider: {
-          myproxy: {
-            models: {
-              'qwen3-coder': {},
-            },
-          },
-        },
+        model: 'opencode-go/gpt-6-luna',
       }),
     };
 
@@ -363,11 +367,29 @@ describe('CliAgentProber', () => {
       fileExists: async (p) => p in mockFiles,
       readTextFile: async (p) => mockFiles[p] ?? null,
       commandRunner: async (cmd, args) => {
-        if (args[0] === '--version' && (cmd === 'claude' || cmd === 'codex' || cmd === 'opencode')) {
-          return { exitCode: 0, stdout: `${cmd} 1.2.3`, stderr: '', resolvedPath: `/bin/${cmd}` };
+        if (
+          args[0] === '--version' &&
+          (cmd === 'claude' || cmd === 'codex' || cmd === 'opencode' || cmd === 'agy')
+        ) {
+          return { exitCode: 0, stdout: `${cmd} 2.2.0`, stderr: '', resolvedPath: `/bin/${cmd}` };
         }
-        if (cmd === 'codex' && args[0] === 'app-server') {
+        if (cmd.endsWith('codex') && args[0] === 'app-server') {
           return { exitCode: 0, stdout: 'Usage: codex app-server', stderr: '' };
+        }
+        if (cmd.endsWith('agy') && args[0] === 'models') {
+          return {
+            exitCode: 0,
+            stdout:
+              '\r⠋ Fetching available models...\rgemini-4-neon-high             Gemini 4 Neon (High)\nclaude-opus-5-5-high           Claude Opus 5.5 (High)\n',
+            stderr: '',
+          };
+        }
+        if (cmd.endsWith('opencode') && args[0] === 'models') {
+          return {
+            exitCode: 0,
+            stdout: 'composite/gemini-4-argon\nopencode-go/gpt-6-luna\ndeepseek/deepseek-v4-pro\n',
+            stderr: '',
+          };
         }
         return { exitCode: null, stdout: '', stderr: '', notFound: true };
       },
@@ -377,18 +399,27 @@ describe('CliAgentProber', () => {
     const byId = new Map(detected.map((a) => [a.id, a]));
 
     const claude = byId.get('claude')!;
-    expect(claude.defaultModel).toBe('glm-5-coding');
-    expect(claude.availableModels).toContain('glm-5-coding');
-    expect(claude.availableModels).toContain('glm-4-air');
-    expect(claude.availableModels).toContain('claude-sonnet-4-6');
+    expect(claude.defaultModel).toBe('fable');
+    expect(claude.availableModels).toContain('claude-fable-5-2');
+    expect(claude.availableModels).toContain('claude-opus-5-5');
+    expect(claude.availableModels).toContain('claude-haiku-5-5');
 
+    // Codex reads models_cache.json sorted by priority and omits visibility: 'hide'
     const codex = byId.get('codex')!;
-    expect(codex.defaultModel).toBe('gpt-5.4-pro');
-    expect(codex.availableModels?.[0]).toBe('gpt-5.4-pro');
-    expect(codex.availableModels).toContain('gpt-5.4');
+    expect(codex.defaultModel).toBe('gpt-6.2-sol');
+    expect(codex.availableModels).toEqual(['gpt-6.2-sol', 'gpt-6.1-terra']);
 
+    // Antigravity CLI parses `agy models` live output cleanly without spinner noise or old 2.5 fallbacks
+    const agy = byId.get('agy')!;
+    expect(agy.availableModels).toEqual(['gemini-4-neon-high', 'claude-opus-5-5-high']);
+
+    // OpenCode parses `opencode models` live output cleanly
     const opencode = byId.get('opencode')!;
-    expect(opencode.defaultModel).toBe('deepseek/deepseek-reasoner');
-    expect(opencode.availableModels).toContain('myproxy/qwen3-coder');
+    expect(opencode.defaultModel).toBe('opencode-go/gpt-6-luna');
+    expect(opencode.availableModels).toEqual([
+      'opencode-go/gpt-6-luna',
+      'composite/gemini-4-argon',
+      'deepseek/deepseek-v4-pro',
+    ]);
   });
 });

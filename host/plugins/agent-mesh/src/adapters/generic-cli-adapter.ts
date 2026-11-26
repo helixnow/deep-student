@@ -230,13 +230,23 @@ export class GenericCliAdapter implements ExternalCodingAdapter {
         ? this.template.resumeArgsTemplate!
         : this.template.argsTemplate;
 
-      const { args, usedPromptToken } = renderTemplateTokens(rawTokens, {
+      const { args: renderedArgs, usedPromptToken } = renderTemplateTokens(rawTokens, {
         prompt: input.prompt,
         sessionId: input.resumeSessionId ?? '',
         cwd: input.cwd,
         threadId: input.threadId,
         model: input.model ?? '',
       });
+
+      const prefixFlags: string[] = [];
+      const templateUsesModelToken = rawTokens.some((tok) => /\{\{\s*model\s*\}\}/u.test(tok));
+      if (input.model && !templateUsesModelToken && this.driver === 'agy') {
+        prefixFlags.push('--model', input.model);
+      }
+      if (input.reasoningEffort && this.driver === 'agy') {
+        prefixFlags.push('--effort', input.reasoningEffort);
+      }
+      const args = prefixFlags.length > 0 ? [...prefixFlags, ...renderedArgs] : renderedArgs;
 
       const deliverViaStdin = this.template.promptMode === 'stdin' || !usedPromptToken;
 

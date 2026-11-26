@@ -36,6 +36,8 @@ import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   formatCompactCliModelName,
+  isAgentMeshHostConnected,
+  probeAgents,
   resolveCliAvailableModels,
   resolveCliReasoningLevels,
   selectSelectedCliEffortForSession,
@@ -465,6 +467,17 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     });
     return () => cancelAnimationFrame(frame);
   }, [isMobile, drilledCliAgentId]);
+
+  useEffect(() => {
+    if (activeRailKey !== CODING_CLI_RAIL_KEY || !isAgentMeshHostConnected()) return;
+    const storeAgents = useAgentMeshStore.getState().agents;
+    const needsCatalogRefresh = storeAgents.some(
+      (a) => a.driverKind !== 'builtin' && a.installed && (!a.availableModels || a.availableModels.length === 0),
+    );
+    if (needsCatalogRefresh) {
+      void probeAgents({ forceRefresh: true });
+    }
+  }, [activeRailKey]);
 
   const drilledCliOption = useMemo<T3ModelSelectorOption | null>(() => {
     if (!drilledCliAgentId || activeRailKey !== CODING_CLI_RAIL_KEY || multiActive) {
