@@ -1,11 +1,14 @@
 /**
  * T3ModelSelectorPopover - T3 Code 风格三栏统一模型 / 编程 CLI / 推理强度 / 权限档位选择器
  *
- * 布局结构：
- * 1. 左侧图标导航栏：顶部「★ 收藏」+ 分隔线 + 品牌供应商与本地编程 CLI 图标（右侧主色竖向指示条）
- * 2. 中间模型列表栏：顶部无框下划线搜索框（🔍 搜索模型...）+ 带彩色品牌图标与 ⌘1..⌘9 快捷键徽标的模型行
- * 3. 右侧推理强度栏：顶栏展示「推理强度」与当前模型名；支持多档/开关切换，不支持时展示「没有可选的推理强度」
- * 4. 底部状态与权限栏：左侧可选「多选模式」入口，右侧权限预设快速切换器（谨慎询问 / 宽松执行 / 完全访问）
+ * 布局与自适应策略：
+ * 1. 外壳宽高由父级按当前聊天栏宽度与触发器上下可视空间锁定（wide / medium / compact 三档），
+ *    切换左侧供应商、收藏或搜索时外框宽高零变化，彻底消除浮层重排与闪烁。
+ * 2. wide (>=560px)：标准三栏（48px 图标轨 + 自适应模型列表 + 192px 推理强度栏）
+ *    medium (420..559px)：紧凑三栏（40px 图标轨 + 自适应模型列表 + 146px 推理强度栏）
+ *    compact (<420px / 移动端)：双栏（40px 图标轨 + 模型列表）+ 底部单行横向可滚推理强度条
+ * 3. 深浅色品牌图标自适应：多色品牌保留原色，单色深底品牌（OpenAI / OpenCode / xAI / Ollama）跟随前景色，
+ *    Anthropic / Claude 使用高辨识度陶土橙品牌色（#D97757），避免深色主题下黑底黑字。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,7 +27,6 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/lib/utils';
@@ -52,6 +54,24 @@ const PERMISSION_PRESET_ORDER: PermissionPreset[] = [
 const FAVORITES_RAIL_KEY = '__favorites__';
 const ALL_RAIL_KEY = '__all__';
 const CODING_CLI_RAIL_KEY = '__coding_cli__';
+
+/** 单色黑标品牌在深色背景上使用 currentColor 才能保持清晰对比度 */
+const MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<ProviderBrand>([
+  'openai',
+  'opencode',
+  'xai',
+  'ollama',
+  'flux',
+  'ideogram',
+  'midjourney',
+  'runway',
+  'replicate',
+  'suno',
+]);
+
+const ANTHROPIC_BRAND_HEX = '#D97757';
+
+export type T3PopoverLayoutTier = 'wide' | 'medium' | 'compact';
 
 export interface T3ModelSelectorOption extends RuntimeModelOption {
   unavailable?: boolean;
@@ -82,6 +102,8 @@ export interface T3ModelSelectorPopoverProps {
   ) => void | Promise<void>;
   onRequestClose?: () => void;
   isMobile?: boolean;
+  layoutTier?: T3PopoverLayoutTier;
+  lockedHeight?: number;
   disabled?: boolean;
 }
 
@@ -113,6 +135,46 @@ export function resolveCliBrandIconModelId(rawIdOrLabel?: string): string {
   return '';
 }
 
+/**
+ * 渲染深浅色主题均清晰可辨的品牌字形图标
+ */
+export function renderAdaptiveBrandGlyph(modelId: string, size: number): React.ReactNode {
+  const brand = detectProviderBrand(modelId);
+  if (brand === 'anthropic') {
+    return (
+      <ProviderIcon
+        modelId={modelId}
+        size={size}
+        showTooltip={false}
+        variant="mono"
+        className="shrink-0"
+        style={{ color: ANTHROPIC_BRAND_HEX }}
+      />
+    );
+  }
+  if (MONO_CURRENT_COLOR_BRANDS.has(brand)) {
+    return (
+      <ProviderIcon
+        modelId={modelId}
+        size={size}
+        showTooltip={false}
+        variant="mono"
+        className="shrink-0 text-foreground"
+      />
+    );
+  }
+  return (
+    <ProviderIcon
+      modelId={modelId}
+      size={size}
+      showTooltip={false}
+      variant="color"
+      renderMode="glyph"
+      className="shrink-0"
+    />
+  );
+}
+
 function isCliOption(option: T3ModelSelectorOption): boolean {
   return Boolean(option.isExternalCli || option.id.startsWith(CLI_ENGINE_ID_PREFIX));
 }
@@ -128,8 +190,7 @@ function resolveOptionBrand(option: T3ModelSelectorOption): ProviderBrand {
   }
   const byModel = detectProviderBrand(option.iconId || option.label || option.id);
   if (byModel !== 'generic') return byModel;
-  const byProvider = detectProviderBrand(providerSignal);
-  return byProvider;
+  return detectProviderBrand(providerSignal);
 }
 
 function resolveOptionGroupMeta(
@@ -199,10 +260,17 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   onPermissionPresetChange,
   onRequestClose,
   isMobile = false,
+  layoutTier,
+  lockedHeight = 360,
   disabled = false,
 }) => {
   const { t } = useTranslation(['chatV2', 'agentMesh', 'settings', 'common']);
   const { favoriteIds, toggleFavorite } = useFavoriteChatModels();
+
+  const effectiveTier: T3PopoverLayoutTier =
+    layoutTier ?? (isMobile ? 'compact' : 'wide');
+  const isCompactTier = effectiveTier === 'compact';
+  const isMediumTier = effectiveTier === 'medium';
 
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -316,7 +384,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   useEffect(() => {
     if (isMobile) return;
     const frame = requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
+      searchInputRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [isMobile]);
@@ -514,29 +582,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     if (isCliOption(model)) {
       const cliBrandId = resolveCliBrandIconModelId(model.iconId || model.id || model.label);
       if (cliBrandId) {
-        return (
-          <ProviderIcon
-            modelId={cliBrandId}
-            size={size}
-            showTooltip={false}
-            variant="color"
-            renderMode="glyph"
-            className="shrink-0"
-          />
-        );
+        return renderAdaptiveBrandGlyph(cliBrandId, size);
       }
       return <TerminalWindow size={size} weight="duotone" className="shrink-0 text-primary" />;
     }
-    return (
-      <ProviderIcon
-        modelId={model.iconId || model.label || model.id}
-        size={size}
-        showTooltip={false}
-        variant="color"
-        renderMode="glyph"
-        className="shrink-0"
-      />
-    );
+    return renderAdaptiveBrandGlyph(model.iconId || model.label || model.id, size);
   };
 
   const renderReasoningBody = () => {
@@ -558,7 +608,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         <div
           role="group"
           aria-label={t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
-          className="flex flex-col gap-1"
+          className="flex flex-col gap-0.5"
         >
           {thinkingCanDisable && (
             <button
@@ -569,11 +619,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               className={cn(
                 'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                 !enableThinking
-                  ? 'bg-primary/10 font-medium text-primary'
+                  ? 'bg-primary/12 font-medium text-primary'
                   : 'text-foreground/85 hover:bg-muted/70',
               )}
             >
-              <span>{t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}</span>
+              <span className="truncate">
+                {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
+              </span>
               {!enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
             </button>
           )}
@@ -589,11 +641,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 className={cn(
                   'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                   isSelected
-                    ? 'bg-primary/10 font-medium text-primary'
+                    ? 'bg-primary/12 font-medium text-primary'
                     : 'text-foreground/85 hover:bg-muted/70',
                 )}
               >
-                <span>{resolveDepthLabel(option)}</span>
+                <span className="truncate">{resolveDepthLabel(option)}</span>
                 {isSelected && <Check size={13} weight="bold" className="shrink-0" />}
               </button>
             );
@@ -606,7 +658,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       <div
         role="group"
         aria-label={t('chatV2:inputBar.thinking', { defaultValue: '推理模式' })}
-        className="flex flex-col gap-1"
+        className="flex flex-col gap-0.5"
       >
         <button
           type="button"
@@ -616,11 +668,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           className={cn(
             'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
             enableThinking
-              ? 'bg-primary/10 font-medium text-primary'
+              ? 'bg-primary/12 font-medium text-primary'
               : 'text-foreground/85 hover:bg-muted/70',
           )}
         >
-          <span>{t('chatV2:inputBar.thinkingOn', { defaultValue: '开启' })}</span>
+          <span className="truncate">
+            {t('chatV2:inputBar.thinkingOn', { defaultValue: '开启' })}
+          </span>
           {enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
         </button>
         {thinkingCanDisable && (
@@ -632,11 +686,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             className={cn(
               'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
               !enableThinking
-                ? 'bg-primary/10 font-medium text-primary'
+                ? 'bg-primary/12 font-medium text-primary'
                 : 'text-foreground/85 hover:bg-muted/70',
             )}
           >
-            <span>{t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}</span>
+            <span className="truncate">
+              {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
+            </span>
             {!enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
           </button>
         )}
@@ -648,115 +704,103 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     <>
       <div
         data-testid="t3-model-selector"
+        data-layout-tier={effectiveTier}
         onKeyDown={handleKeyDown}
-        className="flex w-full flex-col overflow-hidden bg-popover text-popover-foreground select-none"
+        style={{ height: lockedHeight }}
+        className="flex w-full min-w-0 flex-col overflow-hidden bg-popover text-popover-foreground select-none"
       >
-        {/* 主体三栏（窄屏移动端将右栏折叠为列表下方紧凑横条，保证 360px 零横向溢出） */}
-        <div
-          className={cn(
-            'flex min-h-0 w-full',
-            isMobile ? 'h-[320px]' : 'h-[336px]',
-          )}
-        >
-          {/* 第一栏：左侧收藏 + 品牌供应商图标轨 */}
+        {/* 主体区域：flex-1 min-h-0 严格服从外层锁定高度，顶栏与底栏永不被裁切 */}
+        <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+          {/* 第一栏：左侧收藏 + 品牌供应商图标轨（纯原生按钮，零重排闪烁） */}
           <div
             data-testid="t3-provider-rail"
-            className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/60 py-2.5 scrollbar-none"
+            className={cn(
+              'flex shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/60 py-2 scrollbar-none',
+              effectiveTier === 'wide' ? 'w-12' : 'w-10',
+            )}
           >
-            <Tooltip disabled={isMobile}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  data-testid="t3-rail-favorites"
-                  aria-label={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
-                  aria-pressed={activeRailKey === FAVORITES_RAIL_KEY && !keyword}
-                  onClick={() => {
-                    setSearch('');
-                    setActiveRailKey((prev) =>
-                      prev === FAVORITES_RAIL_KEY ? ALL_RAIL_KEY : FAVORITES_RAIL_KEY,
-                    );
-                  }}
-                  className={cn(
-                    'relative flex h-8 w-9 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                    activeRailKey === FAVORITES_RAIL_KEY && !keyword
-                      ? 'text-foreground'
-                      : 'text-foreground/80',
-                  )}
-                >
-                  <Star size={18} weight="fill" />
-                  {activeRailKey === FAVORITES_RAIL_KEY && !keyword && (
-                    <span
-                      data-testid="t3-rail-active-indicator"
-                      className="absolute right-0 top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
-                    />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
-              </TooltipContent>
-            </Tooltip>
+            <button
+              type="button"
+              data-testid="t3-rail-favorites"
+              title={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
+              aria-label={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
+              aria-pressed={activeRailKey === FAVORITES_RAIL_KEY && !keyword}
+              onClick={() => {
+                setSearch('');
+                setActiveRailKey((prev) =>
+                  prev === FAVORITES_RAIL_KEY ? ALL_RAIL_KEY : FAVORITES_RAIL_KEY,
+                );
+              }}
+              className={cn(
+                'relative flex h-8 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                effectiveTier === 'wide' ? 'w-9' : 'w-8',
+                activeRailKey === FAVORITES_RAIL_KEY && !keyword
+                  ? 'bg-muted/45 text-foreground'
+                  : 'text-foreground/80',
+              )}
+            >
+              <Star size={17} weight="fill" />
+              {activeRailKey === FAVORITES_RAIL_KEY && !keyword && (
+                <span
+                  data-testid="t3-rail-active-indicator"
+                  className="absolute right-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
+                />
+              )}
+            </button>
 
-            <div className="my-1 h-px w-6 shrink-0 bg-border/70" aria-hidden="true" />
+            <div className="my-0.5 h-px w-6 shrink-0 bg-border/70" aria-hidden="true" />
 
             {railGroups.map((group) => {
               const isActive = !keyword && activeRailKey === group.key;
               return (
-                <Tooltip key={group.key} disabled={isMobile}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      data-testid={`t3-rail-group-${group.key}`}
-                      aria-label={group.label}
-                      aria-pressed={isActive}
-                      onClick={() => {
-                        setSearch('');
-                        setActiveRailKey((prev) => (prev === group.key ? ALL_RAIL_KEY : group.key));
-                      }}
-                      className={cn(
-                        'relative flex h-8 w-9 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                        isActive ? 'bg-muted/45 text-foreground' : 'text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {group.isCodingCli ? (
-                        <TerminalWindow size={18} weight="duotone" className="text-foreground/85" />
-                      ) : (
-                        <ProviderIcon
-                          modelId={group.iconModelId || group.label}
-                          size={18}
-                          showTooltip={false}
-                          variant="color"
-                          renderMode="glyph"
-                          className="shrink-0"
-                        />
-                      )}
-                      {isActive && (
-                        <span
-                          data-testid="t3-rail-active-indicator"
-                          className="absolute right-0 top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
-                        />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{group.label}</TooltipContent>
-                </Tooltip>
+                <button
+                  key={group.key}
+                  type="button"
+                  data-testid={`t3-rail-group-${group.key}`}
+                  title={group.label}
+                  aria-label={group.label}
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    setSearch('');
+                    setActiveRailKey((prev) => (prev === group.key ? ALL_RAIL_KEY : group.key));
+                  }}
+                  className={cn(
+                    'relative flex h-8 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                    effectiveTier === 'wide' ? 'w-9' : 'w-8',
+                    isActive
+                      ? 'bg-muted/45 text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {group.isCodingCli ? (
+                    <TerminalWindow size={17} weight="duotone" className="text-foreground/85" />
+                  ) : (
+                    renderAdaptiveBrandGlyph(group.iconModelId || group.label, 17)
+                  )}
+                  {isActive && (
+                    <span
+                      data-testid="t3-rail-active-indicator"
+                      className="absolute right-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
+                    />
+                  )}
+                </button>
               );
             })}
           </div>
 
-          {/* 第二栏：搜索 + 模型 / CLI 列表 */}
+          {/* 第二栏：搜索 + 模型 / CLI 列表（min-w-0 保证长文案永远省略号收敛，不撑宽父容器） */}
           <div
             data-testid="t3-model-list-pane"
             className={cn(
-              'flex min-w-0 flex-1 flex-col',
-              !isMobile && 'border-r border-border/60',
+              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+              !isCompactTier && 'border-r border-border/60',
             )}
           >
-            {/* 顶部无框下划线搜索框 */}
+            {/* 顶部无框下划线搜索框（固定不随列表滚动） */}
             <div className="shrink-0 px-3 pt-2.5 pb-1">
-              <div className="flex items-center gap-2 border-b border-primary/45 pb-2 transition-colors focus-within:border-primary">
+              <div className="flex items-center gap-2 border-b border-primary/45 pb-1.5 transition-colors focus-within:border-primary">
                 <MagnifyingGlass
-                  size={15}
+                  size={14}
                   className="shrink-0 text-muted-foreground"
                   aria-hidden="true"
                 />
@@ -772,7 +816,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   aria-label={t('chatV2:modelPicker.t3.searchPlaceholder', {
                     defaultValue: '搜索模型...',
                   })}
-                  className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground placeholder:text-muted-foreground/75 outline-none [@media(pointer:coarse)]:text-base"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [@media(pointer:coarse)]:text-base"
                 />
                 {search && (
                   <button
@@ -787,11 +831,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               </div>
             </div>
 
-            {/* 模型滚动列表（底部柔和渐隐遮罩对齐 T3 Code） */}
+            {/* 模型滚动列表 */}
             <div
               role="menu"
               aria-label={t('chatV2:inputBar.runtimeModelTitle', { defaultValue: '模型' })}
-              className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 [mask-image:linear-gradient(to_bottom,black_calc(100%-18px),transparent_100%)]"
+              className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 [mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent_100%)]"
             >
               {sanitizedOptions.length === 0 && hasModelPanel && onOpenRuntimeModelPanel ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
@@ -808,36 +852,39 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   </button>
                 </div>
               ) : visibleModels.length === 0 ? (
-                <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
-                  {activeRailKey === FAVORITES_RAIL_KEY && !keyword
-                    ? t('chatV2:modelPicker.t3.emptyFavorites', {
-                        defaultValue: '暂无收藏模型，悬停模型右侧点击星标即可收藏',
-                      })
-                    : t('chatV2:inputBar.runtimeModelNoResults', {
-                        defaultValue: '未找到匹配模型',
-                      })}
+                <div className="flex h-full items-center justify-center px-3 text-center text-xs leading-relaxed text-muted-foreground">
+                  <span className="max-w-full break-words">
+                    {activeRailKey === FAVORITES_RAIL_KEY && !keyword
+                      ? t('chatV2:modelPicker.t3.emptyFavorites', {
+                          defaultValue: '暂无收藏模型，悬停模型右侧点击星标即可收藏',
+                        })
+                      : t('chatV2:inputBar.runtimeModelNoResults', {
+                          defaultValue: '未找到匹配模型',
+                        })}
+                  </span>
                 </div>
               ) : (
-                <div className="flex flex-col gap-0.5 pb-3">
+                <div className="flex flex-col gap-0.5 pb-2.5">
                   {visibleModels.map((model, index) => {
                     const isCurrent = !multiActive && model.id === currentModelId;
                     const isChecked = multiActive && selectedIdSet.has(model.id);
                     const isFavorite = !isCliOption(model) && favoriteIds.has(model.id);
                     const isHighlighted = index === highlightedIndex;
                     const shortcutLabel =
-                      index < 9
+                      !isCompactTier && index < 9
                         ? isMacPlatform
                           ? `⌘${index + 1}`
-                          : `Ctrl+${index + 1}`
+                          : `^${index + 1}`
                         : null;
 
                     return (
                       <div
                         key={model.id}
                         className={cn(
-                          'group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center rounded-lg text-left text-[13px] transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          isMediumTier || isCompactTier ? 'gap-2 px-2' : 'gap-2.5 px-2.5',
                           isCurrent || isChecked
-                            ? 'bg-primary/10 font-medium text-foreground'
+                            ? 'bg-primary/12 font-medium text-foreground'
                             : isHighlighted
                               ? 'bg-muted/65 text-foreground'
                               : 'text-foreground hover:bg-muted/65',
@@ -850,7 +897,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           aria-checked={multiActive ? isChecked : undefined}
                           disabled={disabled}
                           onClick={() => handlePickRow(model)}
-                          className="flex h-full min-w-0 flex-1 items-center gap-2.5 text-left outline-none"
+                          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
                         >
                           {renderModelBrandIcon(model, 16)}
                           <span className="min-w-0 flex-1 truncate" title={model.label}>
@@ -861,7 +908,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                               {t('chatV2:modelPicker.t3.unavailable', { defaultValue: '不可用' })}
                             </span>
                           )}
-                          {isCliOption(model) && (
+                          {isCliOption(model) && effectiveTier === 'wide' && (
                             <span className="shrink-0 rounded bg-muted px-1 py-px text-2xs font-medium text-muted-foreground">
                               {t('agentMesh:picker.cliBadge', { defaultValue: 'CLI' })}
                             </span>
@@ -892,7 +939,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                               'flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
                               isFavorite
                                 ? 'opacity-100 text-amber-500'
-                                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70',
+                                : 'hidden group-hover:flex focus-visible:flex [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:opacity-70',
                             )}
                           >
                             <Star size={13} weight={isFavorite ? 'fill' : 'regular'} />
@@ -929,13 +976,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             </div>
           </div>
 
-          {/* 第三栏：桌面端推理强度面板 */}
-          {!isMobile && (
+          {/* 第三栏：桌面宽屏 / 中屏推理强度面板 */}
+          {!isCompactTier && (
             <div
               data-testid="t3-reasoning-pane"
-              className="flex w-[204px] shrink-0 flex-col p-3.5"
+              className={cn(
+                'flex min-h-0 shrink-0 flex-col overflow-hidden',
+                isMediumTier ? 'w-[148px] p-2.5' : 'w-[192px] p-3',
+              )}
             >
-              <div className="flex items-baseline justify-between gap-2 pb-3">
+              <div className="flex shrink-0 items-baseline justify-between gap-1.5 pb-2.5">
                 <span className="shrink-0 text-xs font-medium text-muted-foreground">
                   {t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
                 </span>
@@ -949,23 +999,28 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   </span>
                 )}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">{renderReasoningBody()}</div>
+              <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none">
+                {renderReasoningBody()}
+              </div>
             </div>
           )}
         </div>
 
-        {/* 移动端紧凑推理强度横条（窄屏不挤占横向空间） */}
-        {isMobile && (
+        {/* 窄屏 / 移动端紧凑推理强度单行横条 */}
+        {isCompactTier && (
           <div
             data-testid="t3-reasoning-pane-mobile"
-            className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2"
+            className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5"
           >
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="shrink-0 text-xs font-medium text-muted-foreground">
               {t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
             </span>
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-none">
               {!hasDepthOptions && !hasBinaryToggle ? (
-                <span className="text-xs text-muted-foreground">
+                <span
+                  data-testid="t3-reasoning-empty"
+                  className="truncate text-xs text-muted-foreground"
+                >
                   {t('chatV2:modelPicker.t3.noReasoningEffort', {
                     defaultValue: '没有可选的推理强度',
                   })}
@@ -979,7 +1034,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       aria-checked={!enableThinking}
                       onClick={handleTurnOffThinking}
                       className={cn(
-                        'rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                         !enableThinking
                           ? 'bg-primary/15 font-medium text-primary'
                           : 'bg-muted/60 text-muted-foreground',
@@ -999,7 +1054,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         aria-checked={isSelected}
                         onClick={() => onSetThinkingDepth?.(option.value)}
                         className={cn(
-                          'rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                           isSelected
                             ? 'bg-primary/15 font-medium text-primary'
                             : 'bg-muted/60 text-muted-foreground',
@@ -1018,7 +1073,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     aria-checked={Boolean(enableThinking)}
                     onClick={handleTurnOnThinking}
                     className={cn(
-                      'rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                      'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                       enableThinking
                         ? 'bg-primary/15 font-medium text-primary'
                         : 'bg-muted/60 text-muted-foreground',
@@ -1033,7 +1088,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       aria-checked={!enableThinking}
                       onClick={handleTurnOffThinking}
                       className={cn(
-                        'rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                         !enableThinking
                           ? 'bg-primary/15 font-medium text-primary'
                           : 'bg-muted/60 text-muted-foreground',
@@ -1051,7 +1106,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         {/* 底部通栏：左侧多选对比开关（可选）+ 右侧权限预设快速切换 */}
         <div
           data-testid="t3-picker-footer"
-          className="relative flex items-center justify-between gap-2 border-t border-border/60 bg-popover px-3.5 py-2"
+          className="relative flex shrink-0 items-center justify-between gap-2 border-t border-border/60 bg-popover px-3 py-1.5"
         >
           <div className="flex min-w-0 items-center gap-2">
             {multiSelect && sanitizedOptions.some((o) => !isCliOption(o)) && (
@@ -1069,7 +1124,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 )}
               >
                 <SquaresFour size={13} weight={multiActive ? 'fill' : 'regular'} />
-                <span>
+                <span className="truncate">
                   {t('chatV2:inputBar.runtimeModelCompareMode', { defaultValue: '多选模式' })}
                 </span>
                 {multiActive && multiSelect.selectedIds.length > 0 && (
@@ -1081,7 +1136,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             )}
           </div>
 
-          {/* 右下角权限预设选择器（对齐 T3 Code：🛡 完全访问 ^） */}
+          {/* 右下角权限预设选择器 */}
           <div ref={permissionContainerRef} className="relative flex shrink-0 items-center">
             <button
               type="button"
@@ -1100,7 +1155,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               )}
             >
               {renderPermissionIcon(permissionPreset)}
-              <span>
+              <span className="truncate">
                 {t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`, {
                   defaultValue: permissionPreset,
                 })}
@@ -1121,7 +1176,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               <div
                 role="menu"
                 data-testid="t3-permission-menu"
-                className="absolute bottom-full right-0 z-20 mb-1.5 w-48 rounded-xl border border-border/80 bg-popover p-1 shadow-lg"
+                className="absolute bottom-full right-0 z-20 mb-1.5 w-48 max-w-[calc(100vw-32px)] rounded-xl border border-border/80 bg-popover p-1 shadow-lg"
               >
                 {PERMISSION_PRESET_ORDER.map((preset) => {
                   const isSelected = preset === permissionPreset;
@@ -1136,12 +1191,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       onClick={() => handleSelectPermissionPreset(preset)}
                       className={cn(
                         'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/70 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                        isSelected ? 'bg-primary/10 font-medium text-primary' : 'text-foreground',
+                        isSelected ? 'bg-primary/12 font-medium text-primary' : 'text-foreground',
                       )}
                     >
-                      <span className="flex items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         {renderPermissionIcon(preset)}
-                        <span>
+                        <span className="truncate">
                           {t(`chatV2:authority.permissionPreset.modes.${preset}`, {
                             defaultValue: preset,
                           })}

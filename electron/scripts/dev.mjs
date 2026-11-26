@@ -1,7 +1,7 @@
 // npm run dev:electron：若 1422 端口没有 vite，先启动 `npm run dev`；打包 preload；启动 Electron 运行 electron/main.ts。
 // 退出 Electron 时一并结束本脚本启动的 vite。
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,8 @@ if (!(await reachable(devUrl))) {
   }
 }
 
+// 清理本地打包遗留的固化版本文件，避免 package.json 版本变化后导致开发态 dstu.shell 校验抛错失活
+rmSync(join(electronDir, '.build', 'version.json'), { force: true });
 await buildPreload();
 
 const require = createRequire(import.meta.url);
