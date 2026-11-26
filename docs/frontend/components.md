@@ -251,7 +251,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/To
 | 组件 | 用途 |
 |---|---|
 | `TouchTarget`（`asChild?`）与 `touchTargetClassName` / `touchTargetCoarseClassName` | 非 `<button>` 的可交互热区（Radix trigger 的 span、链接、第三方组件外壳）在 coarse 下撑到 44×44。不要包 DsButton |
-| `coarseHitClassFor36/32/28/24`、`coarseHitClassForBadge16`（`@/components/ui/coarseHit`） | 伪元素扩区逃生舱，只在实体撑高会破坏硬布局时用，并登记到 `eslint-rules/coarse-touch-target.allowlist.json` |
+| `coarseHitClassFor36/32/28/24`、`coarseHitClassForBadge16`（`@/components/ui/coarseHit`） | 伪元素扩区逃生舱，只在实体撑高会破坏硬布局时用，并登记到 `scripts/lint/eslint-rules/coarse-touch-target.allowlist.json` |
 
 <a id="presence"></a>
 - `UiPresence`（`open`、`inClass`、`outClass`、`exitMs` 默认 150、`enter`）：非 Radix 浮层挂 `ui-*-in` / `ui-*-out` 类并在退场动画后卸载。底层 hook 是 `useMotionPresence(open, { exitMs, enter })`，退场时长用 `readCssDurationMs('--dropdown-close-dur', 150)` 读 CSS token。

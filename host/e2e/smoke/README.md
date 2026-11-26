@@ -1,7 +1,6 @@
 # Whole-production-Host smoke (X1)
 
-WAVE0 / WP-041 real-window entries: [`B-DRIVER.md`](./B-DRIVER.md),
-`window-smoke.mjs` (production dist) and `b-driver.mjs` (v0 command recording).
+Real-window entries: `window-smoke.mjs` (production dist) and `b-driver.mjs` (v0 command recording).
 The historical Host-only gate below remains separate and retains its original assertions.
 
 ```sh

@@ -33,6 +33,7 @@ env:
 
 jobs:
   publish:
+    environment: release-production
     concurrency:
       group: release-assets-${{ github.repository }}
       cancel-in-progress: false

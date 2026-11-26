@@ -199,7 +199,7 @@ const off = ctx.storage.registerMaintenanceParticipant('vfs-worker', {
 
 `ctx.storage.migrations.runAll()` = `MigrationCoordinator::run_all()`。迁移器与 refinery 0.9 兼容：
 同一张 `refinery_schema_history`、同样的文件名解析、SipHash-1-3 checksum、每个迁移的 SQL 与历史记录
-分两个事务提交（refinery 非 grouped 模式）。细节和测试映射见 [`TESTMAP.md`](TESTMAP.md)。
+分两个事务提交（refinery 非 grouped 模式）。细节与覆盖用例见 `tests/migration-*.test.ts`。
 
 单库迁移入口：`ctx.storage.migrations.migrateSingle(name)` = `MigrationCoordinator::migrate_single(name)`
 （不定序检查依赖、不做全库快照/恢复；单库内部 repair/checksum 修复/verifier/fingerprint 全部保留，

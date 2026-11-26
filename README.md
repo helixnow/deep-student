@@ -152,7 +152,7 @@ Follow a 3-minute walkthrough right after installing ([English](./docs/user-guid
 
 Starting with **v0.20.x**, DeepStudent retired the legacy Tauri 2 / Rust backend (`0.11.x`) and moved to a unified TypeScript architecture on [`@deepseek-ai/cordis`](https://github.com/cordiverse/cordis). Existing React UI code and on-disk SQLite / LanceDB data remain compatible in place.
 
-| Dimension | Legacy `0.11.x` (Tauri 2 / Rust) | Current `0.20.9` (Node / Electron / Cordis) |
+| Dimension | Legacy `0.11.x` (Tauri 2 / Rust) | Current `0.20.x` (Node / Electron / Cordis) |
 |---|---|---|
 | **Runtime & Kernel** | Tauri 2 + 25-crate Rust Cargo workspace + system WebView; compile-time command wiring | **Electron 45** + **UtilityProcess Host** (`MessagePortMain`) + **Cordis 4 microkernel** (`desktop.json`: **44** assembled modules across platform services & business plugins; `host/plugins/`: **30** plugin dirs; **19** official UI plugin packages under `src/ui-plugins/official/`); **1,066** IPC commands / **128** events / **989** types governed by `contracts/ipc/`; drop-in `window.__TAURI_INTERNALS__` shim keeps `src/` React 18 untouched |
 | **Plugin v2, Workshop & Safe Mode** | Static built-in plugins only (e.g., `ilink_bot`); no runtime plugin package format or AI authoring | **Plugin v2** 3-tier model: Tier 1 zero-code **`.dspack` Study Packs** (YAML rubrics, `SKILL.md`, templates, workflows), Tier 2 **AI Plugin Workshop** (`plugin-workshop`, 14 Agent tools, `esbuild` compile + 3 auto-repair passes, `✦ Refine with AI`, brokered `studyData`/`pluginModel`/`pluginNotify`), Tier 3 full Cordis plugins; Manifest v2 fine-grained network permissions; **Safe Mode Anti-SPOF** UI rescue (`Restart in Safe Mode`, `SafeModeExitDialog`, UI layout cache reset, MCP auto-connect pause) & 1-click `reset-profile` recovery for corrupted `user.profile.json` |
@@ -210,9 +210,12 @@ DeepStudent
 │   ├── features/                #   chat, generative-ui, notes, mindmap, practice, flashcards, media, pdf, …
 │   └── locales/                 #   i18n (zh-CN / en-US)
 ├── contracts/ipc/               # 1,066 commands · 128 events · 989 types (zero Rust required)
-├── resources/                   # App config, capabilities, SQL migrations & dstu-workshop skills/templates
-├── resources/                       # THIRD_PARTY_NOTICES.txt & WASM/frontend license manifests
-└── .github/workflows/           # CI, typecheck & multi-platform packaging
+├── resources/                   # App config, capabilities, SQL migrations, registries, patches & THIRD_PARTY_NOTICES.txt
+├── docs/                        # User guides (zh-CN / en-US), plugin SDK docs, build & WebUI/PWA guides
+├── examples/                    # Reference community plugin examples
+├── scripts/                     # Build, contract, license, lint, plugin & portability gates
+├── tests/                       # Frontend unit, integration & Playwright component tests
+└── .github/workflows/           # CI, governance, security & multi-platform packaging
 ```
 
 </details>
@@ -275,7 +278,6 @@ Packaging and cross-platform builds: [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md).
 |---|---|
 | [User Guide (English)](./docs/user-guide/en/README.md) | Complete English learner guides, including [3-Minute Quickstarts](./docs/user-guide/en/01-quickstart.md) |
 | [User Guide (Chinese)](./docs/user-guide/README.md) | Full 21-chapter Chinese user guide ([online mirror](https://deepstudent.cn/user-guide/)) |
-| [Memory System v2](./docs/dev/MEMORY-V2.md) | L1 Hard Rules, Learner Profile rollback, session-frozen `<memory_kernel>`, and dialectic reflection |
 | [Plugin System v2](./docs/plugins/PLUGIN-V2.md) | 3-tier extension model, `.dspack` Study Packs, Manifest v2 permissions, and portable sandbox |
 | [Build configuration](./docs/BUILD-CONFIG.md) | Cross-platform Electron, Android & iOS build & packaging |
 | [WebUI & PWA](./docs/WEBUI-AND-PWA.md) | Browser/PWA architecture, auth model, streaming & reverse proxy setup |
@@ -284,7 +286,6 @@ Packaging and cross-platform builds: [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md).
 | [Plugin SDK](./docs/plugins/SDK.md) | Writing a plugin: services, slots, manifest, capability tiers |
 | [Plugin security](./docs/plugins/SECURITY.md) | Community plugin permissions, `ds-plugin://` checks & boundaries |
 | [Plugin upgrades](./docs/plugins/UPGRADES.md) | User plugin preservation and compatibility checks across app upgrades |
-| [Plugin Workshop comparison](./docs/plugins/WORKSHOP-HARNESS-COMPARISON.md) | How the autonomous plugin loop is designed and guarded |
 | [Changelog](./CHANGELOG.md) | Version history |
 | [Security policy](./.github/SECURITY.md) | Reporting vulnerabilities |
 

@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   CLAAssistant:
+    if: github.actor != 'dependabot[bot]' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
