@@ -42,11 +42,13 @@ export interface IlinkPhotoPushResult<T = unknown> {
   batches: IlinkPhotoBatch<T>[];
 }
 
+import { isRemoteControlSlashCommand, isRemoteStopSlashCommand } from './control-commands.ts';
+
 type Pending<T> = { batch: IlinkPhotoBatch<T>; timer: ReturnType<typeof setTimeout> | null };
 const keyOf = (scope: IlinkPhotoScope) => JSON.stringify([scope.accountId, scope.peer, scope.sessionId]);
 const continuation = (text: string) => /(?:还有|還有|等一下|稍等|没发完|沒發完|还没发完|等一会)/.test(text);
 const finish = (text: string) => !continuation(text) && /^(?:开始(?:吧|处理|回答|分析)?|就这些|可以了|发完了)[。！!\s]*$/.test(text);
-const control = (text: string) => /^\/(?:stop|status|approve|reject|pair)(?:\s|$)/i.test(text);
+const control = (text: string) => isRemoteControlSlashCommand(text);
 
 export class IlinkPhotoBatchAggregator<T = unknown> {
   private readonly pending = new Map<string, Pending<T>>();
@@ -98,7 +100,7 @@ export class IlinkPhotoBatchAggregator<T = unknown> {
     const seal = () => { const batch = this.seal(key); if (batch) batches.push(batch); };
     const text = message.text?.trim() ?? '';
     if (control(text)) {
-      if (/^\/stop(?:\s|$)/i.test(text)) {
+      if (isRemoteStopSlashCommand(text)) {
         this.cancel(message);
         return { kind: 'cancelled', batches };
       }

@@ -15,12 +15,18 @@ import {
   ListChecks,
   ShieldCheck,
   Stop,
+  TerminalWindow,
   Timer,
   TreeStructure,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  selectActiveExternalThreadCount,
+  selectPendingApprovalCount,
+  useAgentMeshWorkbenchStore,
+} from '@/features/agent-mesh';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
@@ -260,6 +266,9 @@ export function AgentControlDockEntry({
   const [confirmStop, setConfirmStop] = React.useState(false);
   const [confirmResumeAutomations, setConfirmResumeAutomations] = React.useState(false);
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
+  const activeExternalThreads = useAgentMeshWorkbenchStore(selectActiveExternalThreadCount);
+  const pendingExternalApprovals = useAgentMeshWorkbenchStore(selectPendingApprovalCount);
+  const emergencyStopAllExternal = useAgentMeshWorkbenchStore((s) => s.emergencyStopAllExternal);
 
   useLiquidGlassLens(popoverRef, open);
 
@@ -382,9 +391,12 @@ export function AgentControlDockEntry({
     setKillSwitchBusy(true);
     setKillSwitchError(null);
     try {
-      const raw = await tauriInvoke('chat_v2_emergency_stop', {
-        reason: 'user_emergency_stop',
-      });
+      const [raw] = await Promise.all([
+        tauriInvoke('chat_v2_emergency_stop', {
+          reason: 'user_emergency_stop',
+        }),
+        emergencyStopAllExternal('user_emergency_stop'),
+      ]);
       setKillSwitch(parseKillSwitchStatus(raw));
       setConfirmStop(false);
     } catch {
@@ -392,7 +404,7 @@ export function AgentControlDockEntry({
     } finally {
       setKillSwitchBusy(false);
     }
-  }, [killSwitchBusy, t]);
+  }, [emergencyStopAllExternal, killSwitchBusy, t]);
 
   const runResumeAgents = React.useCallback(async () => {
     if (killSwitchBusy) return;
@@ -688,6 +700,38 @@ export function AgentControlDockEntry({
                     </div>
                   )}
                 </div>
+
+                {/* External Coding CLI status row — rendered quietly ONLY when active */}
+                {(activeExternalThreads > 0 || pendingExternalApprovals > 0) && (
+                  <div
+                    data-testid="wb-agent-mesh-card"
+                    className="flex items-center justify-between gap-2 border-t border-border/35 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                      />
+                      <span className="wb-agent-capabilities-title flex items-center gap-1 truncate">
+                        <TerminalWindow size={12} weight="duotone" aria-hidden="true" />
+                        <span>
+                          {t('agentControlCenter.mesh.activeThreads', {
+                            defaultValue: `编程 CLI 运行中 (${activeExternalThreads})`,
+                            count: activeExternalThreads,
+                          })}
+                        </span>
+                      </span>
+                    </div>
+                    {pendingExternalApprovals > 0 && (
+                      <span className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning">
+                        {t('agentControlCenter.mesh.pendingApprovals', {
+                          defaultValue: `待审批 ${pendingExternalApprovals}`,
+                          count: pendingExternalApprovals,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div
                   className="wb-agent-kill-switch"

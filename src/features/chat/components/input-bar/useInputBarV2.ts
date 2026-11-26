@@ -25,6 +25,13 @@ import {
 } from './injectModeUtils';
 import { keepsTurnsWithoutChatModel, resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 import { clearComposerDraft } from './composerDraftStorage';
+import {
+  agentMeshHost,
+  isAgentMeshHostConnected,
+  selectActiveExternalThreadForSession,
+  useAgentMeshStore,
+} from '@/features/agent-mesh';
+import type { AgentMentionItem } from './useModelMentionAutocomplete';
 
 let sessionDraftLruClearer: ((sessionId: string) => void) | null = null;
 
@@ -48,6 +55,10 @@ export interface UseInputBarV2Options {
   getSelectedModels?: () => ModelInfo[];
   /** 清空已选中的模型 - 发送成功后调用 */
   clearSelectedModels?: () => void;
+  /** 获取已选中的智能体（@agent chips）- 发送前调用 */
+  getSelectedAgents?: () => AgentMentionItem[];
+  /** 清空已选中的智能体 - 发送成功后调用 */
+  clearSelectedAgents?: () => void;
   /** ★ 构建 PDF 页码引用标签字符串（如 [PDF@sourceId:1][PDF@sourceId:3]） */
   buildPdfRefTags?: () => string;
   /** ★ 获取「选择此页」抽取的页面正文快照（发送时自动注入 <selection> 上下文） */
@@ -86,6 +97,7 @@ export function useInputBarV2(
   const sendInFlightRef = useRef(false);
   // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较
   const {
+    sessionId,
     inputValue,
     attachments,
     panelStates,
@@ -95,6 +107,7 @@ export function useInputBarV2(
   } = useStore(
     store,
     useShallow((s) => ({
+      sessionId: s.sessionId,
       inputValue: s.inputValue,
       attachments: s.attachments,
       panelStates: s.panelStates,
@@ -103,6 +116,11 @@ export function useInputBarV2(
       permissionPresetSyncing: s.permissionPresetSyncing ?? false,
     }))
   );
+
+  const activeExternalThread = useAgentMeshStore((meshState) =>
+    selectActiveExternalThreadForSession(meshState, sessionId),
+  );
+  const isExternalRunning = Boolean(activeExternalThread);
 
   // ========== 派生状态 ==========
 
@@ -113,15 +131,16 @@ export function useInputBarV2(
   // 避免后端以旧档位执行本轮工具（切换竞态）。
   const canSend = sessionStatus === 'idle' && !permissionPresetSyncing;
 
-  // 是否可以中断：streaming 状态下可中断
-  const canAbort = sessionStatus === 'streaming';
+  // 是否可以中断：streaming 状态或外部 CLI 运行中可中断
+  const canAbort = sessionStatus === 'streaming' || isExternalRunning;
 
   // 队列设置（来自外部）
   const queueEnabled = options?.queueEnabled ?? false;
 
-  // 是否可提交（idle 直发 OR streaming 且队列未满）
+  // 是否可提交（idle 直发 OR streaming/外部 CLI 运行中且队列未满）
   const canSubmit = (sessionStatus === 'idle' && !permissionPresetSyncing)
-    || (queueEnabled && queueLength < QUEUE_HARD_CAP);
+    || (queueEnabled && queueLength < QUEUE_HARD_CAP)
+    || (isExternalRunning && queueLength < QUEUE_HARD_CAP);
 
   // ========== 封装 Actions ==========
 
@@ -196,17 +215,35 @@ export function useInputBarV2(
     }
 
     const rawContent = state.inputValue.trim();
+    const initialOpts = optionsRef.current;
+    const precheckAgents = initialOpts?.getSelectedAgents ? initialOpts.getSelectedAgents() : [];
+    const precheckModels = initialOpts?.getSelectedModels ? initialOpts.getSelectedModels() : [];
+    const liveExternalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    const isDirectSingleExternalTurn =
+      precheckAgents.length === 1 &&
+      precheckAgents[0].isExternalCli &&
+      precheckModels.length === 0;
+    const isQueueForRunningExternal =
+      Boolean(liveExternalThread) &&
+      precheckAgents.length === 0 &&
+      precheckModels.length === 0 &&
+      typeof state.enqueueMessage === 'function';
 
-    const readiness = await resolveChatReadiness();
-    if (!readiness.ok && !keepsTurnsWithoutChatModel()) {
-      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
-      if (readiness.cta === 'OPEN_SETTINGS_MODELS') triggerOpenSettingsModels();
-      return;
-    }
+    if (!isDirectSingleExternalTurn && !isQueueForRunningExternal) {
+      const readiness = await resolveChatReadiness();
+      if (!readiness.ok && !keepsTurnsWithoutChatModel()) {
+        showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
+        if (readiness.cta === 'OPEN_SETTINGS_MODELS') triggerOpenSettingsModels();
+        return;
+      }
 
-    // 自动分配模型的提示通知
-    if (readiness.code === 'MODEL2_AUTO_ASSIGNED' && readiness.message) {
-      showGlobalNotification('info', readiness.message);
+      // 自动分配模型的提示通知
+      if (readiness.code === 'MODEL2_AUTO_ASSIGNED' && readiness.message) {
+        showGlobalNotification('info', readiness.message);
+      }
     }
 
     const latestState = store.getState();
@@ -400,6 +437,28 @@ export function useInputBarV2(
       console.log('[useInputBarV2] 📄 Appending PDF page ref tags:', pdfRefTags);
     }
 
+    // ========== 智能体 @agent 路由决策 ==========
+    const selectedAgents = opts?.getSelectedAgents ? opts.getSelectedAgents() : [];
+    const isSingleExternalFastPath =
+      selectedAgents.length === 1 &&
+      selectedAgents[0].isExternalCli &&
+      (!selectedModels || selectedModels.length === 0);
+    const isMultiAgentCoordinatorRoute =
+      selectedAgents.length >= 2 ||
+      (selectedAgents.length === 1 &&
+        selectedAgents[0].isExternalCli &&
+        Boolean(selectedModels && selectedModels.length > 0));
+    const isSwarmBroadcastFastPath =
+      selectedAgents.length === 1 &&
+      selectedAgents[0].driverKind === 'swarm_broadcast' &&
+      (!selectedModels || selectedModels.length === 0);
+
+    if (isMultiAgentCoordinatorRoute) {
+      const handles = selectedAgents.map((agent) => `@${agent.agentHandle}`).join(', ');
+      const routingHeader = `[协同智能体: ${handles}]`;
+      finalContent = finalContent ? `${routingHeader}\n${finalContent}` : routingHeader;
+    }
+
     // 合并附件
     const allAttachments = [...readyAttachments];
 
@@ -426,6 +485,93 @@ export function useInputBarV2(
     latestState.setInputValue('');
 
     try {
+      // ── Fast-Path 1: 单个外部编程 CLI 直接执行（零主模型中转） ──
+      if (isSingleExternalFastPath) {
+        const targetAgent = selectedAgents[0];
+        const targetSessionId = latestState.sessionId || 'default';
+        let binding = useAgentMeshStore.getState().workspaceBindings[targetSessionId] ?? null;
+        if (!binding && latestState.sessionId) {
+          binding = await agentMeshHost.getWorkspaceBinding(latestState.sessionId);
+        }
+        const cwd = binding?.rootPath ?? '';
+        const promptForExternal = selectedPagesSnapshot?.text
+          ? `<study_context source="${selectedPagesSnapshot.sourceName}" locator="${selectedPagesSnapshot.locator}">\n${selectedPagesSnapshot.text}\n</study_context>\n\n${finalContent}`
+          : finalContent;
+
+        const startedThread = await agentMeshHost.startTurn({
+          chatSessionId: targetSessionId,
+          agentId: targetAgent.agentId,
+          rosterName:
+            targetAgent.driverKind === 'swarm_member' ? targetAgent.agentHandle : undefined,
+          cwd,
+          prompt: promptForExternal,
+          userPrompt: content || finalContent,
+          isolatedBranch: binding?.isolatedBranch,
+          pdfRefTags: pdfRefTags || undefined,
+          pdfContext: selectedPagesSnapshot,
+          contextRefs: pendingContextRefs ?? undefined,
+        });
+
+        if (!startedThread && !isAgentMeshHostConnected()) {
+          latestState.setInputValue(previousInput);
+          showGlobalNotification(
+            'warning',
+            i18n.t(
+              'agentMesh:routing.hostUnavailable',
+              '外部智能体宿主桥接未就绪，请在桌面端启用多智能体插件',
+            ),
+          );
+          return;
+        }
+
+        latestState.clearAttachments();
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        opts?.clearSelectedAgents?.();
+        return;
+      }
+
+      // ── Fast-Path 2: 蜂群 @all 广播高优指令 ──
+      if (isSwarmBroadcastFastPath && isAgentMeshHostConnected() && latestState.sessionId) {
+        await agentMeshHost.swarmControl({
+          action: 'post_board',
+          chatSessionId: latestState.sessionId,
+          text: `@all ${finalContent}`,
+          priority: 'correction',
+          mentions: ['all'],
+        });
+        latestState.clearAttachments();
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        opts?.clearSelectedAgents?.();
+        return;
+      }
+
+      // ── 运行中的外部 CLI 会话：继续输入自动进入 QueuedMessageStack（支持一键 Steer 纠偏） ──
+      const currentExternalThread = selectActiveExternalThreadForSession(
+        useAgentMeshStore.getState(),
+        latestState.sessionId,
+      );
+      if (
+        currentExternalThread &&
+        selectedAgents.length === 0 &&
+        (!selectedModels || selectedModels.length === 0) &&
+        typeof latestState.enqueueMessage === 'function' &&
+        (latestState.queuedMessages?.length ?? 0) < QUEUE_HARD_CAP
+      ) {
+        const nonStickyRefs = (latestState.pendingContextRefs ?? []).filter(
+          (r) => r.isSticky !== true,
+        );
+        latestState.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
+        latestState.clearAttachments();
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        return;
+      }
+
       if (selectedPagesSnapshot?.text) {
         const { selectionToChat } = await import('@/features/chat/context/selectionRef');
         await selectionToChat({
@@ -476,11 +622,12 @@ export function useInputBarV2(
         opts.clearPdfPageRefs();
       }
 
-      // 🔧 发送成功后清空模型 chips
+      // 🔧 发送成功后清空模型与智能体 chips
       if (opts?.clearSelectedModels) {
         console.log('[useInputBarV2] 🏷️ Clearing model chips');
         opts.clearSelectedModels();
       }
+      opts?.clearSelectedAgents?.();
     } catch (error: unknown) {
       console.error('[useInputBarV2] Send message failed:', error);
       // 本地回合尚未提交时恢复正文，便于重试；已 commit 则保持空输入
@@ -497,9 +644,20 @@ export function useInputBarV2(
     }
   }, [store, queueEnabled]);
 
-  // 中断流式
+  // 中断流式（含外部 CLI 活跃回合）
   const abortStream = useCallback(async () => {
     const state = store.getState();
+    const externalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    if (externalThread && !state.canAbort()) {
+      await agentMeshHost.interruptTurn({
+        threadId: externalThread.threadId,
+        chatSessionId: state.sessionId || externalThread.chatSessionId,
+      });
+      return;
+    }
 
     // 守卫检查
     if (!state.canAbort()) {
@@ -518,6 +676,27 @@ export function useInputBarV2(
   // 抢占打断并发送（Steer）
   const steerMessage = useCallback(async () => {
     const state = store.getState();
+    const externalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    if (externalThread && state.inputValue.trim()) {
+      const steerText = state.inputValue.trim();
+      clearComposerDraft(state.sessionId);
+      optionsRef.current?.onClearDraft?.(state.sessionId);
+      if (state.sessionId) {
+        sessionDraftLruClearer?.(state.sessionId);
+      }
+      state.setInputValue('');
+      await agentMeshHost.steerTurn({
+        threadId: externalThread.threadId,
+        chatSessionId: state.sessionId || externalThread.chatSessionId,
+        text: steerText,
+        priority: 'correction',
+      });
+      return;
+    }
+
     if (queueEnabled) {
       const prevQueueLen = state.queuedMessages?.length ?? 0;
       await sendMessage();

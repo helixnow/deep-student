@@ -3,7 +3,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { CaretLeft } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import { DsButton } from '@/components/ui/DsButton';
@@ -14,7 +13,6 @@ import type { SettingsSection, SettingsSectionPlacement, SettingsSectionPropsFac
 import { SectionContent } from '@/ui-plugins/official/settings/SectionContent';
 import type { SettingsSidebarCategory } from './useSettingsNavigation';
 import { SettingsCategoryHeader } from './SettingsCategoryHeader';
-import { QuickSyncNowButton } from './QuickSyncNowButton';
 import { SettingsMcpPreviewBody } from './SettingsMcpPreviewBody';
 import { SettingsMcpPolicyDialog } from './SettingsMcpPolicyDialog';
 import type { McpPolicyModalState, McpPreviewState } from './mcp-editor/types';
@@ -59,9 +57,6 @@ export function SettingsMainContent({
   renderMcpToolEditor,
   invoke,
   setConfig,
-  onMobileBack,
-  mobileTitle,
-  mobileRightActions,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -84,9 +79,6 @@ export function SettingsMainContent({
   renderMcpToolEditor: () => React.ReactNode;
   invoke: typeof tauriInvoke | null;
   setConfig: Dispatch<SetStateAction<SystemConfig>>;
-  onMobileBack?: () => void;
-  mobileTitle?: string;
-  mobileRightActions?: React.ReactNode;
 }) {
   const localViewportRef = React.useRef<HTMLDivElement | null>(null);
   const contentWrapRef = React.useRef<HTMLDivElement | null>(null);
@@ -171,37 +163,8 @@ export function SettingsMainContent({
       )}
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
-        {mobilePageMode && onMobileBack && (
-          <div
-            data-testid="settings-mobile-subpage-header"
-            className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/40 bg-[color:var(--shell-workspace-panel)] px-2 py-1"
-          >
-            <DsButton
-              type="button"
-              variant="ghost"
-              size="md"
-              data-testid="settings-mobile-back"
-              aria-label={t('settings:a11y.back_to_settings', { defaultValue: 'Back to settings' })}
-              onClick={onMobileBack}
-              className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
-            >
-              <CaretLeft size={20} weight="regular" aria-hidden="true" />
-              <span className="text-sm font-medium">{t('common:back', { defaultValue: 'Back' })}</span>
-            </DsButton>
-            {mobileTitle ? (
-              <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
-                {mobileTitle}
-              </h1>
-            ) : null}
-            {mobileRightActions ? (
-              <div className="flex shrink-0 items-center gap-1">
-                {mobileRightActions}
-              </div>
-            ) : null}
-          </div>
-        )}
         {activeCategory && !(mobilePageMode && mobileVendorDetailOpen) && (
-          <div className="shrink-0 px-4 pt-3 sm:px-5 sm:pt-4 lg:px-8">
+          <div className="shrink-0 px-4 pt-2 sm:px-5 sm:pt-3 lg:px-8">
             <div className="mx-auto w-full max-w-[72rem]">
               <SettingsCategoryHeader
                 category={activeCategory}
@@ -209,14 +172,8 @@ export function SettingsMainContent({
                 onTabChange={setActiveTab}
                 idPrefix={settingsNavigationId}
                 compact={mobilePageMode || isSmallScreen}
-                actions={activeCategory.value === 'data' ? <QuickSyncNowButton /> : undefined}
               />
             </div>
-          </div>
-        )}
-        {activeSectionEntry?.value.desktopHeadingKey && !mobilePageMode && (
-          <div className="shrink-0 px-5 pt-5 lg:px-8">
-            <h1 className="mx-auto w-full max-w-[72rem] text-xl font-semibold">{t(activeSectionEntry.value.desktopHeadingKey)}</h1>
           </div>
         )}
         <CustomScrollArea

@@ -169,7 +169,7 @@ export interface AppsPanelProps {
 const SECTION_ORDER: GlobalSearchKind[] = ['app', 'command', 'dstu', 'chat'];
 
 const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const open = useAppsPanelOpen();
   const registryVersion = useRegistryVersion();
   const commandPalette = useCommandPaletteSafe();
@@ -312,11 +312,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     [launchableApps, searchableApps, query, searching, t],
   );
 
-  const sortedCompanionApps = useMemo(
-    () => (searching ? [] : filterApps(companionApps, '', t)),
-    [companionApps, searching, t],
-  );
-
   const commands = useMemo<Command[]>(() => {
     if (!searching || !commandPalette) return [];
     try {
@@ -339,18 +334,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         open: () => host.openApp(app.typeId),
       })),
     [apps, host, searching, t],
-  );
-
-  const companionAppItems = useMemo<GlobalSearchItem[]>(
-    () =>
-      sortedCompanionApps.map((app) => ({
-        id: `app:${app.typeId}`,
-        kind: 'app' as const,
-        title: t(app.nameKey, app.typeId),
-        score: 1,
-        open: () => host.openApp(app.typeId),
-      })),
-    [sortedCompanionApps, host, t],
   );
 
   const commandItems = useMemo<GlobalSearchItem[]>(
@@ -380,16 +363,14 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   );
 
   const items = useMemo<GlobalSearchItem[]>(() => {
-    if (!searching) {
-      return companionAppItems.length > 0 ? [...appItems, ...companionAppItems] : appItems;
-    }
+    if (!searching) return appItems;
     return [
       ...itemsByKind.app,
       ...itemsByKind.command,
       ...itemsByKind.dstu,
       ...itemsByKind.chat,
     ];
-  }, [appItems, companionAppItems, itemsByKind, searching]);
+  }, [appItems, itemsByKind, searching]);
 
   const loading = dstuState.loading || chatState.loading;
   const loadingByKind = {
@@ -905,36 +886,14 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               </div>
             </div>
           ) : !searching ? (
-            <>
-              <ul
-                id="wb-apps-listbox"
-                className={listClass}
-                role="listbox"
-                aria-label={t('workbench:appsPanel.title')}
-              >
-                {appItems.map((item, index) => renderResultRow(item, index))}
-              </ul>
-              {companionAppItems.length > 0 && (
-                <div className="wb-apps-tools-section" data-testid="wb-apps-tools-section">
-                  <div className="wb-apps-section" role="presentation">
-                    {t(
-                      'workbench:appsPanel.sectionTools',
-                      i18n.language?.toLowerCase().startsWith('en') ? 'Workspace Tools' : '工作台工具',
-                    )}
-                  </div>
-                  <ul
-                    className={listClass}
-                    role="listbox"
-                    aria-label={t(
-                      'workbench:appsPanel.sectionTools',
-                      i18n.language?.toLowerCase().startsWith('en') ? 'Workspace Tools' : '工作台工具',
-                    )}
-                  >
-                    {companionAppItems.map((item, i) => renderResultRow(item, appItems.length + i))}
-                  </ul>
-                </div>
-              )}
-            </>
+            <ul
+              id="wb-apps-listbox"
+              className={listClass}
+              role="listbox"
+              aria-label={t('workbench:appsPanel.title')}
+            >
+              { items.map((item, index) => renderResultRow(item, index)) }
+            </ul>
           ) : (
             <div
               id="wb-apps-listbox"

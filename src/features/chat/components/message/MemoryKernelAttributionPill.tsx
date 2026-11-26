@@ -70,6 +70,8 @@ function ensureMemoryChangedListener(): void {
 
 export interface MemoryKernelAttributionPillProps {
   className?: string;
+  /** Compact icon-only presentation for narrow mobile footers (keeps accessible sr-only summary). */
+  compact?: boolean;
   /** Message ID for per-message immutable snapshot capture & persistence. */
   messageId?: string;
   /** Session ID paired with messageId for snapshot keying. */
@@ -104,6 +106,7 @@ interface AttributionWeakPointEntry {
 
 export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillProps> = ({
   className,
+  compact = false,
   messageId,
   sessionId,
   variantId,
@@ -374,13 +377,14 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
             data-testid="memory-kernel-attribution-pill"
             aria-haspopup="dialog"
             className={cn(
-              'pointer-events-auto inline-flex items-center gap-1 rounded-full border border-border/50 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground',
-              open && 'border-primary/50 bg-primary/10 text-primary',
+              'pointer-events-auto inline-flex items-center gap-1 rounded-md py-0.5 text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/50 hover:text-foreground',
+              compact ? 'px-1' : 'px-1.5',
+              open && 'bg-muted/70 text-foreground',
             )}
             title={t('memoryAttribution.pillTitle')}
           >
-            <Brain className="h-3 w-3 shrink-0" />
-            <span>
+            <Brain className="h-3 w-3 shrink-0 opacity-75" />
+            <span className={compact ? 'sr-only' : undefined}>
               {t('memoryAttribution.label')} · {summaryParts.join(' / ')}
             </span>
           </button>

@@ -27,7 +27,7 @@ const ALL_NS = [
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap', 'vfs',
   'forms', 'console', 'cloudStorage', 'todo', 'workbench', 'flashcards',
   'quickAssistant', 'generativeUi', 'mediaStudio', 'superAgent',
-  'plugin_manager',
+  'plugin_manager', 'agentMesh',
 ];
 
 const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');

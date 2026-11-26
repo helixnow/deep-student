@@ -29,7 +29,7 @@ import {
 import { getFolderTree } from '@/dstu/api/folderApi';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
-import { MemoryKernelPanel, localizeMemoryFolderTitle } from '@/features/learning-hub';
+import { localizeMemoryFolderTitle } from '@/features/learning-hub';
 
 // 分组标题
 // 设置行（使用共享 primitives）
@@ -233,10 +233,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   const isMemoryOn = !config?.privacyMode;
 
   return (
-    <div className="space-y-4">
-      {/* 长期记忆内核工作台：直接在设置页暴露硬规则、画像、梳理建议与历史回滚，免去翻找学习中心 */}
-      <MemoryKernelPanel />
-
+    <div>
       {!embedded && <GroupTitle title={t('settings:memory.title')} />}
       <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
       <div className="space-y-px">

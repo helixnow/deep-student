@@ -47,7 +47,7 @@ const officialOrder: readonly (readonly [group: string, icon: string, ids: reado
   ]],
   ['resources', 'MagnifyingGlass', ['dstu.vfs', 'dstu.vfs-repos', 'dstu.vfs-index', 'dstu.vfs-handlers', 'dstu.media']],
   ['integrations', 'Wrench', [
-    'dstu.mcp', 'dstu.browser', 'dstu.sync', 'dstu.sync-providers', 'dstu.sync-support', 'dstu.sync-startup', 'dstu.backup',
+    'dstu.mcp', 'dstu.agent-mesh', 'dstu.browser', 'dstu.sync', 'dstu.sync-providers', 'dstu.sync-support', 'dstu.sync-startup', 'dstu.backup',
   ]],
   ['platform', 'Package', [
     'dstu.plugin-workshop', 'dstu.plugin-services', 'dstu.plugins', 'dstu.shell', 'dstu.integration', 'dstu.native', 'dstu.vector',

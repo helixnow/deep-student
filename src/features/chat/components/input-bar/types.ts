@@ -17,6 +17,7 @@ import type { ContextWindowUsage } from './contextWindowUsage';
 import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import type { RuntimeModelMultiSelectConfig } from './RuntimeModelSubmenuBody';
+import type { BuiltinSlashActionPayload, SlashCommandRuntimeStatus } from './SkillSlashPopover';
 
 // ============================================================================
 // 模型 @mention 自动完成状态
@@ -386,6 +387,15 @@ export interface InputBarUIProps {
   missingApiKey?: boolean;
   /** 点击「配置 AI 模型」直接打开 设置 → 模型服务 (APIs) 的回调 */
   onOpenApiSettings?: () => void;
+
+  // ========== 统一斜杠命令扩展 ==========
+
+  /** 斜杠命令运行时状态快照（用于徽标与二级参数补全） */
+  slashRuntimeStatus?: SlashCommandRuntimeStatus;
+  /** 执行内置立即/二级斜杠命令回调 */
+  onExecuteBuiltinSlashCommand?: (action: BuiltinSlashActionPayload) => void | Promise<void>;
+  /** 输入栏上方斜杠命令交互卡片（如 /btw 旁路快问、/learn 规则提炼、/context、/doctor、/help） */
+  slashOverlayCard?: React.ReactNode;
 
 }
 

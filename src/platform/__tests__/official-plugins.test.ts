@@ -35,7 +35,7 @@ describe('build-time official plugin table (virtual:ds-official-plugins, FE-A5)'
     const desktop = selectOfficialPlugins(declarations, { platform: 'desktop', production: true });
     expect(desktop.excluded.map(({ plugin, reason }) => [plugin.id, reason])).toEqual([['dstu.ui.debug', 'build'], ['dstu.ui.dev', 'build']]);
     const mobile = selectOfficialPlugins(declarations, { platform: 'mobile', production: true });
-    expect(mobile.excluded.map(({ plugin, reason }) => [plugin.id, reason]).sort()).toEqual([['dstu.plugin-workshop', 'platform'], ['dstu.ui.debug', 'build'], ['dstu.ui.dev', 'build'], ['dstu.ui.workbench', 'platform']]);
+    expect(mobile.excluded.map(({ plugin, reason }) => [plugin.id, reason]).sort()).toEqual([['dstu.agent-mesh', 'platform'], ['dstu.plugin-workshop', 'platform'], ['dstu.ui.debug', 'build'], ['dstu.ui.dev', 'build'], ['dstu.ui.workbench', 'platform']]);
   });
 
   it('renders static default imports of exactly the included plugin directories', () => {
