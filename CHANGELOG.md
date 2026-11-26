@@ -10,529 +10,445 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.20.10](https://github.com/helixnow/deep-student/compare/v0.20.9...v0.20.10) (2026-11-26)
+## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.1...v0.11.0) (2026-11-26)
 
+
+### ⚠ BREAKING CHANGES
+
+* **reasoning:** unify thinking levels across all channels with backend-side mapping
 
 ### Features
 
-* **flashcards,chat,memory:** complete 3 P3 UX optimizations (library page-jump & page-size, chat auto-resume on reload, memory_kernel tail-rule pacing guard) ([9189147](https://github.com/helixnow/deep-student/commit/9189147d78107c8db27b8ae78c861b8a0ae6f4dd))
-* **memory,chat-pipeline:** implement Memory v2 M1 (HardRules, MemoryProvider, session-frozen memory_kernel & delta) ([a1762b6](https://github.com/helixnow/deep-student/commit/a1762b66dd3cb2b512fdc8fc9e9527e936b922f3))
-* **memory,chat,skills:** complete Memory v2 M2/M3-tail (in-page subfolder/move, chat memory-kernel attribution pill, pure-markdown study skill fast-path) ([2e4502d](https://github.com/helixnow/deep-student/commit/2e4502dc2e6357674cf24ff94f7f481699d2e14d))
-* **memory,review,ui:** implement Memory v2 M2+M3 (mastery lifecycle & subject, essay signals, flush drain worker, dual-zone MemoryKernelPanel) ([7b764a4](https://github.com/helixnow/deep-student/commit/7b764a4a4cc27081df2402f1233d9361a66a9604))
-* **plugins,events:** implement Plugin v2 P1-A (wire real StudyEvents across notes/review/essay/chat and enable UI-only .dsplugin lifecycle) ([2db81d0](https://github.com/helixnow/deep-student/commit/2db81d0c0fcf25bf107c924015cf4e2505f414d9))
-* **plugins,kernel:** implement Plugin v2 P2 (chatPipelineHooks, gradingRubrics, reviewSchedulers Cordis registries & brokered UI domain calls) ([7ce06c1](https://github.com/helixnow/deep-student/commit/7ce06c1cb617fb6a079a714cc965895432cb1676))
-* **plugins,memory:** ship Plugin v2 P4 (.dspack Study Pack, portable sandbox broker, remote HTTPS fetcher, kaoyan example) & Memory v2 dialectic reflection + Wave 5 UX polish ([08cd386](https://github.com/helixnow/deep-student/commit/08cd386c0546ee96f987fc894d9ac3ef22a1f763))
-* **plugins,workshop:** implement Plugin v2 P3 (Manifest v2, Tier 1 declarative loader, Workshop UI/declarative self-check & refine-with-AI trigger) ([5b946d8](https://github.com/helixnow/deep-student/commit/5b946d808b03ae9b0db158f40b78b468066ae900))
-* **sota-ux:** add precision citation jumps, 2-step PDF note/card loop, and 540px container queries ([2584513](https://github.com/helixnow/deep-student/commit/258451309c3cf02b716a3e577153eeb2caefc2a6))
-* **sota-ux:** upgrade Cmd+K scopes/highlights, .apkg study banner, zh-CN jargon purge, and 360px Flashcards header ([4f2c964](https://github.com/helixnow/deep-student/commit/4f2c964bdd5b17c779f329b4341872da1b97ecfd))
-* **ux:** add essay err apply & ask-AI, memory auto-init, RAG [n] badges & corrupt PDF guard ([3f2f89d](https://github.com/helixnow/deep-student/commit/3f2f89d0bfe73f0e808ef4eca9c0740afd622813))
-* **ux:** ship Wave 2 UX, streaming perf, media handout, PDF OCR chip & layout optimizations ([fde08d0](https://github.com/helixnow/deep-student/commit/fde08d033d0cf5472e43d3ad70a5ccd61a8626f9))
-* **workbench:** add rename and delete actions to ResourceAppWorkspace sidebar (fixes [#536](https://github.com/helixnow/deep-student/issues/536)) ([f2edf18](https://github.com/helixnow/deep-student/commit/f2edf182a94cd47d99a54894b095c5ffe3450bf9))
+* **android:** native HEIC to JPEG conversion via ImageDecoder ([f8936cb](https://github.com/helixnow/deep-student/commit/f8936cbb9729899d72b58a1b3b19908e031ccdac))
+* **android:** open and share local files with other apps via FileProvider ([09fcc42](https://github.com/helixnow/deep-student/commit/09fcc42bc7de92fdc149e2c946f4454c99d15e01))
+* **anki-templates:** add content-suitability guidance and per-field limits to built-in templates ([42e0eb7](https://github.com/helixnow/deep-student/commit/42e0eb7b861058f4e82af0cf744ed6da58d584d3))
+* **anki:** AI-made cards are grouped by deck (学科::主题) instead of piling into Default ([48cf456](https://github.com/helixnow/deep-student/commit/48cf456053fe25d29b84bf179febb8c79eb3f97b))
+* **anki:** 快速制卡遵循默认模板；未设置时模型从全部模板自由挑选 ([1647ed9](https://github.com/helixnow/deep-student/commit/1647ed95bcfe4a6ea7cfe0b8caad1613456cdc11))
+* **anki:** 生成完的卡自动加入复习计划 ([ff00672](https://github.com/helixnow/deep-student/commit/ff006727e084559826e8c5d3d2c20a0c7d55e183))
+* **backlinks:** 资料侧反查——讨论过此资料的对话 / 引用此资料的笔记 ([6d963f5](https://github.com/helixnow/deep-student/commit/6d963f59926cf7497b1de7ece46c8e045bf0d283))
+* **cards:** PDF 划词制卡记录来源资料与页码 ([72ae683](https://github.com/helixnow/deep-student/commit/72ae6836831a0276d3e60103c46701fbc6f80e7b))
+* **cards:** 卡片记住来源——卡片库「查看来源」回到来源笔记/资料页或生成它的对话 ([f3e4851](https://github.com/helixnow/deep-student/commit/f3e48515af7d10a9d42714e0b616876e4f65131c))
+* **chat:** 「＋」菜单新增知识库「检索范围」——只在所选课程/文件夹里检索 ([effbd94](https://github.com/helixnow/deep-student/commit/effbd94d953d56008db42e05acd708f924bf1fb1))
+* **chat:** add Chinese learning expressions ([d8eaab9](https://github.com/helixnow/deep-student/commit/d8eaab9d8e41fc4211a6615f3f077e498f0c5873))
+* **chat:** add double-buffered script-free HTML preview for code blocks ([21a38e0](https://github.com/helixnow/deep-student/commit/21a38e0c9c74a302df6416b62f0ecfd1f5e574bb))
+* **chat:** add progressive SVG prefix repair for streaming code blocks ([95b1fe5](https://github.com/helixnow/deep-student/commit/95b1fe5c227112d051eea272ad5db1050328e445))
+* **chatanki:** content-first template selection rule for the study agent ([ffbe4cd](https://github.com/helixnow/deep-student/commit/ffbe4cdc721d784c909221bb60010080ecd97d12))
+* **chatanki:** expose template field guide and flag over-long template fields ([5a7246b](https://github.com/helixnow/deep-student/commit/5a7246b543b3e9b0bfd1a8e8b0c87beac95b3e77))
+* **chat:** auto-height and real links for the HTML code block preview ([a970897](https://github.com/helixnow/deep-student/commit/a9708972bfb5dec21b5d315f638c2785e7520f27))
+* **chat:** carry media timeRange/mediaCitation through sources and resource_read schema ([2acaf65](https://github.com/helixnow/deep-student/commit/2acaf656a24a852386ddb69abe5ee5c4829a191c))
+* **chat:** diversify empty state prompts ([88b3494](https://github.com/helixnow/deep-student/commit/88b34944a2b2d4a3bdee6ce5bdd37e46017d6db1))
+* **chat:** expand empty state copy pool ([f12f9e8](https://github.com/helixnow/deep-student/commit/f12f9e866c8be5fd62d98fcb15bcb5082eee3dd2))
+* **chat:** live SVG/HTML code block previews with a more menu ([f42eb28](https://github.com/helixnow/deep-student/commit/f42eb284e89d677ff1e50befcad314443087309e))
+* **chat:** render [媒体[@id](https://github.com/id):mm:ss] citations as clickable timestamp badges ([b28e559](https://github.com/helixnow/deep-student/commit/b28e55998ea9ad96c59c33ac7654bfff895bb6d7))
+* **chat:** teach the [媒体[@id](https://github.com/id):mm:ss] citation for audio/video attachments ([c35a152](https://github.com/helixnow/deep-student/commit/c35a152b4313997d250762ca4e01ef4372a6763e))
+* **chat:** 对话首页输入框下显示「今日待复习」，一键进入复习 ([b748404](https://github.com/helixnow/deep-student/commit/b7484044b531c962b850f5beae635914f1ad6e3b))
+* **chat:** 点引用徽章或引用页面图直接打开原文并跳到该页 / 导图节点 ([a9468a9](https://github.com/helixnow/deep-student/commit/a9468a97b356337c5e6067617fa548cdc082c3cb))
+* **citations:** 引用定位到句子——跳页后在文本层高亮被引用的原文 ([fcc90df](https://github.com/helixnow/deep-student/commit/fcc90dfc2860ecf62ac1140c3b56b8f7a5a3de2f))
+* **command-palette:** add Flashcards review command and place card commands under the hub ([daadbae](https://github.com/helixnow/deep-student/commit/daadbae5555e41519fa9468877ccae0712e063b2))
+* **demo:** 演示可以开学习桌面（demo.html?desktop=1），对话和闪卡两扇窗能直接操作 ([a55d6d3](https://github.com/helixnow/deep-student/commit/a55d6d32c9d842fb0444947607b004d9b0066354))
+* **dev:** UI 自动化时窗口在后台也保持渲染，重启不抢焦点 ([49bf075](https://github.com/helixnow/deep-student/commit/49bf075a50050cb7078027f2616d8ad0a16479d0))
+* **docx:** image block, handout/official layout, and handout LLM commands ([4c1b470](https://github.com/helixnow/deep-student/commit/4c1b4701d09412779e25d8239560b17b6ae44103))
+* **epub:** 电子书划词——解释 / 翻译 / 存为笔记 / 制卡 / 添加到聊天；修复阅读器 iframe 里所有事件监听失效 ([6a83c09](https://github.com/helixnow/deep-student/commit/6a83c094b0d202926787b481cfe6314dc261a80e))
+* **essay:** 批改结果优先——批改前原文占满、开始批改后原文收成一行摘要（编辑原文 / 重新批改 / 取消），结果区标题并入分段 Tab 行；阶段按后端顺序判定（评分中不再丢失）；去掉结果区悬浮字符数；宽窗口正文限宽 ([67d0f47](https://github.com/helixnow/deep-student/commit/67d0f474bf96b4005efb7992b26f974ea8a1a302))
+* **essay:** 批改错误点一键入错题本（作文错题题目集，按错误类型计入掌握度） ([9aa0a7c](https://github.com/helixnow/deep-student/commit/9aa0a7c9adc43277a99ebd9886afd0e0e4f34365))
+* **flashcards:** APKG 导入即入队 FSRS，沿用 Anki 复习进度 ([62cd51e](https://github.com/helixnow/deep-student/commit/62cd51e0aea8ef5f2d3c87c6a6557dd687e23e04))
+* **flashcards:** APKG 导入按 Anki 难易度系数初始化 FSRS 难度（替代一律 5.0） ([7c1a6a2](https://github.com/helixnow/deep-student/commit/7c1a6a2d426875e3747aea70375ff4916e2b073b))
+* **flashcards:** APKG 导入提示显示加入复习的卡数 ([de73465](https://github.com/helixnow/deep-student/commit/de73465965bbd7d3ed485f6bcc08a6a2fdda3224))
+* **flashcards:** view source and ask AI while reviewing; learn a batch of new cards today ([f947a43](https://github.com/helixnow/deep-student/commit/f947a43fa8295174240e7ab88d9db3a9ded0d4b4))
+* **flashcards:** 卡片库可导出 .apkg（选中导出选中，未选导出全库） ([f2d8e71](https://github.com/helixnow/deep-student/commit/f2d8e716099d450756c7039210fe5e9a7c93e72c))
+* **flashcards:** 卡片模板沙箱放开模板脚本、onclick 与 data-* 属性 ([cf0e752](https://github.com/helixnow/deep-student/commit/cf0e752f33e3aacc21490d6b90fcd44004253fdd))
+* **flashcards:** 复习界面去掉层层套框——模板就是卡片 ([0d5d859](https://github.com/helixnow/deep-student/commit/0d5d859095cbbde06e3f8aedc970c817219a4619))
+* **flashcards:** 统计页新增记忆曲线——FSRS 遗忘曲线 + 单卡复习历史 ([a12af46](https://github.com/helixnow/deep-student/commit/a12af4658096801f4a026975da20bbc8d0b407d0))
+* **kb:** 会话检索范围——学习者选定的课程/文件夹成为知识库检索硬过滤 ([c3461b9](https://github.com/helixnow/deep-student/commit/c3461b9e46439e3cc77d15236a880ec186d8aa22))
+* **learning-hub:** '用这份资料制卡' one-step entry; fix stray attachment panel and PPTX refs treated as PDF ([e040419](https://github.com/helixnow/deep-student/commit/e040419891c9e17cb4443cb2054bf80bd7c01424))
+* **learning-hub:** add descriptions to quick access items ([401d5ec](https://github.com/helixnow/deep-student/commit/401d5ecf571369a177915e93c72875edf78c4a13))
+* **learning-hub:** focus context menu icons on common actions ([129e826](https://github.com/helixnow/deep-student/commit/129e826ce4767d6335d87d7f0d21f758bf1a4d5d))
+* **learning-hub:** Markdown 用笔记应用打开——导入即为笔记，已导入的可一键「转为笔记」 ([7b6fcbf](https://github.com/helixnow/deep-student/commit/7b6fcbf41555fe568f8a9df34d3349c7c0e0198c))
+* **learning-hub:** visible + New menu in the desktop toolbar; '导入教材' renamed to '导入资料…' ([68658a7](https://github.com/helixnow/deep-student/commit/68658a7196441e4ba0606f7ff00d672effef4b6f))
+* **learning-hub:** 去掉「学习资源 / 笔记学习」双顶栏，学习视图并入 Finder「笔记」文件夹 ([e2badee](https://github.com/helixnow/deep-student/commit/e2badee8bc83a340239d7a164035c4f906eb094f))
+* **llm:** streamed transport helper for single-shot structured requests ([daa5aeb](https://github.com/helixnow/deep-student/commit/daa5aebd4da568e3dc1861bd57c8ea105c2d683e))
+* **mastery:** 掌握度对学习者可见——首页「薄弱知识点」，一键在对话里讲解并练习 ([45cd03d](https://github.com/helixnow/deep-student/commit/45cd03d7c4be1f69f55a7c63b4177a1f16b9a1ec))
+* **mastery:** 无标签卡片的复习也计入掌握度（退回所属文档名作为知识点） ([29e4cc6](https://github.com/helixnow/deep-student/commit/29e4cc64801e6a52cc314f9c3926f2347cc43f33))
+* **media-learning:** generate illustrated handouts from media transcripts into notes ([a37cdb8](https://github.com/helixnow/deep-student/commit/a37cdb87e6c9e2357db028efa265c874f5541066))
+* **media-learning:** route media-ref:open to the media view in both shells ([54193b9](https://github.com/helixnow/deep-student/commit/54193b930e602c633b052863620c13e86d4a678b))
+* **media-learning:** transcript panel, WebVTT track, resume and frame capture in media preview ([839ee25](https://github.com/helixnow/deep-student/commit/839ee2577be00e4b2acb1ae900a6f21cfa3dd619))
+* **media:** add media transcript segments and playback progress tables ([08c7a6c](https://github.com/helixnow/deep-student/commit/08c7a6c91673eb396e4ff9c58235e12f4c2ea480))
+* **media:** hand playback off when jumping from the library view to the Media study page ([f97e6da](https://github.com/helixnow/deep-student/commit/f97e6da1c6f8f92569f988a520047bbdd6632d2e))
+* **media:** media_library_list and media_related_notes commands for the media sub-app ([4bb1f63](https://github.com/helixnow/deep-student/commit/4bb1f63db06509bf22c9ea202cab4c15e8b460a1))
+* **media:** resumable transcription pipeline, commands and subtitles ([40757a0](https://github.com/helixnow/deep-student/commit/40757a077ed26d895ae4cca78ea68b15184b8c38))
+* **media:** stream media imports to blobs and route audio through pipeline ([b1a2115](https://github.com/helixnow/deep-student/commit/b1a21159da2c121d6219fd0388f34622b5b0460c))
+* **media:** stream-decode audio/video to 16 kHz mono with energy VAD ([e093558](https://github.com/helixnow/deep-student/commit/e0935586a4522cbc7255d640566ef95fbd9c1c93))
+* **media:** 音视频 sub-app — library, study page and entry points ([46dc1b1](https://github.com/helixnow/deep-student/commit/46dc1b118742b44f97bf0ca28ea020204f4f14fe))
+* **mindmap:** 导图引用定位到具体节点（#节点提示 / 知识库命中片段 / 选区 node 回链） ([67f9356](https://github.com/helixnow/deep-student/commit/67f9356789b75c95fa5d0334cb41f2f19312a753))
+* **mindmap:** 背诵模式「一键遮住要点」；背诵时公式照常渲染；挖空遮罩可键盘揭示 ([aac0c6e](https://github.com/helixnow/deep-student/commit/aac0c6e47a36392c79bbe981e6a43384090abb68))
+* **navigation:** add flashcards hub model, tab switcher and mobile header accessory row ([a696b15](https://github.com/helixnow/deep-student/commit/a696b157ff1ead594575b936066c3b5a0a5b3363))
+* **notes:** Agent 创建的笔记记录来源对话/消息（props._origin） ([b206881](https://github.com/helixnow/deep-student/commit/b2068812e2e054bf1ac6d781e84d9c66bcdf5b6b))
+* **notes:** Agent 直接写入后提供常驻「撤销本次修改」 ([11f85ea](https://github.com/helixnow/deep-student/commit/11f85ea048c536bb3984e13564f397293938777d))
+* **notes:** Agent 结构化写入改为逐块逐行显现（打字感） ([86e42a5](https://github.com/helixnow/deep-student/commit/86e42a501dcf463babc9f8fd1f09281f9292f699))
+* **notes:** export notes to Word with images and a handout layout ([12fac72](https://github.com/helixnow/deep-student/commit/12fac72a379b0def121919378a5c9ca61148428d))
+* **notes:** make [媒体[@id](https://github.com/id):mm:ss] anchors in notes clickable ([20570e1](https://github.com/helixnow/deep-student/commit/20570e1b46f8b156d1bba705b2f3e2fc72bb6361))
+* **notes:** Notion 式块选择（Esc 选块） ([6716981](https://github.com/helixnow/deep-student/commit/6716981d9c51292b74834809ab0da222a2543fa5))
+* **notes:** 外部写入与长笔记写入也有变更演出 ([2cd4f16](https://github.com/helixnow/deep-student/commit/2cd4f16756c01251e2dd408723b0d40900ccbacd))
+* **notes:** 存为笔记新增「追加到已有笔记」模式 ([7eaeff1](https://github.com/helixnow/deep-student/commit/7eaeff15a72df53ab3d25014d34c837130432b1f))
+* **notes:** 学习中心单顶栏——笔记页面级操作并入标签栏右端 ([d2a8138](https://github.com/helixnow/deep-student/commit/d2a8138a4f55f10da50719580f1f12c31cda03a2))
+* **notes:** 学习桌面属性页补上学习关联，关联列表对空返回不再崩溃 ([266e69d](https://github.com/helixnow/deep-student/commit/266e69d5a12e2968ffdb2bc5ac5d9f545b3f13c4))
+* **notes:** 学习桌面目录树右键可新建学习笔记（落到右键所在文件夹） ([8aab1e5](https://github.com/helixnow/deep-student/commit/8aab1e5ec4d03101cd414cb67b96ab55df9770ce))
+* **notes:** 学习桌面笔记侧栏以页面树为主体 ([eaa0394](https://github.com/helixnow/deep-student/commit/eaa0394e022ff80e57a3bd419296b4d78c281172))
+* **notes:** 工作台笔记同样单顶栏——页面级操作并入标题栏标签带右端 ([9e9530c](https://github.com/helixnow/deep-student/commit/9e9530c2b2bf216357a0082728c614235a4b2cf8))
+* **notes:** 斜杠菜单与块菜单对齐 Notion 视觉 ([3c7da17](https://github.com/helixnow/deep-student/commit/3c7da17c2c1b055d9aa2b854885c5e7d0bccc158))
+* **notes:** 模板改为 Notion 式模板库对话框，模板用真实编辑器编辑 ([5ab5299](https://github.com/helixnow/deep-student/commit/5ab52992d563748f6a55e122d09891391375548e))
+* **notes:** 点正文下方空白落到文末（必要时补空段落） ([8cf8e0d](https://github.com/helixnow/deep-student/commit/8cf8e0d9b758c248fb1c5fc893313473ff30675b))
+* **notes:** 移动端块菜单补齐插入项，布局行补齐康奈尔模板转换 ([99d2be4](https://github.com/helixnow/deep-student/commit/99d2be48ae3a9f751739ee20fc37b3c8ed02fd54))
+* **notes:** 空块按类型提示占位（标题 1 / 引用 / 列表 / 待办事项） ([c5fe9d7](https://github.com/helixnow/deep-student/commit/c5fe9d760328c9d62f91202b7e0c8c11781d51c8))
+* **notes:** 笔记「生成思维导图」——大纲本地秒转导图；修复切回笔记标签后生成卡片等工具永久禁用 ([6121372](https://github.com/helixnow/deep-student/commit/6121372ac225009b375fad6d7ef0624b30c6d248))
+* **notes:** 笔记来源回链——从对话/资料保存的笔记可一键回到那条消息或那一页 ([0734308](https://github.com/helixnow/deep-student/commit/073430873aff4a00e3634206c861ae25fe8c4b58))
+* **notes:** 笔记选区引用带「所在小节」，聊天里点回去滚到该标题 ([c60f632](https://github.com/helixnow/deep-student/commit/c60f6326a004a067ad09e1eb22c466ba06b24b9c))
+* **notes:** 聊天右侧面板里的笔记同样单顶栏——页面级操作并入面板工具栏 ([546af02](https://github.com/helixnow/deep-student/commit/546af02d577fc19b230c347bd56bd2866c6283de))
+* **notes:** 追加到已有笔记时写入段标题（正文未自带标题时） ([6e6f6b7](https://github.com/helixnow/deep-student/commit/6e6f6b7711ce3e5a795e0d32db6f0f1e1fa7302f))
+* **notes:** 选区「引用到聊天」并入格式浮条，修正预设样式测试 ([7fe4849](https://github.com/helixnow/deep-student/commit/7fe484976da2fca94c081e4a3eba62d7e432df3f))
+* **notes:** 页面 emoji 图标贯穿标签与侧栏树（Notion 同款） ([a1d1308](https://github.com/helixnow/deep-student/commit/a1d13089fca86a3f38a4e3af606f6a89b86c38ff))
+* **notes:** 页面图标改为完整 emoji 面板 ([526646b](https://github.com/helixnow/deep-student/commit/526646bf2e71a6793237f688e80d0a276c2dafdf))
+* **notes:** 页面图标置于操作行之上并可点击更换；尺寸对齐 Notion（72px） ([e868fef](https://github.com/helixnow/deep-student/commit/e868fef86e8ba93278f33969455e31594bd0931a))
+* **notes:** 页面对齐 Notion——安静 chrome、统一版心、标题与正文连贯 ([0afb776](https://github.com/helixnow/deep-student/commit/0afb776c341b47bd6a2ab270928a9253914771c0))
+* **notes:** 页面菜单 Notion 式排版——字体三卡 + 小字号/全宽独立开关；表格对齐 Notion 规格 ([e9ff566](https://github.com/helixnow/deep-student/commit/e9ff566c5b6da40112188651d54382aaf11d5187))
+* **pdf:** 阅读器新增「关联」侧栏——引用此资料的笔记与讨论过它的对话 ([5af99b5](https://github.com/helixnow/deep-student/commit/5af99b5e05811b318a9f03b5754b4b2d2bf4dcf4))
+* **practice:** 番茄钟专注时长计入练习打卡日历（替代写死的 0） ([cd198a4](https://github.com/helixnow/deep-student/commit/cd198a4e79e3f1f6c67c2d186c25322ce47818b7))
+* **preview:** Word / 课件 / 表格预览能选中文字，DOCX / PPTX 支持划词（解释 / 翻译 / 存笔记 / 制卡 / 引用到聊天） ([41bf3d1](https://github.com/helixnow/deep-student/commit/41bf3d1ec7504ab0865d1b84c309350778040375))
+* **qbank:** image answer upload UI with compression and playback ([8fa173e](https://github.com/helixnow/deep-student/commit/8fa173e0f26c6bfe32e4a6e03a82ad3ae6691d1d))
+* **qbank:** image_answer user_answer envelope contract ([a340e79](https://github.com/helixnow/deep-student/commit/a340e79e52ba32a7743fb3757a537d4a46a6d482))
+* **qbank:** import_document 工具 schema 支持 resource_id，引导直接导入资源库文件 ([7de99ad](https://github.com/helixnow/deep-student/commit/7de99ad4d034c498edc99f9afd13c5769dea0edc))
+* **qbank:** multimodal AI grading for image answers ([52554e4](https://github.com/helixnow/deep-student/commit/52554e49da92fae53cb10c3c9b0337f5b483d3c6))
+* **qbank:** qbank_import_document 直接接受资源库 resource_id ([b506bc3](https://github.com/helixnow/deep-student/commit/b506bc3b5d886c2a5c468df13979fead66abf2d7))
+* **qbank:** render formulas in question previews; analyze exam pages 3 at a time ([f5992be](https://github.com/helixnow/deep-student/commit/f5992bed979b5ac3b5bdd2f0582e839b51e0e3bf))
+* **qbank:** show due review counts on 复习计划 and the 更多 tab ([e15f721](https://github.com/helixnow/deep-student/commit/e15f72188444a7f865be65797d11d9053bf12d7f))
+* **qbank:** 错题进对话——做题后「问 AI 讲解 / 生成同类题 / 出处」；AI 出题记录参考资料出处 ([c075c84](https://github.com/helixnow/deep-student/commit/c075c84a9e49abb63b4c2dec3bdd85ab82449a9b))
+* **reasoning:** channel-parallel thinking-intensity architecture (Plan D) ([5c0642c](https://github.com/helixnow/deep-student/commit/5c0642c0e9f6c990b079aa55ffc60f15d0bb99b4))
+* **reasoning:** contains-based family matching + highest-tier defaults + registry-driven max output (Plan E) ([aeea27c](https://github.com/helixnow/deep-student/commit/aeea27c87fc681a9b8d961d5273a77b12c84720a))
+* **review:** 复习结果回写掌握度；练习答对到期题推进复习计划 ([d890445](https://github.com/helixnow/deep-student/commit/d890445c2785784c4ddcda8a42080ad9b99a85cb))
+* **settings:** consolidate navigation into six categories ([d456a0b](https://github.com/helixnow/deep-student/commit/d456a0bf6832e68c5627bbcca30c0891913a5537))
+* **shell:** merge Anki card tasks, flashcards and templates into one Flashcards page ([9a88039](https://github.com/helixnow/deep-student/commit/9a8803956086fa0d571025078d6ec6843c259952))
+* show update download progress in sidebar ([95df5cf](https://github.com/helixnow/deep-student/commit/95df5cfff339ee18928cba07a683c0861601e955))
+* **skills:** add on-demand course-study skill for media lessons ([70ea78f](https://github.com/helixnow/deep-student/commit/70ea78f2fcc48d4a1cd7f685db124149b42a287e))
+* **study-loop:** study time table/commands and media-sourced cards & questions ([3f7cf5b](https://github.com/helixnow/deep-student/commit/3f7cf5b3f94f6c3714e39c47c9c87cfe33c94c7c))
+* **study-time:** presence-based study tracker, heatmap time metric, card media jump ([4620854](https://github.com/helixnow/deep-student/commit/4620854eee48739362b3688752501b7ca694e56a))
+* **today:** 「本周周报」先打开预览，不再一点就弹「选择保存目录」 ([71273f4](https://github.com/helixnow/deep-student/commit/71273f4856731a367c279c7cb6e60b99e0b4cdd4))
+* **today:** open due reviews on the study desktop and review all due mistakes in one go ([017450c](https://github.com/helixnow/deep-student/commit/017450cc070f3a16ceb64b7f85c2130efab84b41))
+* **today:** weak spots and the weekly report on the chat home; weak-spot practice lands in the question bank ([0190936](https://github.com/helixnow/deep-student/commit/0190936efc49882b606665a130e2fd677572d260))
+* **today:** 每日早间「今日待复习」汇总通知（卡片 / 错题 / 笔记） ([0666b3d](https://github.com/helixnow/deep-student/commit/0666b3d68da10d0ca668bebd8198078ca0e25a6a))
+* **today:** 确定性学习周报——首页「本周周报」存为笔记 /「与 AI 复盘」 ([a653818](https://github.com/helixnow/deep-student/commit/a653818a811db2d1d215389f916bf515d2a2d898))
+* **today:** 统一「今日学习」——卡片 / 错题 / 笔记三条复习线同一口径 ([ba3d6b7](https://github.com/helixnow/deep-student/commit/ba3d6b70dea62f5b9614983d1699e33a23c62793))
+* **ui-drive:** UI 桥端口可配置，支持并行跑多个 dev 实例 ([7b88b80](https://github.com/helixnow/deep-student/commit/7b88b805203cfbc62d0e1a7f0e807d516ab86629))
+* **upload:** stream large files to Rust in bounded chunks instead of base64 JSON IPC ([e672187](https://github.com/helixnow/deep-student/commit/e672187922c264917367fa54d59683ec11d3bc91))
+* **vfs:** BM25 rerank on the lexical (FTS) retrieval route ([8ffe8a2](https://github.com/helixnow/deep-student/commit/8ffe8a2a475514d85dd670e23d8ade5bba32f6be))
+* **vfs:** index media transcripts as time windows and cite hits by timestamp ([7d9e00d](https://github.com/helixnow/deep-student/commit/7d9e00d5b1f573e84ce504dedca8b8c136b45b00))
+* **workbench:** AI 仪表盘与首页「今日学习」同口径——补错题复习、待复习笔记 ([56f7bed](https://github.com/helixnow/deep-student/commit/56f7bed9af83ecb4de03ab2661eb4b878e88848f))
+* **workbench:** status bar rhythm and desktop briefing count due mistakes and notes ([7af5138](https://github.com/helixnow/deep-student/commit/7af5138770730dc1bbfd2e64bcd197408caf5087))
+* **workbench:** 题目集 / 翻译 / 作文的资源列表可收起：标题栏开关，较窄窗口打开资源后默认收起并按应用记住 ([247b92a](https://github.com/helixnow/deep-student/commit/247b92aca76998913363ad556009c93ba786c83e))
 
 
 ### Bug Fixes
 
-* **anki-media:** eliminate CSP media errors, fix dark-mode Cloze contrast, and add 200-DPI image zoom lightbox ([5c66313](https://github.com/helixnow/deep-student/commit/5c6631364211dfa93019e49e5a988129a4e13379))
-* **ankiconnect:** fix Library card sync lookup, locale-clean default deck/concept_key, and error handling ([9e74d8f](https://github.com/helixnow/deep-student/commit/9e74d8fae98fd1012d4c21467e1708ef11b43acd))
-* **anki:** prevent cold-cache img collapse, back image leak, and desktop zoom button overflow (SOTA06) ([b4f9a0a](https://github.com/helixnow/deep-student/commit/b4f9a0aacc93b7493c8df7bfd46d83b0e03453fc))
-* **automations:** fix Run Now execution pipeline and surface run history/error details ([acf1457](https://github.com/helixnow/deep-student/commit/acf14571b6a0be3fabb26cae0ce64376b2e080ed))
-* **backup:** fix verifyBackupWithAssets recovery/backups root, scoped export spinner, and corrupt ZIP error reporting ([e3a9238](https://github.com/helixnow/deep-student/commit/e3a9238d79e11024da2972504b0b88aa03707bff))
-* **chat-workshop:** localize workshop sessions/skill chips and fix 200+ session list loading ([ad7ac93](https://github.com/helixnow/deep-student/commit/ad7ac932c64144b57adcd93dea871567ba18d84f))
-* **chat,essay,workbench:** preserve cold-open prefill, broaden err apply, show inline chip status ([9e74673](https://github.com/helixnow/deep-student/commit/9e74673bbf26cbfec1203db0b306bdaed99df729))
-* **chat:** block IME composition Enter submit and prevent reload RAG re-execution / image loss ([7e2553d](https://github.com/helixnow/deep-student/commit/7e2553dfa0a6cc8df58fa0f3d235ff7e58026730))
-* **chat:** continue interrupted/truncated messages in-place without phantom user turn or draft loss (U03) ([1232f25](https://github.com/helixnow/deep-student/commit/1232f25a89fc38009b47ebc59ce1d267ffa5eba6))
-* **chat:** handle unsupported attachments (.apkg) gracefully without console.error or stuck Failed chips ([d3696a3](https://github.com/helixnow/deep-student/commit/d3696a30c16641db129a736f14bc9560065f3a81))
-* **chat:** serialize Mermaid theme rerenders and use native horizontal scroll for wide tables and KaTeX ([771bf26](https://github.com/helixnow/deep-student/commit/771bf26b5183ae596600f7f38fb7c796fe83e948))
-* **ci:** resolve CI OOM, test/contract/golden drifts, and host change-log assertions ([ac295f1](https://github.com/helixnow/deep-student/commit/ac295f15ac4be8c27284a7e4bc0d68535217c33f))
-* **citations:** fix SOTA01 PDF citation routing, strictType, 1-based page numbers, and i18n ([144a65e](https://github.com/helixnow/deep-student/commit/144a65eff913854c44ce73d85b305d9989643e34))
-* **ci:** update RichContentDarkAndCopyFidelity CSS selector to .scroll-area--native ([2f30b16](https://github.com/helixnow/deep-student/commit/2f30b166b189d9e4f934547942c8044329d7d969))
-* **data-pairing:** register 4 missing sync/pairing IPCs, stop stale password QR leaks, add DSPAIR1 TTL and LAN S3 opt-in ([ac9937e](https://github.com/helixnow/deep-student/commit/ac9937e7cc94d96b4906f8ff01f24921aa9f644f))
-* **electron,ci:** enable Linux Wayland IME switches ([#481](https://github.com/helixnow/deep-student/issues/481)) and bump actions/download-artifact to v8.0.2 ([#513](https://github.com/helixnow/deep-student/issues/513)) ([b87e633](https://github.com/helixnow/deep-student/commit/b87e6331609d4b2c5c1a1debc4c382b4799a07a3))
-* **flashcards-ui:** fix Cloze DOM/clip, Undo session-complete guard, en-US i18n leaks, and ? shortcut sheet ([676f2f9](https://github.com/helixnow/deep-student/commit/676f2f985bd745bb80f3ffaaf413857600d96440))
-* **flashcards,workbench:** guard non-math Anki HTML preview against null and widen mobile titlebar hit targets ([d37bf80](https://github.com/helixnow/deep-student/commit/d37bf803fbc83936d07951e03c2a583eb1ba97c4))
-* **fsrs:** make review undo atomic across UI and mastery_events, fix Easy interval floor and stats ([1caf285](https://github.com/helixnow/deep-student/commit/1caf285c548e08ba52139c4c22492a1f2bd19096))
-* **host-tsc:** resolve 14 TypeScript errors across 9 host test suites ([0added2](https://github.com/helixnow/deep-student/commit/0added2cdc772c3ab65369a187538a5d5332e084))
-* **host-tsc:** resolve 8 host prod TypeScript errors and 3 silent runtime bugs ([fe5ea3d](https://github.com/helixnow/deep-student/commit/fe5ea3d4cabaf3f32ef32658e41136a729428916))
-* **learning-hub:** route generic import across all study formats and fix Finder i18n key ([bbcd9b3](https://github.com/helixnow/deep-student/commit/bbcd9b37a95cef3251d713f425678060913a7569))
-* **lint:** store loaded Prism grammar instead of tick counter in CodeBlock ([be94d04](https://github.com/helixnow/deep-student/commit/be94d0445bf4ff7828164b3ce586537ce3db701a))
-* **llm-picker:** surface real provider fetch errors without console spam and dedupe/filter model favorites ([16491f1](https://github.com/helixnow/deep-student/commit/16491f102bbd0023f76d1e364a55f50422e65595))
-* **llm,chat,memory,translation,settings:** resolve Wave 4 real-user defects batch 1 ([6ae24b9](https://github.com/helixnow/deep-student/commit/6ae24b979f13ea29af87ec6836ec43c3e0eccf79))
-* **llm:** preserve distinct-id profiles sharing (vendorId, model) while deduping favorites ([23bdbd4](https://github.com/helixnow/deep-student/commit/23bdbd4fcadc799bc97252ebe17b99da177c16b4))
-* **media-studio:** render markdown+KaTeX in companion QA and preserve anchor+AI answer on promote ([8eb3353](https://github.com/helixnow/deep-student/commit/8eb3353dbf3c9f4235b46ace2907a7d41c426552))
-* **media,essay,flashcards,chat,workbench:** resolve Wave 4 real-user defects batch 2 ([36bcd7c](https://github.com/helixnow/deep-student/commit/36bcd7c40473df4075fb37651c353792a120095b))
-* **media:** eliminate false fatal playback errors on valid MP4/MP3 and preserve mm:ss flashcard source jumps ([cf9952e](https://github.com/helixnow/deep-student/commit/cf9952ee6949b157dd4ae8324c4940c60f272ff1))
-* **media:** reject non-subtitle uploads and confirm before overwriting cues ([430bde7](https://github.com/helixnow/deep-student/commit/430bde74ceeed400ddae503ed61fab8ab130e0d0))
-* **memory-v2:** enforce user-language rules, L1-to-L2 override reconciliation, and full multi-part answering ([dfd237e](https://github.com/helixnow/deep-student/commit/dfd237eba112a73eb40070cee51f0ddcd2f2a061))
-* **memory,anki,mobile:** resolve Wave 6 real-user P2 defects (personal fact filter & Turn-1 VFS bridge, hierarchical .apkg deck export, 360px compact PDF chip & 44px touch targets) ([82781e7](https://github.com/helixnow/deep-student/commit/82781e7ca1eb12a16be973a94f93acd72eadf0dc))
-* **memory,chat:** keep MemoryKernelPanel mounted on transient refresh errors and prevent inline KaTeX vertical split in mobile markdown tables ([716766c](https://github.com/helixnow/deep-student/commit/716766c1ab0ebff7ec8615eaba0a55111b585eac))
-* **mobile,memory,docs:** resolve Wave 5 mobile 360px UX defects, lift MemoryView create form above fold, and add Memory v2 & Plugin v2 guides ([d267ae0](https://github.com/helixnow/deep-student/commit/d267ae0c26404643ec70cd14d8473491b18754bc))
-* **mobile:** SOTA08 360px 125% polish (theme wrap, modal clipping, touch dock copy, zh-CN renderer copy) ([a331ea6](https://github.com/helixnow/deep-student/commit/a331ea6215e832285f8173a54317711ed0c716a6))
-* **mobile:** 消除启动期 18 条平台不兼容错误、修复英文 Dock 截断与关于页对齐并接入 APK 构建校验门禁 ([1eeaf1b](https://github.com/helixnow/deep-student/commit/1eeaf1b1fbc13fa1100ab3c3900fa233b699a54f))
-* **notes-essay-todo:** fix wikilink reading view, ZIP re-import, Todo due-date, Stage inert, and Essay Esc ([3634591](https://github.com/helixnow/deep-student/commit/3634591adca0df5d4c0d51e29cd79a18a6b6d9a3))
-* **notes:** await trash undo restore, refresh list, and guard async toast actions (U07) ([4820d63](https://github.com/helixnow/deep-student/commit/4820d631c959de92a31131a2342b1a22955b3eca))
-* **notes:** forward Mod+K no-op to Command Palette and add Backspace/Cmd+Backspace trash shortcut ([8249c4b](https://github.com/helixnow/deep-student/commit/8249c4b55f5154760fc637bb089f08dc29d02a7c))
-* **ood-skills-360:** validate/persist custom skills, expose 360px translation formality, and fix 360px Settings & backup toasts ([cfd7dee](https://github.com/helixnow/deep-student/commit/cfd7dee560977721dae80d03fde60134d4535c2e))
-* **pdf-workbench:** debounce PDF ResizeObserver and displayMode scheduler transitions ([de049aa](https://github.com/helixnow/deep-student/commit/de049aa3828878ced2dc630bc9496902a6b486d2))
-* **pdf:** fix deep-page blank canvas, search freeze, scanned banner leak, highlight/export UX, and large import ([e420842](https://github.com/helixnow/deep-student/commit/e420842d3c5cae3275261eb73fc4e7ed6724cbd9))
-* **pdf:** queue multi-file imports, validate PDF trailers, guard reload hydration, and pause background PDF renders ([02219e4](https://github.com/helixnow/deep-student/commit/02219e4913457d1cf605db4aac3c132cdebc217a))
-* **plugin-v2:** fix declarative .dspack enablement, asset summary, skill mounting, and broken plugin visibility ([21b6b71](https://github.com/helixnow/deep-student/commit/21b6b71155123f19edcde51112c40a3d2a80387e))
-* **previews-xmind:** wire .xmind import end-to-end, preserve PPTX theme backgrounds, and harden XLSX/EPUB previews ([d7b0b51](https://github.com/helixnow/deep-student/commit/d7b0b51eb9d3bf45695b99fb8056ea130d1fdce6))
-* **qa-r4:** resolve S3-08 sandbox reset/guard, S4-02 stream variants, S5-05 confirm & S1-06 wikilink (b20021) ([657ff9e](https://github.com/helixnow/deep-student/commit/657ff9e02f2e8db83eca0336b6b1bc19c8f5ab19))
-* **qa-r5:** resolve 45 cross-stage P1 defects across Finder, Exam, Sandbox, Chat, Skills, Workbench & Sync (b20022) ([d991edb](https://github.com/helixnow/deep-student/commit/d991edbbde44d89c1a9a74071f1175c2f900bf29))
-* **qa-r6:** resolve remaining Round 5 Vision P1s (S4-02 287KB variant eviction, S5-07 self-conflict, S4-17 dock clearance, S3-11/S3-02/S1-06/S1-14/S4-18/S5-02/S5-05/S5-17/S5-18) and all 27 frontend Vitest regressions (b20023) ([a06295d](https://github.com/helixnow/deep-student/commit/a06295d0fc21dadb97e1245d09de6900f66a155b))
-* **qa-r7:** resolve 12-lane P0/P1 defects (yaml closure, PDF rotate/encrypt, .xmind/.vtt, Finder, Sync tombstone/lease, S5-15/18, Anki WebUI media, QBank drafts, Todo/Pomodoro, Memory/Skills, Bundle closure/Dock/Sandbox, Mobile 360px, Safe Mode anti-SPOF) (b20024) ([850763e](https://github.com/helixnow/deep-student/commit/850763ef1ab10872f8dab34ab2cd296dcb688fcc))
-* **qa:** resolve Stage 1-5 Round 1 P0/P1 blockers and UX polish for b20019 ([dde02b9](https://github.com/helixnow/deep-student/commit/dde02b90da9275aae90d2711e249574da222c103))
-* **qa:** resolve Stage 1-5 Round 2 P1 blockers (sandbox error isolation, graph direction, mock exam, chat stop/version/archive, pomodoro/dock, FTS5 vacuum, tombstone & sync convergence) for b20020 ([cbf8220](https://github.com/helixnow/deep-student/commit/cbf822057dabd0b551b40ed3bed7d9c02147c2cd))
-* **qa:** resolve Stage 3 essay, translation, media, canvas, browser and voice defects ([dcc498d](https://github.com/helixnow/deep-student/commit/dcc498d4c3853cfe007f336155c40eb7f72f3ab6))
-* **qa:** resolve Stage 4 & Stage 5 defects, sync cancel, encrypted ZIP seal and layer boundaries ([4e272ab](https://github.com/helixnow/deep-student/commit/4e272ab03449a7e049d38af256d05ba2d67e74a1))
-* **qbank:** pin CsvImportDialog footer within viewport and fix en-US AI QGen/editor Chinese leaks ([6f21765](https://github.com/helixnow/deep-student/commit/6f2176594abda1e7dbbb834f19f25320b58bbf6d))
-* resolve Wave 8 adversarial P1 gaps across Memory v2, Plugin v2, Chat resume & mobile UX ([28b57b0](https://github.com/helixnow/deep-student/commit/28b57b0a26b437e715d3c9b9309009f135b280dc))
-* resolve Wave 8B P1 defects across notes, mindmap, essay, qbank, translate, todo, trash, backup, and workbench ([a29b729](https://github.com/helixnow/deep-student/commit/a29b7290671653bc029e232905f2c388bb82b171))
-* **search:** add zero-key search fallback, custom Google CSE endpoint ([#524](https://github.com/helixnow/deep-student/issues/524)), policy inputs, and settings jargon cleanup ([eb51d17](https://github.com/helixnow/deep-student/commit/eb51d178112dfad1311cc606b387843f88952b89))
-* **settings,pairing:** prevent get_setting/save_setting from wiping cloud_storage.config.safe_v1 SSOT (BUG-T3) ([fa8ca21](https://github.com/helixnow/deep-student/commit/fa8ca21d342ed80369a50e9f306d1bbcb4a61c3d))
-* **settings:** restore Settings content scrolling across 1440px/768px/125% viewports and search scroll-to-section ([22b022d](https://github.com/helixnow/deep-student/commit/22b022d8b181e4a44b8201402ffefb8ba84cdc5a))
-* **stage1:** resolve Finder inline edit/trash, PDF zoom/OCR/z-index, MindMap import/focus/AI, and Notes a11y/perf/trash defects ([221b8b1](https://github.com/helixnow/deep-student/commit/221b8b199e3bb9b1187ad9e03fbf146fa6f10d6c))
-* **stage2:** resolve QBank inline editor, mock exam subjective/TF grading, WebUI CSV/export, APKG deck hierarchy, and 360px flashcards defects ([ac17515](https://github.com/helixnow/deep-student/commit/ac17515b9f0ddd7f717ae4f92b84572aa64f62ca))
-* **storage,review:** move mastery_states lifecycle columns to V20261125 migration ([f8759a8](https://github.com/helixnow/deep-student/commit/f8759a87eb9f18df6c36c240ef2f950b09f092ab))
-* **sync-conflicts:** remove dead batch-resolve, add Keep Both, persistent conflict reminders, and human-readable responsive diff UI ([a1382cf](https://github.com/helixnow/deep-student/commit/a1382cfd440b43a4daa402339218bf88f9e33dff))
-* **sync-providers:** fail-closed lease release via WeakSet-gated direct DELETE ([708f900](https://github.com/helixnow/deep-student/commit/708f90042cfbe2e5b070ba63021e360b52e7ffc3))
-* **sync,chrome:** clean cloud error toasts, unsaved-draft sync guard, global conflict badge, and rename-vs-delete conflict preservation ([a46123e](https://github.com/helixnow/deep-student/commit/a46123e9a72600a5e652ea8bdf6dc210ce34b53c))
-* **sync:** add WebDAV 503 circuit breaker/control-plane timeout and converge download-superseded pending count to 0 ([dec6956](https://github.com/helixnow/deep-student/commit/dec69563591994e990207e74e2e73509f6ae7d72))
-* **sync:** localize keep_both conflict copy titles and enlarge mobile conflict action buttons ([9ee32c6](https://github.com/helixnow/deep-student/commit/9ee32c63571d10a5809342d321135b8cc4527378))
-* **sync:** resolve paired note conflicts, strip memory_state_version, and suppress OCR cache echoes ([13e009b](https://github.com/helixnow/deep-student/commit/13e009b08bdcca13f72a349570d313c1beed6430))
-* **sync:** snap pairing QR SVG to crisp integer px/module for 1x DPR scannability ([1d4b4e8](https://github.com/helixnow/deep-student/commit/1d4b4e8126909e456d93ab48b7dfb53201d5fce0))
-* **vfs,chat:** atomic VFS upload upsert, async PDF preview render, and startup draft timeout fallback ([e6e75e7](https://github.com/helixnow/deep-student/commit/e6e75e76fff1c4779276f1f92f11dc12a9a7c3b9))
-* **vfs,sync:** suppress phantom __change_log echoes for local-derived updates ([8441dad](https://github.com/helixnow/deep-student/commit/8441daddc9381d7f840f49aec1327691c9dceeb7))
-* **workbench:** prevent stuck AppsPanel/MenuBar backdrops, clip, and Dock click blocking ([bbc9d18](https://github.com/helixnow/deep-student/commit/bbc9d188d8e28883dc631479060040fcc4c5d61a))
-* **workshop-pm:** enable Workshop AI build action and surface broken plugins in Plugin Manager ([d163f45](https://github.com/helixnow/deep-student/commit/d163f45981beb3944a1937a1bfee16751760652e))
+* **a11y:** 顶栏命令面板图标按钮无障碍名为空，且在热区里多占一个 Tab 位 ([84b2104](https://github.com/helixnow/deep-student/commit/84b2104fae91a2875999b3ebd3566afae4ed4ec7))
+* **agent:** 回复语言规则改为语言中立，英文提问得到英文回复 ([53a45a7](https://github.com/helixnow/deep-student/commit/53a45a7d5f1070f44f5e8225df308af1055638be))
+* **android:** keep file pickers from crashing on extension-only accept ([3ed3985](https://github.com/helixnow/deep-student/commit/3ed3985d26a701c15c1f7f5d8f92d24681d8528c))
+* **android:** keep the API 28 guard visible to lint inside the HEIC worker ([3b5676a](https://github.com/helixnow/deep-student/commit/3b5676ac75d239fad5b70436cd1f4f40ebc08aaa))
+* **anki-tasks:** empty-state "go to chat" no longer switches to session '__new__' ([80c1b9d](https://github.com/helixnow/deep-student/commit/80c1b9ddd05350b4f25802c330cde6d6db142127))
+* **anki-tasks:** 跑完但没生成卡片的任务显示「未出卡」而非「已完成」 ([60bce7b](https://github.com/helixnow/deep-student/commit/60bce7bf6ff2397a78cc8f45b8699116bba664b5))
+* **anki:** AI 补进来的卡同样自动加入复习 ([fc30896](https://github.com/helixnow/deep-student/commit/fc30896860bfb53a16f95f5a7da2c4d1e8360862))
+* **anki:** drop placeholder cards; error cards keep raw output so repair never cards the error text ([0956d7e](https://github.com/helixnow/deep-student/commit/0956d7e6c5ec6677df6ba4b0a9b17da443048fd7))
+* **anki:** make design-* built-in template cards grow with their content ([a70f85c](https://github.com/helixnow/deep-student/commit/a70f85c957debc8b0e206ae6eceaed599f523f6b))
+* **anki:** render plain inline $…$ math on template card faces ([e967355](https://github.com/helixnow/deep-student/commit/e9673550258996a503ecbda47c169e5eccb06ff1))
+* **anki:** 制卡任务台统计卡片在 880px 窗口下被挤成竖排；划词卡按资料分牌组 ([c198e79](https://github.com/helixnow/deep-student/commit/c198e7913fae8a180bd94c5a2246a9762df2e9b9))
+* **anki:** 制卡总量按各段文本量分配，词多的段不再被截掉尾部 ([93c12af](https://github.com/helixnow/deep-student/commit/93c12afd508a6231f9cb05f53b39e6402b7c6e5e))
+* **anki:** 制卡预分析算上引用资料正文（引用 60 词词表推荐成 2 张） ([8398644](https://github.com/helixnow/deep-student/commit/8398644a4128921f64df9e8364e5aafeb6c27c22))
+* **anki:** 卡片字段里的 [PDF@file_xxx:1] 等对话引用标记在复习 / 导出 Anki 时露出内部 ID ([3bf86f5](https://github.com/helixnow/deep-student/commit/3bf86f52f6bbbc6ec4640bebaa000a29f8dc3a53))
+* **anki:** 文件标题不再单独成段让模型凭空编卡；多模板词表段不再截断 ([6ee84f6](https://github.com/helixnow/deep-student/commit/6ee84f68ef79297c6ed74bcbd822e0e413e0627d))
+* **anki:** 每词一张时按表格行保底配额，取整误差不再漏词 ([1007c63](https://github.com/helixnow/deep-student/commit/1007c63613f61a663a25248c123b4c8c5b943b42))
+* **anki:** 没配默认模板时回退内置问答模板，不再让模型反问「用哪个模板」 ([85aa469](https://github.com/helixnow/deep-student/commit/85aa469a76666c892dbff72962a5a8aafd3e5412))
+* **anki:** 生成卡的正/背面按语义字段取值，不再取模板首字段 ([2f32e17](https://github.com/helixnow/deep-student/commit/2f32e17837a207e185d2b3d2653922136ff26ba4))
+* **anki:** 词表制卡分段不再把表格行从中间切断（60 词只出 45 张卡） ([b3d618a](https://github.com/helixnow/deep-student/commit/b3d618aac4c760dcea91582b1338908bb5f19a9e))
+* **anki:** 词表段输出上限随段长放大，不再整段截断；表格行数区分表头 ([cbdc7fd](https://github.com/helixnow/deep-student/commit/cbdc7fdb9e55e9a52e3d11cb41a0f44a881e4f2f))
+* **automation:** stop promising background runs on mobile ([47fad23](https://github.com/helixnow/deep-student/commit/47fad235e436fb905ed72a3090a90380dcf5afa7))
+* **backup:** 备份验证通过后列表仍显示「未验证」 ([9bf5d06](https://github.com/helixnow/deep-student/commit/9bf5d062effd329e9ee237d278ee5bee55b4cdba))
+* **bundle:** discover entry from built module script ([d4234e5](https://github.com/helixnow/deep-student/commit/d4234e543f3e0310ba524fe13be99ed4f5cc578e))
+* **capability:** type-first registry matching + gateway-prefix stripping + embedding/rerank records ([#434](https://github.com/helixnow/deep-student/issues/434)) ([6bb8cfd](https://github.com/helixnow/deep-student/commit/6bb8cfdc9e60b925611210a952ff3f9f85f7c3b7))
+* **cards-hub:** stop repeating Anki Cards / template manager titles inside the Flashcards page ([f14f741](https://github.com/helixnow/deep-student/commit/f14f7416e58be622ad0e1b4a4759b9c64647a715))
+* **chat_v2:** tool_call_preparing 按 tool_call_id 严格只发射一次 ([0670363](https://github.com/helixnow/deep-student/commit/0670363c7b3c4d88a7cba79de24647a6bc860f63))
+* **chat:** 「已引用到对话」带「去对话」直达那条引用所在的会话；资料制卡指令按资料类型取材 ([0d08288](https://github.com/helixnow/deep-student/commit/0d0828813a5d8595e08e79b35e324da3a7c22738))
+* **chat/pdf:** 划词「解释」结果按 Markdown 渲染，不再露出 ** 原文 ([a31dd58](https://github.com/helixnow/deep-student/commit/a31dd58853377a926fd737eab9d2830ac5a8d153))
+* **chatanki:** 有效模板集只剩一个时按单模板生成；add_cards 校验 templateId ([f5da34f](https://github.com/helixnow/deep-student/commit/f5da34f77235b0efae6eace6a0c5535f903b0570))
+* **chat:** ask-user options no longer read '(Recommended)（推荐）'; attachment panel closes on send ([7e2d2e8](https://github.com/helixnow/deep-student/commit/7e2d2e850e27c726db400b7d4b29a09cd8bec101))
+* **chat:** back arrow on a chat-opened mobile preview returns to the conversation ([6b15784](https://github.com/helixnow/deep-student/commit/6b157847afa4828fca1a2c344d621188dff5262c))
+* **chat:** blocks interrupted by an app restart no longer spin '正在思考…' forever ([7b5591c](https://github.com/helixnow/deep-student/commit/7b5591c8b42235409ab08a0ea28e74287abf8d88))
+* **chat:** citation badges show the source type ([图1]) so [知识库-1] and [图片-1] no longer both read [1] ([b066263](https://github.com/helixnow/deep-student/commit/b066263d4c19aa1fa89d1a47d73bee115a338073))
+* **chat:** don't abort a stream as idle right after the app resumes from a freeze ([9ef9e7f](https://github.com/helixnow/deep-student/commit/9ef9e7fb251b238ac40261cab7e511e8cd2a116a))
+* **chat:** don't switch to a missing session on navigate-to-session ([855c33e](https://github.com/helixnow/deep-student/commit/855c33e1e6a39a653f25d8987d47f023c6748dd7))
+* **chat:** hide the document viewer's open-in-new-window button on mobile ([83bbf13](https://github.com/helixnow/deep-student/commit/83bbf130237d7c16136983f3dbfa4741e6773eef))
+* **chat:** keep the composer shell fully rounded after sending ([8a04785](https://github.com/helixnow/deep-student/commit/8a04785488953eda36ee6729e7fcc143dcf9ead4))
+* **chat:** keep the composer's safe-area padding stable during drawer swipes ([9349d28](https://github.com/helixnow/deep-student/commit/9349d28807ca7bc5c6956d85f95aa15faa3d5ed9))
+* **chat:** let vertical page scroll pass through mermaid previews on touch ([03f3e55](https://github.com/helixnow/deep-student/commit/03f3e559c0e2dd31f72e2f035aed47b6390700f8))
+* **chat:** load token colors with the default code renderer ([6783420](https://github.com/helixnow/deep-student/commit/6783420b4defb548ee02ee7c86beb768393e996a))
+* **chat:** name worker fallback as an ordinary callback ([05d0165](https://github.com/helixnow/deep-student/commit/05d0165c9816b07fa1153313a81e5157cc2e8298))
+* **chat:** PDF 选区提问后回答里不再出现点了没反应的 [1] ([53fc19d](https://github.com/helixnow/deep-student/commit/53fc19db629b822413d15e50f055fdc4736390e7))
+* **chat:** preserve position across history windows ([8dca7b8](https://github.com/helixnow/deep-student/commit/8dca7b8a1906d368d08bf87812dc2e0ecc047838))
+* **chat:** re-pin to bottom when the message viewport shrinks ([a6cc5f7](https://github.com/helixnow/deep-student/commit/a6cc5f7bf640d7a0b4445ed10466c893bdca8142))
+* **chat:** render vega-lite code blocks without eval under the release CSP ([86c0fbb](https://github.com/helixnow/deep-student/commit/86c0fbb3f447a498b32e69a3e62dd5445db3d560))
+* **chat:** reset content selector per session store ([ec2b216](https://github.com/helixnow/deep-student/commit/ec2b2162d72b1669669f0818bf5b2995e8295bfa))
+* **chat:** retain lazy highlighting in blocked markdown ([8fa9ba0](https://github.com/helixnow/deep-student/commit/8fa9ba0e226e98037230327b99667a5df2130dfe))
+* **chat:** search hint for unloaded history window + history-window adapter tests ([3a07f56](https://github.com/helixnow/deep-student/commit/3a07f56a9f9e988241dc6a149665717988a89b77))
+* **chat:** serialize history window backfill ([ee74fc6](https://github.com/helixnow/deep-student/commit/ee74fc60c778be65657c9d10cbfd24cff96e9e8b))
+* **chat:** square the docked composer top corners and drop its white slab ([3c6b241](https://github.com/helixnow/deep-student/commit/3c6b2413be06a98bf2945fe91d049c067161516d))
+* **chat:** unify model selection and add recent models ([9f06adf](https://github.com/helixnow/deep-student/commit/9f06adfd20809a2279803d0d55564c0db49609fe))
+* **chat:** 中文提问时工具调用前后的过程说明变成英文——系统提示加固定的回复语言规则 ([7b3e1da](https://github.com/helixnow/deep-student/commit/7b3e1da8dffb271562a97ee901e8fcbb18065a26))
+* **chat:** 会话固定模型被删除/停用后明确回退并提示一次（[#44](https://github.com/helixnow/deep-student/issues/44)） ([e67c257](https://github.com/helixnow/deep-student/commit/e67c2576de68d513f87c2f66e0fd92680fbbf722))
+* **chat:** 右侧面板已打开某份资料时再点其页码徽章，标题不再变成「PDF」 ([094f220](https://github.com/helixnow/deep-student/commit/094f220eeccd7e730620bb2652a27b5bc7ce8069))
+* **chat:** 工作台里首次从 PDF 划词「添加到聊天」，提示已引用，对话窗口输入框里却没有 ([ae59878](https://github.com/helixnow/deep-student/commit/ae59878677a64de6b0c60183595d20c553f59797))
+* **chat:** 工具时间线同一 tool_call_id 不再出现「准备中/执行中」+「已完成」双行 ([b380a96](https://github.com/helixnow/deep-student/commit/b380a96a70c991c9cebbdf39fb81d12a88c84c52))
+* **chat:** 引用到对话的提示与引用条显示「第 1 页」而不是 page:1 ([2ac773c](https://github.com/helixnow/deep-student/commit/2ac773cc11b656cb09576c5ac0f0ef02ea26d912))
+* **chat:** 提问 / 审批卡占据输入壳体时四角圆角 ([64d6155](https://github.com/helixnow/deep-student/commit/64d615568cb5ccd552aabbf7f5e43462d99b82a2))
+* **chat:** 教材引用 [PDF@tb_:N] 在聊天右侧面板打开并跳页，不再离开聊天页 ([5ccde7a](https://github.com/helixnow/deep-student/commit/5ccde7a933587864315299afe3ad957fc14bd4b7))
+* **chat:** 来源卡片——能打开原文页、缩略图可显示、标题与摘要不再缺失 ([01d5fe2](https://github.com/helixnow/deep-student/commit/01d5fe2c3b167e8d315166708eb80534ac6a107f))
+* **chat:** 窗口切走期间挂载的回答 / 用户气泡回到前台后不再是空白框 ([a7f9989](https://github.com/helixnow/deep-student/commit/a7f99890dcb653f98f7f2e849d96145c78766321))
+* **chat:** 表格单元格里的 $|E+A^n|$ 把单元格从中间切断 ([7caed52](https://github.com/helixnow/deep-student/commit/7caed52a79247b814d078abc6bc7b70473236f09))
+* **command-palette:** 「备份数据 / 恢复数据」直达设置 › 数据治理 › 备份（原事件无监听方，点了无反应） ([d9ba7cf](https://github.com/helixnow/deep-student/commit/d9ba7cff7b60415f4f72948273e593e9e8692ff6))
+* **command-palette:** 导入 APKG 的提示显示加入复习的卡数 ([580b16d](https://github.com/helixnow/deep-student/commit/580b16d4f7d8b6d6bef9f1f4cff4b072430b29f1))
+* **command-palette:** 搜不到的词仍列出全部命令，回车执行第一条无关命令 ([424e314](https://github.com/helixnow/deep-student/commit/424e314538e4c7fc2679b743e8774f3baab09d9f))
+* **csp:** allow asset-protocol fetches, Sentry ingest and blob fonts in release ([a6f5c17](https://github.com/helixnow/deep-student/commit/a6f5c17cb30ab8165d311c92d830127b27465486))
+* **csp:** keep inline style attributes working when Tauri hashes style-src ([fe34f00](https://github.com/helixnow/deep-student/commit/fe34f00f11271dbe0b7acdce6cae88f05956df65))
+* **demo:** 学习桌面开场排窗适配各种桌面尺寸 ([52d35ab](https://github.com/helixnow/deep-student/commit/52d35abf8a313dbd58cb0b9808dcb99c83b5e3fa))
+* **demo:** 学习桌面开场窄桌面上先收窗口宽度，闪卡不再压住右边的日程和简报 ([9642f60](https://github.com/helixnow/deep-student/commit/9642f6001c8a36608493c0fa91226f3415c473af))
+* **demo:** 学习桌面演示收尾细节 ([ff98587](https://github.com/helixnow/deep-student/commit/ff985874053310f7e0c9afa7ffcac2074914107a))
+* **demo:** 演示嵌入后直达剧本会话，会话上屏后才通知父页撤占位 ([9df3820](https://github.com/helixnow/deep-student/commit/9df3820a4c2e176d031df0cab515fa05d5a9bc08))
+* **demo:** 演示里不再向访客要通知权限 ([a94e47d](https://github.com/helixnow/deep-student/commit/a94e47dafeb937d75ef41ac6b846622323d2e34c))
+* **desktop:** preset shortcut labels follow the UI language ([6fb87cd](https://github.com/helixnow/deep-student/commit/6fb87cda4102f35597d7bb06d3fd0a390555476d))
+* **dev:** serve KaTeX fonts when node_modules is symlinked outside the checkout ([c6c2611](https://github.com/helixnow/deep-student/commit/c6c26116d2c68a48432e15decd913a9c90ba9e12))
+* **dev:** Vite 监听排除仓库根下的生成目录，修复 dev 卡在加载中 ([eb8cd52](https://github.com/helixnow/deep-student/commit/eb8cd521203111eca89416f80dcec967df88b9f5))
+* **ds-test:** 发送 / 提交 / 学习资源 按钮匹配兼容英文界面 ([a9f32bb](https://github.com/helixnow/deep-student/commit/a9f32bbe52f97d27f345c57cada4282fbb94b234))
+* **dstu:** 资源库里文件夹的修改时间恒为「不到 1 分钟前」 ([eb74d4e](https://github.com/helixnow/deep-student/commit/eb74d4ef22722ddd0811f85d3e9b9988f0aa4dd3))
+* **editor:** depth selects in Moonshot/MiniMax panels; registry record for deepseek-v4.1-flash ([#436](https://github.com/helixnow/deep-student/issues/436)) ([87f8bee](https://github.com/helixnow/deep-student/commit/87f8bee32e20e1a0fb6624e5cdc85503e88e5611))
+* **editor:** skip the IME zero-width placeholder on Android, strip leftovers on save ([d1fa166](https://github.com/helixnow/deep-student/commit/d1fa1666622a1e09a956ac9a02ca993ab3c918d9))
+* **epub:** 窄栏里从目录 / 搜索结果跳转后自动收起侧栏 ([5cce132](https://github.com/helixnow/deep-student/commit/5cce13252a0d2b5a0c5f8840c5969858f4bbfb3d))
+* **epub:** 窄预览栏里目录默认收起、正文不再被拉出大词距；阅读器配色令牌全部失效 ([d079d3c](https://github.com/helixnow/deep-student/commit/d079d3c2ae979d3696df3aaa02ec647343d47998))
+* **essay-grading:** feedback language follows the UI language ([5583aa0](https://github.com/helixnow/deep-student/commit/5583aa0f06783b0157106fc9d5070a4789e3430d))
+* **essay-grading:** localize built-in mode name in auto-generated session titles ([c083882](https://github.com/helixnow/deep-student/commit/c083882be4a53add5d9d5b2a3a14e215bdd8453b))
+* **essay-skill:** 用户点名考试标准时必须先查模式并传 mode_id ([613052b](https://github.com/helixnow/deep-student/commit/613052b2d36888b372bf7a2b4a1fe0973c2a021d))
+* **essay,translation:** 新作文沿用上次的批阅模式（会话无模式时不再兜底日常练习）；作文批完 / 翻译出译文后，名字还是「新作文」「新翻译」时按题目或正文首句、原文首行自动起名 ([83ad1b6](https://github.com/helixnow/deep-student/commit/83ad1b65693981bc8052d466cad633748e8dd631))
+* **essay:** grading mode survives reopen; stats row no longer covers text; full radar/menu labels ([a648cb5](https://github.com/helixnow/deep-student/commit/a648cb538e085a1db3a4311e11ca0aed1517bc5a))
+* **essay:** 作文应用侧栏列表的旧标题也按界面语言显示预置模式名 ([a20a569](https://github.com/helixnow/deep-student/commit/a20a5693b05590b3ab0406d72703721b44179bd7))
+* **essay:** 批改完成时滚回顶部的分数卡，Tab 行常驻总分徽标（点击回到分数卡）；评分段流式中不再以灰字接在正文后，改为「评分生成中」占位 ([c41b14a](https://github.com/helixnow/deep-student/commit/c41b14a73930f1686e6a77fffe150819abcbe853))
+* **essay:** 新建的空白作文一打开原文就收成「0 词」摘要行、看不到输入框——没有轮次时显示用的轮次号兜底成 1，被 currentRound &gt; 0 当成「已有结果」；改为看当前是否显示已完成的一轮（hasGradedRound），新建作文直接展开输入区 ([208cfef](https://github.com/helixnow/deep-student/commit/208cfef2915429db0e45416e7f9271f94611b4ba))
+* **essay:** 解码评分标记属性里的 XML 实体，雷达图不再显示「&amp;」 ([5c59ba0](https://github.com/helixnow/deep-student/commit/5c59ba05e3ff96760fe6a60ca6506779cc75eaf7))
+* **essay:** 预置批阅模式名称/描述/维度名按界面语言显示 ([4c9490c](https://github.com/helixnow/deep-student/commit/4c9490c843705cc1fbc58965f1662fe9ba5effce))
+* **filestream:** allow the dev server origin like the PDF protocol does ([704a952](https://github.com/helixnow/deep-student/commit/704a95205358646c0706b3471e380f974b01306b))
+* **finder:** 文件大小列「16.5 KB」被折成两行 ([51cffa9](https://github.com/helixnow/deep-student/commit/51cffa993ac61e0cd4935c2db3977b32570ec947))
+* **flashcards:** 「另有 416 张已到期」实为没学过的新卡——积压拆成到期复习与待学新卡分开提示 ([2214d31](https://github.com/helixnow/deep-student/commit/2214d3152b609182473811858954b0b8c46a028c))
+* **flashcards:** accept opaque Android content:// picks for APKG import ([1fe2ffb](https://github.com/helixnow/deep-student/commit/1fe2ffbaf69ba406cc759f6b827a8dbd04c31e02))
+* **flashcards:** render math in card library and up-next previews ([b2d69d6](https://github.com/helixnow/deep-student/commit/b2d69d65b6c54e2002c06e9da811dd9f52851a86))
+* **flashcards:** render review template cards at natural width — keep stage body block-level ([42db612](https://github.com/helixnow/deep-student/commit/42db612f90775a6527342da3fdd1473f0c6797e8))
+* **flashcards:** 今日「接下来」与卡片库共用显示标题——语义字段优先、填空折叠为 […] ([c7a9a0a](https://github.com/helixnow/deep-student/commit/c7a9a0a3ec7998d5605197eb5938cc4dc6d9c109))
+* **flashcards:** 卡片库「已到期」不再包含新卡；筛选为空时不再显示「库中暂无卡片」 ([fb2801f](https://github.com/helixnow/deep-student/commit/fb2801f287cc15b733d69624d777f88bf57d2f4f))
+* **flashcards:** 卡片库列表按语义字段显示题面与答案 ([54eeb65](https://github.com/helixnow/deep-student/commit/54eeb65f158905ad866912f3970dca99a0e537d3))
+* **flashcards:** 卡片库状态筛选 / 排序 / 计数只作用于当前 20 张一页——改由后端跨页执行 ([2098acc](https://github.com/helixnow/deep-student/commit/2098acc0729efc91c13a8a73a0a9fb981f5776cf))
+* **flashcards:** 复习切卡不再套用上一张卡的模板 ([d2546e7](https://github.com/helixnow/deep-student/commit/d2546e7756c05ab14642caa89d5e62cf57faefb5))
+* **flashcards:** 复习舞台模式去掉卡面 iframe 两侧滚动条槽位（模板背景贴边） ([b1ce06d](https://github.com/helixnow/deep-student/commit/b1ce06d0427b8068375777168533bc9d02288abd))
+* **flashcards:** 有卡未入队时「今日」不再显示「卡片库还是空的」 ([1bcdffc](https://github.com/helixnow/deep-student/commit/1bcdffcb0d2c3ff0bf86dd2d59ba1dd0aaf8de1f))
+* **flashcards:** 移动端复习模板模式不加内边距，避免模板背景外再多一圈框 ([525e7f6](https://github.com/helixnow/deep-student/commit/525e7f6b4e47d27f8d1770acc50ffd5864a9ce7b))
+* **generative-ui:** resolve fallback action and export labels by UI language ([e61aabd](https://github.com/helixnow/deep-student/commit/e61aabdd08ac1c811a8e9b270389bcc3c001dc43))
+* **i18n:** add chatV2 keys referenced by chat UI but missing from both locales ([1350ed4](https://github.com/helixnow/deep-student/commit/1350ed4f197274b5088f8030a545ce9661c9226c))
+* **i18n:** add en-US base keys mirroring zh-CN mind-map plural strings ([0054d5a](https://github.com/helixnow/deep-student/commit/0054d5a9878df315bd5f9fab81059189b1742a29))
+* **i18n:** add missing locale keys for crepe, mindmap, flashcards, anki tasks and pdf ([c3c18b3](https://github.com/helixnow/deep-student/commit/c3c18b3ffb752478e0a9077cc989c29adc7e5c43))
+* **i18n:** externalize remaining hardcoded Chinese in chat UI ([257361b](https://github.com/helixnow/deep-student/commit/257361bece9d8e5070dcc5f25f16733b173291e7))
+* **i18n:** externalize user-visible Chinese in shared hooks, utils, dstu and template engine ([39197e8](https://github.com/helixnow/deep-student/commit/39197e81a61e519486a484a9664930e6e1e45e33))
+* **i18n:** localize built-in browser gate and error messages ([0a58e59](https://github.com/helixnow/deep-student/commit/0a58e59a65fdead0b8c7f1fcde78201267f8878a))
+* **i18n:** localize CardAgent errors, mind map generation failure and wikilink cap warning ([5f3f75c](https://github.com/helixnow/deep-student/commit/5f3f75ce2297b0cb76599d8030072d45976932b6))
+* **i18n:** localize Files default names, error contexts and missing index-status keys ([9460363](https://github.com/helixnow/deep-student/commit/946036359dd1b266f0faffefd21df0ff1149d3f5))
+* **i18n:** localize insight confirm dialog ([71d07d9](https://github.com/helixnow/deep-student/commit/71d07d98d2b120185a04a4516db00524f7ba6f5c))
+* **i18n:** localize session goal status chip, menu and edit dialog ([2358ca1](https://github.com/helixnow/deep-student/commit/2358ca1e387061155e35109a55a87b94e1f33ed0))
+* **i18n:** localize sync conflict badge, built-in MCP server name and misc fallbacks ([1fbea35](https://github.com/helixnow/deep-student/commit/1fbea35370249d03e9a4240bd2e0d0573cc6fbb3))
+* **i18n:** localize system memory folder names in file trees and breadcrumbs ([c8011cd](https://github.com/helixnow/deep-student/commit/c8011cdcb9dc1c887408a06b7ce05ad6d0e5789d))
+* **i18n:** mirror plural keys in the zh-CN mediaStudio namespace ([a29ca4a](https://github.com/helixnow/deep-student/commit/a29ca4a103d679c25a06a897d7a4d849516456f8))
+* **i18n:** point ASR setup hints to Settings › Model Assignment ([c82d6aa](https://github.com/helixnow/deep-student/commit/c82d6aa07f9ac6f234b0a58a30d6e3b9226c3d15))
+* **i18n:** restore zh-CN base keys for mind-map plural strings ([e733736](https://github.com/helixnow/deep-student/commit/e7337361fcad32da5476bd915cbd9af368766424))
+* **i18n:** 学习简报与生成式 UI 里的「题库」统一为「题目集」 ([eb01c8e](https://github.com/helixnow/deep-student/commit/eb01c8e13349fa7565b9149ed5247bf06ac7cfa9))
+* **i18n:** 界面里的「知识导图」统一为「思维导图」，Agent 控制中心「题库」统一为「题目集」 ([f00c3c2](https://github.com/helixnow/deep-student/commit/f00c3c2ac3de26d6013a3063dbf68a8cc1ad5ed8))
+* **import:** file drops failed on Retina; one bad file aborted the batch; source code can be imported ([7150a05](https://github.com/helixnow/deep-student/commit/7150a054556981e6ee1c307a417818f7835dd5ed))
+* **import:** stream VLM page analysis and question-parsing LLM calls ([133c796](https://github.com/helixnow/deep-student/commit/133c79629349cd465a738416073232f2e9bf98f5))
+* **input:** don't submit on the Enter that confirms an IME composition ([a680de2](https://github.com/helixnow/deep-student/commit/a680de2240c8c290923a1f266c5824f11b95bf91))
+* **kb/pdf:** 引用跳页打开正确资料；PDF 页码随滚动 / 跳页同步 ([59d69fb](https://github.com/helixnow/deep-student/commit/59d69fbfe38ff54615136993720176b20580e7f8))
+* **kb:** PDF 按页建索引——引用与跳页精确到页，并为多模态挂上逐页页图 ([81ac53e](https://github.com/helixnow/deep-student/commit/81ac53ec6d8288ea978b7fd215e3ec1b78548859))
+* **kb:** 不可用默认嵌入配置的告警同一 id 只打一次，避免索引 worker 每 5 秒刷屏 ([3c14dee](https://github.com/helixnow/deep-student/commit/3c14dee3a8e573ee04034d45f29bffe08c069145))
+* **kb:** 不支持建单元的资源类型标为不可索引，消除每 5 秒一次的无限重领 ([6a81532](https://github.com/helixnow/deep-student/commit/6a8153206a8d1777edfde75c7616f39373d4bce7))
+* **kb:** 关闭记忆时记忆笔记不再以「知识库」身份混入检索结果 ([6e7e6fb](https://github.com/helixnow/deep-student/commit/6e7e6fb6fd42af6e98dcd3483d64f3c539b9c313))
+* **kb:** 升级后一次性把多页 PDF 重新排队建索引（逐页单元、旧数据按页重提文字） ([28882b9](https://github.com/helixnow/deep-student/commit/28882b956d235b5d47231b7296cad9dd76abe181))
+* **kb:** 多模态嵌入与文本嵌入同一回退链（维度默认 → 模型分配 → 唯一可用配置） ([47951b0](https://github.com/helixnow/deep-student/commit/47951b03d0cc753c29ccf4292bf80c5cffa2859f))
+* **kb:** 多模态嵌入未设维度默认时回退到模型分配（不做隐式自动启用） ([6db31d9](https://github.com/helixnow/deep-student/commit/6db31d9c308e27b0aaad675aff702c68d5b98edd))
+* **kb:** 嵌入模型不可用不再让知识库静默停摆 ([d26a10b](https://github.com/helixnow/deep-student/commit/d26a10b54eb3cffefa953f5cad50204a9e092e1b))
+* **kb:** 旧版多页 PDF（文字无页分隔符）重建索引时强制重建单元以按页重提文字 ([71d685e](https://github.com/helixnow/deep-student/commit/71d685e19c9b22fd0fc728ec1a47c7c531b956d9))
+* **kb:** 未落库会话设置检索范围时给出可执行提示（替代原始外键错误） ([ba9cd88](https://github.com/helixnow/deep-student/commit/ba9cd880b448fbe2a5659524b58c0b8837ce85bb))
+* **kb:** 未配置嵌入模型时知识库关键词检索可用；中文自然问句可检索 ([cb2e807](https://github.com/helixnow/deep-student/commit/cb2e80734d8d9105635ea58b83348ee0f7f63374))
+* **kb:** 检索结果显示笔记/文件/导图的真实标题而非 note_xxx ([e1d09c5](https://github.com/helixnow/deep-student/commit/e1d09c539c91b82bec749c279cab22418758f3a3))
+* **kb:** 视觉嵌入模型（Qwen3-VL-Embedding 等）自动视为多模态嵌入 ([62af6e3](https://github.com/helixnow/deep-student/commit/62af6e3712bd3339abd980291a947c8beb8b1fa6))
+* **kb:** 逐页单元不再重复挂全文；旧版多页 PDF 自动按页重提文字 ([6a5d8aa](https://github.com/helixnow/deep-student/commit/6a5d8aad588ae6114e75d0c9b8f452ff6d47dcad))
+* **latex:** question text renders $f'(0)$ / $A$ instead of raw source ([55c88db](https://github.com/helixnow/deep-student/commit/55c88db11feebc6aea22523acea8dde4059ad17f))
+* **latex:** square roots vanished in question text and options ([8ed9ed3](https://github.com/helixnow/deep-student/commit/8ed9ed3fbb5b825ed46c7e06aa6c139d4b49b112))
+* **learning-hub:** 「用这份资料制卡」不再弹附件面板盖住对话空态 ([8abc697](https://github.com/helixnow/deep-student/commit/8abc697117b34ad6ffac288208b2ba2ec2839b8f))
+* **learning-hub:** cap textbook previews at 30MB on mobile to avoid renderer OOM ([974ecc5](https://github.com/helixnow/deep-student/commit/974ecc5f2540053310f33a8bafdbcdacb1b576cc))
+* **learning-hub:** empty-state create follows the type filter; context menu anchors on keyboard open ([f83f262](https://github.com/helixnow/deep-student/commit/f83f2623e8189931920e5f4f7f881833777947cc))
+* **learning-hub:** enable resource export on Android via the SAF save pipeline ([9e1d774](https://github.com/helixnow/deep-student/commit/9e1d7743798ed5f4bfc4079ef0cd4c20238ea1ba))
+* **learning-hub:** let 导入资料… pick audio, video and images ([0c88786](https://github.com/helixnow/deep-student/commit/0c887866bf403d229a1d55580080eb8af3e8059f))
+* **learning-hub:** open notes and cross-page targets reliably in the classic shell ([3a8702a](https://github.com/helixnow/deep-student/commit/3a8702a255b342054f1fc8fff84703abe30b66a5))
+* **learning-hub:** 拖入资源库里已有的同一份文件，提示「已在资源库中」并打开它 ([12382db](https://github.com/helixnow/deep-student/commit/12382db12c073c1578aed68dcdb75dbdcf5d0659))
+* **learning-hub:** 资料列表顶部大片空白——列表变短后虚拟列表偏移与真实滚动位置不同步 ([794d75d](https://github.com/helixnow/deep-student/commit/794d75dc59ef987921ed43b630d7a3c27b24bd72))
+* **learning-hub:** 资源改名（含翻译 / 作文自动起名）后打开中的标签标题同步更新 ([40cbdd0](https://github.com/helixnow/deep-student/commit/40cbdd0d5bcd6db15dbf819200388733062d77c5))
+* **llm:** never derive a zero input budget from the output reservation ([6c5e5c3](https://github.com/helixnow/deep-student/commit/6c5e5c327c73f355c200d8a95d39bc20ff0e5251))
+* **markdown:** nested lists in file previews had no bullets or indentation ([03cab6f](https://github.com/helixnow/deep-student/commit/03cab6f409f00da1755d898bbfe909cc0dd1cb9f))
+* **markdown:** 任务清单在资料预览与聊天里不再同时显示圆点和复选框 ([8944973](https://github.com/helixnow/deep-student/commit/89449737e9eb1139b1c8f898752f2e3941843d71))
+* **mcp:** validate tool output schemas without eval so listTools works in release ([122b7ad](https://github.com/helixnow/deep-student/commit/122b7ad07286c1f704351a8f6357bf505f897414))
+* **media-learning:** align transcript client with the media command contract ([d160211](https://github.com/helixnow/deep-student/commit/d160211c6eb983ea2d838d9c0a86249c10d2afa1))
+* **media-learning:** reset cue sync when the video remounts its subtitle track ([016ca97](https://github.com/helixnow/deep-student/commit/016ca971b7776586f8b6d62d358b2d1461a955a8))
+* **media-learning:** treat the backend queued stage as queued in transcript progress ([67e0ff2](https://github.com/helixnow/deep-student/commit/67e0ff20809cd00290cb2d456ec90914dd0c0665))
+* **media:** attach the lecture without delay when chat is already a blank draft ([d8a182f](https://github.com/helixnow/deep-student/commit/d8a182ffc07df137d4c5d6f4fb8a73b95518fa98))
+* **media:** fit the video controls on phones and keep subtitles above them ([4b2d2bd](https://github.com/helixnow/deep-student/commit/4b2d2bd18e5cc0cbd426fcf3d893802030657686))
+* **media:** hand a citation's seek to the player once it is ready ([fc81ac3](https://github.com/helixnow/deep-student/commit/fc81ac393b65e6b78feb8d1b818a39e32645f331))
+* **media:** keep on-video subtitles above the player controls ([9dbe74e](https://github.com/helixnow/deep-student/commit/9dbe74eaf59a6f31f151ae3f3e9c920757b3e950))
+* **media:** keep the caption track mode in sync with the captions toggle ([06335a5](https://github.com/helixnow/deep-student/commit/06335a5051d4decf083454dcde4ff43aa18d826e))
+* **media:** open media citations visibly from any classic-shell view ([f2a31b9](https://github.com/helixnow/deep-student/commit/f2a31b9671d1921c0d9fe9c44e489a384e863d47))
+* **media:** show a library row's status chip once ([5b90333](https://github.com/helixnow/deep-student/commit/5b903338482c67e50f805f6431651449e7b56ff4))
+* **memory:** export memories through the save dialog, toast only on real save ([f4684ce](https://github.com/helixnow/deep-student/commit/f4684cee7d3f4e46e0482d1ac9a6aa997cb49cf1))
+* **memory:** normalize folder paths so root-prefixed paths reuse existing folders ([de3337a](https://github.com/helixnow/deep-student/commit/de3337a64dcb11c056cffc72a7ddc81dec8a3888))
+* **mindmap:** .ds-btn 规则限定在导图作用域；编辑态背景色非法 CSS；打开不超 100%；新子节点追加到末尾 ([b281b19](https://github.com/helixnow/deep-student/commit/b281b1983f0761cb5f38040b40103155d2f750de))
+* **mindmap:** keep the canvas viewport following container resizes ([1376da0](https://github.com/helixnow/deep-student/commit/1376da0ebd24b1d2e8e84777719a407334cab767))
+* **mindmap:** make outline structure edits and multi-select reachable on touch ([376f624](https://github.com/helixnow/deep-student/commit/376f62458f3912f4718d7e688d92d87c9fe9511b))
+* **mindmap:** Markdown 转导图——代码围栏里的 # 注释不再变成一级节点，节点标题去掉 ** / ` / 链接标记 ([77b3375](https://github.com/helixnow/deep-student/commit/77b337518dbb0a6ef0eed82b3b5dedf5e07883c3))
+* **mindmap:** 引导模型在讲解具体内容时带节点引用（[思维导图:mv_xxx#节点:标题]） ([98f219a](https://github.com/helixnow/deep-student/commit/98f219a8a3137f83a679740db3be1a844b1c00e1))
+* **mindmap:** 窄面板顶栏不再挤成竖排；引用预览居中到目标节点并随宽度重新适配 ([399eae5](https://github.com/helixnow/deep-student/commit/399eae5483ee72d47ab2c2062287d1e299a78104))
+* **mindmap:** 节点里的 $Ax = 0$、$A$ 等公式按源码显示——行内公式改用 Pandoc 规则区分货币 ([04af71b](https://github.com/helixnow/deep-student/commit/04af71b8b1d0d7457c3b19421622965b42b2dcdc))
+* **mobile-shell:** macOS 桌面窗口拉窄进入移动布局时，红绿灯压住左上角菜单 / 返回按钮 ([b5f9943](https://github.com/helixnow/deep-student/commit/b5f9943c52310817ba72529f60f371d417e44c64))
+* **mobile-shell:** macOS 窄窗口下侧滑抽屉的品牌行与红绿灯叠字 ([552b2f9](https://github.com/helixnow/deep-student/commit/552b2f993f7f5cccb056344880d2496b617a0db3))
+* **mobile:** route file open/reveal through one helper; hide desktop-only folder actions ([e1eb2f5](https://github.com/helixnow/deep-student/commit/e1eb2f5f28d8746b6d2e132e4d4981ad6971e8d9))
+* **notes:** Agent 协同的人机仲裁按真实输入判定，不打断输入法 ([5f0bf38](https://github.com/helixnow/deep-student/commit/5f0bf38942d54172ba275bd60446673b0321dbec))
+* **notes:** Agent 协同编辑的视觉收尾 ([26138b0](https://github.com/helixnow/deep-student/commit/26138b0b498b5b0501ed65599e38509171221178))
+* **notes:** Agent 探测按已解析的宿主窗口取编辑器，与写入同一实例 ([c1595e6](https://github.com/helixnow/deep-student/commit/c1595e6f9c3c7a1bfd254898bd27fffead57118c))
+* **notes:** AI 光标不再落在块边界上单独占一行 ([c47d5b6](https://github.com/helixnow/deep-student/commit/c47d5b63bab70622cfc8da64dbd5762165c6892b))
+* **notes:** AI 审阅/灵感/宿主文案走 i18n，灵感加载失败可见 ([e735153](https://github.com/helixnow/deep-student/commit/e735153be24fe0dcf07410840af911fc62fd990d))
+* **notes:** AI 滚动跟随不再抢用户视图，并补尾随跟随 ([4b79393](https://github.com/helixnow/deep-student/commit/4b79393734f44633df05842342f68d451456154d))
+* **notes:** AI 直改的高亮定位还原 Markdown 转义 ([3cf9994](https://github.com/helixnow/deep-student/commit/3cf9994d9e1cac7c366f404eea00aa6cf79170d1))
+* **notes:** localize review/host errors, Cornell headings and export label ([7176415](https://github.com/helixnow/deep-student/commit/717641579370ef7ca51bac59aec57d67b612ad31))
+* **notes:** read picked/dropped images via read_file_bytes so Android content:// works ([21117e5](https://github.com/helixnow/deep-student/commit/21117e5eb47a472b6cf91918b52833b979a1d2a9))
+* **notes:** 修掉一批半实现/不诚实的交互 ([192d433](https://github.com/helixnow/deep-student/commit/192d43372f73e19ee1b2362c0619c00bb8c1fad0))
+* **notes:** 划词存的笔记能打开、来源回链能点回原页；标题不在单词中间截断 ([6523604](https://github.com/helixnow/deep-student/commit/65236048deaffb739f0f035111eee9ee4a3d34c9))
+* **notes:** 块选中时不再弹文字格式浮条；属性浮层抽屉 Esc 先关自身 ([dbc56e9](https://github.com/helixnow/deep-student/commit/dbc56e9d589c0865ffe4235be2bb9c87ef6e7837))
+* **notes:** 块链接/移动提前置灰说明原因，反链转换不再链错，大纲命令可关闭 ([aa370e3](https://github.com/helixnow/deep-student/commit/aa370e3a7aa549c3414b7cc92ce2c580c2c888ff))
+* **notes:** 存为笔记/追加的实测问题 ([6a9af9b](https://github.com/helixnow/deep-student/commit/6a9af9b27d69c8a793035f142e9daf509756f8fe))
+* **notes:** 学习视图分段按钮在英文下不再重叠 ([198b4ae](https://github.com/helixnow/deep-student/commit/198b4ae610494d05460ec6dc1c44e8524901cec4))
+* **notes:** 审阅 AI 建议期间的正文锁定可见 ([3379168](https://github.com/helixnow/deep-student/commit/33791689095a948c92b22c2b857b5180347688a7))
+* **notes:** 宿主横幅统一版心与外观，用户可见文案全部走 i18n ([688e038](https://github.com/helixnow/deep-student/commit/688e038fad1f99bafb5470023f3ee48329e9ac01))
+* **notes:** 导入 Markdown 为笔记时开头的一级标题作笔记标题，正文不再重复一遍 ([b4d4ee2](https://github.com/helixnow/deep-student/commit/b4d4ee2b6dd860e20d77c361a7077c8515b4d000))
+* **notes:** 属性面板「学习资源关系」从原型裸控件重做为统一样式 ([88535e4](https://github.com/helixnow/deep-student/commit/88535e4d641eeeadf849d214399dcc412c8fd8ed))
+* **notes:** 属性面板不再重复露出 study_* 原始键与系统键；无旧属性时隐藏映射工具；去掉工作台重复的关系区 ([dd97779](https://github.com/helixnow/deep-student/commit/dd97779d26b1c2d82636e7e9a299c629e92c3117))
+* **notes:** 属性面板学习属性/模板预设改为统一控件；抽出笔记通用表单样式 ([e309404](https://github.com/helixnow/deep-student/commit/e309404354b72fc41ff2f0db08e6259710a1fac1))
+* **notes:** 打开笔记不再静默改写文件；公式块/标题节奏/顶栏/待办对齐 Notion ([b040b2d](https://github.com/helixnow/deep-student/commit/b040b2ded52f96f561bd6cdb9a32699eef25c386))
+* **notes:** 操作并入宿主顶栏时不再画滚动分隔线（避免与标签栏底边成双线） ([b97d190](https://github.com/helixnow/deep-student/commit/b97d1908b14f95640bd700a9381766ba888d01ec))
+* **notes:** 新建学习笔记/个人模板/旧属性映射统一为笔记通用控件 ([96cb87b](https://github.com/helixnow/deep-student/commit/96cb87bb39f6c4238ee8cf6d0e68b8299e711215))
+* **notes:** 标签建议下拉浮于输入框下方不再撑高页头；隐藏 _ 前缀的系统内部标签 ([706802c](https://github.com/helixnow/deep-student/commit/706802cea2d38e9914829a26a4fc8e2fddf8223b))
+* **notes:** 桌面窄笔记栏不再误用手机端交互；顶栏操作窄宽度自动收为图标 ([676b6ac](https://github.com/helixnow/deep-student/commit/676b6ace909296269336a767b19ae30070a1973e))
+* **notes:** 模板里的空待办渲染为真正的复选框而非字面「[ ]」 ([6f2463f](https://github.com/helixnow/deep-student/commit/6f2463f45cfd020481a7cbdfb3a8baf61cbde711))
+* **notes:** 笔记内容区不再被全局 main 规则撑成整窗高；标题聚焦时显示页面操作 ([2f98031](https://github.com/helixnow/deep-student/commit/2f980317b04ea9e2d85dd80715e40ed1c05a59ad))
+* **notes:** 触屏上「添加图标/标签」只在编辑标题时出现，不常驻占行 ([0c00c8f](https://github.com/helixnow/deep-student/commit/0c00c8f2c04bb6ff05672db799382b6f5ca5d93c))
+* **notes:** 顶栏保存状态的字数复用 translation:stats.characters ([a27e2d1](https://github.com/helixnow/deep-student/commit/a27e2d1a949a00e47ca47b1aa35d3726a94d2aaa))
+* **notification:** desktop toasts show up to two lines instead of single-line ellipsis ([1bf4938](https://github.com/helixnow/deep-student/commit/1bf49384efc2ad40509d5905b2b4c9953ec70199))
+* **ocr:** discard cancelled page results before persistence ([54bb776](https://github.com/helixnow/deep-student/commit/54bb776322f093d731caf41ca35b826cf2e43e4e))
+* **ocr:** respect native engine preference and isolate SAF staging ([904b658](https://github.com/helixnow/deep-student/commit/904b6582426b7d690d424fcacba1f637eaad40d0))
+* **ocr:** stream call_ocr_model_raw_prompt ([5e8d9cf](https://github.com/helixnow/deep-student/commit/5e8d9cf66f62dbd390bc0f6b7bb88576432b86af))
+* **ocr:** stream page and hedged free-text OCR, cancel losing engines ([33f8ce3](https://github.com/helixnow/deep-student/commit/33f8ce3b9246393262210890daee916f44900526))
+* **parser:** 表格提取文本的工作表标题带上行数 ([0cd5cca](https://github.com/helixnow/deep-student/commit/0cd5cca82fc6922c0a3c9e90031c1379add1caa4))
+* **pdf:** 「添加到聊天」带上真正的选区与页码，不再变成整本书的引用 ([c8c4b38](https://github.com/helixnow/deep-student/commit/c8c4b387407fc74efe287944f8efaa49a4f8e3f6))
+* **pdf:** scope .ds-search-input rules to the PDF search bar ([2131ee3](https://github.com/helixnow/deep-student/commit/2131ee3ab0f3d844cf94893525a11f0602b7b984))
+* **pdf:** 对话里点「第4页」右侧面板停在第 1 页；跳到末页时页码框显示上一页 ([c554c6d](https://github.com/helixnow/deep-student/commit/c554c6dc9e41acd7d957a0564e1ca3ae43fbaca5))
+* **pdf:** 解释/翻译面板开着时选中另一段，划词工具条照常出现 ([55acfee](https://github.com/helixnow/deep-student/commit/55acfee2603c1182dcc4f7376689c2046bbb13d3))
+* **pdf:** 连字 fi/fl 不再在划词/搜索里丢字；划词结果面板在窄预览栏不再挤坏、去掉重复关闭钮 ([80e3146](https://github.com/helixnow/deep-student/commit/80e3146c69cab87e54a3d230bcc627ef9937f7f7))
+* **pdf:** 附件 OCR 走多引擎回退链路（[#64](https://github.com/helixnow/deep-student/issues/64)） ([862e6d5](https://github.com/helixnow/deep-student/commit/862e6d5ec0fbde659c59b1b2b090b645a3037426))
+* **practice:** localize image-answer errors and strip labels; add notes export.unsaved_blocked ([f8746ba](https://github.com/helixnow/deep-student/commit/f8746ba23e592becae6e330e757e59a9e7189390))
+* **practice:** no-answer-key choice questions were marked 错误 even when AI graded them correct ([8e4a63b](https://github.com/helixnow/deep-student/commit/8e4a63b7172a1944a48e4abcb04adc7fea14c019))
+* **practice:** re-entering sequential practice no longer skips the unanswered question ([b196c40](https://github.com/helixnow/deep-student/commit/b196c40ec40e14c7bd54bf888e0dab7b81495504))
+* **providers:** Ollama 填根地址 http://localhost:11434 时拉模型列表与对话都 404（[#384](https://github.com/helixnow/deep-student/issues/384)） ([df398f9](https://github.com/helixnow/deep-student/commit/df398f976bd602fbb6331766edf571fd90ac6c47))
+* **qbank:** AI 批改 / 解析的讲解语言跟随题目语言 ([a3710e6](https://github.com/helixnow/deep-student/commit/a3710e6628335d97ad6d7eb0158c6c7d075f41a1))
+* **qbank:** include structured_data in AI grading prompt ([fa556b4](https://github.com/helixnow/deep-student/commit/fa556b452296a2dfc219436852b09bf3d92de463))
+* **qbank:** preserve GIF MIME and resolve synced answer image aliases ([aa4f56a](https://github.com/helixnow/deep-student/commit/aa4f56aa8584da5d6b5e82cf6d3109f9f7bb60e3))
+* **qbank:** preserve image answer ownership and review ([871eecb](https://github.com/helixnow/deep-student/commit/871eecb09c9f9908a0b9333701fc1e8794817ee5))
+* **qbank:** 做题区居中栏失效——题卡贴左、与底栏错开约 100px（880 宽窗口：题卡 x=16，底栏 104.5–776.5 居中） ([c4398d4](https://github.com/helixnow/deep-student/commit/c4398d4aacce4c18a295b18d2ba6fd0ca9d4ddaf))
+* **quick-assistant:** 「存为错题」改为写入题库（旧实现调用已删除的后端命令必然失败） ([6f677ee](https://github.com/helixnow/deep-student/commit/6f677ee52e4591510ff454293a4cb291f6f25b5c))
+* **quick-assistant:** skip global-shortcut registration on mobile ([c0ccf92](https://github.com/helixnow/deep-student/commit/c0ccf9239d551ec0cb17b5ad6c62d08c0b870276))
+* **reasoning:** GPT-6 的 reasoning_effort max 被静默折叠为 xhigh，界面也选不到 max（[#427](https://github.com/helixnow/deep-student/issues/427)） ([9b4528e](https://github.com/helixnow/deep-student/commit/9b4528ef8ba4447998bf25995106c4cf11b153c0))
+* **reasoning:** 输入框思考强度芯片改用短标签，不再显示「high（高）」 ([82fe9c4](https://github.com/helixnow/deep-student/commit/82fe9c4bbbdf79fe32ddd5af6dc6ef9e7088dbac))
+* **recovery:** export startup recovery incident/report to Android content:// targets ([76c93cd](https://github.com/helixnow/deep-student/commit/76c93cdc10981374b01eeda2fe4a4fad972c6c16))
+* **recovery:** hide 'open incident folder' on mobile, keep export as the way out ([9aa5d00](https://github.com/helixnow/deep-student/commit/9aa5d008a8e25b66c9539784f5fcfdf5e89d8f60))
+* **scroll-area:** viewportClassName padding was silently zeroed by OverlayScrollbars ([5f85e09](https://github.com/helixnow/deep-student/commit/5f85e09586eb4d85e274e020b43e8ca59b0bb471))
+* **settings:** deep links land on the requested section when Settings is kept alive ([56bb0af](https://github.com/helixnow/deep-student/commit/56bb0afc1ab6849ebb0b652912ff397c40e044d0))
+* **settings:** MCP「快捷操作」菜单撑宽到 ~385px 盖住半个侧栏；「添加预置」弹层超出窗口、标题被顶栏遮住（[#46](https://github.com/helixnow/deep-student/issues/46) 复查） ([8ab5b43](https://github.com/helixnow/deep-student/commit/8ab5b4367fe4ea6ae9233919678b774c4099e789))
+* **settings:** name the ASR slot for both voice input and media transcription ([dd14236](https://github.com/helixnow/deep-student/commit/dd14236d4911b80d85697f95a232c939cdd19e2d))
+* **settings:** open search-engine signup links in the system browser ([e7661d3](https://github.com/helixnow/deep-student/commit/e7661d3d64db0ad1640a4fa1413e7b8c1581e572))
+* **settings:** stop soft keyboards from mangling model IDs, keys and URLs ([18d6d51](https://github.com/helixnow/deep-student/commit/18d6d51f72c489334336954ff1c67e02ce227388))
+* **skills:** bring builtin skill token budget back under its ceiling ([1e1bb97](https://github.com/helixnow/deep-student/commit/1e1bb97af62b06793495f1bda37ed1c0abf02f7f))
+* **skills:** import and export skill ZIPs through Android content:// URIs ([1b92ac1](https://github.com/helixnow/deep-student/commit/1b92ac1fc47c52db62236aa99883b35d5cd70d55))
+* **skills:** 制卡技能与「生成即入队」对齐，不再反问要不要加入复习 ([32e871c](https://github.com/helixnow/deep-student/commit/32e871c94758da93d8bd6c931a5db8ef4dbc234a))
+* **skills:** 技能管理上移到顶栏时动作折叠进「更多」，标题与计数不再被挤没/重叠 ([daecdab](https://github.com/helixnow/deep-student/commit/daecdab041fe4f40eb9c8bfa083c18140d3ce8a5))
+* **sync:** S3 region 留空时以空串签名，腾讯云 COS 等兼容服务一律拒绝（[#57](https://github.com/helixnow/deep-student/issues/57)） ([f54456d](https://github.com/helixnow/deep-student/commit/f54456d7313768291d7f4c0b452771313bf8edc3))
+* **tags:** commit comma-separated tags typed on Android soft keyboards ([496d2df](https://github.com/helixnow/deep-student/commit/496d2df73de3d7e7e6c7a735a3a11f3f125cf0c6))
+* **today:** 「与 AI 复盘」新开对话再填入周报，不再混进当前会话 ([09fa9f2](https://github.com/helixnow/deep-student/commit/09fa9f2cab1aba11db5b5134c9b6b283a5793544))
+* **today:** stop counting overdue mistakes twice in 今日学习 ([799bc58](https://github.com/helixnow/deep-student/commit/799bc587234576f5c4d94a6ce1d756e78480c2f7))
+* **todo:** 番茄钟专注某条待办时，该行看不出正在计时——行尾按钮常显为「专注中」 ([fe3bddf](https://github.com/helixnow/deep-student/commit/fe3bddf04e371ada006323250889529ee5e11989))
+* **translation,learning-hub:** 窄栏里翻译工具条不再叠字、上下分栏；新建资源后列表选中跟到新条目 ([ab3e965](https://github.com/helixnow/deep-student/commit/ab3e9659c2db73a34f6199d88629cd1ef8199ff8))
+* **translation:** 划词翻译在默认开思考的模型上一个字都译不出来 ([bc24b1e](https://github.com/helixnow/deep-student/commit/bc24b1e8d826f9e2c6e861aeeefc5634e3eefb56))
+* **ui-drive:** 支持 DS_WINDOW_PID 按进程锁定截图窗口 ([6103180](https://github.com/helixnow/deep-student/commit/61031804ef504cc6c706f11ac0642d35025104c2))
+* **ui:** keep the error stack inside narrow screens and below the status bar ([35f2d77](https://github.com/helixnow/deep-student/commit/35f2d77d9eeee72fa594fe894a31aad1976164c2))
+* **upload:** convert HEIC photos with native decoders instead of eval-based heic2any ([4865ee9](https://github.com/helixnow/deep-student/commit/4865ee94491b9672150bbcf22948d0dd0b6d01eb))
+* **upload:** stop base64-encoding large attachments and imports inside the WebView ([de62627](https://github.com/helixnow/deep-student/commit/de626272bbc3b2887e4788b6ac5b1c4c8901ed97))
+* **vfs:** reserve upload write locks before snapshot reads ([d4abae9](https://github.com/helixnow/deep-student/commit/d4abae9dc2cc366b53852c6cccf83fbfbeed8c60))
+* **vfs:** stop presenting vector indexing on builds without Lance ([5e17108](https://github.com/helixnow/deep-student/commit/5e17108726c9df194baef1a3c17f82cddcf4a033))
+* **workbench:** 桌面「AI 学习简报」1 项未完成待办显示「待办进度 100%」 ([e8c63c7](https://github.com/helixnow/deep-student/commit/e8c63c7bb6073d2bbd01ecf665021698422b48ba))
+* **workbench:** 浮动对话窗铺到底边时被 Dock 盖住输入栏底部一排按钮 ([e4d87e9](https://github.com/helixnow/deep-student/commit/e4d87e97f770c36f15e6f76e24022021d6f8dfdf))
+* **workbench:** 补齐工作台下失效的跳转——题目集、在学习中心打开、知识库/记忆定位 ([5ae0ba0](https://github.com/helixnow/deep-student/commit/5ae0ba08ae5c5489017bc513751fa0b294701b99))
+* **workbench:** 首次划词「添加到聊天」对话窗口直接盖住正在读的 PDF；提示里缺「去对话」 ([142b549](https://github.com/helixnow/deep-student/commit/142b549323eb3a9ba7ebac89cef63b776282c007))
 
 
 ### Performance Improvements
 
-* **bundle:** eliminate 1.9MiB gzip dead syntax/font/ajv/sentry bloat and fix bundle budgets ([6ea58c6](https://github.com/helixnow/deep-student/commit/6ea58c6131985c5e1d76d9b8035cbe3baa2cc16b))
-
-## [0.20.9](https://github.com/helixnow/deep-student/compare/v0.20.8...v0.20.9) (2026-11-22)
-
-
-### Bug Fixes
-
-* **mobile:** 加固移动端语言包路径归一化、消除冷启动原始翻译键闪屏并补齐平台壳识别 ([07ddc98](https://github.com/helixnow/deep-student/commit/07ddc98910795873e0d8b5207d573b0037eafcac))
-
-## [0.20.8](https://github.com/helixnow/deep-student/compare/v0.20.7...v0.20.8) (2026-11-22)
-
-
-### Features
-
-* **docs:** 新增用户指南多端实景截图脚本、插件工坊演示包并修复演示语言包路径 ([a5b06c0](https://github.com/helixnow/deep-student/commit/a5b06c06f0358f0c6bd6858dbf4f12f0265531b2))
-* **workbench:** 移除学习桌面默认「你的学习桌面 / 快速上手」引导卡片及失效重放入口 ([3a8a7e6](https://github.com/helixnow/deep-student/commit/3a8a7e6b918dec028a6eb9753f0f45bd594e4900))
-* **workbench:** 笔记/导图/工坊/同步全链路体验打磨、AOSP标签底条移除与全量门禁收口 ([a39463e](https://github.com/helixnow/deep-student/commit/a39463e2c4ab91fbe14840ee330b6c4f243ec8f7))
-
-
-### Bug Fixes
-
-* **ci:** 修复 host 严格类型、文档锁口径与 dashboard 黄金测试后台初始化竞争 ([0df6c61](https://github.com/helixnow/deep-student/commit/0df6c61796c00978fb821643350174e8b933e25a))
-
-## [0.20.7](https://github.com/helixnow/deep-student/compare/v0.20.6...v0.20.7) (2026-11-21)
-
-
-### Features
-
-* **data:** consolidate legacy data-management view into stats hub and migrate maintenance to data governance ([9098211](https://github.com/helixnow/deep-student/commit/90982116932b4f4e56cebbf8f8b43fe5ac923446))
-* **mobile:** polish mobile WebUI layout, data governance, and interactive empty state ([fc038eb](https://github.com/helixnow/deep-student/commit/fc038eb58b1d677dd9b17e481d40a64cca0171c5))
-* **ux:** deep learner experience polish across desktop, mobile, webui, and study apps ([431edcd](https://github.com/helixnow/deep-student/commit/431edcd9bb8516ac08673daae87eefd382a13ef5))
-
-
-### Bug Fixes
-
-* **notes:** subscribe useNoteTags to dstu.watch so header tag edits refresh TagFilter ([e248dd2](https://github.com/helixnow/deep-student/commit/e248dd23bb56e6990f72e42ad5b9dd0496dd0581))
-* **qa:** resolve all P2/P3 defects found by automated browser QA fleet ([5e2f856](https://github.com/helixnow/deep-student/commit/5e2f856174960ed9a920b65451ef08df6b851767))
-* **qa-r2:** resolve all 15 P1/P2/P3 defects found by Round-2 adversarial QA fleet ([d933233](https://github.com/helixnow/deep-student/commit/d9332339ad82e110268d7cef6bf0721b0d0d5637))
-* **workbench:** measure unscaled offsetHeight before getBoundingClientRect when clamping DesktopContextMenu ([e8a3606](https://github.com/helixnow/deep-student/commit/e8a3606840ce213c255a72d883a36271ecbfcd62))
-
-## [0.20.6](https://github.com/helixnow/deep-student/compare/v0.20.5...v0.20.6) (2026-11-18)
-
-
-### Features
-
-* **llm:** preset Mistral and preserve protocol choices ([4164950](https://github.com/helixnow/deep-student/commit/4164950c3cd76bf3719741415c8fe150b5f2ee17))
-* **mobile:** recover interrupted shares and preserve open file versions ([74d21d5](https://github.com/helixnow/deep-student/commit/74d21d5225aa0ba131bc3c7b99852a4d081806c2))
-
-
-### Bug Fixes
-
-* **ci:** restore mobile and release candidate checks ([36a1caa](https://github.com/helixnow/deep-student/commit/36a1caa2f4b50e2a2db317dca59a0b7144352300))
-* **mobile:** align export and sync contracts with host runtime ([f861786](https://github.com/helixnow/deep-student/commit/f86178658da932abb6df69add48ca2e6def6739f))
-
-## [0.20.5](https://github.com/helixnow/deep-student/compare/v0.20.4...v0.20.5) (2026-11-17)
-
-
-### Features
-
-* **workshop:** automate plugin delivery and recover verified versions ([e888dcf](https://github.com/helixnow/deep-student/commit/e888dcffa17320e08d277ef0947c33f8c79adb6e))
-
-
-### Bug Fixes
-
-* **workshop:** isolate verification retries and repair release checks ([#529](https://github.com/helixnow/deep-student/issues/529)) ([2b92d67](https://github.com/helixnow/deep-student/commit/2b92d678610273ff15a31cd89aab49f0178cf214))
-* **workshop:** reconcile interrupted rollbacks and stop stale verification ([f482e23](https://github.com/helixnow/deep-student/commit/f482e23bc3eff7098bacb336b9459bd9323cd1b9))
-
-## [0.20.4](https://github.com/helixnow/deep-student/compare/v0.20.3...v0.20.4) (2026-11-16)
-
-
-### Features
-
-* **plugins:** port plugin services and workshop lifecycle ([20b60c2](https://github.com/helixnow/deep-student/commit/20b60c2ecf7c316c9e1b6f1806aa165456172a1b))
-* **review:** port FSRS question review plans ([ccdda39](https://github.com/helixnow/deep-student/commit/ccdda39dcabb521fa232e85d11722f6ad977b2b8))
-* **workshop:** port proposal details, editing and plugin data controls ([bc833db](https://github.com/helixnow/deep-student/commit/bc833db794c7ddb065e75bfd57fe9fe4430159b8))
-
-
-### Bug Fixes
-
-* **android:** avoid duplicate mobile command registrations ([b3543d3](https://github.com/helixnow/deep-student/commit/b3543d3206fe905068e70b3ccb0ca3327800837b))
-* **android:** port mobile bridge and OPFS file commands ([648ff46](https://github.com/helixnow/deep-student/commit/648ff465ee4877888425812579d5a63717f5267c))
-* **ftp:** confirm ambiguous SIZE failures with MLST ([a4071cb](https://github.com/helixnow/deep-student/commit/a4071cb4a5f18992f9145eb1badf7bc6f9a7c4cd))
-* **ftp:** fail safely on ambiguous replies and data resets ([8cb9f31](https://github.com/helixnow/deep-student/commit/8cb9f316626870d340aa8a98c805d9ebf3bbc769))
-* **ftp:** handle missing objects during bounded retrieval ([9df77cb](https://github.com/helixnow/deep-student/commit/9df77cb98ad2a8fe7cc58076828601b03435ce09))
-* **ftp:** time out waiting for transfer reply ([2d2831f](https://github.com/helixnow/deep-student/commit/2d2831fc30a7a462b7707eb58f36af65a77efb49))
-* **review:** honor FSRS due times and mixed-client sync ([08929c5](https://github.com/helixnow/deep-student/commit/08929c5dc7d278e1cad351fdae8c736ae6a0c484))
-* **review:** keep synced schedules atomic across offline ratings ([835a90c](https://github.com/helixnow/deep-student/commit/835a90cb2d71fe87b90fbbcc1f29736691eaa911))
-* **sync:** apply new reviews while legacy history is unavailable ([0077555](https://github.com/helixnow/deep-student/commit/0077555815cfa84569e90e565d0826a519c62702))
-* **sync:** preserve review history and recover legacy schedules ([2ff1898](https://github.com/helixnow/deep-student/commit/2ff18989315816c2504ed61276252f5dda8a0e4d))
-* **sync:** preserve review plan identity through offline deletes ([3e7dacf](https://github.com/helixnow/deep-student/commit/3e7dacf719fd37283c3d1e79e13a33695ddee06e))
-* **sync:** reconcile offline review plans for the same question ([7f10920](https://github.com/helixnow/deep-student/commit/7f10920b45f0072421ac5e0b8a6710dca680c37a))
-* **ui:** complete plugin and workbench integration ([652ec34](https://github.com/helixnow/deep-student/commit/652ec3469c9d99951d7c0f4821b18a51fc023ad3))
-* **workshop:** preserve activation state on profile conflicts ([8d56727](https://github.com/helixnow/deep-student/commit/8d567270cbb84f455d23ef3425db4702d7da6e32))
-
-## [0.20.3](https://github.com/helixnow/deep-student/compare/v0.20.2...v0.20.3) (2026-11-15)
-
-### Android
-
-- 随正式签名 ARM64 APK 交付旧版数据迁移、文件及 Markdown 导入、教材重新关联、附件校验和移动端设置修复。
-- 修复公开发布前发现的 Host 依赖、命令契约和附件处理检查问题。真机覆盖升级待验。
-
-## [0.20.2](https://github.com/helixnow/deep-student/compare/v0.20.1...v0.20.2) (2026-11-15)
-
-### Android
-
-- 保留从旧版升级时的笔记、附件、PDF 教材和深色设置。已在独立 Android 14 模拟器从正式签名 v0.11.0 原地覆盖验证；真机待验。
-- 修复资料库的文件和 Markdown 导入、教材重新关联以及启动时的恢复流程。附件写入失败会报错；缺附件的备份不能通过完整性校验。
-- 安全状态显示实际保护方式和加密设置计数；功能开关和搜索供应商策略重启后可读回。
-
-## [0.20.1](https://github.com/helixnow/deep-student/compare/v0.11.0...v0.20.1) (2026-11-14)
-
-Node.js / Electron / Capacitor / Cordis 架构正式切换版本（整合 `0.20.0`–`0.20.1` 迁移与功能里程碑，主仓库统一回归 `helixnow/deep-student`，正式退役上一代 Tauri 2 / Rust 后端）。
-
-### Architecture & Runtime Cutover
-
-* **Cordis 双内核架构：** 后端全面迁移为基于 `@deepseek-ai/cordis` 4 的 100% TypeScript 插件架构，由 Host 内核（`host/kernel`、`host/platform`、`host/plugins`，`desktop.json` 装配 43 个模块，`host/plugins/` 含 29 个插件目录）与 UI 内核（`src/ui-kernel`、`src/ui-plugins/official/` 19 个官方 UI 插件包）组成，由 `contracts/ipc/` 治理 1,061 条命令、127 个事件与 978 个类型定义。
-* **Electron 45 桌面宿主与零重写兼容：** 新增 `electron/` 桌面外壳（Electron 45 + `UtilityProcess` Host + `MessagePortMain`），通过 `window.__TAURI_INTERNALS__` 兼容桥（`electron/preload/bridge.ts`）保留 `src/` React 18 前端与现有磁盘 SQLite / LanceDB 数据目录（原地挂载并完整回放 SQL 迁移历史）。
-* **Hybrid N-API + WASI-WASM 原生引擎：** 将原生绑定严格收敛于平台与外壳层（`better-sqlite3`、`@lancedb/lancedb`、`@embedpdf/pdfium`、`@napi-rs/keyring`、`@node-rs/argon2` 与 `koffi` FFI），并通过预编译 `f7-native-wasm.wasm`（`wasm32-wasip1`）承载 `regex`、`starlark`、`symphonia`、`image`、`fsrs`、`roxmltree` 及 `docx-rs` / `calamine` / `pptx-to-md` / `rtf-parser` / `html2text`，开发与构建不再依赖 Rust 或 Tauri 工具链。
-* **WebUI & PWA（`web/`）：** 新增浏览器与可安装 PWA 形态（`npm run web` / `npm run build:web` / `npm run web:prod`），经 HTTP / WebSocket（`/api/ws` 二进制帧与 HTTP 206 流式读取）直连完整 Host 内核，配备 `timingSafeEqual` 令牌与 `SameSite=Strict` 会话 Cookie 鉴权、爆破限流及 Service Worker。
-* **Capacitor 8.6 移动端（`mobile/`）：** 移动端切换为 Capacitor 8.6 + Web Worker Host + `@sqlite.org/sqlite-wasm` / OPFS（`host/profiles/mobile.json` 装配 33 个模块，经 `scripts/portability/scan.mjs` 验证 0 处 Node 运行时依赖），支持签名 APK 构建校验。
-
-### Features
-
-* **AI 插件工坊与 `.dstuplugin`：** 新增 `plugin-workshop`（`dstu-plugin-development` 技能 + 14 个 `dstu_plugin_*` Agent 工具），支持 AI 读取真实 SDK/服务/插槽目录、Host 托管 `esbuild` 编译、隔离生命周期试装载与最多 3 轮诊断自动修复、用户一键确认热安装/热重载、导出 `.dstuplugin` 插件包、运行时配置热更新（`inventory` / `config_get` / `configure` / `set_enabled`）及 `versions/<v>/package` 版本回滚。
-* **生成式 UI（`openui-lang`）：** 新增 `dstu.ui.genui` 插件、`OpenUILangRenderer`、`interactive-explainer` 技能、`DiagramAndLiveSvgView` 与高保真 HTML 沙箱，支持在对话中直接渲染交互式讲解界面。
-* **DeepSeek 官方应用 API 集成：** 原生接入 DeepSeek Responses 协议（`deepseek-flash`）、内置联网/图片搜索与读链接、内容审核、最多 20 个文件的对话文档解析，以及独立 Search / Fetch、OCR、ASR 与 TTS（`Stella` / `Tide`）。
-* **文档优先阅读与 PDF 页码/引文反链：** 对话新增可折叠导航与可调节分栏的文档优先阅读布局、大纲引导整篇 AI 精读，并在笔记、对话导出与闪卡中全程保留 PDF 页码与引文反向链接。
-* **FSRS-7 桌面隔离试跑与微信 iLink Bot：** 在 FSRS-6 基础上新增基于 `ts-fsrs` 双时间尺度模型的 FSRS-7 桌面隔离试跑；内置 `ilinkbot` 微信通道插件（二维码登录、主人配对守卫与图片批处理聚合）。
-* **Sync V5 与 Agent UX 升级：** 新增 Sync V5 同步引擎（HLC 因果序、Merkle 快照、加密 `.dsix` 索引包、Range 读取与 `DSPAIR2` 局域网扫码配对）及完整数据治理 CRUD；对话升级 7 行活动窗口、回合 Diff 审阅与回退、项目知识 DAG 抽屉、会话挂起/恢复/分叉、Prompt 缓存与上下文压缩、消息排队/插话及密钥脱敏卡片。
-
-### Security & Upgrade Compatibility
-
-* **Electron Fuses 与浏览器隔离：** 打包强制开启 Electron Fuses（禁用 `RunAsNode`、`EnableNodeOptionsEnvironmentVariable`、`EnableNodeCliInspectArguments` 与 `GrantFileProtocolExtraPrivileges`，启用 `EnableEmbeddedAsarIntegrityValidation` 与 `OnlyLoadAppFromAsar`，并在 Windows/Linux 及正式签名 macOS 启用 `EnableCookieEncryption`）；集中式 `web-security.ts` 实施分角色导航/权限策略并禁用 `<webview>`。
-* **`ds-plugin://` 校验与逐响应 CSP Nonce：** `ds-plugin://` 协议按 `plugins.lock.json` 执行 SHA-256 完整性校验与路径逃逸拦截（`--safe-mode` 下禁用）；HTML 生产响应按次生成随机加密 `scriptNonce` 并注入 CSP 与 `<meta name="ds-csp-nonce">`。
-* **无损升级与更新器兼容：** 兼容 `tauri-plugin-updater` 2.10 `latest.json` 与 Minisign 签名校验，应用内升级前校验已启用用户插件兼容性、更新过程保持 macOS `.app` bundle 完整，并在升级后保留用户插件源码、配置与数据目录。
-
-## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.10...v0.11.0) (2026-11-01)
-
-
-### Features
-
-* **super-agent:** Super-agent 重做为普通会话里的常驻「Super 会话」（实验，默认关闭）：附件、流式、停止、编辑重发、重新生成等与普通会话完全一致；Router 用工具派发并行的后台 Worker（子代理卡片可展开查看过程），完成后自动回到会话汇报；侧栏置顶并显示生成中/未读状态，可删除并自动重建 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-* **providers:** 内置 OpenCode Go 供应商（列表第二位）、一键分配与用量查询；「仅限 Agent 对话」改为建议 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-* **chat:** 输入框模型菜单内置多选模式（不再弹出大面板），支持星标收藏与最近使用，交互参考 OpenChamber ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-
-
-### Bug Fixes
-
-* **shell:** 收起侧栏后进入设置/待办页时，标题栏保留侧栏开关与前进/后退，修复页面无出口 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-* **chat:** 生成工具参数时停止，子代理卡片不再永久显示「执行中」 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-* **mobile:** Super-agent 设置在窄屏下不再溢出 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **android:** wake SAF permission queue on demand ([bd99118](https://github.com/helixnow/deep-student/commit/bd99118e5ec200726857c167bd0939f0bf45589f))
+* **app:** keep shell sidebars mounted to avoid refetch on navigation ([b2d0a76](https://github.com/helixnow/deep-student/commit/b2d0a76997da0f73f33305b513266d776cc3eee8))
+* **build:** stop polling the repo and narrow tailwind content globs ([765bca6](https://github.com/helixnow/deep-student/commit/765bca6da72abca0c5912d5f8c3b6b7b6a12a056))
+* **chat:** block-level render skip, content-size admission, windowed history backfill ([3e3ec1a](https://github.com/helixnow/deep-student/commit/3e3ec1ac2144461e30833963fcb427fa9ff60468))
+* **chat:** cache search in a worker and suspend hidden session rendering ([de67194](https://github.com/helixnow/deep-student/commit/de67194d04d0191e3052be1834a8e23c3f829fc4))
+* **chat:** coalesce search work and suspend hidden indexing ([3ebd524](https://github.com/helixnow/deep-student/commit/3ebd524fb9a7c68b1861ea89f02df422e70174c5))
+* **chat:** cut long-session streaming costs to O(active message) ([80c3910](https://github.com/helixnow/deep-student/commit/80c3910abf6ddecc81ba28105bd09cd9725ce072))
+* **chat:** defer hidden search highlights and image previews ([2d9a63c](https://github.com/helixnow/deep-student/commit/2d9a63c1217e4f2ba3b1e9d04214eb829465b1c9))
+* **chat:** hand scrolling back to the browser and unblock the timeline ([a5b282b](https://github.com/helixnow/deep-student/commit/a5b282b09cfa38f7fc4246a2f37f45c9e7603fee))
+* **chat:** harden long-context rendering and history windows ([0246fb9](https://github.com/helixnow/deep-student/commit/0246fb9185a490eabb7aa86065084ae99c1b49e2))
+* **chat:** hoist session list cache into a module-level store ([efc7d1e](https://github.com/helixnow/deep-student/commit/efc7d1ee64eef8b9ac20329e4c7e875da8153d58))
+* **chat:** keep shell sidebars mounted and share the session list via a store ([48efd1f](https://github.com/helixnow/deep-student/commit/48efd1fa5395e7ae9782149e868d0436cba7911f))
+* **chat:** make streaming caches session-safe ([7c8bd0b](https://github.com/helixnow/deep-student/commit/7c8bd0bb57fcaefb4c093fd8377f0b4386405ab0))
+* **chat:** stabilize Markdown renderers and narrow task subscriptions ([fdcfcc6](https://github.com/helixnow/deep-student/commit/fdcfcc6e61882d76a3a995dc41d12ae51b64bc5f))
+* **chat:** window history before hydration and persist dirty blocks only ([a0b4c06](https://github.com/helixnow/deep-student/commit/a0b4c06bbaf9fb0df02b46f09b3ddbbac66f0cbf))
+* **debug:** collect detailed tool diagnostics only when enabled ([5059ad2](https://github.com/helixnow/deep-student/commit/5059ad253f3627ee59dba0f57937195da98f1ea5))
+* **demo:** 学习桌面开场更快 ([d5255e6](https://github.com/helixnow/deep-student/commit/d5255e61c2e7acdec17076f65b9902461b1f93ee))
+* **frontend:** defer FlowToken code rendering dependencies ([9bfc13f](https://github.com/helixnow/deep-student/commit/9bfc13f471ca8655a19e9510d409a117e5c182b6))
+* **governance:** remove backup waits and bound ZIP and JSON overhead ([d67a667](https://github.com/helixnow/deep-student/commit/d67a667d47787633b67c5bc1b103a9b70c847748))
+* **media:** bound OCR and image work without holding database leases ([eab78bd](https://github.com/helixnow/deep-student/commit/eab78bd62b95ede99c18859155bf702292be98a0))
+* **notes:** setMarkdown 改为最小差异替换，Agent 改写/外部刷新不再整篇闪烁 ([86b3de3](https://github.com/helixnow/deep-student/commit/86b3de3bc0bf7b8c9de0cc4c501bfeb056974d45))
+* **notes:** 模板库打开/切换不再卡 3 秒 ([89916d9](https://github.com/helixnow/deep-student/commit/89916d92c08a4e0e6faa94444c1620336ea32a85))
+* **ocr:** share media limits with indexing fallback and release database leases ([e7e6c8e](https://github.com/helixnow/deep-student/commit/e7e6c8e7987c8a0a299be7ac67f93f47a930cf0c))
+* **retrieval:** filter lexical scope before limiting and gate unavailable vectors ([3218d7e](https://github.com/helixnow/deep-student/commit/3218d7e0a16399f983ad79977cbe2293bfddafbc))
+* **startup:** isolate editor state and generative schemas from heavy UI ([a0e2971](https://github.com/helixnow/deep-student/commit/a0e29713daaa6ef7847c0dfaf482f72d42225eab))
+* **startup:** replace the startup preflight card with a static boot surface ([36b56d0](https://github.com/helixnow/deep-student/commit/36b56d0e82d08697136e12b87453781333e05158))
+* **sync:** move file encryption work off async runtime ([20d958d](https://github.com/helixnow/deep-student/commit/20d958d7623553575abbe161bf4dee0cbdd0a508))
+* **ui:** drop per-frame blur and backdrop-filter from shell transitions ([2509c6f](https://github.com/helixnow/deep-student/commit/2509c6f5e6a6f677bb56a80298c4b8571e3d8540))
+* **vfs:** offload todo and pomodoro database commands ([c187c89](https://github.com/helixnow/deep-student/commit/c187c892e77e978b821e4444f7398dea629988af))
+* **vfs:** offload uploads and reuse index connection ([447e22e](https://github.com/helixnow/deep-student/commit/447e22e246867012a46cfda23581a1419482ae63))
 
 
 ### Code Refactoring
 
-* **backend:** 后端从单 crate 拆分为 25 个成员的 Cargo workspace（dstu-kernel 插件内核 + 分层守卫），命令、事件与参数不变；业务域改动后的增量 `cargo check` 从约 255s 降至约 7s ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-* **frontend:** App.tsx 拆分到 src/app/，TauriAdapter / MCP 设置 / LearningHubSidebar / mindmapStore 拆分，新增前端分层守卫与 lint 棘轮 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
-
-## [0.10.10](https://github.com/helixnow/deep-student/compare/v0.10.9...v0.10.10) (2026-10-29)
-
-
-### Bug Fixes
-
-* **grading:** discard cancelled listener registrations ([#506](https://github.com/helixnow/deep-student/issues/506)) ([a3fc3b8](https://github.com/helixnow/deep-student/commit/a3fc3b8082306d7e231f25f93359d4fe73493e99))
-* **grading:** honor configured output limits and preserve failed feedback ([#504](https://github.com/helixnow/deep-student/issues/504)) ([d37538c](https://github.com/helixnow/deep-student/commit/d37538cf069d9cb639302266f303b80615595c58))
-* **practice:** align result controls and retain AI explanations ([#508](https://github.com/helixnow/deep-student/issues/508)) ([c26eb9d](https://github.com/helixnow/deep-student/commit/c26eb9d91f131260ec895d30130805597750e352))
-* **practice:** restore answer shortcuts and modal ownership ([#507](https://github.com/helixnow/deep-student/issues/507)) ([45b9bdb](https://github.com/helixnow/deep-student/commit/45b9bdbaf2bbdb355843aaad7b4efbbd2c6ab22a))
-
-## [0.10.9](https://github.com/helixnow/deep-student/compare/v0.10.8...v0.10.9) (2026-10-27)
-
-
-### Features
-
-* **qbank:** persistent paper practice, exports, and explanations ([#503](https://github.com/helixnow/deep-student/issues/503)) ([b2a7cdc](https://github.com/helixnow/deep-student/commit/b2a7cdc1aac3ff0b017cb6398ddc646a53c80511))
-
-
-### Bug Fixes
-
-* **sync:** correct gap/schema checks and expose WebDAV rate-limit details ([#501](https://github.com/helixnow/deep-student/issues/501)) ([62f6d6b](https://github.com/helixnow/deep-student/commit/62f6d6b5092f45e9f33c5e3e813c89bf78c88f3e))
-
-## [0.10.8](https://github.com/helixnow/deep-student/compare/v0.10.7...v0.10.8) (2026-10-24)
-
-
-### Bug Fixes
-
-* **chat:** 完成上下文压缩反馈与 DeepSeek 兼容修复，整合本地最新修复 ([#496](https://github.com/helixnow/deep-student/issues/496)) ([18c4f5c](https://github.com/helixnow/deep-student/commit/18c4f5c831fb152b39d7528e61b94ab6380fdbc6))
-* **demo:** media 演示包补 media_study_ledger/media_checkpoints mock，修复 demo 烟测与官网同步 ([6352165](https://github.com/helixnow/deep-student/commit/635216503c0b34bdf812e17942e0f09f51872e6f))
-* **media:** 完整修复 B 站导入、安卓播放与浏览器桥配对 ([#495](https://github.com/helixnow/deep-student/issues/495)) ([c8336a4](https://github.com/helixnow/deep-student/commit/c8336a492feac3a8d9b552ffb26ee078eefea90c))
-* **qbank:** 完整来源导入、共享材料题组与 DeepSeek 兼容修复 ([#493](https://github.com/helixnow/deep-student/issues/493)) ([359c08b](https://github.com/helixnow/deep-student/commit/359c08b9cd98a65f2615dda0aea31b417d9f706d))
-
-## [0.10.7](https://github.com/helixnow/deep-student/compare/v0.10.6...v0.10.7) (2026-10-18)
-
-
-### Features
-
-* **chat:** 用户消息密钥/令牌默认脱敏，可按需显示原文（借鉴 DSH 0.2.1） ([f459bae](https://github.com/helixnow/deep-student/commit/f459bae81614ba6ecba8f0eb131a857157544e2e))
-* **search/fetch:** DeepSeek Search 正文注入与 Fetch API 可选后端（借鉴 DSH 0.2.1） ([21f7853](https://github.com/helixnow/deep-student/commit/21f78536112a91a8eeb5b125e743cdc484fec69a))
-* **search:** 新增 DeepSeek 官方搜索渠道 ([#484](https://github.com/helixnow/deep-student/issues/484)) ([d4e47a9](https://github.com/helixnow/deep-student/commit/d4e47a980f20ed4a5fdf192749141e9b2539ac60))
-* **settings:** DeepSeek 搜索 need_content 与 Fetch 后端开关 ([598acab](https://github.com/helixnow/deep-student/commit/598acab5fdf8bdf866a690babe224f823e024772))
-
-
-### Bug Fixes
-
-* **tests:** 伪造密钥样本改为运行时拼接，避免 secret scanning 误报 ([c62ccbc](https://github.com/helixnow/deep-student/commit/c62ccbc6136a9148bbdc9643a716a16ae8908239))
-
-## [0.10.6](https://github.com/helixnow/deep-student/compare/v0.10.5...v0.10.6) (2026-10-17)
-
-
-### Features
-
-* **anki:** 统一公式契约并新增 bare_latex 质检，修复制卡裸写公式 ([#463](https://github.com/helixnow/deep-student/issues/463)) ([e9b2fa6](https://github.com/helixnow/deep-student/commit/e9b2fa60be9602b49f2b4d809f513a261e485fb2))
-* **chat:** 检索命中的知识库页图进入多模态模型上下文 ([0352a08](https://github.com/helixnow/deep-student/commit/0352a083e00548393608d924638cd77fd565a7b5)), closes [#464](https://github.com/helixnow/deep-student/issues/464)
-* **media:** ask about this moment, quote or card selected transcript lines, frame refs carry their transcript ([4538ebb](https://github.com/helixnow/deep-student/commit/4538ebb03558ed2f111bfd8a47b9261c22097591))
-* **media:** handout sections become lecture chapters ([5eb8782](https://github.com/helixnow/deep-student/commit/5eb878278cd7c10522a1009fd2f2ec9720ba27db))
-* **media:** in-lecture checkpoints anchored to moments, with rewatch on wrong answers ([3d0f4e6](https://github.com/helixnow/deep-student/commit/3d0f4e695bc66c18e315bdfc7f061460b78e0450))
-* **media:** jump back to the lecture moment from flashcard review and question follow-up ([7e2fa25](https://github.com/helixnow/deep-student/commit/7e2fa25b3aa45467a45b8cd962336398a424290b))
-* **media:** learning overview tells the AI which lecture you're on and which moments you got wrong ([9a227b0](https://github.com/helixnow/deep-student/commit/9a227b03ef57159927c2b1d7125210db63e18e5a))
-* **media:** per-lecture study ledger and in-page card making ([454de2d](https://github.com/helixnow/deep-student/commit/454de2d22d2898c9a6c205563d70e35558914fff))
-* **media:** player polish — double-tap seek, screen stays awake, more speeds, transcript text size ([e8cde45](https://github.com/helixnow/deep-student/commit/e8cde45dac5430ee1a28e650038053dc5240e07a))
-* **qbank-import:** 识别导入的难度判定加入明确评判标准 ([c13d8bf](https://github.com/helixnow/deep-student/commit/c13d8bfcd03d82bfe078defd4d6a8c1e1a158eba))
-* **qbank:** AI 解析不再要求先作答，题目解析为空时自动回填 ([942e195](https://github.com/helixnow/deep-student/commit/942e1954d4d944da5fdb988dad6e8adde5dae982)), closes [#467](https://github.com/helixnow/deep-student/issues/467)
-* **qbank:** 题库新增只读「查看答案」浏览模式，AI 解析可写入题目解析 ([61b49e8](https://github.com/helixnow/deep-student/commit/61b49e8eccfddbfd48c342f6b139b574c5e70fef)), closes [#466](https://github.com/helixnow/deep-student/issues/466) [#467](https://github.com/helixnow/deep-student/issues/467)
-
-
-### Bug Fixes
-
-* **android:** 平板宽屏顶栏避让状态栏，新增沉浸式全屏开关 ([b00c2a3](https://github.com/helixnow/deep-student/commit/b00c2a300d19451143469e814ba9c7d2ba574a52)), closes [#472](https://github.com/helixnow/deep-student/issues/472)
-* **chat:** attachment_read 支持 VFS 引用型附件 res_*，收敛附件 ID 解析入口 ([c50ddd7](https://github.com/helixnow/deep-student/commit/c50ddd793f6c9885c5efb6f0101d86cd7f29770e)), closes [#468](https://github.com/helixnow/deep-student/issues/468)
-* **chat:** 会话加载 meta_json 去重瘦身，尾窗按载荷体量截断 ([bbefbf2](https://github.com/helixnow/deep-student/commit/bbefbf2b077de63c6e0a4a07b3100c70c150cb4d)), closes [#469](https://github.com/helixnow/deep-student/issues/469)
-* **chat:** 恢复 AdvancedPanel useEffect 的 disposed 清理函数 ([0617907](https://github.com/helixnow/deep-student/commit/0617907c2a16d60af05cc030a8cd78d46fa50812))
-* **chat:** 消息图片缩略图不再用原图 base64 渲染，预览跨消息共享缓存 ([f0ca00c](https://github.com/helixnow/deep-student/commit/f0ca00c8f3124db354b067b520ee3313db655cd8)), closes [#470](https://github.com/helixnow/deep-student/issues/470)
-* **chat:** 虚拟行内不再用 content-visibility，前台恢复兜底只在 WebKit 处理视口内的块 ([ee22f99](https://github.com/helixnow/deep-student/commit/ee22f99188124ec141f1e44e25b0b36c3eef2280)), closes [#470](https://github.com/helixnow/deep-student/issues/470)
-* **chat:** 高级设置的上下文滑条跟随面板选中的模型 ([990d34d](https://github.com/helixnow/deep-student/commit/990d34d4769e39b96e8d4f104ee45531fb8f0ea6))
-* **ci:** Android 发布校验签名证书指纹与 versionCode 单调 ([7072ff0](https://github.com/helixnow/deep-student/commit/7072ff0e8f2978e916470be10c144c04c52601b7)), closes [#471](https://github.com/helixnow/deep-student/issues/471)
-* **flashcards:** 修复 WebKit 复习长卡滚动及生产 CSP 阻断 ([#478](https://github.com/helixnow/deep-student/issues/478)) ([3916e7a](https://github.com/helixnow/deep-student/commit/3916e7a8592fd949d0b84ee4285c8377e266eaf0))
-* **flashcards:** 模板卡面公式改用 KaTeX HTML 输出并在卡面 iframe 内自带字体 ([1fb75dc](https://github.com/helixnow/deep-student/commit/1fb75dc70e12213e933677a5d9ccb9f51efb713c)), closes [#461](https://github.com/helixnow/deep-student/issues/461)
-* **input:** 受控输入框在输入法组字期间不回写、不派发，修复安卓搜狗英文/日文搜索框无法输入 ([676f3bd](https://github.com/helixnow/deep-student/commit/676f3bd60428df690eca781d11bd1005bd75990b)), closes [#455](https://github.com/helixnow/deep-student/issues/455)
-* **linux:** AppImage 去除捆绑的 libwayland-*，修复 Mesa 下 EGL_BAD_PARAMETER 白屏 ([#481](https://github.com/helixnow/deep-student/issues/481)) ([1ddd2f4](https://github.com/helixnow/deep-student/commit/1ddd2f4fa04a34997fc9fd305a609fc5278ebbbb))
-* **linux:** AppImage 重打包加签名 base64 校验与最终产物门禁 ([#481](https://github.com/helixnow/deep-student/issues/481)) ([a6b820d](https://github.com/helixnow/deep-student/commit/a6b820d4b7ca3bd050971c736ce1e4bb97c839dc))
-* **media:** 变基后去掉与 main 重复的 strList 定义 ([7e4964b](https://github.com/helixnow/deep-student/commit/7e4964be949129adc7f721043d3acde42bb51543))
-* **pdfium:** Linux 按 productName 目录扫描 libpdfium.so，修复 deb 下 PDF 图片/OCR 不可用 ([#480](https://github.com/helixnow/deep-student/issues/480)) ([405949b](https://github.com/helixnow/deep-student/commit/405949ba5da89c2eba4f25e5e17c7bc0821139e9))
-* **qbank:** 空解析判定把换行/制表符也算作空白 ([eaecd9e](https://github.com/helixnow/deep-student/commit/eaecd9e023abf6db8e024e08c3872a66f6f1ddba)), closes [#467](https://github.com/helixnow/deep-student/issues/467)
-* **qbank:** 题目图片加载失败时显示错误占位，不再无限转圈 ([5559f71](https://github.com/helixnow/deep-student/commit/5559f7104f8668923a439fc0fd586deb7dda0052)), closes [#465](https://github.com/helixnow/deep-student/issues/465)
-* **qbank:** 题目图片支持 res_* 资源 ID，AI 写入时归一为文件 ID ([9e415ff](https://github.com/helixnow/deep-student/commit/9e415fff3e2f132860f7f3bbebfab6ba6ea5883f)), closes [#465](https://github.com/helixnow/deep-student/issues/465)
-
-## [0.10.5](https://github.com/helixnow/deep-student/compare/v0.10.4...v0.10.5) (2026-10-07)
-
-
-### Features
-
-* **media:** B 站应用内播放器支持切换清晰度 ([fd3fd87](https://github.com/helixnow/deep-student/commit/fd3fd8795c3bb75f1eddd6dcb58b6ed322834f7c))
-
-
-### Bug Fixes
-
-* **app-menu:** 长下拉菜单上下都放不下时不再盖住自己的触发按钮 ([6ad8937](https://github.com/helixnow/deep-student/commit/6ad8937b1b99e73d6bfa6803f82d3d9f8998b1cd))
-* **chat:** 手机宽度下「回到底部」按钮不再压住回答末行 ([2ddddda](https://github.com/helixnow/deep-student/commit/2ddddda6a0f87f5e19ecddbf904ba33137499011))
-* **finder:** 窄资源列表多选底栏不再把选中数截掉、把全选图标裁成半个 ([44fd1f8](https://github.com/helixnow/deep-student/commit/44fd1f8eb3195c32452665b6a6a6ad2c44c9bfa7))
-* **media:** 媒体库为空时导入按钮只出现一次——顶栏（标题行）不再重复空态里的「导入音视频」「B 站链接」 ([0a8dd5d](https://github.com/helixnow/deep-student/commit/0a8dd5dbe611e4abbf021cc4570bbde5c1a39a68))
-* **mindmap:** 「样式」面板不再向上溢出、被窗口标题栏压住 ([20eb037](https://github.com/helixnow/deep-student/commit/20eb03769c9f071c85ebfc08686ccd8620a39bd7))
-* **mindmap:** 背诵模式选中文字后「挖空」气泡不再跑到视口外 ([754dfa1](https://github.com/helixnow/deep-student/commit/754dfa102ada8c9e2b21099df985e4cd9c8e7f89))
-* **notes-tree:** 文件树靠下的行右键，菜单不再被窗口底边裁掉 ([b34d38d](https://github.com/helixnow/deep-student/commit/b34d38d89c34d26ec0ca9bd0b46381dd143e5321))
-* **notes:** 标签页右键菜单只写动作、出现在标签下方、单行对齐 ([f5c9893](https://github.com/helixnow/deep-student/commit/f5c989376b46e9a1d320b3aba0aff12be08dec98))
-* **notes:** 讲义笔记里的视频时间锚点显示为「▶ 00:05」徽章，不再露出原始标记与资源 id ([db5e3a6](https://github.com/helixnow/deep-student/commit/db5e3a64bcd0d8c7c04c99d6cd3e00cf69277aa6))
-* **qbank-import:** 一道题都没识别出来时把首个失败原因带给用户 ([6817dd3](https://github.com/helixnow/deep-student/commit/6817dd317b201f36d648496eee051251692d41e7))
-* **qbank:** 只删题 / 改题时不再把题目集名称清空 ([e247450](https://github.com/helixnow/deep-student/commit/e247450d4c31cc525a4254414c361f866314ea82))
-* **qbank:** 题目列表工具栏去掉与顶栏「添加题目 → 新建题目」重复的「+」按钮 ([c570e4a](https://github.com/helixnow/deep-student/commit/c570e4a064045227d64b7fa3a338d1a55391a6b7))
-* **ui:** 分段控件滑块不再在学习桌面窗口平铺 / 最大化后错位盖住旁边按钮 ([648eed2](https://github.com/helixnow/deep-student/commit/648eed26a5b00f2195a2b25d1b57e572310083c5))
-* **workbench:** portal overlays follow drag and settle release in same frame ([#456](https://github.com/helixnow/deep-student/issues/456)) ([d99aad0](https://github.com/helixnow/deep-student/commit/d99aad01c5b4a83de1300e7a4ce33cb998420904))
-* **workbench:** 拖窗口时只让该窗口里的浮层跟随，别的窗口里开着的菜单不再被带着走 ([8616002](https://github.com/helixnow/deep-student/commit/8616002d02fd6884fe5a183b526da36a065e44bc))
-
-## [0.10.4](https://github.com/helixnow/deep-student/compare/v0.10.3...v0.10.4) (2026-10-07)
-
-
-### Features
-
-* **demo:** Anki 制卡演示——六个制卡任务（进行中逐张出卡、暂停、失败分段重试）与可编辑的模板库 ([3b3d783](https://github.com/helixnow/deep-student/commit/3b3d783f4c202a13e6d3eb0b054e1a32a475c561))
-* **demo:** 作文批改演示：错误点入错题本写入内存题目集，生成卡片/新批改提示去桌面版 ([9882fd4](https://github.com/helixnow/deep-student/commit/9882fd4a6b86cf20a77585dfe4c4d4bfbb2d5105))
-* **demo:** 作文批改演示：高考议论文（45/60）与雅思大作文（6.5）两篇已批改会话，批注/评分/润色/范文齐全，新批改提示去桌面版 ([e3b8b69](https://github.com/helixnow/deep-student/commit/e3b8b6935bdb603b954bf0e7c0617acf8a0b943f))
-* **demo:** 单应用演示入口 demo-app.html?app=&lt;章节&gt;，官网用户指南每章嵌一个只含该功能的演示 ([7f4e906](https://github.com/helixnow/deep-student/commit/7f4e9068d5da157b5a475e359e98338060a36508))
-* **demo:** 单应用演示目录列齐官网 16 章，未写剧本的章先占位 ([6db5d9c](https://github.com/helixnow/deep-student/commit/6db5d9c56ba51c102af162165f0aa40951df738c))
-* **demo:** 单应用演示第 02 章对话——PDF 精读会话首答完成态，引用徽章、导图、挖空卡与追问续答 ([f600b3a](https://github.com/helixnow/deep-student/commit/f600b3ae424391e96eb9c9a6df09617aea7ff973))
-* **demo:** 单应用演示第 03 章深度调研与智能记忆——调研模式完成态：用户记忆、任务清单、三路检索、报告写入笔记，追问可演示写入记忆 ([16222ca](https://github.com/helixnow/deep-student/commit/16222cae9ac42c3721de1b191863b04bac2feb97))
-* **demo:** 单应用演示第 06 章论文搜索——arXiv + OpenAlex 两路检索完成态与论文来源卡片，追问可下载入库、按 GB/T 7714 / BibTeX / APA 排引用 ([5621bc0](https://github.com/helixnow/deep-student/commit/5621bc0771e559dc888e253157920a32c2c2f600))
-* **demo:** 学习桌面、移动端两章也进演示目录：烟测、海报与 manifest 覆盖整壳演示 ([7705717](https://github.com/helixnow/deep-student/commit/77057176cf2bf5ade89fd896e170e6daada5c5f6))
-* **demo:** 对话演示点 PDF 页码徽章与附件在右侧打开原文并跳页，模型选择器补两家可切换 ([cf4d91e](https://github.com/helixnow/deep-student/commit/cf4d91e81ade42b42f5de7df360f57790468edbe))
-* **demo:** 思维导图章演示——线性代数第 5 章导图（平衡布局、公式、预置挖空），导图内存后端含版本与背诵制卡 ([5acb274](https://github.com/helixnow/deep-student/commit/5acb274bcc157c344d8c6a28549d2f3db37c5283))
-* **demo:** 技能与 MCP 扩展演示——全局技能（已信任/未信任）、社区技能市场搜索与安装、新建与信任技能的内存后端；补 26 个内置技能的中英文描述 ([f0ff8a3](https://github.com/helixnow/deep-student/commit/f0ff8a3f9f9d50ace7e0e60f9cb174b9b5c82f52))
-* **demo:** 效率工具演示：待办内存后端 + 考研/期末一周剧本，番茄钟统计与定时任务 ([29dcfbb](https://github.com/helixnow/deep-student/commit/29dcfbb095a74036af1688953c04fb11e9ab3c85))
-* **demo:** 效率工具演示手机宽度改用移动端待办页（与 App 壳同一套移动布局） ([43a956e](https://github.com/helixnow/deep-student/commit/43a956e61b1f40e0d3b111d0e94b7bf0f100a20f))
-* **demo:** 效率工具演示补 settings 借用文案、今日视图就绪判断 ([fc81aae](https://github.com/helixnow/deep-student/commit/fc81aae9303bcc86cee6e90bbfa5233bbe8341b9))
-* **demo:** 数据管理与云同步演示——本地备份列表、自动备份策略、WebDAV 已配置的同步页、健康检查与审计日志；设置类演示挂上全局通知宿主 ([fc92286](https://github.com/helixnow/deep-student/commit/fc922863ec426083ef862592707d1442b42549bd))
-* **demo:** 文档阅读章节演示——教材阅读器打开 60 页 PDF，预置四色高亮与书签，划词翻译/解释给出预置结果 ([10341c5](https://github.com/helixnow/deep-student/commit/10341c588d1e41b1fc5d64a61680a19d4eb3859c))
-* **demo:** 模型与供应商配置演示——13 家预置供应商、掩码密钥、模型分配、嵌入维度与 OCR 引擎内存后端；补 memory_decision_saved 缺失文案 ([bdc82d1](https://github.com/helixnow/deep-student/commit/bdc82d1cb1f58fd8eea7e18df50b64c919818283))
-* **demo:** 演示文案按语言整包打进构建，英文界面用 ?lang=en；未发布的两处在演示里不露出 ([59a51d8](https://github.com/helixnow/deep-student/commit/59a51d8c68297c739143ceb2a63ff31f12c4fe1c))
-* **demo:** 笔记 / 导图章只下用到的文案命名空间（零星单条文案就地补），导图窗口加通知宿主，手机宽度下导图先开大纲、笔记不展开链接面板 ([1e38c27](https://github.com/helixnow/deep-student/commit/1e38c27caee01fafa3619b7a6085f9a4088cedb8))
-* **demo:** 笔记章演示——两门课的笔记库（公式、双链、标签、学习属性、历史版本），工作区标签页、链接面板、图谱、由笔记生成导图都在内存里可用 ([5fab67c](https://github.com/helixnow/deep-student/commit/5fab67cf3e6decabdb007a7a2e81eaa4a4a478fb))
-* **demo:** 设置类演示改走生产的直达分区入口（手机宽度直接进内容页），数据管理开场滚到备份列表 ([5233cc4](https://github.com/helixnow/deep-student/commit/5233cc4883f3186c92901ebf4b8b7e092315c054))
-* **demo:** 调研演示的报告笔记、记忆条目与知识库来源可在右侧只读打开；「记住：……」按原话写入记忆；检索块补工具名与检索词 ([4734585](https://github.com/helixnow/deep-student/commit/4734585044b3ce45a3f7b4fbf3b7d8d6d1d81099))
-* **demo:** 资源库/阅读演示只下用到的文案命名空间，零散键就地补齐；阅读演示接住引用会话查询 ([e43d31f](https://github.com/helixnow/deep-student/commit/e43d31fdc3fe6a3979882a793d8b4fd95a5d7d0d))
-* **demo:** 资源库/阅读演示补通知宿主、划词添加到聊天/存笔记/制卡/框选提问的 mock ([1e78688](https://github.com/helixnow/deep-student/commit/1e78688c43c76df948429054608813aabd5c1093))
-* **demo:** 资源库演示的零散文案补丁 ([5af1f46](https://github.com/helixnow/deep-student/commit/5af1f4654da2631fc42c44ebaa8edad582ad0baf))
-* **demo:** 资源库演示补删除前的引用计数查询 ([7ba11db](https://github.com/helixnow/deep-student/commit/7ba11dbbf4a79469001ba174e043c1ac4545355c))
-* **demo:** 资源库章节演示——按课程分文件夹的一学期资料与内存资源库后端（列表/文件夹/回收站/知识库索引） ([9eca744](https://github.com/helixnow/deep-student/commit/9eca74404febb17073a38256ca0ec9899bf2d3bf))
-* **demo:** 音视频章节演示——线性代数分 P 课 + 本地录音/实验视频，内存后端支撑转写、字幕跳转、B 站导入、讲义与问答 ([ec056c7](https://github.com/helixnow/deep-student/commit/ec056c7487bdd1d2908538a52f126f57d2f29f6f))
-* **demo:** 题目集演示——三个题目集的内存后端（判分、复习计划、练习模式、AI 解析流式） ([e6cba84](https://github.com/helixnow/deep-student/commit/e6cba8411ecd27cd83408edbe3bd8548aad9eef2))
-* **demo:** 题目集演示——错题本、到期错题复习、新建题目与历史记录，桌面专属功能给出提示 ([22da0c7](https://github.com/helixnow/deep-student/commit/22da0c783f5fd3ba3509e8478c8f9a96b264b588))
-* **demo:** 题目集演示只下需要的文案命名空间，补几条跨命名空间文案 ([45e9bd1](https://github.com/helixnow/deep-student/commit/45e9bd175e49b50a1f8364a58cfa56f1ecbb2a4d))
-
-
-### Bug Fixes
-
-* **anki-tasks:** 导出时在保存对话框点取消不再提示「导出失败」 ([309f759](https://github.com/helixnow/deep-student/commit/309f759e12c7951e82ed240071308fa13dea708b))
-* **chat:** 活动时间线里 OpenAlex 学术搜索块不再一律显示成「arXiv 搜索」，按块上的实际工具名显示 ([a9fe41d](https://github.com/helixnow/deep-student/commit/a9fe41dba062208f2ec85c21923a3803fd7869a4))
-* **demo:** Anki 演示的额外模板按 unknown 转型，tsc 不再报类型不重叠 ([5eeafc4](https://github.com/helixnow/deep-student/commit/5eeafc42198829027da9f5175a58ea4ea1962839))
-* **demo:** manifest 只取剧本包顶层的 title（笔记包里示例笔记的 title 被当成了章节名） ([f51491a](https://github.com/helixnow/deep-student/commit/f51491a930f3fe746c6be530c818e804efa9ef4e))
-* **demo:** 今日待复习、知识库检索范围已随 v0.10.x 发布，演示里不再藏 ([c81f725](https://github.com/helixnow/deep-student/commit/c81f72568e9b91c493e34a1c1d35adb88e725074))
-* **demo:** 作文批改演示就绪判断改为条形视图 + 等总分动画走完，海报不再拍到中间值 ([53124c1](https://github.com/helixnow/deep-student/commit/53124c1716055089a9e5f0b2c51161d1768d2688))
-* **demo:** 单应用演示的通用 mock 补 chat_v2_list_runtime_roots（生产构建里笔记、技能页会查） ([c839615](https://github.com/helixnow/deep-student/commit/c83961541679f66abd11081ce6924e2b5be8b2ff))
-* **demo:** 输入框「＋」→ 知识库里的「检索范围」也还没进正式版，演示里一并藏掉 ([8df5770](https://github.com/helixnow/deep-student/commit/8df5770f782c39d70e4b9c26ef48289164e12ade))
-* **demo:** 音视频演示——时间引用改派发到 document、讲义配图对齐幻灯片、片头帧不入讲义 ([7d5d707](https://github.com/helixnow/deep-student/commit/7d5d70756c124eb2b59838aaec71319c1ce18eee))
-* **i18n:** 来源面板「学术论文」分组补文案（原先显示原始键 academic_search） ([35f4239](https://github.com/helixnow/deep-student/commit/35f4239a42c771fbd4903e74e3c1f57bc267a6dc))
-* **settings:** 供应商侧栏给 gemini 类型显示「Google Gemini」，不再露出原始键名 ([36cda8f](https://github.com/helixnow/deep-student/commit/36cda8fd55e68fcb0ffd5d8445fe87baa4016e0b))
-* **todo:** 窄屏下待办统计行（待完成·预计番茄）截断，不再压住右侧工具按钮 ([ccd998a](https://github.com/helixnow/deep-student/commit/ccd998a7640710eab4fc0683b8bd0ca6190de5aa))
-* **workbench:** give AI 仪表盘 its own icon instead of a copy of 对话's ([839b65a](https://github.com/helixnow/deep-student/commit/839b65ad2ee2bee2cebcdfcf763ba67ee4cf4ae9))
-
-
-### Performance Improvements
-
-* **build:** tslib 归入 vendor-micro——之前被 Rollup 放进 vendor-pptx，带下拉框的页面都会顺带下载 1.3MB 的 PPTX 预览与 echarts ([c003045](https://github.com/helixnow/deep-student/commit/c0030455b552f90817d8ce76e4659373a854d611))
-
-## [0.10.3](https://github.com/helixnow/deep-student/compare/v0.10.2...v0.10.3) (2026-10-06)
-
-
-### Features
-
-* **media-studio:** grouping and selection helpers for the library ([497b99c](https://github.com/helixnow/deep-student/commit/497b99ca9147389504a4db4054efffd0c64719ed))
-* **media-studio:** select, select all and group the media library ([b0d6d0d](https://github.com/helixnow/deep-student/commit/b0d6d0d4a415865f648fa70f5533b15110656eb8))
-* **media:** play Bilibili links in the app and sign in to Bilibili by QR ([24ddb80](https://github.com/helixnow/deep-student/commit/24ddb8082e6090dff66edef81395a8def54d20d7))
-
-
-### Bug Fixes
-
-* **chat:** library-referenced PDFs carry their real processing status ([#449](https://github.com/helixnow/deep-student/issues/449)) ([952d0b2](https://github.com/helixnow/deep-student/commit/952d0b27c865ffa7418eff96725d0b99e72e51a6))
-* **kb:** binding a multimodal dimension enables multimodal indexing ([f920307](https://github.com/helixnow/deep-student/commit/f920307c3617c789904c33ddabfe79b46afd2787))
-* **media-studio:** don't repeat the folder name on rows in the grouped view ([b992173](https://github.com/helixnow/deep-student/commit/b9921736d4d4c8566279fde287669dcdd9e3b975))
-* **settings:** probe ASR models on /audio/transcriptions in the connection test ([#444](https://github.com/helixnow/deep-student/issues/444)) ([819e997](https://github.com/helixnow/deep-student/commit/819e99704164dd8636d6ed7490a2e7588558e998))
-* **sync-lease:** say so when the held lease belongs to this device ([#447](https://github.com/helixnow/deep-student/issues/447)) ([f64eae2](https://github.com/helixnow/deep-student/commit/f64eae27bf93694ebb35a6965805733eecb1339e))
-* **sync-ui:** explain a sync lease left behind by this device ([#447](https://github.com/helixnow/deep-student/issues/447)) ([f57c0cb](https://github.com/helixnow/deep-student/commit/f57c0cb35dfe0524cfe6a439193c3686f093930e))
-* **sync-ui:** keep cloud sync progress and cancel visible across settings tab switches ([#447](https://github.com/helixnow/deep-student/issues/447)) ([6e86cc3](https://github.com/helixnow/deep-student/commit/6e86cc39a1b92c0b7834d998b963983722c7a1b5))
-* **sync:** read trigger events from the SQL header so the pin trigger counts as update ([db82e88](https://github.com/helixnow/deep-student/commit/db82e88f3c987cecd7254a01ab476c21613f3090))
-
-## [0.10.2](https://github.com/helixnow/deep-student/compare/v0.10.1...v0.10.2) (2026-10-05)
-
-
-### Features
-
-* **apkg:** carry FSRS progress through .apkg export and import ([9cbf315](https://github.com/helixnow/deep-student/commit/9cbf315ec86ee57e21c9476d9f7cba1b4421ebd0))
-* **asr:** transcribe with the assigned model's own provider; default to Qwen3-ASR-1.7B ([70e7bac](https://github.com/helixnow/deep-student/commit/70e7bac39b512ad1cf89f2943749f85f6ce260c8))
-* **capability:** ASR kind in the model registry; suffix-style and relay ASR ids now match ([4a8fb8d](https://github.com/helixnow/deep-student/commit/4a8fb8d8c9b81dd3ad8eeb7420c24accdc5fd13b))
-* **chat:** 今日待复习 on the mobile empty chat too ([340b26b](https://github.com/helixnow/deep-student/commit/340b26bdc03359105895dc203b8f6d8cb5e8deea))
-* **flashcards:** bury cards, hide buried siblings and play card media while reviewing ([89294bd](https://github.com/helixnow/deep-student/commit/89294bded586f20e3cc6445b293eff2c734eaa89))
-* **flashcards:** review by deck from Today and filter the library by deck ([3e1130f](https://github.com/helixnow/deep-student/commit/3e1130f883d27ce68e4fd5b204357366c1a8b7fc))
-* **flashcards:** true retention by period, memory distributions and study time on statistics ([aabed2d](https://github.com/helixnow/deep-student/commit/aabed2d6a0be8fae2725f40eece3260a531a00bd))
-* **flashcards:** view source and ask AI while reviewing; learn a batch of new cards today ([f41466c](https://github.com/helixnow/deep-student/commit/f41466cd682ac137cce6becbb709fa786ddbc996))
-* **fsrs:** schedule with FSRS-6 via fsrs-rs, Anki learning steps and a parameter optimizer ([6d4209e](https://github.com/helixnow/deep-student/commit/6d4209e29d20606cb77853a01785d79e7d42b578))
-* **media-studio:** cover thumbnails and steadier rows in the library ([4f86640](https://github.com/helixnow/deep-student/commit/4f86640611caae5911bbebcb1a829a779c2024a2))
-* **media-studio:** import from a Bilibili link and watch link items in an embedded player ([7f6c694](https://github.com/helixnow/deep-student/commit/7f6c69465825d63263f665a843a1d9c62f5ec3a1))
-* **media-studio:** import several parts of a Bilibili collection at once ([20a7392](https://github.com/helixnow/deep-student/commit/20a7392f851dc1126f9f105c5172066c0d31526a))
-* **media:** hand playback off when jumping from the library view to the Media study page ([4918717](https://github.com/helixnow/deep-student/commit/4918717b2c9ea3e5a6ff149c7e797ec6e7c1471d))
-* **media:** media_library_list and media_related_notes commands for the media sub-app ([8998887](https://github.com/helixnow/deep-student/commit/8998887fd90e7a57f49f0cc7c36744bf71b07ea9))
-* **media:** subtitles from a Bilibili link without downloading; link items stay VFS files ([bcfa286](https://github.com/helixnow/deep-student/commit/bcfa2862770d34218834f7455c07631f78c72b8e))
-* **media:** 音视频 sub-app — library, study page and entry points ([d180308](https://github.com/helixnow/deep-student/commit/d180308fad7215c2fee8e9e7647204916b3cc2a1))
-* **mindmap:** turn the blanks you could not recall into flashcards ([3296b3c](https://github.com/helixnow/deep-student/commit/3296b3c6b92dfbdad5fd6d1b2be138422b7bd671))
-* **notes:** mark a due note reviewed and pick the next date from 近期复习 ([32f4580](https://github.com/helixnow/deep-student/commit/32f45800f113a9edc202884f4079f23a042a96a2))
-* **notes:** open a knowledge-base citation at the passage it quotes ([2f716ab](https://github.com/helixnow/deep-student/commit/2f716ab516808e1b57cead7de349000d9de7dba5))
-* **pdf:** ask about a region of a page by dragging a box around it ([ea94c75](https://github.com/helixnow/deep-student/commit/ea94c757411c0c1b75ba2a02c05ff5ed26e68928))
-* **practice:** one mistake book across all question sets ([16b8782](https://github.com/helixnow/deep-student/commit/16b8782dad8daf48cb6c8350c6c95142aa441001))
-* **practice:** redo a batch of mistakes as one set from the mistake book ([cd39199](https://github.com/helixnow/deep-student/commit/cd391992ded885d4b0a190e48b8d547cca29e990))
-* **practice:** render formulas in each question set's mistake view ([d5a284b](https://github.com/helixnow/deep-student/commit/d5a284b0db865866b5fbc33f48030b19f5f1cc70))
-* **practice:** render formulas in the mistake book ([d88c16a](https://github.com/helixnow/deep-student/commit/d88c16a9cbb473ee25f93bc14136534389bd1e74))
-* **practice:** 问 AI 讲解 and 生成同类题 open a fresh conversation ([67b8104](https://github.com/helixnow/deep-student/commit/67b810415f9fd931842c342f138c42dfe8d1f83a))
-* **qbank:** show due review counts on 复习计划 and the 更多 tab ([34447bd](https://github.com/helixnow/deep-student/commit/34447bd9719ad5f1d56bd79a69661ec1e224562b))
-* **review:** answer before revealing in the mistake review ([0abb078](https://github.com/helixnow/deep-student/commit/0abb07892c1648bf1e0d5671c0c49f0fec7d5319))
-* **today:** a dismissible three-step starter on the chat home for brand-new learners ([c7c290a](https://github.com/helixnow/deep-student/commit/c7c290a5494881fface99dad920ec4ab3d4cad11))
-* **today:** open due reviews on the study desktop and review all due mistakes in one go ([900b1a5](https://github.com/helixnow/deep-student/commit/900b1a5f51779c0389acbe4333286add85bcaa80))
-* **today:** tapping the learning reminder opens the review it is about ([3e244b7](https://github.com/helixnow/deep-student/commit/3e244b7fcb43f16a25f510dd4b7a4f3e86acf6eb))
-* **today:** weak spots and the weekly report on the chat home; weak-spot practice lands in the question bank ([d68050d](https://github.com/helixnow/deep-student/commit/d68050de6e706f982cc717d35b832621277276f1))
-* **today:** weekly report counts presence-based study time, not only pomodoro focus ([1ad9ef5](https://github.com/helixnow/deep-student/commit/1ad9ef5fa5b0f0b421bc0239b8a408672efe7446))
-* **todo:** link notes, textbooks and question sets to a todo ([b5032ac](https://github.com/helixnow/deep-student/commit/b5032ac64c1b0e9a489d02e30f3afc18ff7ffa63))
-* **todo:** tapping a todo reminder opens that todo ([50e8a15](https://github.com/helixnow/deep-student/commit/50e8a1582d2a3c81af1996bffcbb0e2ccba590a6))
-* **translation:** selectable bilingual text with the shared selection toolbar ([f595f39](https://github.com/helixnow/deep-student/commit/f595f393776eb08c1d436be06c4609a0f03b76d8))
-* **workbench:** a compact learning briefing on the desktop ([ef5779a](https://github.com/helixnow/deep-student/commit/ef5779acde23f6af79f078a3d56ed0587b31ed83))
-* **workbench:** quieter empty desktop; collapse and hide each desktop widget ([06b2d78](https://github.com/helixnow/deep-student/commit/06b2d7800458a83d96874b310b624c1c7299da86))
-* **workbench:** status bar rhythm and desktop briefing count due mistakes and notes ([99468e1](https://github.com/helixnow/deep-student/commit/99468e124b7bfcb885a53de92299e4e87307a9f2))
-
-
-### Bug Fixes
-
-* **command-palette:** 跳转资源库的命令改用应用名「资源库 / Files」，搜索仍认「学习中心 / hub」 ([c6fec16](https://github.com/helixnow/deep-student/commit/c6fec166d24462c4b12b096d63cad0137790d88c))
-* **i18n:** mirror plural keys in the zh-CN mediaStudio namespace ([7a9047e](https://github.com/helixnow/deep-student/commit/7a9047e3ad5158875eac2b0c58c9cc84c84afb74))
-* **learning-hub:** let 导入资料… pick audio, video and images ([fe3a919](https://github.com/helixnow/deep-student/commit/fe3a91942d8d8ab08083a4c3b2ede5516a24f335))
-* **learning-hub:** 待复习笔记 and 查看全部错题 land on the right category in the classic shell ([1cf453f](https://github.com/helixnow/deep-student/commit/1cf453f7c50b4dd253030eed33a540e92b64d5e2))
-* **llm:** keep reasoning passback intact around in-loop skill anchors ([#437](https://github.com/helixnow/deep-student/issues/437)) ([505a26b](https://github.com/helixnow/deep-student/commit/505a26b9b7f9d33a74dff51ef8e53776d49240cf))
-* **media-studio:** load the Bilibili cover on first parse ([654600c](https://github.com/helixnow/deep-student/commit/654600c726103ce24a85387772969c365b778022))
-* **media:** attach the lecture without delay when chat is already a blank draft ([81909b8](https://github.com/helixnow/deep-student/commit/81909b8cafe026d760f6f36a2c0ddfe971d7c5b1))
-* **media:** serve large audio/video ranges in 16 MB chunks so multi-GB lectures play in-app ([425ea2b](https://github.com/helixnow/deep-student/commit/425ea2b189af79a5ccfdc5077faa95b5d67fe80f))
-* **media:** show a library row's status chip once ([f906b21](https://github.com/helixnow/deep-student/commit/f906b214967b5dc811ed4f3167e72a0b46db3bc4))
-* **mobile:** Android back closes the mistakes review; notes 复习完成 fits narrow lists ([d9b7f6d](https://github.com/helixnow/deep-student/commit/d9b7f6d3a748518a2f6964e67e55e4037dd53b62))
-* **pdf:** scope .ds-search-input rules to the PDF search bar ([6c206f8](https://github.com/helixnow/deep-student/commit/6c206f890f8dbc3048c066eb4bef755b2ab34aa3))
-* **qbank:** refresh an open question set after importing questions from chat ([c2adcbc](https://github.com/helixnow/deep-student/commit/c2adcbcefec3f683b2a6b6cb337ee0f3faf6c48d))
-* **review:** background practice and flashcard shortcuts yield to modal review layers ([ddcdb83](https://github.com/helixnow/deep-student/commit/ddcdb83da256ae822187ace933c0ee8206bc958a))
-* **review:** make the picked option in the mistake review visible in dark mode ([a2fce64](https://github.com/helixnow/deep-student/commit/a2fce64e54da224db2b28327b5f8c7bdb4440928))
-* **review:** show choice options in the SM-2 mistake review ([0576471](https://github.com/helixnow/deep-student/commit/057647117a9a6314f07532dc49dd9b658905a250))
-* **today:** keep 本周周报 on the chat home for learners with history ([9dd7897](https://github.com/helixnow/deep-student/commit/9dd789778315d2a324d593237128b83a383deff7))
-* **today:** stop counting overdue mistakes twice in 今日学习 ([214cbaf](https://github.com/helixnow/deep-student/commit/214cbaf10351148847127152cb210a7f10cb9a16))
-* **today:** 到期卡片 lands on the flashcards Today screen in both shells ([ac373f5](https://github.com/helixnow/deep-student/commit/ac373f5a84f3eaaeb06d5bda4d2f37bffa5373f0))
-* **ui:** mistake rows and todo links actually left-align and size to content ([c27423f](https://github.com/helixnow/deep-student/commit/c27423fc805f9823bc14f8fa25c9b60b5bc262c5))
-* **workbench:** give 音视频 and AI 仪表盘 their illustrated icons in the launcher and Dock ([2336800](https://github.com/helixnow/deep-student/commit/233680061416f437813514204c96e7607c28d303))
-
-
-### Performance Improvements
-
-* **flashcards:** resolve each task's deck once instead of once per card ([b5e6069](https://github.com/helixnow/deep-student/commit/b5e6069daa3f1c3e236a2f108717dcffb87b9808))
+* **reasoning:** unify thinking levels across all channels with backend-side mapping ([38bcb80](https://github.com/helixnow/deep-student/commit/38bcb80ba3865f8d37b702450888e8089417aa8a)), closes [#427](https://github.com/helixnow/deep-student/issues/427)
 
 ## [0.10.1](https://github.com/helixnow/deep-student/compare/v0.10.0...v0.10.1) (2026-10-05)
 
