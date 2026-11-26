@@ -40,12 +40,14 @@ export type ProbeCommandRunner = (
 ) => Promise<ProbeCommandResult>;
 
 export type FileExistsPort = (filePath: string) => Promise<boolean>;
+export type ReadTextFilePort = (filePath: string) => Promise<string | null>;
 
 export interface CliProberOptions {
   readonly ttlMs?: number;
   readonly timeoutMs?: number;
   readonly commandRunner?: ProbeCommandRunner;
   readonly fileExists?: FileExistsPort;
+  readonly readTextFile?: ReadTextFilePort;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;
   readonly platform?: NodeJS.Platform;
@@ -192,12 +194,45 @@ const BUILT_IN_DESCRIPTORS: readonly BuiltInCliDescriptor[] = [
   },
 ];
 
+export const DRIVER_CURATED_MODELS: Readonly<
+  Record<Exclude<ExternalAgentDriverKind, 'custom'>, readonly string[]>
+> = {
+  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  codex: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'o4-mini'],
+  opencode: [
+    'anthropic/claude-sonnet-4-6',
+    'anthropic/claude-opus-4-6',
+    'openai/gpt-5.4',
+    'google/gemini-2.5-pro',
+    'deepseek/deepseek-chat',
+  ],
+  pi: [
+    'claude-sonnet-4-6',
+    'claude-opus-4-6',
+    'gpt-5.4',
+    'gemini-2.5-pro',
+    'deepseek-chat',
+  ],
+  agy: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  dsh: ['deepseek-chat', 'deepseek-reasoner'],
+};
+
 async function defaultFileExists(filePath: string): Promise<boolean> {
   try {
     const stat = await fs.stat(filePath);
     return stat.isFile();
   } catch (err) {
     return err instanceof Error ? false : false;
+  }
+}
+
+async function defaultReadTextFile(filePath: string): Promise<string | null> {
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile() || stat.size > 512_000) return null;
+    return await fs.readFile(filePath, 'utf8');
+  } catch {
+    return null;
   }
 }
 
@@ -478,6 +513,7 @@ export class CliAgentProber {
   private readonly timeoutMs: number;
   private readonly commandRunner: ProbeCommandRunner;
   private readonly fileExists: FileExistsPort;
+  private readonly readTextFile: ReadTextFilePort;
   private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly homeDir: string;
   private readonly now: () => number;
@@ -498,6 +534,7 @@ export class CliAgentProber {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     this.commandRunner = options.commandRunner ?? createDefaultProbeCommandRunner(platform);
     this.fileExists = options.fileExists ?? defaultFileExists;
+    this.readTextFile = options.readTextFile ?? defaultReadTextFile;
     this.homeDir = options.homeDir ?? os.homedir();
     this.env = augmentEnvWithPosixUserPath(options.env ?? process.env, this.homeDir, platform);
     this.now = options.now ?? Date.now;
@@ -600,8 +637,11 @@ export class CliAgentProber {
       };
     }
 
-    const capabilities = await this.detectRefinedCapabilities(desc);
-    const auth = await this.detectAuthHint(desc.id, desc.command);
+    const [capabilities, auth, modelCatalog] = await Promise.all([
+      this.detectRefinedCapabilities(desc),
+      this.detectAuthHint(desc.id, desc.command),
+      this.detectDriverModels(desc.id),
+    ]);
 
     return {
       id: desc.id,
@@ -613,9 +653,152 @@ export class CliAgentProber {
       version,
       authStatus: auth.status,
       authHint: auth.hint,
+      defaultModel: modelCatalog.defaultModel,
+      availableModels: modelCatalog.availableModels,
       capabilities,
       probedAt,
     };
+  }
+
+  private async detectDriverModels(
+    driver: Exclude<ExternalAgentDriverKind, 'custom'>,
+  ): Promise<{ defaultModel: string | null; availableModels: string[] }> {
+    let defaultModel: string | null = null;
+    const probedModels: string[] = [];
+
+    const addCandidate = (value: unknown) => {
+      if (typeof value !== 'string') return;
+      const trimmed = value.trim();
+      if (trimmed) probedModels.push(trimmed);
+    };
+
+    try {
+      if (driver === 'claude') {
+        const envModel = this.env.ANTHROPIC_MODEL?.trim();
+        if (envModel) {
+          defaultModel = envModel;
+          addCandidate(envModel);
+        }
+        const rawSettings = await this.readTextFile(
+          path.join(this.homeDir, '.claude', 'settings.json'),
+        );
+        if (rawSettings) {
+          const parsed = JSON.parse(rawSettings) as Record<string, unknown>;
+          const settingsEnv =
+            parsed.env && typeof parsed.env === 'object'
+              ? (parsed.env as Record<string, unknown>)
+              : undefined;
+          const configuredDefault =
+            (typeof parsed.model === 'string' && parsed.model.trim()) ||
+            (typeof settingsEnv?.ANTHROPIC_MODEL === 'string' && settingsEnv.ANTHROPIC_MODEL.trim()) ||
+            null;
+          if (!defaultModel && configuredDefault) {
+            defaultModel = configuredDefault;
+          }
+          addCandidate(parsed.model);
+          addCandidate(settingsEnv?.ANTHROPIC_MODEL);
+          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_OPUS_MODEL);
+          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_SONNET_MODEL);
+          addCandidate(settingsEnv?.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+          addCandidate(settingsEnv?.ANTHROPIC_SMALL_FAST_MODEL);
+        }
+      } else if (driver === 'codex') {
+        const rawToml = await this.readTextFile(
+          path.join(this.homeDir, '.codex', 'config.toml'),
+        );
+        if (rawToml) {
+          const modelMatch = rawToml.match(/^\s*model\s*=\s*["']([^"'\r\n]+)["']/m);
+          if (modelMatch?.[1]?.trim()) {
+            defaultModel = modelMatch[1].trim();
+            addCandidate(defaultModel);
+          }
+        }
+      } else if (driver === 'opencode') {
+        const xdgConfig = this.env.XDG_CONFIG_HOME || path.join(this.homeDir, '.config');
+        const rawJson = await this.readTextFile(
+          path.join(xdgConfig, 'opencode', 'opencode.json'),
+        );
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson) as Record<string, unknown>;
+          if (typeof parsed.model === 'string' && parsed.model.trim()) {
+            defaultModel = parsed.model.trim();
+            addCandidate(defaultModel);
+          }
+          if (typeof parsed.small_model === 'string' && parsed.small_model.trim()) {
+            addCandidate(parsed.small_model.trim());
+          }
+          if (parsed.provider && typeof parsed.provider === 'object') {
+            for (const [providerId, providerVal] of Object.entries(
+              parsed.provider as Record<string, unknown>,
+            )) {
+              if (!providerVal || typeof providerVal !== 'object') continue;
+              const modelsObj = (providerVal as Record<string, unknown>).models;
+              if (modelsObj && typeof modelsObj === 'object') {
+                for (const modelKey of Object.keys(modelsObj as Record<string, unknown>)) {
+                  if (modelKey.trim()) {
+                    addCandidate(`${providerId}/${modelKey.trim()}`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (driver === 'pi') {
+        const rawSettings = await this.readTextFile(
+          path.join(this.homeDir, '.pi', 'agent', 'settings.json'),
+        );
+        if (rawSettings) {
+          const parsed = JSON.parse(rawSettings) as Record<string, unknown>;
+          const configured =
+            (typeof parsed.defaultModel === 'string' && parsed.defaultModel.trim()) ||
+            (typeof parsed.model === 'string' && parsed.model.trim()) ||
+            null;
+          if (configured) {
+            defaultModel = configured;
+            addCandidate(configured);
+          }
+        }
+      } else if (driver === 'agy') {
+        const rawSettings = await this.readTextFile(
+          path.join(this.homeDir, '.gemini', 'antigravity', 'settings.json'),
+        );
+        if (rawSettings) {
+          const parsed = JSON.parse(rawSettings) as Record<string, unknown>;
+          if (typeof parsed.model === 'string' && parsed.model.trim()) {
+            defaultModel = parsed.model.trim();
+            addCandidate(defaultModel);
+          }
+        }
+      } else if (driver === 'dsh') {
+        const rawConfig = await this.readTextFile(
+          path.join(this.homeDir, '.dsh', 'config.json'),
+        );
+        if (rawConfig) {
+          const parsed = JSON.parse(rawConfig) as Record<string, unknown>;
+          if (typeof parsed.model === 'string' && parsed.model.trim()) {
+            defaultModel = parsed.model.trim();
+            addCandidate(defaultModel);
+          }
+        }
+      }
+    } catch {
+      // Never fail probing due to malformed user config files.
+    }
+
+    const seen = new Set<string>();
+    const availableModels: string[] = [];
+    for (const item of [
+      ...(defaultModel ? [defaultModel] : []),
+      ...probedModels,
+      ...DRIVER_CURATED_MODELS[driver],
+    ]) {
+      const clean = item.trim();
+      if (!clean || seen.has(clean)) continue;
+      seen.add(clean);
+      availableModels.push(clean);
+    }
+
+    return { defaultModel, availableModels };
   }
 
   private async detectRefinedCapabilities(

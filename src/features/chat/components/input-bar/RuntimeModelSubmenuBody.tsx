@@ -27,6 +27,31 @@ import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import { useFavoriteChatModels } from '../../hooks/useFavoriteChatModels';
 
 export const CLI_ENGINE_ID_PREFIX = 'cli-agent:';
+export const CLI_MODEL_DELIMITER = '::model:';
+
+export function parseCliModelSelectionId(rawId: string): {
+  cliAgentId: string;
+  cliModel: string | null;
+} | null {
+  if (!rawId.startsWith(CLI_ENGINE_ID_PREFIX)) return null;
+  const rest = rawId.slice(CLI_ENGINE_ID_PREFIX.length);
+  const delimiterIdx = rest.indexOf(CLI_MODEL_DELIMITER);
+  if (delimiterIdx === -1) {
+    const cliAgentId = rest.trim();
+    return cliAgentId ? { cliAgentId, cliModel: null } : null;
+  }
+  const cliAgentId = rest.slice(0, delimiterIdx).trim();
+  const cliModel = rest.slice(delimiterIdx + CLI_MODEL_DELIMITER.length).trim() || null;
+  return cliAgentId ? { cliAgentId, cliModel } : null;
+}
+
+export function formatCliModelSelectionId(cliAgentId: string, cliModel?: string | null): string {
+  const cleanAgent = cliAgentId.trim();
+  const cleanModel = cliModel?.trim();
+  return cleanModel
+    ? `${CLI_ENGINE_ID_PREFIX}${cleanAgent}${CLI_MODEL_DELIMITER}${cleanModel}`
+    : `${CLI_ENGINE_ID_PREFIX}${cleanAgent}`;
+}
 
 export interface RuntimeModelOption {
   id: string;
@@ -39,6 +64,14 @@ export interface RuntimeModelOption {
   recentRank?: number;
   /** 是否为本地外部编程 CLI 引擎（如 cli-agent:codex） */
   isExternalCli?: boolean;
+  /** 本地外部 CLI 引擎 ID（如 'claude', 'codex'） */
+  cliAgentId?: string;
+  /** 本地外部 CLI 驱动类型 */
+  cliDriverKind?: string;
+  /** CLI 本地配置文件探测出的默认模型 */
+  cliDefaultModel?: string | null;
+  /** CLI 可选模型列表（探测 + 官方常用模型去重） */
+  cliAvailableModels?: readonly string[];
 }
 
 export interface RuntimeModelMultiSelectConfig {

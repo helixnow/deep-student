@@ -1,26 +1,31 @@
 /**
- * T3ModelSelectorPopover - T3 Code 风格三栏统一模型 / 编程 CLI / 推理强度 / 权限档位选择器
+ * T3ModelSelectorPopover - T3 Code 风格三栏统一模型 / 编程 CLI（含二级模型选择）/ 推理强度 / 运行时底栏选择器
  *
  * 布局与自适应策略：
  * 1. 外壳宽高由父级按当前聊天栏宽度与触发器上下可视空间锁定（wide / medium / compact 三档），
- *    切换左侧供应商、收藏或搜索时外框宽高零变化，彻底消除浮层重排与闪烁。
- * 2. wide (>=560px)：标准三栏（48px 图标轨 + 自适应模型列表 + 192px 推理强度栏）
- *    medium (420..559px)：紧凑三栏（40px 图标轨 + 自适应模型列表 + 146px 推理强度栏）
- *    compact (<420px / 移动端)：双栏（40px 图标轨 + 模型列表）+ 底部单行横向可滚推理强度条
- * 3. 深浅色品牌图标自适应：多色品牌保留原色，单色深底品牌（OpenAI / OpenCode / xAI / Ollama）跟随前景色，
- *    Anthropic / Claude 使用高辨识度陶土橙品牌色（#D97757），避免深色主题下黑底黑字。
+ *    切换左侧供应商、收藏、CLI 二级展开或搜索时外框宽高零变化，彻底消除浮层重排与闪烁。
+ * 2. wide (>=510px)：标准三栏（48px 图标轨 + 自适应模型/CLI 列表 + 192px 推理强度栏）
+ *    medium (388..509px)：紧凑三栏（40px 图标轨 + 自适应模型/CLI 列表 + 148px 推理强度栏）
+ *    compact (<388px / 移动端)：双栏（40px 图标轨 + 模型/CLI 列表）+ 底部单行横向可滚推理强度条
+ * 3. 本地编程 CLI 二级模型展开：左侧归并为单一终端图标，点击某个 CLI 即在中间栏原位下钻展示其
+ *    「跟随默认配置 + 探测/官方模型 + 自定义模型 ID」，右栏联动该 CLI 的推理强度档位。
+ * 4. 底栏收敛全局运行时控制：左侧「联网 / 多选 / 参数」，右侧「权限档位（谨慎 / 宽松 / 完全访问）」。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  CaretLeft,
+  CaretRight,
   CaretUp,
   Check,
+  Globe,
   MagnifyingGlass,
   Shield,
   ShieldCheck,
   ShieldSlash,
   ShieldWarning,
+  SlidersHorizontal,
   SquaresFour,
   Star,
   TerminalWindow,
@@ -29,6 +34,15 @@ import {
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  formatCompactCliModelName,
+  resolveCliAvailableModels,
+  resolveCliReasoningLevels,
+  selectSelectedCliEffortForSession,
+  selectSelectedCliModelForSession,
+  useAgentMeshStore,
+  type CliReasoningEffortLevel,
+} from '@/features/agent-mesh';
 import { cn } from '@/lib/utils';
 import {
   detectProviderBrand,
@@ -40,6 +54,8 @@ import type { PermissionPreset } from '../../core/types/store';
 import { useFavoriteChatModels } from '../../hooks/useFavoriteChatModels';
 import {
   CLI_ENGINE_ID_PREFIX,
+  formatCliModelSelectionId,
+  parseCliModelSelectionId,
   type RuntimeModelMultiSelectConfig,
   type RuntimeModelOption,
 } from './RuntimeModelSubmenuBody';
@@ -54,6 +70,14 @@ const PERMISSION_PRESET_ORDER: PermissionPreset[] = [
 const FAVORITES_RAIL_KEY = '__favorites__';
 const ALL_RAIL_KEY = '__all__';
 const CODING_CLI_RAIL_KEY = '__coding_cli__';
+
+const CLI_EFFORT_FALLBACK_LABELS: Readonly<Record<CliReasoningEffortLevel, string>> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '超高',
+};
 
 /** 单色黑标品牌在深色背景上使用 currentColor 才能保持清晰对比度 */
 const MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<ProviderBrand>([
@@ -94,6 +118,9 @@ export interface T3ModelSelectorPopoverProps {
   thinkingDepthValue?: ReasoningLevel;
   onToggleThinking?: () => void;
   onSetThinkingDepth?: (value: ReasoningLevel | 'off') => void;
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  onOpenAdvancedPanel?: () => void;
   sessionId?: string;
   permissionPreset: PermissionPreset;
   onPermissionPresetChange?: (
@@ -113,6 +140,14 @@ interface RailGroup {
   iconModelId?: string;
   isCodingCli?: boolean;
   models: T3ModelSelectorOption[];
+}
+
+interface CliSubModelRow {
+  key: string;
+  label: string;
+  modelValue: string | null;
+  badge?: string | null;
+  isCustom?: boolean;
 }
 
 /**
@@ -177,6 +212,12 @@ export function renderAdaptiveBrandGlyph(modelId: string, size: number): React.R
 
 function isCliOption(option: T3ModelSelectorOption): boolean {
   return Boolean(option.isExternalCli || option.id.startsWith(CLI_ENGINE_ID_PREFIX));
+}
+
+function extractCliAgentId(option: T3ModelSelectorOption): string {
+  if (option.cliAgentId?.trim()) return option.cliAgentId.trim();
+  const parsed = parseCliModelSelectionId(option.id);
+  return parsed?.cliAgentId ?? option.id.trim();
 }
 
 function resolveOptionBrand(option: T3ModelSelectorOption): ProviderBrand {
@@ -256,6 +297,10 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   thinkingDepthValue,
   onToggleThinking,
   onSetThinkingDepth,
+  webSearchEnabled,
+  onWebSearchEnabledChange,
+  onOpenAdvancedPanel,
+  sessionId,
   permissionPreset,
   onPermissionPresetChange,
   onRequestClose,
@@ -266,6 +311,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
 }) => {
   const { t } = useTranslation(['chatV2', 'agentMesh', 'settings', 'common']);
   const { favoriteIds, toggleFavorite } = useFavoriteChatModels();
+
+  const storeCliModel = useAgentMeshStore((s) => selectSelectedCliModelForSession(s, sessionId));
+  const storeCliEffort = useAgentMeshStore((s) => selectSelectedCliEffortForSession(s, sessionId));
+
+  // 无 sessionId 场景（独立组件单测）下的本地回退状态
+  const [fallbackCliModel, setFallbackCliModel] = useState<string | null>(null);
+  const [fallbackCliEffort, setFallbackCliEffort] = useState<string | null>(null);
+
+  const effectiveCliModel = sessionId ? storeCliModel : fallbackCliModel;
+  const effectiveCliEffort = sessionId ? storeCliEffort : fallbackCliEffort;
 
   const effectiveTier: T3PopoverLayoutTier =
     layoutTier ?? (isMobile ? 'compact' : 'wide');
@@ -299,6 +354,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   const cliGroupLabel = t('agentMesh:picker.localCodingCli', {
     defaultValue: '本地编程 CLI',
   });
+
+  const currentCliSelection = useMemo(
+    () => (currentModelId ? parseCliModelSelectionId(currentModelId) : null),
+    [currentModelId],
+  );
 
   // 清洗与去重（保持与 RuntimeModelSubmenuBody 一致的幂等去重规则）
   const sanitizedOptions = useMemo<T3ModelSelectorOption[]>(() => {
@@ -363,6 +423,10 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   }, [cliGroupLabel, otherProviderLabel, sanitizedOptions]);
 
   const defaultRailKey = useMemo(() => {
+    if (currentCliSelection) {
+      const hasCliGroup = railGroups.some((g) => g.key === CODING_CLI_RAIL_KEY);
+      if (hasCliGroup) return CODING_CLI_RAIL_KEY;
+    }
     if (currentModelId) {
       const currentOption = sanitizedOptions.find((item) => item.id === currentModelId);
       if (currentOption) {
@@ -370,9 +434,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       }
     }
     return railGroups[0]?.key ?? ALL_RAIL_KEY;
-  }, [cliGroupLabel, currentModelId, otherProviderLabel, railGroups, sanitizedOptions]);
+  }, [cliGroupLabel, currentCliSelection, currentModelId, otherProviderLabel, railGroups, sanitizedOptions]);
 
   const [activeRailKey, setActiveRailKey] = useState<string>(defaultRailKey);
+  const [drilledCliAgentId, setDrilledCliAgentId] = useState<string | null>(
+    () => currentCliSelection?.cliAgentId ?? null,
+  );
 
   useEffect(() => {
     if (activeRailKey === FAVORITES_RAIL_KEY || activeRailKey === ALL_RAIL_KEY) return;
@@ -382,18 +449,44 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   }, [activeRailKey, defaultRailKey, railGroups]);
 
   useEffect(() => {
+    if (!drilledCliAgentId) return;
+    const stillExists = sanitizedOptions.some(
+      (opt) => isCliOption(opt) && extractCliAgentId(opt) === drilledCliAgentId,
+    );
+    if (!stillExists) {
+      setDrilledCliAgentId(currentCliSelection?.cliAgentId ?? null);
+    }
+  }, [currentCliSelection?.cliAgentId, drilledCliAgentId, sanitizedOptions]);
+
+  useEffect(() => {
     if (isMobile) return;
     const frame = requestAnimationFrame(() => {
       searchInputRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [isMobile]);
+  }, [isMobile, drilledCliAgentId]);
 
-  const keyword = search.trim().toLowerCase();
+  const drilledCliOption = useMemo<T3ModelSelectorOption | null>(() => {
+    if (!drilledCliAgentId || activeRailKey !== CODING_CLI_RAIL_KEY || multiActive) {
+      return null;
+    }
+    return (
+      sanitizedOptions.find(
+        (opt) => isCliOption(opt) && extractCliAgentId(opt) === drilledCliAgentId,
+      ) ?? null
+    );
+  }, [activeRailKey, drilledCliAgentId, multiActive, sanitizedOptions]);
 
+  const trimmedSearch = search.trim();
+  const keyword = trimmedSearch.toLowerCase();
+
+  // 一级模型 / CLI 列表过滤
   const visibleModels = useMemo<T3ModelSelectorOption[]>(() => {
+    const basePool = multiActive
+      ? sanitizedOptions.filter((model) => !isCliOption(model))
+      : sanitizedOptions;
     if (keyword) {
-      return sanitizedOptions.filter((model) =>
+      return basePool.filter((model) =>
         [model.label, model.providerLabel, model.id]
           .filter((v): v is string => typeof v === 'string' && v.length > 0)
           .join(' ')
@@ -402,38 +495,153 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       );
     }
     if (activeRailKey === FAVORITES_RAIL_KEY) {
-      return sanitizedOptions.filter(
+      return basePool.filter(
         (model) => !isCliOption(model) && favoriteIds.has(model.id),
       );
     }
     if (activeRailKey === ALL_RAIL_KEY) {
-      return sanitizedOptions;
+      return basePool;
     }
     const matchedGroup = railGroups.find((g) => g.key === activeRailKey);
-    return matchedGroup ? matchedGroup.models : sanitizedOptions;
-  }, [activeRailKey, favoriteIds, keyword, railGroups, sanitizedOptions]);
+    if (!matchedGroup) return basePool;
+    return multiActive
+      ? matchedGroup.models.filter((model) => !isCliOption(model))
+      : matchedGroup.models;
+  }, [activeRailKey, favoriteIds, keyword, multiActive, railGroups, sanitizedOptions]);
+
+  // 二级 CLI 模型列表构建（默认跟随项 + 探测/预设项 + 任意自定义模型 ID）
+  const cliSubModelRows = useMemo<CliSubModelRow[]>(() => {
+    if (!drilledCliOption) return [];
+    const cliAgentId = extractCliAgentId(drilledCliOption);
+    const catalog =
+      drilledCliOption.cliAvailableModels && drilledCliOption.cliAvailableModels.length > 0
+        ? [...drilledCliOption.cliAvailableModels]
+        : resolveCliAvailableModels({
+            id: cliAgentId,
+            driverKind: (drilledCliOption.cliDriverKind as any) || 'custom',
+            defaultModel: drilledCliOption.cliDefaultModel ?? null,
+          });
+
+    const rows: CliSubModelRow[] = [];
+    const followDefaultLabel = t('chatV2:modelPicker.t3.cliFollowDefault', {
+      defaultValue: '跟随 CLI 默认配置',
+    });
+    const defaultBadge =
+      drilledCliOption.cliDefaultModel?.trim() ||
+      t('chatV2:modelPicker.t3.cliDefaultTag', { defaultValue: '默认' });
+
+    if (
+      !keyword ||
+      followDefaultLabel.toLowerCase().includes(keyword) ||
+      'default'.includes(keyword) ||
+      defaultBadge.toLowerCase().includes(keyword)
+    ) {
+      rows.push({
+        key: '__cli_default__',
+        label: followDefaultLabel,
+        modelValue: null,
+        badge: defaultBadge,
+      });
+    }
+
+    for (const modelId of catalog) {
+      if (!keyword || modelId.toLowerCase().includes(keyword)) {
+        rows.push({
+          key: `preset:${modelId}`,
+          label: modelId,
+          modelValue: modelId,
+          badge:
+            drilledCliOption.cliDefaultModel &&
+            drilledCliOption.cliDefaultModel.trim() === modelId
+              ? t('chatV2:modelPicker.t3.cliDefaultTag', { defaultValue: '默认' })
+              : null,
+        });
+      }
+    }
+
+    if (
+      trimmedSearch.length > 0 &&
+      !catalog.some((m) => m.toLowerCase() === keyword)
+    ) {
+      rows.push({
+        key: `custom:${trimmedSearch}`,
+        label: t('chatV2:modelPicker.t3.cliCustomModel', {
+          model: trimmedSearch,
+          defaultValue: `使用自定义模型 "${trimmedSearch}"`,
+        }),
+        modelValue: trimmedSearch,
+        isCustom: true,
+      });
+    }
+
+    return rows;
+  }, [drilledCliOption, keyword, t, trimmedSearch]);
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [keyword, activeRailKey]);
+  }, [keyword, activeRailKey, drilledCliAgentId]);
+
+  const commitCliModelSelection = useCallback(
+    (cliAgentId: string, cliModel: string | null, shouldClose: boolean) => {
+      if (disabled) return;
+      if (sessionId) {
+        const meshActions = useAgentMeshStore.getState();
+        meshActions.setSelectedCliForSession(sessionId, cliAgentId);
+        meshActions.setSelectedCliModelForSession(sessionId, cliModel);
+      } else {
+        setFallbackCliModel(cliModel);
+      }
+      onSelectModel?.(formatCliModelSelectionId(cliAgentId, cliModel));
+      if (shouldClose) {
+        onRequestClose?.();
+      }
+    },
+    [disabled, onRequestClose, onSelectModel, sessionId],
+  );
 
   const handlePickRow = useCallback(
     (model: T3ModelSelectorOption) => {
       if (disabled) return;
-      if (multiActive && multiSelect) {
-        if (isCliOption(model)) {
+      if (isCliOption(model)) {
+        const cliAgentId = extractCliAgentId(model);
+        if (multiActive && multiSelect) {
           multiSelect.onActiveChange(false);
-          onSelectModel?.(model.id);
-          onRequestClose?.();
-          return;
         }
+        const preserveModel =
+          currentCliSelection?.cliAgentId === cliAgentId ? effectiveCliModel : null;
+        // 立即激活该 CLI 引擎，并在中间栏原位下钻展开其二级模型列表（零宽高跳变）
+        commitCliModelSelection(cliAgentId, preserveModel, false);
+        setSearch('');
+        setActiveRailKey(CODING_CLI_RAIL_KEY);
+        setDrilledCliAgentId(cliAgentId);
+        return;
+      }
+      if (multiActive && multiSelect) {
         multiSelect.onToggle(model.id);
         return;
       }
       onSelectModel?.(model.id);
       onRequestClose?.();
     },
-    [disabled, multiActive, multiSelect, onRequestClose, onSelectModel],
+    [
+      commitCliModelSelection,
+      currentCliSelection?.cliAgentId,
+      disabled,
+      effectiveCliModel,
+      multiActive,
+      multiSelect,
+      onRequestClose,
+      onSelectModel,
+    ],
+  );
+
+  const handlePickCliSubModel = useCallback(
+    (row: CliSubModelRow) => {
+      if (!drilledCliOption || disabled) return;
+      const cliAgentId = extractCliAgentId(drilledCliOption);
+      commitCliModelSelection(cliAgentId, row.modelValue, true);
+    },
+    [commitCliModelSelection, disabled, drilledCliOption],
   );
 
   const handleToggleFavorite = useCallback(
@@ -447,12 +655,34 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     [t, toggleFavorite],
   );
 
-  // ⌘1..⌘9 / Ctrl+1..Ctrl+9 与上下方向键导航
+  const activeListLength = drilledCliOption ? cliSubModelRows.length : visibleModels.length;
+
+  // ⌘1..⌘9 / Ctrl+1..Ctrl+9、Escape 返回上级与上下方向键导航
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        event.key === 'Backspace' &&
+        drilledCliOption &&
+        !search &&
+        document.activeElement === searchInputRef.current
+      ) {
+        event.preventDefault();
+        setDrilledCliAgentId(null);
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
         const digit = Number.parseInt(event.key, 10);
         if (digit >= 1 && digit <= 9) {
+          if (drilledCliOption) {
+            const target = cliSubModelRows[digit - 1];
+            if (target) {
+              event.preventDefault();
+              event.stopPropagation();
+              handlePickCliSubModel(target);
+            }
+            return;
+          }
           const target = visibleModels[digit - 1];
           if (target) {
             event.preventDefault();
@@ -464,20 +694,29 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       }
 
       if (event.key === 'ArrowDown') {
-        if (visibleModels.length === 0) return;
+        if (activeListLength === 0) return;
         event.preventDefault();
-        setHighlightedIndex((prev) => (prev + 1) % visibleModels.length);
+        setHighlightedIndex((prev) => (prev + 1) % activeListLength);
         return;
       }
 
       if (event.key === 'ArrowUp') {
-        if (visibleModels.length === 0) return;
+        if (activeListLength === 0) return;
         event.preventDefault();
-        setHighlightedIndex((prev) => (prev - 1 + visibleModels.length) % visibleModels.length);
+        setHighlightedIndex((prev) => (prev - 1 + activeListLength) % activeListLength);
         return;
       }
 
       if (event.key === 'Enter' && document.activeElement === searchInputRef.current) {
+        if (drilledCliOption) {
+          const target = cliSubModelRows[highlightedIndex];
+          if (target) {
+            event.preventDefault();
+            event.stopPropagation();
+            handlePickCliSubModel(target);
+          }
+          return;
+        }
         const target = visibleModels[highlightedIndex];
         if (target) {
           event.preventDefault();
@@ -486,7 +725,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         }
       }
     },
-    [handlePickRow, highlightedIndex, visibleModels],
+    [
+      activeListLength,
+      cliSubModelRows,
+      drilledCliOption,
+      handlePickCliSubModel,
+      handlePickRow,
+      highlightedIndex,
+      search,
+      visibleModels,
+    ],
   );
 
   // 点击权限弹层外部收起二级弹层
@@ -535,16 +783,55 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     [applyPermissionPreset, permissionPreset],
   );
 
-  // 右栏推理强度状态推导
+  // 右栏推理强度状态推导：当前焦点为编程 CLI 时，切换到该 CLI 的推理强度档位
+  const activeCliForReasoning = useMemo<string | null>(() => {
+    if (drilledCliOption) {
+      return extractCliAgentId(drilledCliOption);
+    }
+    if (isExternalCliEngine && currentCliSelection) {
+      return currentCliSelection.cliAgentId;
+    }
+    return null;
+  }, [currentCliSelection, drilledCliOption, isExternalCliEngine]);
+
+  const cliReasoningLevels = useMemo(
+    () => resolveCliReasoningLevels(activeCliForReasoning),
+    [activeCliForReasoning],
+  );
+
+  const handleSetCliEffort = useCallback(
+    (effort: CliReasoningEffortLevel | null) => {
+      if (!activeCliForReasoning) return;
+      if (sessionId) {
+        const meshActions = useAgentMeshStore.getState();
+        meshActions.setSelectedCliForSession(sessionId, activeCliForReasoning);
+        meshActions.setSelectedCliEffortForSession(sessionId, effort);
+      } else {
+        setFallbackCliEffort(effort);
+      }
+    },
+    [activeCliForReasoning, sessionId],
+  );
+
+  const resolveCliEffortLabel = useCallback(
+    (level: CliReasoningEffortLevel) =>
+      t(`chatV2:inputBar.thinkingDepth.${level}`, {
+        defaultValue: CLI_EFFORT_FALLBACK_LABELS[level],
+      }),
+    [t],
+  );
+
   const hasDepthOptions = Boolean(
-    !isExternalCliEngine &&
+    !activeCliForReasoning &&
+      !isExternalCliEngine &&
       !thinkingUnsupported &&
       onSetThinkingDepth &&
       thinkingDepthOptions &&
       thinkingDepthOptions.length > 0,
   );
   const hasBinaryToggle = Boolean(
-    !isExternalCliEngine &&
+    !activeCliForReasoning &&
+      !isExternalCliEngine &&
       !thinkingUnsupported &&
       !hasDepthOptions &&
       (onSetThinkingDepth || onToggleThinking),
@@ -570,13 +857,25 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   }, [enableThinking, onToggleThinking]);
 
   const resolvedActiveModelHeading = useMemo(() => {
+    if (drilledCliOption) {
+      return effectiveCliModel
+        ? `${drilledCliOption.label} · ${formatCompactCliModelName(effectiveCliModel)}`
+        : drilledCliOption.label;
+    }
     if (activeModelLabel) return activeModelLabel;
     if (currentModelId) {
       const found = sanitizedOptions.find((o) => o.id === currentModelId);
       if (found) return found.label;
     }
     return activeModelProviderLabel || '';
-  }, [activeModelLabel, activeModelProviderLabel, currentModelId, sanitizedOptions]);
+  }, [
+    activeModelLabel,
+    activeModelProviderLabel,
+    currentModelId,
+    drilledCliOption,
+    effectiveCliModel,
+    sanitizedOptions,
+  ]);
 
   const renderModelBrandIcon = (model: T3ModelSelectorOption, size = 16) => {
     if (isCliOption(model)) {
@@ -590,6 +889,69 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   };
 
   const renderReasoningBody = () => {
+    if (activeCliForReasoning) {
+      if (cliReasoningLevels.length === 0) {
+        return (
+          <div
+            data-testid="t3-reasoning-empty"
+            className="pt-0.5 text-xs leading-relaxed text-muted-foreground"
+          >
+            {t('chatV2:modelPicker.t3.noReasoningEffort', {
+              defaultValue: '没有可选的推理强度',
+            })}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          role="group"
+          data-testid="t3-cli-reasoning-group"
+          aria-label={t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
+          className="flex flex-col gap-0.5"
+        >
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={!effectiveCliEffort}
+            onClick={() => handleSetCliEffort(null)}
+            className={cn(
+              'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+              !effectiveCliEffort
+                ? 'bg-primary/12 font-medium text-primary'
+                : 'text-foreground/85 hover:bg-muted/70',
+            )}
+          >
+            <span className="truncate">
+              {t('chatV2:modelPicker.t3.cliEffortDefault', { defaultValue: '默认' })}
+            </span>
+            {!effectiveCliEffort && <Check size={13} weight="bold" className="shrink-0" />}
+          </button>
+          {cliReasoningLevels.map((level) => {
+            const isSelected = effectiveCliEffort === level;
+            return (
+              <button
+                key={level}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isSelected}
+                onClick={() => handleSetCliEffort(level)}
+                className={cn(
+                  'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  isSelected
+                    ? 'bg-primary/12 font-medium text-primary'
+                    : 'text-foreground/85 hover:bg-muted/70',
+                )}
+              >
+                <span className="truncate">{resolveCliEffortLabel(level)}</span>
+                {isSelected && <Check size={13} weight="bold" className="shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
     if (!hasDepthOptions && !hasBinaryToggle) {
       return (
         <div
@@ -700,6 +1062,14 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
     );
   };
 
+  const searchPlaceholderText = drilledCliOption
+    ? t('chatV2:modelPicker.t3.cliSearchPlaceholder', {
+        defaultValue: '搜索或输入自定义模型 ID...',
+      })
+    : t('chatV2:modelPicker.t3.searchPlaceholder', {
+        defaultValue: '搜索模型...',
+      });
+
   return (
     <>
       <div
@@ -727,6 +1097,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               aria-pressed={activeRailKey === FAVORITES_RAIL_KEY && !keyword}
               onClick={() => {
                 setSearch('');
+                setDrilledCliAgentId(null);
                 setActiveRailKey((prev) =>
                   prev === FAVORITES_RAIL_KEY ? ALL_RAIL_KEY : FAVORITES_RAIL_KEY,
                 );
@@ -762,6 +1133,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   aria-pressed={isActive}
                   onClick={() => {
                     setSearch('');
+                    if (group.key === CODING_CLI_RAIL_KEY) {
+                      if (activeRailKey === CODING_CLI_RAIL_KEY && drilledCliAgentId) {
+                        setDrilledCliAgentId(null);
+                        return;
+                      }
+                      setDrilledCliAgentId(null);
+                    } else {
+                      setDrilledCliAgentId(null);
+                    }
                     setActiveRailKey((prev) => (prev === group.key ? ALL_RAIL_KEY : group.key));
                   }}
                   className={cn(
@@ -788,7 +1168,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             })}
           </div>
 
-          {/* 第二栏：搜索 + 模型 / CLI 列表（min-w-0 保证长文案永远省略号收敛，不撑宽父容器） */}
+          {/* 第二栏：搜索 + 模型 / CLI（含二级模型）列表（min-w-0 保证长文案永远省略号收敛） */}
           <div
             data-testid="t3-model-list-pane"
             className={cn(
@@ -796,8 +1176,36 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               !isCompactTier && 'border-r border-border/60',
             )}
           >
+            {/* CLI 二级导航面包屑（原位切换，外框尺寸恒定） */}
+            {drilledCliOption && (
+              <div
+                data-testid="t3-cli-drilldown-header"
+                className="flex shrink-0 items-center gap-1.5 px-3 pt-2 pb-0.5 text-xs"
+              >
+                <button
+                  type="button"
+                  data-testid="t3-cli-drilldown-back"
+                  onClick={() => {
+                    setSearch('');
+                    setDrilledCliAgentId(null);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <CaretLeft size={12} weight="bold" className="shrink-0" />
+                  <span className="truncate">
+                    {t('chatV2:modelPicker.t3.backToCliList', { defaultValue: '返回编程 CLI' })}
+                  </span>
+                </button>
+                <span className="text-muted-foreground/50">/</span>
+                <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+                  {renderModelBrandIcon(drilledCliOption, 14)}
+                  <span className="truncate">{drilledCliOption.label}</span>
+                </span>
+              </div>
+            )}
+
             {/* 顶部无框下划线搜索框（固定不随列表滚动） */}
-            <div className="shrink-0 px-3 pt-2.5 pb-1">
+            <div className={cn('shrink-0 px-3 pb-1', drilledCliOption ? 'pt-1.5' : 'pt-2.5')}>
               <div className="flex items-center gap-2 border-b border-primary/45 pb-1.5 transition-colors focus-within:border-primary">
                 <MagnifyingGlass
                   size={14}
@@ -810,13 +1218,9 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   data-testid="t3-model-search-input"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('chatV2:modelPicker.t3.searchPlaceholder', {
-                    defaultValue: '搜索模型...',
-                  })}
-                  aria-label={t('chatV2:modelPicker.t3.searchPlaceholder', {
-                    defaultValue: '搜索模型...',
-                  })}
-                  className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [@media(pointer:coarse)]:text-base"
+                  placeholder={searchPlaceholderText}
+                  aria-label={searchPlaceholderText}
+                  className="min-w-0 flex-1 bg-transparent text-ui leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [@media(pointer:coarse)]:text-base"
                 />
                 {search && (
                   <button
@@ -831,13 +1235,84 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               </div>
             </div>
 
-            {/* 模型滚动列表 */}
+            {/* 模型 / CLI 二级滚动列表 */}
             <div
               role="menu"
               aria-label={t('chatV2:inputBar.runtimeModelTitle', { defaultValue: '模型' })}
               className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 [mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent_100%)]"
             >
-              {sanitizedOptions.length === 0 && hasModelPanel && onOpenRuntimeModelPanel ? (
+              {drilledCliOption ? (
+                <div className="flex flex-col gap-0.5 pb-2.5">
+                  {cliSubModelRows.map((row, index) => {
+                    const drilledCliId = extractCliAgentId(drilledCliOption);
+                    const isCurrentCli = currentCliSelection?.cliAgentId === drilledCliId;
+                    const isSelectedRow =
+                      isCurrentCli &&
+                      (row.modelValue === null
+                        ? !effectiveCliModel
+                        : effectiveCliModel === row.modelValue);
+                    const isHighlighted = index === highlightedIndex;
+                    const shortcutLabel =
+                      !isCompactTier && index < 9
+                        ? isMacPlatform
+                          ? `⌘${index + 1}`
+                          : `^${index + 1}`
+                        : null;
+
+                    return (
+                      <div
+                        key={row.key}
+                        className={cn(
+                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center rounded-lg text-left text-ui transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          isMediumTier || isCompactTier ? 'gap-2 px-2' : 'gap-2.5 px-2.5',
+                          isSelectedRow
+                            ? 'bg-primary/12 font-medium text-foreground'
+                            : isHighlighted
+                              ? 'bg-muted/65 text-foreground'
+                              : 'text-foreground hover:bg-muted/65',
+                        )}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                      >
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isSelectedRow}
+                          data-testid={
+                            row.modelValue === null
+                              ? `t3-cli-model-default-${drilledCliId}`
+                              : row.isCustom
+                                ? `t3-cli-model-custom-${drilledCliId}`
+                                : `t3-cli-model-${drilledCliId}-${row.modelValue}`
+                          }
+                          disabled={disabled}
+                          onClick={() => handlePickCliSubModel(row)}
+                          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
+                        >
+                          {renderModelBrandIcon(drilledCliOption, 15)}
+                          <span className="min-w-0 flex-1 truncate" title={row.label}>
+                            {row.label}
+                          </span>
+                          {row.badge && (
+                            <span className="max-w-[7.5rem] shrink-0 truncate rounded bg-muted px-1.5 py-px font-mono text-2xs font-normal text-muted-foreground">
+                              {formatCompactCliModelName(row.badge)}
+                            </span>
+                          )}
+                        </button>
+                        {isSelectedRow ? (
+                          <Check size={14} weight="bold" className="shrink-0 text-primary" />
+                        ) : shortcutLabel ? (
+                          <kbd
+                            data-testid={`t3-model-shortcut-${index + 1}`}
+                            className="pointer-events-none shrink-0 rounded bg-muted/90 px-1.5 py-0.5 font-mono text-2xs font-normal leading-none text-muted-foreground"
+                          >
+                            {shortcutLabel}
+                          </kbd>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : sanitizedOptions.length === 0 && hasModelPanel && onOpenRuntimeModelPanel ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
                   <button
                     type="button"
@@ -866,9 +1341,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               ) : (
                 <div className="flex flex-col gap-0.5 pb-2.5">
                   {visibleModels.map((model, index) => {
-                    const isCurrent = !multiActive && model.id === currentModelId;
+                    const cliItem = isCliOption(model);
+                    const cliId = cliItem ? extractCliAgentId(model) : '';
+                    const isCurrent =
+                      !multiActive &&
+                      (cliItem
+                        ? currentCliSelection?.cliAgentId === cliId
+                        : model.id === currentModelId);
                     const isChecked = multiActive && selectedIdSet.has(model.id);
-                    const isFavorite = !isCliOption(model) && favoriteIds.has(model.id);
+                    const isFavorite = !cliItem && favoriteIds.has(model.id);
                     const isHighlighted = index === highlightedIndex;
                     const shortcutLabel =
                       !isCompactTier && index < 9
@@ -876,12 +1357,18 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           ? `⌘${index + 1}`
                           : `^${index + 1}`
                         : null;
+                    const cliSubModelBadge =
+                      cliItem && isCurrent && effectiveCliModel
+                        ? formatCompactCliModelName(effectiveCliModel)
+                        : cliItem && model.cliDefaultModel
+                          ? formatCompactCliModelName(model.cliDefaultModel)
+                          : null;
 
                     return (
                       <div
                         key={model.id}
                         className={cn(
-                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center rounded-lg text-left text-[13px] transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center rounded-lg text-left text-ui transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                           isMediumTier || isCompactTier ? 'gap-2 px-2' : 'gap-2.5 px-2.5',
                           isCurrent || isChecked
                             ? 'bg-primary/12 font-medium text-foreground'
@@ -895,6 +1382,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           type="button"
                           role={multiActive ? 'menuitemcheckbox' : 'menuitem'}
                           aria-checked={multiActive ? isChecked : undefined}
+                          data-testid={cliItem ? `t3-cli-agent-row-${cliId}` : undefined}
                           disabled={disabled}
                           onClick={() => handlePickRow(model)}
                           className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
@@ -903,19 +1391,24 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           <span className="min-w-0 flex-1 truncate" title={model.label}>
                             {model.label}
                           </span>
+                          {cliSubModelBadge && (
+                            <span className="max-w-[6.5rem] shrink-0 truncate rounded bg-muted/80 px-1.5 py-px font-mono text-2xs font-normal text-muted-foreground">
+                              {cliSubModelBadge}
+                            </span>
+                          )}
                           {model.unavailable && (
                             <span className="shrink-0 rounded border border-border/80 bg-background/70 px-1 py-px text-2xs font-normal leading-tight text-muted-foreground">
                               {t('chatV2:modelPicker.t3.unavailable', { defaultValue: '不可用' })}
                             </span>
                           )}
-                          {isCliOption(model) && effectiveTier === 'wide' && (
+                          {cliItem && effectiveTier === 'wide' && (
                             <span className="shrink-0 rounded bg-muted px-1 py-px text-2xs font-medium text-muted-foreground">
                               {t('agentMesh:picker.cliBadge', { defaultValue: 'CLI' })}
                             </span>
                           )}
                         </button>
 
-                        {!isCliOption(model) && (
+                        {!cliItem && (
                           <button
                             type="button"
                             data-testid={`t3-favorite-toggle-${model.id}`}
@@ -958,10 +1451,22 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           >
                             {isChecked && <Check size={11} weight="bold" />}
                           </span>
+                        ) : cliItem ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+                            {shortcutLabel && (
+                              <kbd
+                                data-testid={`t3-model-shortcut-${index + 1}`}
+                                className="pointer-events-none shrink-0 rounded bg-muted/90 px-1.5 py-0.5 font-mono text-2xs font-normal leading-none text-muted-foreground"
+                              >
+                                {shortcutLabel}
+                              </kbd>
+                            )}
+                            <CaretRight size={12} weight="bold" className="shrink-0 opacity-70" />
+                          </span>
                         ) : shortcutLabel ? (
                           <kbd
                             data-testid={`t3-model-shortcut-${index + 1}`}
-                            className="pointer-events-none shrink-0 rounded bg-muted/90 px-1.5 py-0.5 font-mono text-[11px] font-normal leading-none text-muted-foreground"
+                            className="pointer-events-none shrink-0 rounded bg-muted/90 px-1.5 py-0.5 font-mono text-2xs font-normal leading-none text-muted-foreground"
                           >
                             {shortcutLabel}
                           </kbd>
@@ -1016,7 +1521,55 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               {t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
             </span>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-none">
-              {!hasDepthOptions && !hasBinaryToggle ? (
+              {activeCliForReasoning ? (
+                cliReasoningLevels.length === 0 ? (
+                  <span
+                    data-testid="t3-reasoning-empty"
+                    className="truncate text-xs text-muted-foreground"
+                  >
+                    {t('chatV2:modelPicker.t3.noReasoningEffort', {
+                      defaultValue: '没有可选的推理强度',
+                    })}
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={!effectiveCliEffort}
+                      onClick={() => handleSetCliEffort(null)}
+                      className={cn(
+                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        !effectiveCliEffort
+                          ? 'bg-primary/15 font-medium text-primary'
+                          : 'bg-muted/60 text-muted-foreground',
+                      )}
+                    >
+                      {t('chatV2:modelPicker.t3.cliEffortDefault', { defaultValue: '默认' })}
+                    </button>
+                    {cliReasoningLevels.map((level) => {
+                      const isSelected = effectiveCliEffort === level;
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isSelected}
+                          onClick={() => handleSetCliEffort(level)}
+                          className={cn(
+                            'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                            isSelected
+                              ? 'bg-primary/15 font-medium text-primary'
+                              : 'bg-muted/60 text-muted-foreground',
+                          )}
+                        >
+                          {resolveCliEffortLabel(level)}
+                        </button>
+                      );
+                    })}
+                  </>
+                )
+              ) : !hasDepthOptions && !hasBinaryToggle ? (
                 <span
                   data-testid="t3-reasoning-empty"
                   className="truncate text-xs text-muted-foreground"
@@ -1103,13 +1656,49 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           </div>
         )}
 
-        {/* 底部通栏：左侧多选对比开关（可选）+ 右侧权限预设快速切换 */}
+        {/* 底部运行时控制通栏：左侧「联网 / 多选 / 参数」+ 右侧「权限档位」 */}
         <div
           data-testid="t3-picker-footer"
-          className="relative flex shrink-0 items-center justify-between gap-2 border-t border-border/60 bg-popover px-3 py-1.5"
+          className="relative flex shrink-0 items-center justify-between gap-1.5 border-t border-border/60 bg-popover px-2.5 py-1.5"
         >
-          <div className="flex min-w-0 items-center gap-2">
-            {multiSelect && sanitizedOptions.some((o) => !isCliOption(o)) && (
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
+            {onWebSearchEnabledChange && (
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={Boolean(webSearchEnabled)}
+                data-testid="t3-footer-web-search"
+                title={
+                  isExternalCliEngine || Boolean(drilledCliOption)
+                    ? t('chatV2:modelPicker.t3.webSearchCliHint', {
+                        defaultValue: '本地编程 CLI 使用自身工具链，此开关仅对内置对话模型生效',
+                      })
+                    : t('chatV2:inputBar.plusMenu.webSearchHint', {
+                        defaultValue: '联网搜索',
+                      })
+                }
+                onClick={() => void onWebSearchEnabledChange(!webSearchEnabled)}
+                className={cn(
+                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  webSearchEnabled && !isExternalCliEngine && !drilledCliOption
+                    ? 'bg-primary/12 font-medium text-primary'
+                    : webSearchEnabled
+                      ? 'bg-muted/60 text-muted-foreground hover:bg-muted/80'
+                      : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+                )}
+              >
+                <Globe
+                  size={13}
+                  weight={webSearchEnabled && !isExternalCliEngine && !drilledCliOption ? 'fill' : 'regular'}
+                  className="shrink-0"
+                />
+                <span className="truncate">
+                  {t('chatV2:modelPicker.t3.webSearchShort', { defaultValue: '联网' })}
+                </span>
+              </button>
+            )}
+
+            {multiSelect && !drilledCliOption && sanitizedOptions.some((o) => !isCliOption(o)) && (
               <button
                 type="button"
                 role="menuitemcheckbox"
@@ -1117,21 +1706,42 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 data-testid="runtime-model-multi-select-switch"
                 onClick={() => multiSelect.onActiveChange(!multiActive)}
                 className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                   multiActive
                     ? 'bg-primary/12 font-medium text-primary'
                     : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                 )}
               >
-                <SquaresFour size={13} weight={multiActive ? 'fill' : 'regular'} />
+                <SquaresFour size={13} weight={multiActive ? 'fill' : 'regular'} className="shrink-0" />
                 <span className="truncate">
-                  {t('chatV2:inputBar.runtimeModelCompareMode', { defaultValue: '多选模式' })}
+                  {effectiveTier === 'wide'
+                    ? t('chatV2:inputBar.runtimeModelCompareMode', { defaultValue: '多选模式' })
+                    : t('chatV2:modelPicker.t3.multiSelectShort', { defaultValue: '多选' })}
                 </span>
                 {multiActive && multiSelect.selectedIds.length > 0 && (
                   <span className="rounded-full bg-primary px-1.5 py-px font-mono text-2xs text-primary-foreground">
                     {multiSelect.selectedIds.length}
                   </span>
                 )}
+              </button>
+            )}
+
+            {onOpenAdvancedPanel && (
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="t3-footer-advanced"
+                title={t('common:chat_controls', { defaultValue: '对话控制' })}
+                onClick={() => {
+                  onRequestClose?.();
+                  onOpenAdvancedPanel();
+                }}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              >
+                <SlidersHorizontal size={13} weight="regular" className="shrink-0" />
+                <span className="truncate">
+                  {t('chatV2:modelPicker.t3.paramsShort', { defaultValue: '参数' })}
+                </span>
               </button>
             )}
           </div>
@@ -1188,10 +1798,17 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       aria-checked={isSelected}
                       disabled={permissionSyncing}
                       data-testid={`t3-permission-option-${preset}`}
+                      title={t(`chatV2:authority.permissionPreset.hints.${preset}`, {
+                        defaultValue: '',
+                      })}
                       onClick={() => handleSelectPermissionPreset(preset)}
                       className={cn(
                         'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/70 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                        isSelected ? 'bg-primary/12 font-medium text-primary' : 'text-foreground',
+                        isSelected
+                          ? 'bg-primary/12 font-medium text-primary'
+                          : preset === 'danger_full_access'
+                            ? 'text-destructive'
+                            : 'text-foreground',
                       )}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -1216,12 +1833,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       <DsAlertDialog
         open={confirmDangerOpen}
         onOpenChange={setConfirmDangerOpen}
-        tone="destructive"
-        title={t('chatV2:authority.permissionPreset.confirmDangerTitle')}
-        description={t('chatV2:authority.permissionPreset.confirmDangerBody')}
+        confirmVariant="danger"
+        title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
+        description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
         cancelText={t('common:actions.cancel')}
-        confirmText={t('chatV2:authority.permissionPreset.confirmDangerAction')}
+        confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
         onConfirm={() => {
+          setConfirmDangerOpen(false);
           void applyPermissionPreset('danger_full_access', true);
         }}
       />

@@ -1364,4 +1364,64 @@ describe('GenericCliAdapter & ExternalAdapterRegistry', () => {
 
     await registry.dispose();
   });
+
+  it('forwards model and reasoningEffort flags to ClaudeAdapter (--model / --effort) and CodexAdapter (exec -c model_reasoning_effort)', async () => {
+    const capturedInvocations: Array<{ cmd: string; args: readonly string[] }> = [];
+
+    const supervisor = new ProcessTreeSupervisor({
+      registerExitHook: false,
+      spawnPort: (cmd, args) => {
+        capturedInvocations.push({ cmd, args: [...args] });
+        if (cmd.includes('claude')) {
+          return new SimulatedChildProcess({
+            onStdinLine: (_line, self) => {
+              self.emitStdoutJson({
+                type: 'result',
+                subtype: 'success',
+                session_id: 'sess-c1',
+                result: 'ok',
+              });
+              self.finishProcess(0, null);
+            },
+          });
+        }
+        const proc = new SimulatedChildProcess();
+        setTimeout(() => {
+          proc.emitStdoutJson({ type: 'turn.completed' });
+          proc.finishProcess(0, null);
+        }, 5);
+        return proc;
+      },
+    });
+
+    const claude = new ClaudeAdapter({ processSupervisor: supervisor });
+    await collectEvents(
+      claude.startOrResumeTurn({
+        threadId: 'th-claude-effort',
+        cwd: '/tmp',
+        prompt: 'optimize parser',
+        model: 'claude-opus-4-6',
+        reasoningEffort: 'max',
+      }),
+    );
+
+    const codex = new CodexAdapter({ processSupervisor: supervisor, preferExecFallback: true });
+    await collectEvents(
+      codex.startOrResumeTurn({
+        threadId: 'th-codex-effort',
+        cwd: '/tmp',
+        prompt: 'fix race condition',
+        model: 'gpt-5.4',
+        reasoningEffort: 'xhigh',
+      }),
+    );
+
+    expect(capturedInvocations).toHaveLength(2);
+    expect(capturedInvocations[0].args).toEqual(
+      expect.arrayContaining(['--model', 'claude-opus-4-6', '--effort', 'max']),
+    );
+    expect(capturedInvocations[1].args).toEqual(
+      expect.arrayContaining(['--model', 'gpt-5.4', '-c', 'model_reasoning_effort="xhigh"']),
+    );
+  });
 });

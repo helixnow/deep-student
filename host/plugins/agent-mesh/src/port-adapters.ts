@@ -86,6 +86,8 @@ function toContractDetectedAgent(agent: AdapterDetectedCliAgent): ContractDetect
     version: agent.version,
     executablePath: agent.resolvedPath,
     authHint: agent.authHint ?? null,
+    ...(agent.defaultModel !== undefined ? { defaultModel: agent.defaultModel } : {}),
+    ...(agent.availableModels ? { availableModels: [...agent.availableModels] } : {}),
     capabilities: { ...agent.capabilities },
   };
 }
@@ -211,6 +213,8 @@ function wrapConcreteAdapter(inner: AdapterExternalCodingAdapter): ContractExter
         mcp: input.mcp,
         env: input.env,
         signal: input.signal,
+        model: input.model,
+        reasoningEffort: input.reasoningEffort,
       });
       return {
         async *[Symbol.asyncIterator](): AsyncIterator<ContractRuntimeEvent> {

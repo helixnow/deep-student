@@ -33,7 +33,9 @@ import {
   normalizeAgentHandle,
   resolveAgentDisplayName,
   selectActiveExternalThreadForSession,
+  selectSelectedCliEffortForSession,
   selectSelectedCliForSession,
+  selectSelectedCliModelForSession,
   useAgentMeshStore,
   type DetectedMeshAgent,
   type MeshThreadState,
@@ -584,6 +586,20 @@ export function useInputBarV2(
           : finalContent;
 
         const targetSessionId = latestState.sessionId || 'default';
+        const meshSnapshot = useAgentMeshStore.getState();
+        const sessionBoundCliId = selectSelectedCliForSession(meshSnapshot, latestState.sessionId);
+        const appliesSessionCliOverrides =
+          isSessionCliEngineTurn ||
+          Boolean(sessionBoundCliId && normalizeAgentHandle(sessionBoundCliId) === normalizeAgentHandle(targetAgentId));
+        const selectedCliModel = appliesSessionCliOverrides
+          ? selectSelectedCliModelForSession(meshSnapshot, latestState.sessionId)
+          : null;
+        const selectedCliEffort = appliesSessionCliOverrides
+          ? selectSelectedCliEffortForSession(meshSnapshot, latestState.sessionId)
+          : null;
+        const effectiveAssistantLabel = selectedCliModel
+          ? `${agentDisplayName} (${selectedCliModel})`
+          : agentDisplayName;
         const userMessageId = generateId('msg');
         const assistantMessageId = generateId('msg');
 
@@ -613,8 +629,8 @@ export function useInputBarV2(
                 ...createdAssistant,
                 _meta: {
                   ...createdAssistant._meta,
-                  modelId: agentDisplayName,
-                  modelDisplayName: agentDisplayName,
+                  modelId: effectiveAssistantLabel,
+                  modelDisplayName: effectiveAssistantLabel,
                 },
               });
               store.setState({ messageMap: nextMap });
@@ -675,6 +691,8 @@ export function useInputBarV2(
             cwd,
             prompt: promptForExternal,
             userPrompt: displayUserContent,
+            ...(selectedCliModel ? { model: selectedCliModel } : {}),
+            ...(selectedCliEffort ? { reasoningEffort: selectedCliEffort } : {}),
             timelineMode: 'native_chat',
             userMessageId,
             assistantMessageId,

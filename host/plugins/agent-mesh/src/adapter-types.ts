@@ -36,6 +36,8 @@ export interface DetectedCliAgent {
   readonly version: string | null;
   readonly authStatus: CliAuthStatus;
   readonly authHint?: string;
+  readonly defaultModel?: string | null;
+  readonly availableModels?: readonly string[];
   readonly capabilities: AdapterCapabilities;
   readonly probedAt: number;
   readonly templateId?: string;
@@ -70,6 +72,7 @@ export interface ExternalTurnStartInput {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly onEvent?: (event: NormalizedRuntimeEvent) => void;
 }
 

@@ -290,6 +290,9 @@ export class ClaudeAdapter implements ExternalCodingAdapter {
       if (input.model) {
         args.push('--model', input.model);
       }
+      if (input.reasoningEffort) {
+        args.push('--effort', input.reasoningEffort);
+      }
 
       if (input.mcp) {
         const ephemeral = await writeEphemeralJsonFile('claude-mcp', {

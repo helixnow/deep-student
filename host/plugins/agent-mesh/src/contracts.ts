@@ -40,6 +40,8 @@ export interface DetectedCliAgent {
   version: string | null;
   executablePath?: string | null;
   authHint?: string | null;
+  defaultModel?: string | null;
+  availableModels?: readonly string[];
   capabilities: AdapterCapabilities;
 }
 
@@ -138,6 +140,8 @@ export interface ExternalTurnStartInput {
   env?: Record<string, string>;
   signal?: AbortSignal;
   readOnly?: boolean;
+  model?: string;
+  reasoningEffort?: string;
   onEvent?: (event: NormalizedRuntimeEvent) => void;
 }
 
@@ -861,13 +865,12 @@ export class DefaultInMemoryFileLeasePort implements FileLeasePort {
         return { granted: false, conflict };
       }
       await new Promise<void>((resolve) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
         const wake = () => {
-          if (timer !== undefined) clearTimeout(timer);
+          clearTimeout(timer);
           this.waiters.delete(wake);
           resolve();
         };
-        timer = setTimeout(wake, Math.min(remaining, 100));
+        const timer = setTimeout(wake, Math.min(remaining, 100));
         this.waiters.add(wake);
       });
     }

@@ -106,6 +106,13 @@ export function normalizeHostDetectedAgent(raw: unknown): DetectedMeshAgent | nu
     authenticated: rec.authenticated === undefined ? undefined : Boolean(rec.authenticated),
     version: typeof rec.version === 'string' ? rec.version : undefined,
     command: typeof rec.command === 'string' ? rec.command : undefined,
+    defaultModel:
+      typeof rec.defaultModel === 'string' && rec.defaultModel.trim()
+        ? rec.defaultModel.trim()
+        : null,
+    availableModels: Array.isArray(rec.availableModels)
+      ? rec.availableModels.map((item) => String(item).trim()).filter(Boolean)
+      : undefined,
     status: rec.status as DetectedMeshAgent['status'],
     capabilities: (asRecord(rec.capabilities) ?? {}) as DetectedMeshAgent['capabilities'],
     aliases: Array.isArray(rec.aliases) ? rec.aliases.map(String) : undefined,

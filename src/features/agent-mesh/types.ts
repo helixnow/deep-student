@@ -51,6 +51,8 @@ export interface DetectedMeshAgent {
   authenticated?: boolean;
   version?: string;
   command?: string;
+  defaultModel?: string | null;
+  availableModels?: string[];
   status?: DetectedAgentRuntimeStatus;
   capabilities: Partial<AdapterCapabilities>;
   aliases?: string[];
@@ -296,6 +298,8 @@ export interface StartExternalTurnRequest {
   cwd: string;
   prompt: string;
   userPrompt?: string;
+  model?: string;
+  reasoningEffort?: string;
   timelineMode?: 'native_chat' | 'headless';
   userMessageId?: string;
   assistantMessageId?: string;
@@ -592,4 +596,81 @@ export function formatWorkspaceFolderBasename(rootPath: string | undefined | nul
   const trimmed = rootPath.trim().replace(/[\\/]+$/, '');
   const segments = trimmed.split(/[\\/]/).filter(Boolean);
   return segments[segments.length - 1] ?? trimmed;
+}
+
+export type CliReasoningEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const CURATED_CLI_MODELS_BY_DRIVER: Readonly<Record<string, readonly string[]>> = {
+  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  codex: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'o4-mini'],
+  opencode: [
+    'anthropic/claude-sonnet-4-6',
+    'anthropic/claude-opus-4-6',
+    'openai/gpt-5.4',
+    'google/gemini-2.5-pro',
+    'deepseek/deepseek-chat',
+  ],
+  pi: [
+    'claude-sonnet-4-6',
+    'claude-opus-4-6',
+    'gpt-5.4',
+    'gemini-2.5-pro',
+    'deepseek-chat',
+  ],
+  agy: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  dsh: ['deepseek-chat', 'deepseek-reasoner'],
+};
+
+export const CLI_REASONING_EFFORT_LEVELS_BY_DRIVER: Readonly<
+  Record<string, readonly CliReasoningEffortLevel[]>
+> = {
+  claude: ['low', 'medium', 'high', 'max'],
+  codex: ['low', 'medium', 'high', 'xhigh'],
+};
+
+export function resolveCliAvailableModels(
+  agent: Pick<DetectedMeshAgent, 'id' | 'driverKind' | 'defaultModel' | 'availableModels'>,
+): string[] {
+  const driverKey =
+    agent.driverKind !== 'custom' && agent.driverKind !== 'builtin'
+      ? agent.driverKind
+      : normalizeAgentHandle(agent.id);
+  const seen = new Set<string>();
+  const result: string[] = [];
+  const push = (raw: string | null | undefined) => {
+    const trimmed = raw?.trim();
+    if (!trimmed) return;
+    if (seen.has(trimmed)) return;
+    seen.add(trimmed);
+    result.push(trimmed);
+  };
+  push(agent.defaultModel);
+  for (const item of agent.availableModels ?? []) {
+    push(item);
+  }
+  for (const item of CURATED_CLI_MODELS_BY_DRIVER[driverKey] ?? []) {
+    push(item);
+  }
+  return result;
+}
+
+export function resolveCliReasoningLevels(
+  agentIdOrDriver: string | undefined | null,
+): readonly CliReasoningEffortLevel[] {
+  if (!agentIdOrDriver) return [];
+  const normalized = normalizeAgentHandle(agentIdOrDriver);
+  if (normalized === 'claude' || normalized.includes('claude')) {
+    return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER.claude;
+  }
+  if (normalized === 'codex' || normalized.includes('codex')) {
+    return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER.codex;
+  }
+  return CLI_REASONING_EFFORT_LEVELS_BY_DRIVER[normalized] ?? [];
+}
+
+export function formatCompactCliModelName(rawModel: string | undefined | null): string {
+  const trimmed = rawModel?.trim() ?? '';
+  if (!trimmed) return '';
+  const slashIdx = trimmed.lastIndexOf('/');
+  return slashIdx >= 0 && slashIdx < trimmed.length - 1 ? trimmed.slice(slashIdx + 1) : trimmed;
 }

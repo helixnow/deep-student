@@ -2320,7 +2320,17 @@
       "searchPlaceholder": "Search models...",
       "noReasoningEffort": "No configurable reasoning effort",
       "unavailable": "Unavailable",
-      "emptyFavorites": "No favorite models yet. Hover a model and click the star to save one."
+      "emptyFavorites": "No favorite models yet. Hover a model and click the star to save one.",
+      "webSearchShort": "Web",
+      "multiSelectShort": "Compare",
+      "paramsShort": "Params",
+      "webSearchCliHint": "Local coding CLIs use their own toolchains; this toggle applies to built-in chat models",
+      "cliSearchPlaceholder": "Search or type custom model ID...",
+      "cliFollowDefault": "Follow CLI Default",
+      "cliDefaultTag": "Default",
+      "cliCustomModel": "Use custom model \"{{model}}\"",
+      "cliEffortDefault": "Default",
+      "backToCliList": "Back to Coding CLIs"
     }
   },
   "workspace": {
