@@ -198,7 +198,7 @@
     "electron": "45.2.1",
     "electron-builder": "26.17.0",
     "eslint": "^9.18.0",
-    "eslint-plugin-boundaries": "^6.0.2",
+    "eslint-plugin-boundaries": "^7.4.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "framer-motion": "^12.23.22",
     "globals": "^15.14.0",
