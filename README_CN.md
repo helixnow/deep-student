@@ -152,7 +152,7 @@ DeepStudent 采用基于 [`@deepseek-ai/cordis`](https://github.com/cordiverse/c
 
 自 **v0.20.x** 起，DeepStudent 正式退役原 Tauri 2 / Rust 后端（`0.11.x`），全面切换为基于 [`@deepseek-ai/cordis`](https://github.com/cordiverse/cordis) 的 TypeScript 架构。原有 React 界面与磁盘上的 SQLite / LanceDB 数据保持原地兼容。
 
-| 维度 | 上一代 `0.11.x`（Tauri 2 / Rust） | 新一代 `0.20.9`（Node / Electron / Cordis） |
+| 维度 | 上一代 `0.11.x`（Tauri 2 / Rust） | 新一代 `0.20.x`（Node / Electron / Cordis） |
 |---|---|---|
 | **运行时与 Cordis 微内核插件架构** | Tauri 2 + 25 个 crate 的 Rust Cargo workspace + 系统 WebView；命令在编译期静态注册 | **Electron 45** + **UtilityProcess Host**（`MessagePortMain`）+ **Cordis 4 微内核**（`desktop.json` 装配 **44** 个模块，`host/plugins/` 含 **30** 个插件目录；`src/ui-plugins/official/` 含 **19** 个官方 UI 插件包）；`contracts/ipc/` 契约治理 **1,066** 条命令 / **128** 个事件 / **989** 个类型定义；`window.__TAURI_INTERNALS__` 兼容桥让 `src/` React 18 零重写保留 |
 | **Plugin v2、AI 插件工坊与安全模式** | 仅支持编译期内置插件（如 `ilink_bot`），无运行时插件包与 AI 造插件能力 | **Plugin v2** 三档模型：第 1 档零代码 **`.dspack` 学习包**（YAML 评分标准、`SKILL.md`、模板、工作流）、第 2 档 **AI 插件工坊**（`plugin-workshop`，14 个 Agent 工具、`esbuild` 编译与 3 轮自动修复、「✦ 让 AI 优化」、代理式 `studyData`/`pluginModel`/`pluginNotify`）、第 3 档完整 Cordis 插件；Manifest v2 细粒度网络权限；**安全模式反单点故障**（`安全模式排查`、退出确认弹窗、重置界面布局缓存、暂停自定义 MCP 自动连接）与损坏 `user.profile.json` 一键重置（`reset-profile`） |
@@ -210,9 +210,12 @@ DeepStudent
 │   ├── features/                #   chat、generative-ui、notes、mindmap、practice、flashcards、media、pdf 等
 │   └── locales/                 #   国际化（zh-CN / en-US）
 ├── contracts/ipc/               # 1,066 条命令 · 128 个事件 · 989 个类型定义（零 Rust 依赖）
-├── resources/                   # 应用配置、capabilities、SQL 迁移与 dstu-workshop 技能/模板
-├── resources/                       # THIRD_PARTY_NOTICES.txt 及 WASM / 前端许可证清单
-└── .github/workflows/           # CI、类型检查与全平台打包流水线
+├── resources/                   # 应用配置、capabilities、SQL 迁移、模型清单、补丁与 THIRD_PARTY_NOTICES.txt
+├── docs/                        # 中英文用户指南、插件 SDK 文档、构建与 WebUI/PWA 指南
+├── examples/                    # 官方社区插件参考示例
+├── scripts/                     # 构建、契约、许可证、Lint、插件与可移植性门禁脚本
+├── tests/                       # 前端单元测试、集成测试与 Playwright 组件测试
+└── .github/workflows/           # CI、开源治理、安全扫描与全平台打包流水线
 ```
 
 </details>
@@ -275,7 +278,6 @@ node scripts/portability/scan.mjs --profile host/profiles/mobile.json
 |---|---|
 | [使用指南（中文）](./docs/user-guide/README.md) | 21 章完整中文使用指南与 [3 分钟场景速通](./docs/user-guide/01-快速上手.md#3-分钟场景速通)（[在线版](https://deepstudent.cn/user-guide/)） |
 | [User Guide（English）](./docs/user-guide/en/README.md) | 英文学习者完整指南与 [3-Minute Quickstarts](./docs/user-guide/en/01-quickstart.md) |
-| [Memory v2 架构](./docs/dev/MEMORY-V2.md) | L1 互动硬规则、学习者画像 10 版本回滚、首轮会话冻结与辩证反思设计 |
 | [Plugin v2 指南](./docs/plugins/PLUGIN-V2.md) | 三档扩展模型、`.dspack` 学习包、Manifest v2 权限与可移植沙箱 |
 | [构建配置](./docs/BUILD-CONFIG.md) | 跨平台 Electron、Android 与 iOS 构建打包说明 |
 | [WebUI 与 PWA](./docs/WEBUI-AND-PWA.md) | 浏览器/PWA 架构分层、鉴权模型、流式读取与反向代理配置 |
@@ -284,7 +286,6 @@ node scripts/portability/scan.mjs --profile host/profiles/mobile.json
 | [插件 SDK](./docs/plugins/SDK.md) | 如何编写插件：服务、插槽、清单、能力分档 |
 | [插件安全边界](./docs/plugins/SECURITY.md) | 社区插件权限、`ds-plugin://` 校验与安全边界 |
 | [应用升级与用户插件](./docs/plugins/UPGRADES.md) | 跨版本升级时的用户插件保留与兼容性检查 |
-| [插件工坊对比](./docs/plugins/WORKSHOP-HARNESS-COMPARISON.md) | 自主插件闭环的设计与防护 |
 | [更新日志](./CHANGELOG.md) | 版本变更记录 |
 | [安全策略](./.github/SECURITY.md) | 漏洞报告流程 |
 

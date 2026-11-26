@@ -16,7 +16,7 @@
 
 ## 优先级
 
-1. **Lint 规则**（`eslint.config.js` + `eslint-rules/*`、`.stylelintrc.json`）。机器能拦的以机器为准。
+1. **Lint 规则**（`eslint.config.js` + `scripts/lint/eslint-rules/*`、`.stylelintrc.json`）。机器能拦的以机器为准。
 2. **本目录文档**。
 3. **`docs/CODE_STYLE.md`**：较早的通用约定。其中与本目录冲突的部分（滚动组件、移动端点击区域与按压反馈数值）以本目录为准，冲突点列在 [components.md §滚动](./components.md#scroll) 和 [patterns.md §触控目标](./patterns.md#touch)。
 
@@ -34,15 +34,9 @@
 | Tailwind 原色板类（`bg-gray-100`、`text-blue-500`、`bg-white` 等） | 2400+ | 无 lint |
 | 内联 `style={{…}}` 对象 | 1000 | 无 lint；仅允许运行时计算值 |
 | 原生 `<button>`（lint 生效范围内） | 745 | `ds-components/no-native-button`（warn） |
-| `CommonTooltip` 调用点 | 45 个文件 | `ds-components/no-legacy-tooltip`（error，存量按 `eslint-rules/common-tooltip.allowlist.json` 豁免） |
+| `CommonTooltip` 调用点 | 45 个文件 | `ds-components/no-legacy-tooltip`（error，存量按 `scripts/lint/eslint-rules/common-tooltip.allowlist.json` 豁免） |
 | `CustomScrollArea`（已 `@deprecated`）调用点 | 207 个文件 | 无 lint |
 | coarse 触控散点覆盖 | 见 allowlist | `ds-components/coarse-touch-target`（全局 warn，`input-bar` error） |
-
-## 其他参考
-
-- 移动端五条验收规范：`docs/dev/mobile-uiux-unify/README.md`；页面标题与动作层级：`docs/dev/mobile-uiux-unify/page-chrome-standard.md`。
-- Workbench 无障碍清单：`docs/dev/workbench-a11y-checklist.md`。
-- 对外文案口径（品牌用语，不含视觉）：`docs/brand/messaging.md`。
 
 ## 维护
 

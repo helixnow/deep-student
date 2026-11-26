@@ -56,7 +56,7 @@ jobs:
 
       - name: Architecture boundaries
         if: ${{ !cancelled() }}
-        run: node scripts/arch/boundaries.mjs
+        run: node scripts/arch/boundaries.mjs --check
 
   host-electron:
     name: Host tests in Electron's Node (native modules, Electron ABI)

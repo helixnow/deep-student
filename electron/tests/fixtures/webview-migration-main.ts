@@ -17,13 +17,20 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('console-message', (event) => record({ event: 'console', level: event.level, message: event.message, url: contents.getURL() }));
 });
 
+let hostRuntime: { host: { shutdown(): Promise<void> } } | null = null;
+
 const exit = (code: number) => {
   record({ hook: 'exit', code, windows: BrowserWindow.getAllWindows().length });
   session.defaultSession.flushStorageData();
-  setTimeout(() => app.exit(code), 500);
+  void (hostRuntime ? hostRuntime.host.shutdown() : Promise.resolve()).finally(() => {
+    setTimeout(() => app.exit(code), 500);
+  });
 };
 
 void app.whenReady().then(() => start({
+  onRuntime: (runtime) => {
+    hostRuntime = runtime;
+  },
   processHooks: { restart: () => record({ hook: 'restart' }), exit },
   ...(process.env.MIGRATION_KILL_BEFORE_MARK === '1'
     ? {

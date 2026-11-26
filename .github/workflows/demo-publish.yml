@@ -92,7 +92,14 @@ jobs:
       - name: Install
         if: steps.target.outputs.skip == 'false'
         run: |
+          set -euo pipefail
           npm ci --legacy-peer-deps
+          if [ -z "${DEEP_STUDENT_BUILD_NUMBER:-}" ] && ! node scripts/generate-version.mjs >/dev/null 2>&1; then
+            BASE_COMMIT="928a5aad6bcb004205e40e258bc6c636741ab789"
+            COUNT=$(git rev-list --count "${BASE_COMMIT}..HEAD")
+            export DEEP_STUDENT_BUILD_NUMBER=$((14638 + COUNT))
+            echo "DEEP_STUDENT_BUILD_NUMBER=${DEEP_STUDENT_BUILD_NUMBER}" >> "$GITHUB_ENV"
+          fi
           node scripts/generate-version.mjs
           npx playwright install --with-deps chromium
       - name: Build web demo

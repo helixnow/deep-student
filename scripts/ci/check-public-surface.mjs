@@ -187,6 +187,50 @@ for (const file of ignoredButTracked) {
   errors.push(`[gitignore-drift] "${file}" is tracked in git despite matching .gitignore`);
 }
 
+// 6. Relative Markdown link integrity across all tracked documentation (excluding historical CHANGELOG.md)
+const SKIP_LINK_SCHEMES = /^(?:https?:|mailto:|#|data:|vscode:|app:|deepstudent:|ds-block:|tauri:|ds-plugin:)/i;
+for (const file of tracked) {
+  if (!file.endsWith('.md') || file === 'CHANGELOG.md') continue;
+  const abs = path.join(ROOT, file);
+  if (!fs.existsSync(abs)) continue;
+  const rawContent = fs.readFileSync(abs, 'utf8');
+  const withoutFences = rawContent.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '');
+  const withoutInlineCode = withoutFences.replace(/`[^`\n]+`/g, '');
+  const linkRe = /!?\[[^\]]*\]\(([^)\n]+)\)/g;
+  for (const match of withoutInlineCode.matchAll(linkRe)) {
+    const rawTarget = match[1].trim().split(/\s+/)[0].replace(/^<|>$/g, '');
+    if (!rawTarget || SKIP_LINK_SCHEMES.test(rawTarget)) continue;
+    const cleanTarget = rawTarget.split('#')[0].split('?')[0];
+    if (!cleanTarget) continue;
+    const resolved = cleanTarget.startsWith('/')
+      ? path.join(ROOT, cleanTarget.slice(1))
+      : path.resolve(path.dirname(abs), cleanTarget);
+    if (!fs.existsSync(resolved)) {
+      errors.push(`[broken-link] "${file}" links to missing path "${rawTarget}"`);
+    }
+  }
+}
+
+// 7. GitHub Actions supply-chain hygiene: explicit top-level permissions & immutable 40-char Action SHAs
+for (const file of tracked) {
+  if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file)) continue;
+  const abs = path.join(ROOT, file);
+  if (!fs.existsSync(abs)) continue;
+  const wf = fs.readFileSync(abs, 'utf8');
+  if (!/^permissions\s*:/m.test(wf)) {
+    errors.push(`[workflow-permissions] "${file}" must declare explicit top-level permissions`);
+  }
+  for (const match of wf.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)/gm)) {
+    const ref = match[1].trim().replace(/^['"]|['"]$/g, '');
+    if (ref.startsWith('./') || ref.startsWith('docker://')) continue;
+    const atIdx = ref.indexOf('@');
+    const rev = atIdx === -1 ? '' : ref.slice(atIdx + 1);
+    if (!/^[0-9a-f]{40}$/.test(rev)) {
+      errors.push(`[workflow-sha-pin] "${file}" uses unpinned action "${ref}" (must pin to 40-char commit SHA)`);
+    }
+  }
+}
+
 if (errors.length > 0) {
   console.error(`Public surface check FAILED (${errors.length} violation(s)):`);
   for (const err of errors.slice(0, 50)) {
