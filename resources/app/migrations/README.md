@@ -1,7 +1,7 @@
 # 数据库迁移目录
 
 本目录包含所有数据库的迁移脚本，由 vendored 的 [Refinery](https://github.com/rust-db/refinery) 0.9
-（`src-tauri/vendor/refinery-core`）执行，并由 L1 静态门禁（`scripts/check-migrations.mjs`）锁定。
+（`src-tauri/vendor/refinery-core`）执行，并由 L1 静态门禁（`scripts/ci/check-migrations.mjs`）锁定。
 
 ## 目录结构
 
@@ -74,21 +74,21 @@ Refinery 0.9 用正则 `^([U|V])(\d+(?:\.\d+)?)__(\w+)` 解析文件名，
 
 ```bash
 # 本地全量校验（manifest 完整性、版本唯一、hash、Rust 对应、危险 SQL）
-node scripts/check-migrations.mjs
+node scripts/ci/check-migrations.mjs
 
 # CI 不可变性校验：base 分支已锁定的条目不得被修改/删除/重命名，
 # 危险豁免只信 base manifest（同步篡改当前 manifest 无效）；
 # base 上尚无 manifest 时自动跳过（首次引入 bootstrap）
-node scripts/check-migrations.mjs --base-ref origin/main
+node scripts/ci/check-migrations.mjs --base-ref origin/main
 
 # 新增迁移后更新 lock manifest（新条目不会自动继承危险豁免）
-node scripts/check-migrations.mjs --update
+node scripts/ci/check-migrations.mjs --update
 
 # 审计模式：盘点全部危险发现（含存量豁免/已声明），不影响门禁结论
-node scripts/check-migrations.mjs --all
+node scripts/ci/check-migrations.mjs --all
 
 # 机器可读输出
-node scripts/check-migrations.mjs --json
+node scripts/ci/check-migrations.mjs --json
 ```
 
 ### 危险 SQL 与机器可读注解
@@ -135,7 +135,7 @@ pub const V20260201_ADD_SYNC_FIELDS: MigrationDef = MigrationDef::new(
 
 ```bash
 # L1 静态门禁 + 自测
-node scripts/check-migrations.mjs
+node scripts/ci/check-migrations.mjs
 node --test scripts/__tests__/check-migrations.test.mjs
 
 # 生产迁移框架单元测试（带最小测试数校验，防假绿）

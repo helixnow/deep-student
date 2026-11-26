@@ -1,6 +1,6 @@
 # 插件能力清单（Capability Seams）
 
-> 自动生成，请勿手改：`node scripts/plugin-catalog/generate.mjs`。CI 用 `--check` 检测漂移。
+> 自动生成，请勿手改：`node scripts/plugins/generate-catalog.mjs`。CI 用 `--check` 检测漂移。
 > 与 DeepSeek Harness 的 `docs/capability-seams.md` 对齐：服务是插件之间唯一的跨 lane 编程接口，
 > 命令与事件是面向 UI/main 的线缆。插件编写指南见 `docs/plugins/SDK.md`。
 
@@ -1862,6 +1862,6 @@ graph LR
 
 ## 6. 维护方式
 
-- 新增/删除服务、命令、事件后运行 `node scripts/plugin-catalog/generate.mjs`，把结果与源码一起提交。
-- CI 运行 `node scripts/plugin-catalog/generate.mjs --check`；文档与源码不一致时退出码 1。
+- 新增/删除服务、命令、事件后运行 `node scripts/plugins/generate-catalog.mjs`，把结果与源码一起提交。
+- CI 运行 `node scripts/plugins/generate-catalog.mjs --check`；文档与源码不一致时退出码 1。
 - 服务接口以 `contracts/services/` 的草稿为评审依据；发布后消费方只从提供方 `api.ts` 导入类型。

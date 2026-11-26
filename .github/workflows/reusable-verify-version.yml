@@ -92,7 +92,7 @@ jobs:
 
       - name: Check time-sensitive release requirements before any compilation
         if: ${{ inputs.check_release_metadata }}
-        run: node scripts/migration-ci/verify-release-requirements.mjs --manifest scripts/migration-ci/release-requirements.json --out "$RUNNER_TEMP/release-requirements-preflight.json"
+        run: node scripts/ci/migration/verify-release-requirements.mjs --manifest scripts/ci/migration/release-requirements.json --out "$RUNNER_TEMP/release-requirements-preflight.json"
 
       - name: Verify version consistency
         id: verify

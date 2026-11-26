@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import registryData from '../../../scripts/provider-protocol-registry.json';
+import registryData from '../../../resources/registries/provider-protocol-registry.json';
 
 type ProviderProtocolRecord = {
   provider_type: string;

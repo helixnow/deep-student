@@ -92,7 +92,7 @@ function legalNoticesDevPlugin(): Plugin {
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/legal/THIRD_PARTY_NOTICES.txt", (_req, res) => {
-        const noticesPath = path.join(server.config.root, "legal", "THIRD_PARTY_NOTICES.txt");
+        const noticesPath = path.join(server.config.root, "resources", "legal", "THIRD_PARTY_NOTICES.txt");
         if (!fs.existsSync(noticesPath)) {
           res.statusCode = 404;
           res.end("THIRD_PARTY_NOTICES.txt not generated. Run npm run licenses:generate.");
@@ -191,9 +191,9 @@ export function resolveDevServerFsAllow(cwd: string): string[] {
 // 裁掉非 GB 的遗留编码（RKSJ/EUC/B5/HK/KSC 等）与罕见 UTF8/UTF32 变体：
 // R4 起命中子集外的 cmap 时经 src/utils/pdfAssets.ts 三级 fallback
 //（本地 → appData 缓存 → 预留远程源）补齐，全部落空才记缺字日志并跳过该字体。
-// 白名单清单与守卫测试（tests/vitest/pdf/）共用 config/pdfjs-local-assets.json。
+// 白名单清单与守卫测试（tests/vitest/pdf/）共用 resources/app/pdfjs-local-assets.json。
 const keptCMapGlobs: string[] = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), 'config', 'pdfjs-local-assets.json'), 'utf8'),
+  fs.readFileSync(path.join(process.cwd(), 'resources', 'app', 'pdfjs-local-assets.json'), 'utf8'),
 ).keptCMapGlobs;
 /**
  * 分包策略（manualChunks / failOnCircularChunk / computeStartupBootGroup）在

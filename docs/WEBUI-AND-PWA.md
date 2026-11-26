@@ -344,7 +344,7 @@ MP4 的 `filestream/<encodedPath>?mime=video%2Fmp4` 返回 `206 bytes 0-3406/340
 缺失 `/assets/NonExistent.js` 从改前的 `200 + immutable` 变为 `404 + no-store`。
 
 验收命令：`npm run build:web`、`npm run typecheck:native`、
-`node scripts/check-frontend-layers.mjs`、`npx vitest run src/platform/__tests__/`（35 项）、
+`node scripts/lint/check-frontend-layers.mjs`、`npx vitest run src/platform/__tests__/`（35 项）、
 `npx vitest run -c vitest.host.config.ts web/tests/`（56 项），以及平台/上传/导出/媒体/PDF 加载单测（38 项），均通过。
 
 ## 6. 相关文件

@@ -44,7 +44,7 @@ jobs:
           node --input-type=module -e 'import {STAGES} from "./scripts/ci/release-recovery.mjs"; import {appendFileSync,readFileSync} from "node:fs";const a=STAGES[process.env.STAGE];appendFileSync(process.env.GITHUB_OUTPUT,`asset=${a[0]}\nproof=${a[1]||""}\n`);const r=JSON.parse(readFileSync(`recovered/${process.env.STAGE}/receipt/checkpoint.json`));appendFileSync(process.env.GITHUB_ENV,`RELEASE_FRONTEND_SHA=${r.frontendSha256||""}\n`)'
       - name: Recheck time-sensitive migration requirements
         if: inputs.stage == 'migration'
-        run: node scripts/migration-ci/verify-release-requirements.mjs --manifest scripts/migration-ci/release-requirements.json --out "$RUNNER_TEMP/release-requirements-current.json"
+        run: node scripts/ci/migration/verify-release-requirements.mjs --manifest scripts/ci/migration/release-requirements.json --out "$RUNNER_TEMP/release-requirements-current.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ steps.names.outputs.asset }}

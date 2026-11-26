@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Linter } from 'eslint';
 import path from 'node:path';
-import rule from '../../eslint-rules/coarse-touch-target.js';
+import rule from '../../scripts/lint/eslint-rules/coarse-touch-target.js';
 
 /**
  * ds-components/coarse-touch-target 的行为契约。

@@ -79,7 +79,7 @@ jobs:
         if: matrix.task == 'build'
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: npx vite build && node scripts/ci/check-frontend-startup.mjs && node scripts/check-bundle-size.mjs --warn-only
+        run: npx vite build && node scripts/ci/check-frontend-startup.mjs && node scripts/ci/check-bundle-size.mjs --warn-only
       - name: npm audit (informational)
         if: matrix.task == 'lint'
         run: |
@@ -139,8 +139,8 @@ jobs:
               - 'host/platform/storage/**'
               - 'host/platform/secrets/**'
               - 'package-lock.json'
-              - 'scripts/dev/docker-compose.sync-test.yml'
-              - 'scripts/dev/sync-test-docker/**'
+              - 'scripts/ci/sync-test/docker-compose.yml'
+              - 'scripts/ci/sync-test/**'
               - 'scripts/ci/**'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
@@ -186,9 +186,9 @@ jobs:
       - name: Validate pinned provider composition
         run: |
           set -euo pipefail
-          docker compose -f scripts/dev/docker-compose.sync-test.yml config --quiet
+          docker compose -f scripts/ci/sync-test/docker-compose.yml config --quiet
           IMAGES_FILE="$RUNNER_TEMP/provider-contract-images.txt"
-          docker compose -f scripts/dev/docker-compose.sync-test.yml config --images > "$IMAGES_FILE"
+          docker compose -f scripts/ci/sync-test/docker-compose.yml config --images > "$IMAGES_FILE"
           if grep -q ':latest$' "$IMAGES_FILE"; then
             echo '::error::Provider contract images must not use mutable latest tags'
             exit 1
@@ -202,12 +202,12 @@ jobs:
             ftp) SERVICES=(ftp); RUN_INIT=0 ;;
             *) exit 1 ;;
           esac
-          docker compose -f scripts/dev/docker-compose.sync-test.yml up --detach --build --wait --wait-timeout 180 "${SERVICES[@]}"
+          docker compose -f scripts/ci/sync-test/docker-compose.yml up --detach --build --wait --wait-timeout 180 "${SERVICES[@]}"
           if [ "$RUN_INIT" = 1 ]; then
-            docker compose -f scripts/dev/docker-compose.sync-test.yml run --rm minio-init
+            docker compose -f scripts/ci/sync-test/docker-compose.yml run --rm minio-init
           fi
           for service in "${SERVICES[@]}"; do
-            container_id="$(docker compose -f scripts/dev/docker-compose.sync-test.yml ps -q "$service")"
+            container_id="$(docker compose -f scripts/ci/sync-test/docker-compose.yml ps -q "$service")"
             test "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" = healthy
           done
       - name: Execute provider contract tests
@@ -220,10 +220,10 @@ jobs:
           node -e 'const r = require(process.argv[1]); if (!(r.numPassedTests > 0)) { console.error("no provider contract test ran"); process.exit(1); }' "$RUNNER_TEMP/provider-contract.json"
       - name: Provider service logs
         if: always()
-        run: docker compose -f scripts/dev/docker-compose.sync-test.yml logs --no-color
+        run: docker compose -f scripts/ci/sync-test/docker-compose.yml logs --no-color
       - name: Stop provider services
         if: always()
-        run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
+        run: docker compose -f scripts/ci/sync-test/docker-compose.yml down --volumes --remove-orphans
 
   migration-gate:
     # The public main ruleset requires this actual host migration check as Backend.
@@ -246,11 +246,11 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           if [ -n "$BASE_REF" ]; then
-            node scripts/check-migrations.mjs --base-ref "origin/$BASE_REF"
+            node scripts/ci/check-migrations.mjs --base-ref "origin/$BASE_REF"
           else
-            node scripts/check-migrations.mjs
+            node scripts/ci/check-migrations.mjs
           fi
-          node --test scripts/migration-ci/__tests__/*.test.mjs
+          node --test scripts/ci/migration/__tests__/*.test.mjs
       - name: Host migration tests
         run: >-
           npx vitest run -c vitest.host.config.ts
@@ -264,7 +264,7 @@ jobs:
           MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
-        run: bash scripts/migration-ci/fetch-fixtures.sh --tier representative --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
+        run: bash scripts/ci/migration/fetch-fixtures.sh --tier representative --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
       - name: Representative fixture upgrades
         if: steps.fixtures.outputs.fixtures_available == 'true'
         env:

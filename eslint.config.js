@@ -3,18 +3,18 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
 import reactHooks from 'eslint-plugin-react-hooks';
-import noNativeButton from './eslint-rules/no-native-button.js';
-import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js';
-import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
-import noLegacyTooltip from './eslint-rules/no-legacy-tooltip.js';
-import noHardcodedColor from './eslint-rules/no-hardcoded-color.js';
-import noArbitraryZIndex from './eslint-rules/no-arbitrary-z-index.js';
-import noUntypedCommandThrow from './eslint-rules/no-untyped-command-throw.js';
+import noNativeButton from './scripts/lint/eslint-rules/no-native-button.js';
+import noArbitraryFontSize from './scripts/lint/eslint-rules/no-arbitrary-font-size.js';
+import coarseTouchTarget from './scripts/lint/eslint-rules/coarse-touch-target.js';
+import noLegacyTooltip from './scripts/lint/eslint-rules/no-legacy-tooltip.js';
+import noHardcodedColor from './scripts/lint/eslint-rules/no-hardcoded-color.js';
+import noArbitraryZIndex from './scripts/lint/eslint-rules/no-arbitrary-z-index.js';
+import noUntypedCommandThrow from './scripts/lint/eslint-rules/no-untyped-command-throw.js';
 import { readFileSync } from 'node:fs';
 
 // App 壳层：src/App.tsx 及从其中搬出的模块，App.tsx 专属护栏同样覆盖这些文件
 const appShellSourceFiles = JSON.parse(
-  readFileSync(new URL('./config/app-shell-sources.json', import.meta.url), 'utf-8')
+  readFileSync(new URL('./scripts/lint/app-shell-sources.json', import.meta.url), 'utf-8')
 ).files;
 
 export default tseslint.config(
@@ -345,7 +345,7 @@ export default tseslint.config(
       'src-tauri/**',
       '*.config.{js,ts,mjs}',
       'scripts/**',
-      'eslint-rules/**',
+      'scripts/lint/eslint-rules/**',
       'e2e-tests/**',
       'mcp-servers/**'
     ]

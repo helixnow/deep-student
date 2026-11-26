@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { collectNpmRecords } from '../../scripts/generate-third-party-notices.mjs';
+import { collectNpmRecords } from '../../scripts/licenses/generate-third-party-notices.mjs';
 import {
   electronRuntimeLockPaths,
   lockPathOfModule,
@@ -58,10 +58,10 @@ describe('third-party notices list what ships, not what is a production dependen
   it('a manifest generated for another lock is rejected instead of silently used', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ds-notices-'));
     const lock = { lockfileVersion: 3, packages: { '': { name: 'x' }, 'node_modules/react': { version: '19.0.0', dev: true } } };
-    mkdirSync(join(dir, 'legal'));
-    writeFileSync(join(dir, 'legal', 'frontend-bundle-packages.json'), JSON.stringify({ packageLockSha256: 'stale', packages: [] }));
+    mkdirSync(join(dir, 'resources', 'legal'), { recursive: true });
+    writeFileSync(join(dir, 'resources', 'legal', 'frontend-bundle-packages.json'), JSON.stringify({ packageLockSha256: 'stale', packages: [] }));
     expect(() => readFrontendManifest(dir, lock)).toThrow(/different package-lock\.json/);
-    writeFileSync(join(dir, 'legal', 'frontend-bundle-packages.json'), JSON.stringify({ packageLockSha256: packageLockHash(lock), packages: [{ path: 'node_modules/gone' }] }));
+    writeFileSync(join(dir, 'resources', 'legal', 'frontend-bundle-packages.json'), JSON.stringify({ packageLockSha256: packageLockHash(lock), packages: [{ path: 'node_modules/gone' }] }));
     expect(() => readFrontendManifest(dir, lock)).toThrow(/not in package-lock\.json/);
   });
 

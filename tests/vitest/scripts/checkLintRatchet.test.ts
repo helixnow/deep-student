@@ -12,7 +12,7 @@ import {
   ruleTotals,
   summarizeEslintReport,
   // @ts-expect-error 脚本为无类型声明的 .mjs（与 CLI 共用同一实现）
-} from '../../../scripts/check-lint-ratchet.mjs';
+} from '../../../scripts/lint/check-lint-ratchet.mjs';
 
 const ROOT = 'D:/repo';
 const file = (rel: string, messages: Array<Record<string, unknown>>) => ({ filePath: `${ROOT}/${rel}`, messages });
@@ -71,7 +71,7 @@ describe('compareCounts', () => {
 
 describe('repo baseline', () => {
   it('covers the two new design-system rules and only ratcheted rules', () => {
-    const baseline = JSON.parse(readFileSync(resolve(process.cwd(), 'config/lint-ratchet-baseline.json'), 'utf8'));
+    const baseline = JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/lint/lint-ratchet-baseline.json'), 'utf8'));
     expect(Object.keys(baseline.counts)).toEqual(expect.arrayContaining([
       'ds-components/no-hardcoded-color',
       'ds-components/no-arbitrary-z-index',

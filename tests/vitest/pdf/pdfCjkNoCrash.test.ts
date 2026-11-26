@@ -3,7 +3,7 @@
  *
  * 用真实 pdfjs-dist（fake worker，主线程 LoopbackPort）加载手工构造的
  * 未内嵌字体 CID PDF，走 PDF_OPTIONS 里的三级 fallback factory：
- *  - 简中 UniGB-UCS2-H 命中本地子集（config/pdfjs-local-assets.json 白名单模拟
+ *  - 简中 UniGB-UCS2-H 命中本地子集（resources/app/pdfjs-local-assets.json 白名单模拟
  *    dist/cmaps），文本可正确提取为「中文」；
  *  - 日文遗留编码 90ms-RKSJ-H 已被 R2 裁出子集：无远程源时不崩溃、记缺字日志；
  *  - 配置远程源（tier 3）后同一份 PDF 文本恢复可提取。
@@ -27,7 +27,7 @@ const cMapsDir = path.join(pdfjsDistDir, 'cmaps');
 const standardFontsDir = path.join(pdfjsDistDir, 'standard_fonts');
 
 const { keptCMapGlobs } = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), 'config', 'pdfjs-local-assets.json'), 'utf8'),
+  fs.readFileSync(path.join(process.cwd(), 'resources', 'app', 'pdfjs-local-assets.json'), 'utf8'),
 ) as { keptCMapGlobs: string[] };
 
 const keptCMapPatterns = keptCMapGlobs.map(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Linter } from 'eslint';
-import rule from '../../eslint-rules/no-arbitrary-font-size.js';
+import rule from '../../scripts/lint/eslint-rules/no-arbitrary-font-size.js';
 
 /**
  * ds-components/no-arbitrary-font-size 的行为契约。

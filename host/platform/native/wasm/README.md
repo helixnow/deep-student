@@ -45,7 +45,7 @@ removed together with the rest of the Rust tree and remain only in git history
 `Rust source` column and the build notes above are provenance for that binary.
 It was produced by rustc 1.98.1 (`toolchain.txt`); the sha256 is in
 `f7-native-wasm.wasm.sha256`.  The third-party crates compiled into it, with
-their license texts, are recorded in `legal/f7-native-wasm-components.json`.
+their license texts, are recorded in `resources/legal/f7-native-wasm-components.json`.
 
 Changing engine behavior therefore means either replacing an engine with a
 JS/TS implementation behind the same service, or rebuilding the module outside

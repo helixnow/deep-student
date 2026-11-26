@@ -1,4 +1,4 @@
-import registryData from '../../scripts/model-capability-registry.json';
+import registryData from '../../resources/registries/model-capability-registry.json';
 import { detectModelKindSignal } from './modelIdPrefix';
 
 export type RegistryModelStatus = 'confirmed' | 'inferred' | 'deprecated' | 'unknown';

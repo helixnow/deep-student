@@ -64,13 +64,13 @@ test('provider gate reserves setup time without extending test execution', () =>
 });
 
 test('canonical provider composition pins all services with healthchecks', () => {
-  const compose = read('scripts/dev/docker-compose.sync-test.yml');
-  const minioDockerfile = read('scripts/dev/sync-test-docker/Dockerfile.minio-tool');
+  const compose = read('scripts/ci/sync-test/docker-compose.yml');
+  const minioDockerfile = read('scripts/ci/sync-test/Dockerfile.minio-tool');
   const minio = yamlTopLevelSection(compose, 'minio');
   const webdav = yamlTopLevelSection(compose, 'webdav');
   const ftp = yamlTopLevelSection(compose, 'ftp');
 
-  assert.match(minio, /dockerfile: scripts\/dev\/sync-test-docker\/Dockerfile\.minio-tool/);
+  assert.match(minio, /dockerfile: scripts\/ci\/sync-test\/Dockerfile\.minio-tool/);
   assert.match(minio, /image: deep-student-sync-test-minio:RELEASE\.[^\s]+/);
   assert.match(minio, /healthcheck:/);
   assert.match(minio, /\/minio\/health\/live/);
@@ -98,11 +98,11 @@ test('canonical provider composition pins all services with healthchecks', () =>
 // npm scripts must drive the same file and the same startup sequence as the gate.
 test('local cloud fixture scripts match the CI provider contract sequence', () => {
   const { scripts } = JSON.parse(read('package.json'));
-  const up = scripts['dstu-test:cloud:up'];
-  const down = scripts['dstu-test:cloud:down'];
+  const up = scripts['test:sync-env:up'];
+  const down = scripts['test:sync-env:down'];
 
   for (const script of [up, down]) {
-    assert.match(script, /-f \.\/scripts\/dev\/docker-compose\.sync-test\.yml/);
+    assert.match(script, /-f \.\/scripts\/ci\/sync-test\/docker-compose\.yml/);
     assert.doesNotMatch(script, /dstu-test\/docker\/docker-compose\.sync-test\.yml/);
   }
 
@@ -112,5 +112,5 @@ test('local cloud fixture scripts match the CI provider contract sequence', () =
 });
 
 test('canonical composition pins the compose project name', () => {
-  assert.match(read('scripts/dev/docker-compose.sync-test.yml'), /^name: deep-student-sync-test$/m);
+  assert.match(read('scripts/ci/sync-test/docker-compose.yml'), /^name: deep-student-sync-test$/m);
 });

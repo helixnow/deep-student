@@ -211,7 +211,7 @@ DeepStudent
 │   └── locales/                 #   i18n (zh-CN / en-US)
 ├── contracts/ipc/               # 1,066 commands · 128 events · 989 types (zero Rust required)
 ├── resources/                   # App config, capabilities, SQL migrations & dstu-workshop skills/templates
-├── legal/                       # THIRD_PARTY_NOTICES.txt & WASM/frontend license manifests
+├── resources/                       # THIRD_PARTY_NOTICES.txt & WASM/frontend license manifests
 └── .github/workflows/           # CI, typecheck & multi-platform packaging
 ```
 
@@ -302,7 +302,7 @@ Packaging and cross-platform builds: [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md).
 
 ## Acknowledgments
 
-DeepStudent is built on open-source software — see [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) and [legal/THIRD_PARTY_NOTICES.txt](legal/THIRD_PARTY_NOTICES.txt) for full attributions and license texts, including:
+DeepStudent is built on open-source software — see [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) and [resources/legal/THIRD_PARTY_NOTICES.txt](resources/legal/THIRD_PARTY_NOTICES.txt) for full attributions and license texts, including:
 
 - **Runtimes & App Shells:** [Electron](https://www.electronjs.org) · [Capacitor](https://capacitorjs.com) · [Cordis](https://github.com/cordiverse/cordis) · [Node.js](https://nodejs.org) · [React](https://react.dev) · [Vite](https://vite.dev) · [TypeScript](https://www.typescriptlang.org)
 - **Data, Vector & Native / WASI-WASM Engines:** [SQLite](https://www.sqlite.org) / [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) / [@sqlite.org/sqlite-wasm](https://sqlite.org/wasm) · [LanceDB](https://lancedb.com) · [Apache Arrow](https://arrow.apache.org) · [koffi](https://koffi.dev) · F7 WASI Native Engines (Starlark / Symphonia / fsrs-rs / docx-rs / calamine) · [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)

@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
  * 本测试只做源码断言，不执行脚本（不 spawn node）。
  */
 
-const scriptPath = resolve(process.cwd(), 'scripts/check-i18n.mjs');
+const scriptPath = resolve(process.cwd(), 'scripts/lint/check-i18n.mjs');
 
 describe('check-i18n script wiring contract', () => {
   it('script file exists', () => {
@@ -68,10 +68,10 @@ describe('check-i18n npm script wiring', () => {
   ) as { scripts: Record<string, string> };
 
   it('exposes check:i18n as an independent npm script', () => {
-    expect(pkg.scripts['check:i18n']).toBe('node scripts/check-i18n.mjs');
+    expect(pkg.scripts['check:i18n']).toBe('node scripts/lint/check-i18n.mjs');
   });
 
   it('exposes check:i18n:strict with the --strict flag', () => {
-    expect(pkg.scripts['check:i18n:strict']).toBe('node scripts/check-i18n.mjs --strict');
+    expect(pkg.scripts['check:i18n:strict']).toBe('node scripts/lint/check-i18n.mjs --strict');
   });
 });

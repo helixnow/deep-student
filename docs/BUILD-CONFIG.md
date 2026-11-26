@@ -21,7 +21,7 @@ node electron/scripts/package.mjs --mac
 
 若 Electron 未安装二进制，运行 `node node_modules/electron/install.js`。打包前用 `npx @electron/rebuild -f -w better-sqlite3` 对齐 Electron 的原生模块 ABI。产物默认写入 `release/`，macOS 生成 DMG / ZIP，Windows 生成 EXE / ZIP，Linux 生成 AppImage / DEB。macOS 本地默认使用临时签名；正式签名配置见 `electron/signing/` 和 `electron/scripts/app-hardening.cjs`。
 
-`resources/app/` 包含窗口配置、IPC 权限和历史 SQL 迁移；SQL 文件按原始字节随包分发。`legal/` 提供打包依赖与预编译 WASM 的许可证声明。
+`resources/app/` 包含窗口配置、IPC 权限和历史 SQL 迁移；SQL 文件按原始字节随包分发。`resources/legal/` 提供打包依赖与预编译 WASM 的许可证声明。
 
 ## Capacitor 移动版
 

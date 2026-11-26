@@ -3,7 +3,7 @@
  * pdfjs cmaps 子集裁剪（R2-pdfjs-subset）的"日文 PDF 不崩溃"回归测试。
  *
  * R1 静态资产审计与 R2 裁剪报告都要求补一条用例：加载一份日文 PDF，
- * 断言不抛错。本测试在临时目录里按 config/pdfjs-local-assets.json 的
+ * 断言不抛错。本测试在临时目录里按 resources/app/pdfjs-local-assets.json 的
  * 白名单（与 vite.config.ts / tests/vitest/pdf/pdfCjkNoCrash.test.ts
  * 同一份清单）复刻 dist/cmaps 子集，然后走【不带运行时 fallback 的】
  * 原生 pdfjs 链路——与 pdfCjkNoCrash.test.ts（走 PDF_OPTIONS 三级
@@ -29,7 +29,7 @@ const standardFontsDir = path.join(pdfjsDistPath, 'standard_fonts');
 // 白名单单一事实来源（与 vite.config.ts 消费同一文件），匹配语义与
 // pdfCjkNoCrash.test.ts 保持一致：去掉 .bcmap 扩展名后按 glob 整名匹配。
 const { keptCMapGlobs } = JSON.parse(
-  readFileSync(path.join(process.cwd(), 'config', 'pdfjs-local-assets.json'), 'utf8'),
+  readFileSync(path.join(process.cwd(), 'resources', 'app', 'pdfjs-local-assets.json'), 'utf8'),
 ) as { keptCMapGlobs: string[] };
 
 const keptCMapPatterns = keptCMapGlobs.map(

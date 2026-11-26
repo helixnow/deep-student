@@ -3,7 +3,7 @@
 // ## 设计
 // 前端**不再**按模型家族裁剪档位集合——所有支持思考的模型统一展示同一套
 // 五档（low/medium/high/xhigh/max）+ 关闭开关。哪一档对该模型真正可用，
-// 由后端的档位能力表（scripts/reasoning-level-registry.json）在请求前
+// 由后端的档位能力表（resources/registries/reasoning-level-registry.json）在请求前
 // 就近吸附完成映射。
 //
 // 这样做的理由：档位可用性属于「模型能力」而非「界面能力」，散落在前端

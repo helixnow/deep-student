@@ -62,7 +62,7 @@ describe('opencode_go.rs', () => {
   });
 
   it('builtin_models_match_official_plans_table', () => {
-    const plans = JSON.parse(readFileSync('scripts/opencode-go-plans.json', 'utf8')) as {
+    const plans = JSON.parse(readFileSync('resources/registries/opencode-go-plans.json', 'utf8')) as {
       models: { id: string; protocol: string; training_permitted: boolean; monthly_limit_usd: { go?: unknown } }[];
     };
     for (const builtin of BUILTIN_MODELS) {

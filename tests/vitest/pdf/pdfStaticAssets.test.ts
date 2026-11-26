@@ -3,7 +3,7 @@
  *  - worker 只有一份权威来源（node_modules/pdfjs-dist/build，经 viteStaticCopy），
  *    public/ 不允许再出现手工同步的 worker 副本（WI-5 曾清理过一次）；
  *  - R2 wasm 裁剪不回退：拷贝 glob 永远匹配不到 openjpeg_nowasm_fallback.js；
- *  - cmaps 白名单（config/pdfjs-local-assets.json）持续覆盖简中核心 +
+ *  - cmaps 白名单（resources/app/pdfjs-local-assets.json）持续覆盖简中核心 +
  *    ToUnicode 依赖，且与 vite.config.ts 消费同一清单。
  */
 import { createRequire } from 'node:module';
@@ -17,7 +17,7 @@ const pdfjsDistDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
 
 const viteConfigSource = fs.readFileSync(path.join(repoRoot, 'vite.config.ts'), 'utf8');
 const { keptCMapGlobs } = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, 'config', 'pdfjs-local-assets.json'), 'utf8'),
+  fs.readFileSync(path.join(repoRoot, 'resources', 'app', 'pdfjs-local-assets.json'), 'utf8'),
 ) as { keptCMapGlobs: string[] };
 
 function globToRegExp(glob: string): RegExp {
@@ -83,7 +83,7 @@ describe('R2 wasm fallback 裁剪不回退', () => {
 });
 
 describe('cmaps 本地子集清单', () => {
-  it('vite.config 消费 config/pdfjs-local-assets.json（单一清单来源）', () => {
+  it('vite.config 消费 resources/app/pdfjs-local-assets.json（单一清单来源）', () => {
     expect(viteConfigSource).toContain('pdfjs-local-assets.json');
     expect(viteConfigSource).not.toMatch(/keptCMapGlobs\s*=\s*\[/);
   });

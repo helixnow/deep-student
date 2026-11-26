@@ -198,10 +198,10 @@ console.log(x);</code></pre>
 ];
 
 const REPO_PAGES: readonly string[] = [
-  'index.html', 'demo.html', 'hero.html', 'button-audit.html', 
+  'index.html', 'demo.html', 'hero.html', 
   'mobile/index.html', 'mobile/spike.html', 'electron/tests/fixtures/browser-main.html',
   'electron/tests/fixtures/smoke.html', 'host/plugins/media/assets/bilibili/pair.html',
-  'playwright/index.html', 'demo-app.html',
+  'tests/ct/playwright/index.html', 'demo-app.html',
 ];
 
 function repoPages(): string[] {

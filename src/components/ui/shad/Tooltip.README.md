@@ -4,7 +4,7 @@
 > `CommonTooltip` 已退化为**迁移适配层**——同引擎、同 DOM、同 class，只做 props
 > 形状翻译，让存量调用点零改动切到新实现。新代码请直接用 shad 三段式 API；
 > ESLint（`ds-components/no-legacy-tooltip`）会拦截新增的 `CommonTooltip` 引用，
-> 存量欠账登记在 `eslint-rules/common-tooltip.allowlist.json`。
+> 存量欠账登记在 `scripts/lint/eslint-rules/common-tooltip.allowlist.json`。
 
 ## ✨ 特性
 

@@ -1,5 +1,5 @@
 /**
- * 移动端「已注册但不支持」命令表——由 `node scripts/mobile-compat/generate.mjs` 生成，请勿手改。
+ * 移动端「已注册但不支持」命令表——由 `node scripts/contracts/generate-mobile-compat.mjs` 生成，请勿手改。
  *
  * 集合 = (Rust `allow-application-commands` ∩ `contracts/ipc`) − 其它移动端插件的 `meta.commands`。
  * `host/plugins/mobile-compat/tests/commands.test.ts` 守护它与 profile / 契约 / Rust 允许表一致。

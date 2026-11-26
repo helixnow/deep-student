@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * Public Repository Surface Gate (`npm run check:public-surface`)
+ * Public Repository Surface & Layout Gate (`npm run check:public-surface`)
  *
- * Enforces the strict minimal-public-surface policy for `helixnow/deep-student`:
- *   1. Root directory allowlist: only product source directories and essential configs/docs.
- *   2. `docs/` directory allowlist: only end-user guides and contributor/SDK docs.
- *   3. Zero internal process/migration artifacts (`LANE.md`, `BLOCKERS.md`, `TESTMAP.md`,
+ * Enforces the strict minimal-public-surface and lean-layout policy for `helixnow/deep-student`:
+ *   1. Root directory allowlist: ONLY 12 visible architectural modules + `.github`.
+ *   2. Root file allowlist: zero debug HTMLs, trace configs, or secondary tool clutter.
+ *   3. `docs/` and `scripts/` subdirectory allowlists: prevents script/doc sprawl.
+ *   4. Zero internal process/migration artifacts (`LANE.md`, `BLOCKERS.md`, `TESTMAP.md`,
  *      `ACCEPTANCE.md`, `*-PROGRESS.md`, `WP-*`, `DRAFT-*.md`, `*.log`).
- *   4. Zero tracked files matching `.gitignore`.
- *   5. Zero internal server hostnames or developer home-path fingerprints.
+ *   5. Zero tracked files matching `.gitignore` & zero internal environment fingerprints.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -19,18 +19,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 const ALLOWED_ROOT_DIRS = new Set([
   '.github',
-  '.vscode',
-  'config',
   'contracts',
   'docs',
   'electron',
-  'eslint-rules',
   'examples',
   'host',
-  'legal',
   'mobile',
-  'patches',
-  'playwright',
   'public',
   'resources',
   'scripts',
@@ -48,13 +42,11 @@ const ALLOWED_ROOT_FILES = new Set([
   '.release-please-manifest.json',
   '.stylelintignore',
   '.stylelintrc.json',
-  '.vsconfig',
   'ACKNOWLEDGMENTS.md',
   'CHANGELOG.md',
   'LICENSE',
   'README.md',
   'README_CN.md',
-  'button-audit.html',
   'demo-app.html',
   'demo.html',
   'eslint.config.js',
@@ -62,7 +54,6 @@ const ALLOWED_ROOT_FILES = new Set([
   'index.html',
   'package-lock.json',
   'package.json',
-  'playwright-ct.config.ts',
   'postcss.config.js',
   'release-please-config.json',
   'tailwind.config.js',
@@ -70,15 +61,23 @@ const ALLOWED_ROOT_FILES = new Set([
   'tsconfig.json',
   'tsconfig.node.json',
   'tsconfig.plugins.json',
-  'tsconfig.strict.json',
   'vite.config.ts',
   'vite.demo.config.ts',
-  'vite.trace.config.mjs',
   'vitest.config.ts',
   'vitest.host.config.ts',
-  'vitest.plugin-manager-host.config.ts',
-  'vitest.plugins.config.ts',
   'vitest.setup.ts',
+]);
+
+const ALLOWED_SCRIPTS_ENTRIES = new Set([
+  'generate-version.mjs',
+  '__tests__',
+  'arch',
+  'ci',
+  'contracts',
+  'licenses',
+  'lint',
+  'plugins',
+  'portability',
 ]);
 
 const ALLOWED_DOCS_FILES = new Set([
@@ -145,10 +144,14 @@ for (const file of tracked) {
 
   if (parts.length === 1) {
     if (!ALLOWED_ROOT_FILES.has(top)) {
-      errors.push(`[root-file] "${file}" is not in ALLOWED_ROOT_FILES (move internal notes/configs to deep-student-internal)`);
+      errors.push(`[root-file] "${file}" is not in ALLOWED_ROOT_FILES`);
     }
   } else if (!ALLOWED_ROOT_DIRS.has(top)) {
-    errors.push(`[root-dir] "${top}/" (from "${file}") is not an allowed top-level directory in the public repo`);
+    errors.push(`[root-dir] "${top}/" (from "${file}") is not an allowed top-level directory`);
+  }
+
+  if (top === 'scripts' && parts.length >= 2 && !ALLOWED_SCRIPTS_ENTRIES.has(parts[1])) {
+    errors.push(`[scripts-layout] "scripts/${parts[1]}" is outside the consolidated scripts directory layout`);
   }
 
   if (top === 'docs') {

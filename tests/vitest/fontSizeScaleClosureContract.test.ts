@@ -146,7 +146,7 @@ describe('font size scale closure contract', () => {
 
   it('wires the lint guard that blocks new hardcoded font sizes', () => {
     const eslintConfig = readSource('eslint.config.js');
-    expect(eslintConfig).toContain("import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js'");
+    expect(eslintConfig).toContain("import noArbitraryFontSize from './scripts/lint/eslint-rules/no-arbitrary-font-size.js'");
     expect(eslintConfig).toContain("'no-arbitrary-font-size': noArbitraryFontSize");
     expect(eslintConfig).toContain("'ds-components/no-arbitrary-font-size': 'warn'");
     // 共享基元目录已清零，必须是 error 而不是 warn

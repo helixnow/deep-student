@@ -22,7 +22,7 @@ import {
  *   <TooltipContent side="bottom" shortcut="⌘K">刷新</TooltipContent>
  * </Tooltip>
  * ```
- * 迁移完成前 ESLint 对存量文件放行（见 eslint-rules/common-tooltip.allowlist.json）。
+ * 迁移完成前 ESLint 对存量文件放行（见 scripts/lint/eslint-rules/common-tooltip.allowlist.json）。
  *
  * @deprecated 直接使用 `@/components/ui/shad/Tooltip`。
  */

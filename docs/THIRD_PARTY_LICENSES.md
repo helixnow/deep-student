@@ -1,8 +1,8 @@
 # Third-Party Licenses | 第三方许可证
 
-本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/generate-third-party-notices.mjs` 生成到 `legal/THIRD_PARTY_NOTICES.txt`（唯一权威路径，经 Tauri `bundle.resources` 进入安装包 `resources/licenses/`）。
+本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/licenses/generate-third-party-notices.mjs` 生成到 `resources/legal/THIRD_PARTY_NOTICES.txt`（唯一权威路径，经 Tauri `bundle.resources` 进入安装包 `resources/licenses/`）。
 
-This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `legal/THIRD_PARTY_NOTICES.txt` (single authoritative path, bundled into `resources/licenses/` via Tauri `bundle.resources`).
+This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `resources/legal/THIRD_PARTY_NOTICES.txt` (single authoritative path, bundled into `resources/licenses/` via Tauri `bundle.resources`).
 
 > 更新时间 / Updated: 2026-08-24
 
@@ -81,7 +81,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
   - 上游仓库：https://github.com/open-spaced-repetition/fsrs-rs
   - 许可证：BSD-3-Clause，Copyright (c) 2023, Open Spaced Repetition
   - 用途：FSRS-6 记忆模型与参数优化器（与 Anki 同一实现）
-  - 二进制发行：许可证全文随 `legal/THIRD_PARTY_NOTICES.txt` 打包为 `$RESOURCE/licenses/THIRD_PARTY_NOTICES.txt`（满足 BSD-3-Clause 第 2 条）
+  - 二进制发行：许可证全文随 `resources/legal/THIRD_PARTY_NOTICES.txt` 打包为 `$RESOURCE/licenses/THIRD_PARTY_NOTICES.txt`（满足 BSD-3-Clause 第 2 条）
 
 ---
 

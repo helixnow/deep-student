@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { settleGuardProblem } from '../../../eslint-rules/no-untyped-command-throw.baseline.mjs';
+import { settleGuardProblem } from '../../../scripts/lint/eslint-rules/no-untyped-command-throw.baseline.mjs';
 import { definePlugin, type HostPlugin } from '../api.ts';
 import type { CommandArg, CommandContract, JsonSchema, LaneContract } from '../contract.ts';
 import { ContractSet } from '../contracts.ts';

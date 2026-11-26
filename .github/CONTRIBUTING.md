@@ -39,7 +39,7 @@ npm run check:public-surface
 
 ### 代码风格与架构约束
 - TypeScript / React：请通过 `npm run lint`、`npm run check:frontend-layers` 检查
-- Host 与插件边界：请通过 `npm run migration:boundaries` 与 `npm run contracts:check` 检查
+- Host 与插件边界：请通过 `npm run check:arch` 与 `npm run contracts:check` 检查
 - 详细规范参见 [`docs/CODE_STYLE.md`](../docs/CODE_STYLE.md)、[`docs/frontend/README.md`](../docs/frontend/README.md) 与 [`host/kernel/API.md`](../host/kernel/API.md)
 
 ### CI/CD

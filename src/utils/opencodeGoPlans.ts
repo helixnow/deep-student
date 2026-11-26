@@ -1,5 +1,5 @@
 /**
- * OpenCode Go 各模型额度（静态数据，见 scripts/opencode-go-plans.json）。
+ * OpenCode Go 各模型额度（静态数据，见 resources/registries/opencode-go-plans.json）。
  *
  * 官方规则：所有模型共用 5 小时 / 周 / 月三档额度；每个模型的「月额度」是换算系数——
  * 按标价在该模型上花掉月额度对应的金额，即用完 100% 月额度。月额度越高，同样的额度能用得越多。
@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import plansData from '../../scripts/opencode-go-plans.json';
+import plansData from '../../resources/registries/opencode-go-plans.json';
 import { getSetting, saveSetting } from './settingsApi';
 import { APP_EVENTS, addAppEventListener, dispatchAppEvent } from '@/events';
 

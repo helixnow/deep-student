@@ -43,12 +43,12 @@ jobs:
           path: .release-tooling
           sparse-checkout: |
             scripts/ci
-            scripts/migration-ci
+            scripts/ci/migration
             .github/actions
 
       - name: Overlay release requirements from workflow revision
         run: |
-          REQUIREMENTS="scripts/migration-ci/release-requirements.json"
+          REQUIREMENTS="scripts/ci/migration/release-requirements.json"
           if [ -f ".release-tooling/${REQUIREMENTS}" ]; then
             cp ".release-tooling/${REQUIREMENTS}" "${REQUIREMENTS}"
           fi
@@ -67,7 +67,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Static migration gate
-        run: node scripts/check-migrations.mjs
+        run: node scripts/ci/check-migrations.mjs
 
       - name: Fetch full fixture tier (fail-closed)
         if: ${{ !inputs.allow_missing_fixtures }}
@@ -77,7 +77,7 @@ jobs:
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
         run: |
-          bash scripts/migration-ci/fetch-fixtures.sh \
+          bash scripts/ci/migration/fetch-fixtures.sh \
             --tier full --dest "$RUNNER_TEMP/migration-fixtures" --mode require
 
       - name: Record manual fixture override
@@ -111,8 +111,8 @@ jobs:
 
       - name: Verify release requirements (artifact upgrade E2E manifest)
         run: |
-          node scripts/migration-ci/verify-release-requirements.mjs \
-            --manifest scripts/migration-ci/release-requirements.json \
+          node scripts/ci/migration/verify-release-requirements.mjs \
+            --manifest scripts/ci/migration/release-requirements.json \
             --out "$RUNNER_TEMP/migration-reports/release-requirements-result.json"
 
       - name: Generate migration compatibility report
@@ -132,7 +132,7 @@ jobs:
             ARGS+=(--test-count-file "$RUNNER_TEMP/migration-test-count.json")
           [ -f "$RUNNER_TEMP/migration-reports/release-requirements-result.json" ] && \
             ARGS+=(--requirements-result "$RUNNER_TEMP/migration-reports/release-requirements-result.json")
-          node scripts/migration-ci/generate-report.mjs "${ARGS[@]}"
+          node scripts/ci/migration/generate-report.mjs "${ARGS[@]}"
 
       - name: Upload migration compatibility report
         if: always()

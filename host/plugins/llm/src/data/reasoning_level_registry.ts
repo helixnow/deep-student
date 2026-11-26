@@ -1,4 +1,4 @@
-/** Generated from scripts/reasoning-level-registry.json (read-only source). */
+/** Generated from resources/registries/reasoning-level-registry.json (read-only source). */
 export interface ReasoningLevelProfile {
   id: string;
   family: string;

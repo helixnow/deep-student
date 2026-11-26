@@ -1,6 +1,6 @@
 /**
  * 供应商协议选择与归一化（移植 `dstu-llm/src/llm_manager/mod.rs` 3768–4175、
- * 4094–4175 与 `scripts/provider-protocol-registry.json`）。
+ * 4094–4175 与 `resources/registries/provider-protocol-registry.json`）。
  *
  * Rust 侧注册表缺失或解析失败时整体回退为空表（所有查询按"未登记"处理）；
  * 这里的数据模块编译期就固定，行为与解析成功一致。

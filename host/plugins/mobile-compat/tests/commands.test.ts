@@ -1,6 +1,6 @@
 /**
  * `dstu.mobile.compat` 命令表守护：
- * - 由生成器复算一致（漂移时重跑 `node scripts/mobile-compat/generate.mjs`）；
+ * - 由生成器复算一致（漂移时重跑 `node scripts/contracts/generate-mobile-compat.mjs`）；
  * - 每条命令都有 IPC 契约、都在 Rust `allow-application-commands` 里；
  * - 与其它移动端插件声明的命令不重叠（占位不得遮蔽真实实现）；
  * - 调用时返回 `UNSUPPORTED_ON_PLATFORM`，而不是 kernel 的 `not allowed by ACL`。
@@ -12,7 +12,7 @@ import { UNSUPPORTED_ON_PLATFORM_PREFIX } from '../../../platform/errors/unsuppo
 import { bundledContracts } from '../../../../mobile/src/worker/contracts.ts';
 import { COMPAT_COMMANDS } from '../commands.ts';
 
-const GENERATOR = new URL('../../../../scripts/mobile-compat/generate.mjs', import.meta.url);
+const GENERATOR = new URL('../../../../scripts/contracts/generate-mobile-compat.mjs', import.meta.url);
 
 interface GeneratorModule {
   compatCommands(root?: string): Promise<string[]>;

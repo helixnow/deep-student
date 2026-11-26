@@ -1,4 +1,4 @@
-/** Run with vitest.plugin-manager-host.config.ts: real Node Host and DOM UI in the same test process. */
+/** Run with scripts/plugins/vitest.plugin-manager-host.config.ts: real Node Host and DOM UI in the same test process. */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

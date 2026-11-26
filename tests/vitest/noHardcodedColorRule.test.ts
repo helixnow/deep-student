@@ -1,6 +1,6 @@
 import { afterAll, describe, it } from 'vitest';
 import { RuleTester } from 'eslint';
-import rule from '../../eslint-rules/no-hardcoded-color.js';
+import rule from '../../scripts/lint/eslint-rules/no-hardcoded-color.js';
 
 /**
  * ds-components/no-hardcoded-color 的行为契约。

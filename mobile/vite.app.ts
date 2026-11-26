@@ -123,7 +123,7 @@ function pdfAssets(repo: string): Plugin[] {
   const pdfjs = dirname(require.resolve('pdfjs-dist/package.json'));
   const cmaps = normalizePath(join(pdfjs, 'cmaps'));
   const wasm = normalizePath(join(pdfjs, 'wasm'));
-  const kept = (JSON.parse(readFileSync(join(repo, 'config/pdfjs-local-assets.json'), 'utf8')) as { keptCMapGlobs: string[] }).keptCMapGlobs;
+  const kept = (JSON.parse(readFileSync(join(repo, 'resources/app/pdfjs-local-assets.json'), 'utf8')) as { keptCMapGlobs: string[] }).keptCMapGlobs;
   // Root frontend plugin and mobile Vite have separate (nominal Rollup) type identities.
   return viteStaticCopy({
     targets: [
@@ -132,7 +132,7 @@ function pdfAssets(repo: string): Plugin[] {
       { src: normalizePath(join(pdfjs, 'standard_fonts')), dest: '' },
       { src: [`${wasm}/*.wasm`, `${wasm}/LICENSE*`], dest: 'wasm' },
       { src: normalizePath(join(repo, 'LICENSE')), dest: 'legal', rename: 'DEEPSTUDENT_LICENSE.txt' },
-      { src: normalizePath(join(repo, 'legal/THIRD_PARTY_NOTICES.txt')), dest: 'legal' },
+      { src: normalizePath(join(repo, 'resources/legal/THIRD_PARTY_NOTICES.txt')), dest: 'legal' },
     ],
   }) as unknown as Plugin[];
 }

@@ -1,4 +1,4 @@
-import registryData from '../../scripts/provider-protocol-registry.json';
+import registryData from '../../resources/registries/provider-protocol-registry.json';
 import type { ApiProtocol } from '@/types';
 
 export interface ProviderProtocolRecord {

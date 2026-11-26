@@ -7,10 +7,10 @@
 import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
-import rule from '../../../eslint-rules/no-untyped-command-throw.js';
+import rule from '../../../scripts/lint/eslint-rules/no-untyped-command-throw.js';
 import {
   commandErrorInventory, lintCommandThrows, readBaseline, readSettleGuards, settleGuardProblem, unguardedOwners,
-} from '../../../eslint-rules/no-untyped-command-throw.baseline.mjs';
+} from '../../../scripts/lint/eslint-rules/no-untyped-command-throw.baseline.mjs';
 
 RuleTester.describe = describe;
 RuleTester.it = it;

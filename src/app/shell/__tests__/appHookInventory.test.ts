@@ -36,7 +36,7 @@ function calls(file: string, text: string) {
 
 it('accounts for every e73 App hook and inline effect after the split', () => {
   const original = calls('src/App.tsx', fs.readFileSync('tests/fixtures/plugin-consolidation/e73e0d98/src/App.tsx.txt', 'utf8'));
-  const files: string[] = JSON.parse(fs.readFileSync('config/app-shell-sources.json', 'utf8')).files;
+  const files: string[] = JSON.parse(fs.readFileSync('scripts/lint/app-shell-sources.json', 'utf8')).files;
   const current = files.flatMap(file => calls(file, fs.readFileSync(file, 'utf8')));
   const rows = original.map(call => {
     expect(call.key).not.toContain('undefined');

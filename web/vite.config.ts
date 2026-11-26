@@ -47,7 +47,7 @@ const cMapsDir = normalizePath(path.join(pdfjsDistPath, 'cmaps'));
 const standardFontsDir = normalizePath(path.join(pdfjsDistPath, 'standard_fonts'));
 const wasmDir = normalizePath(path.join(pdfjsDistPath, 'wasm'));
 const keptCMapGlobs: string[] = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, 'config', 'pdfjs-local-assets.json'), 'utf8'),
+  fs.readFileSync(path.join(repoRoot, 'resources', 'app', 'pdfjs-local-assets.json'), 'utf8'),
 ).keptCMapGlobs;
 
 /** `sw.js` 里由构建期替换成真实构建指纹的占位符（源文件在 `web/public/sw.js`）。 */
@@ -145,7 +145,7 @@ function webHtmlAndPwaAssets(): Plugin {
           }
         }
         if (reqPath === '/legal/THIRD_PARTY_NOTICES.txt') {
-          const notices = path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt');
+          const notices = path.join(repoRoot, 'resources', 'legal', 'THIRD_PARTY_NOTICES.txt');
           if (fs.existsSync(notices)) {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -216,7 +216,7 @@ export default defineConfig({
         { src: [`${wasmDir}/*.wasm`, `${wasmDir}/LICENSE*`], dest: 'wasm' },
         { src: normalizePath(path.join(pdfjsDistPath, 'build', 'pdf.worker.min.mjs')), dest: '' },
         { src: normalizePath(path.join(repoRoot, 'LICENSE')), dest: 'legal', rename: 'DEEPSTUDENT_LICENSE.txt' },
-        { src: normalizePath(path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt')), dest: 'legal' },
+        { src: normalizePath(path.join(repoRoot, 'resources', 'legal', 'THIRD_PARTY_NOTICES.txt')), dest: 'legal' },
       ],
     }),
   ],

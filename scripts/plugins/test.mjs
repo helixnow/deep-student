@@ -11,4 +11,4 @@ function run(args) {
 run(['scripts/plugins/generate-contracts.mjs', '--check']);
 run(['scripts/plugins/check-boundaries.mjs']);
 run(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.plugins.json']);
-run(['node_modules/vitest/vitest.mjs', 'run', '--config', 'vitest.plugins.config.ts']);
+run(['node_modules/vitest/vitest.mjs', 'run', '--config', 'scripts/plugins/vitest.config.ts']);

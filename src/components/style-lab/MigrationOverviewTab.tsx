@@ -71,7 +71,7 @@ export function MigrationOverviewTab({ data }: Props) {
           duration: scanDurationMs,
           defaultValue: '扫描于 {{time}} · 耗时 {{duration}}ms · 运行',
         })}{' '}
-        <code className="font-mono">node scripts/scan-component-usage.mjs</code>{' '}
+        <code className="font-mono">node scripts/lint/scan-component-usage.mjs</code>{' '}
         {t('style_lab.footer.refresh_suffix', { defaultValue: '刷新' })}
       </p>
     </div>

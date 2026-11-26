@@ -875,7 +875,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
         // 统一五档：前端只记录用户选择的档位原值，不做任何映射。
         // 该档位对该模型是否可用、需要吸附到哪一档，全部由后端的档位能力表
-        // （scripts/reasoning-level-registry.json）在请求前完成。历史上前端
+        // （resources/registries/reasoning-level-registry.json）在请求前完成。历史上前端
         // 在此处做过 max→xhigh 等改写，与后端归一表构成双份映射并相互漂移。
         store.getState().setChatParams({
           enableThinking: true,

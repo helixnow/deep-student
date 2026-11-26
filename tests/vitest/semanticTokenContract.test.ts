@@ -11,7 +11,7 @@ describe('semantic token migration contract', () => {
   const thinkingScrollbarSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/deep-student.css'), 'utf-8');
   const analysisCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/analysis.css'), 'utf-8');
   const markdownCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/markdown.css'), 'utf-8');
-  const styleLabScannerSource = readFileSync(resolve(process.cwd(), 'scripts/scan-component-usage.mjs'), 'utf-8');
+  const styleLabScannerSource = readFileSync(resolve(process.cwd(), 'scripts/lint/scan-component-usage.mjs'), 'utf-8');
 
   const stripCssComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '');
   const hardcodedColorPattern = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(\s*\d|oklch\(\s*\d|oklab\(\s*\d/;

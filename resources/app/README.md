@@ -8,5 +8,5 @@
 - `Info.plist`、`Entitlements.plist`：macOS 权限文案和签名声明。
 - `android/release-signing-cert.sha256`：公开签名证书指纹，不是私钥。
 
-SQL 仍按 `scripts/check-migrations.mjs` 校验不可变性，与 Host 的 TS 迁移定义核对。
+SQL 仍按 `scripts/ci/check-migrations.mjs` 校验不可变性，与 Host 的 TS 迁移定义核对。
 Electron 安装包将 SQL 逐字节复制到独立的 `migrations/` 资源目录；移动端以原始文本打包。

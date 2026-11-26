@@ -90,7 +90,7 @@ module.exports = {
     'resources/app/capabilities/**/*',
     'resources/app/permissions/**/*',
     'LICENSE',
-    'legal/**/*',
+    'resources/legal/**/*',
     '!**/*.map',
   ],
   /**
@@ -131,7 +131,7 @@ module.exports = {
     // 逐字节复制：electron-builder 使用 fs 复制，不做文本转码。
     { from: 'resources/app/migrations', to: 'migrations' },
     { from: 'LICENSE', to: 'licenses/DeepStudent-AGPL-3.0.txt' },
-    { from: 'legal/THIRD_PARTY_NOTICES.txt', to: 'licenses/THIRD_PARTY_NOTICES.txt' },
+    { from: 'resources/legal/THIRD_PARTY_NOTICES.txt', to: 'licenses/THIRD_PARTY_NOTICES.txt' },
   ],
   mac: {
     target: ['dmg', 'zip'],

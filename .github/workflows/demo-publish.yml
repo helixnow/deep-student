@@ -105,10 +105,10 @@ jobs:
         run: |
           npx vite preview --config vite.demo.config.ts --port 4173 --strictPort > preview.log 2>&1 &
           for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:4173/demo-app.html && break; sleep 1; done
-          node scripts/demo/check-demo-apps.mjs --base http://127.0.0.1:4173 --shots dist-demo/posters --json demo-check.json
+          node scripts/ci/demo/check-demo-apps.mjs --base http://127.0.0.1:4173 --shots dist-demo/posters --json demo-check.json
       - name: Write manifest
         if: steps.target.outputs.skip == 'false'
-        run: node scripts/demo/write-demo-manifest.mjs --version '${{ steps.target.outputs.label }}' --commit '${{ steps.target.outputs.ref }}'
+        run: node scripts/ci/demo/write-demo-manifest.mjs --version '${{ steps.target.outputs.label }}' --commit '${{ steps.target.outputs.ref }}'
       - name: Upload to R2
         if: steps.target.outputs.skip == 'false'
         env:

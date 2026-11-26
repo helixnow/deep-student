@@ -191,10 +191,10 @@ plain-JSON 违规；内部 BigInt 不因构造 message 而抛错或改写。诊�
 
 #### 2.3.1 棘轮：静态 lint 与动态守卫
 
-- **静态**：ESLint 规则 `ds-host/no-untyped-command-throw`（`eslint-rules/no-untyped-command-throw.js`）拦住处理函数里
+- **静态**：ESLint 规则 `ds-host/no-untyped-command-throw`（`scripts/lint/eslint-rules/no-untyped-command-throw.js`）拦住处理函数里
   原样冒到 kernel 的 `throw new Error(…)` / 抛字符串，按文件计数冻结在 `no-untyped-command-throw.baseline.json`，
   由 `host/kernel/tests/command-error-lint.test.ts` 守护。它不跨文件追踪服务实现。
-- **工作单**：`node eslint-rules/no-untyped-command-throw.baseline.mjs --inventory` 按归属列出处理函数的错误出口。
+- **工作单**：`node scripts/lint/eslint-rules/no-untyped-command-throw.baseline.mjs --inventory` 按归属列出处理函数的错误出口。
   其中 `bare` 是静态启发式：处理函数调用的跨文件服务即使内部已 catch 并分类，也会被算进来（例如 vfs-handlers
   157 个处理函数全记为 bare，动态守卫却证明它们都 settle 成已分类值）。所以 `bare` 只是候选，**不是棘轮**。
 - **动态守卫（棘轮）**：测试文件 `command-error-settle*.test.ts` 用 `host/kernel/testing.ts` 的
@@ -204,7 +204,7 @@ plain-JSON 违规；内部 BigInt 不因构造 message 而抛错或改写。诊�
   `contract`（debug 契约违规诊断）、`did not settle`、`not in contracts`。守卫通常跑两遍：一遍依赖正常，
   一遍让依赖失败（关闭数据库等），因为这正是 Rust `?` / `map_err` 返回 Err 的两类来源。`exclude` 只放会触达网络、模型、
   音频或长任务的命令。参考实现：`host/plugins/vfs-handlers/tests/command-error-settle.test.ts`（W04）。
-- **登记**：`eslint-rules/command-error-settle.json` 的 `guards` 记录归属 → 守卫文件，需要手工维护。
+- **登记**：`scripts/lint/eslint-rules/command-error-settle.json` 的 `guards` 记录归属 → 守卫文件，需要手工维护。
   `command-error-lint.test.ts` 检查每个守卫：文件存在、按上面的规则命名、导入了该归属的模块、使用了 kernel 的守卫工具。
   有 bare 处理函数却没有守卫的归属必须列在 `unguarded` 名单里。名单只减不增：新增归属需要先补守卫，
   补了守卫或 bare 归零后用 `--update` 收紧（新增条目会被拒绝，除非加 `--allow-increase`）。
@@ -1049,7 +1049,7 @@ kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`ds
   协议接口、`CommandError`、`Schema` 等，清单由测试固定）。它们只做向后兼容的扩展；不兼容的修改先给旧接口加
   `@deprecated` 并保留一个发布周期，再删除。
 - `@typescript-eslint/no-deprecated` 对 `host/`、`electron/` 开启（`eslint.config.js`，类型化）。现存 11 处用法按文件冻结在
-  `eslint-rules/no-deprecated.baseline.json`；棘轮 `bin/heavy node eslint-rules/no-deprecated.baseline.mjs`（约 3 分钟，
+  `scripts/lint/eslint-rules/no-deprecated.baseline.json`；棘轮 `bin/heavy node scripts/lint/eslint-rules/no-deprecated.baseline.mjs`（约 3 分钟，
   `--update` 只收紧）。kernel 自身零用法由 `tests/no-deprecated-lint.test.ts` 检查。
 
 ### 16.6 可移植引导

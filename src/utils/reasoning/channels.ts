@@ -9,7 +9,7 @@
 //
 // ## 为什么不再裁剪档位
 // 档位可用性属「模型能力」，应在后端按能力表就近映射（见
-// scripts/reasoning-level-registry.json）。前端裁剪会导致同一事实在三处
+// resources/registries/reasoning-level-registry.json）。前端裁剪会导致同一事实在三处
 // 重复（前端表、后端归一表、注册表）并漂移——
 // gpt-6 的 max 被静默折叠为 xhigh、Gemini 的 low 被改写为 high 都是漂移产物。
 //

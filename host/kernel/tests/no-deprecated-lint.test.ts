@@ -5,7 +5,7 @@
  * 守门（基线 eslint-rules/no-deprecated.baseline.json）。这里只验证 kernel 与棘轮的比较逻辑。
  */
 import { describe, expect, it } from 'vitest';
-import { compareWithBaseline, lintDeprecated, readBaseline } from '../../../eslint-rules/no-deprecated.baseline.mjs';
+import { compareWithBaseline, lintDeprecated, readBaseline } from '../../../scripts/lint/eslint-rules/no-deprecated.baseline.mjs';
 
 describe('no-deprecated lint', () => {
   it('host/kernel uses no @deprecated API', async () => {

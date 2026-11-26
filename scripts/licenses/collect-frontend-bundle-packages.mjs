@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 生成 legal/frontend-bundle-packages.json：前端产物里实际包含的 npm 包。
+// 生成 resources/legal/frontend-bundle-packages.json：前端产物里实际包含的 npm 包。
 //
 // 用仓库自己的 vite.config.ts 做一次生产构建（输出到临时目录，不碰 dist/），额外挂一个只读的收集插件：
 // - Rollup 渲染进 chunk 的模块（renderedLength > 0，tree-shaking 掉的不算），主构建与 worker 构建都收集；

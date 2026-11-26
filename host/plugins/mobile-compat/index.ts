@@ -11,7 +11,7 @@
  * （`host/platform/errors/unsupported-commands.ts`）。前端按 `UNSUPPORTED_ON_PLATFORM_PREFIX`
  * 识别，能力清单见 `mobile/src/capabilities.ts`。
  *
- * 命令表由 `node scripts/mobile-compat/generate.mjs` 生成：Rust `allow-application-commands` 与
+ * 命令表由 `node scripts/contracts/generate-mobile-compat.mjs` 生成：Rust `allow-application-commands` 与
  * `contracts/ipc` 的交集，减去其它移动端插件 `meta.commands` 已声明的命令。新增移动端插件或在移动端
  * 实现某个命令后重跑生成器即可（`tests/commands.test.ts` 守护漂移）。
  */

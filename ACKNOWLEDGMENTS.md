@@ -2,7 +2,7 @@
 
 DeepStudent is licensed under the **GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`)** — see [`LICENSE`](./LICENSE).
 
-All shipped and runtime third-party dependencies in DeepStudent are verified for full `AGPL-3.0-or-later` compatibility (via `npm run licenses:check`). Complete machine-generated copyright, license, and attribution texts for every distributed component are maintained in [`legal/THIRD_PARTY_NOTICES.txt`](./legal/THIRD_PARTY_NOTICES.txt).
+All shipped and runtime third-party dependencies in DeepStudent are verified for full `AGPL-3.0-or-later` compatibility (via `npm run licenses:check`). Complete machine-generated copyright, license, and attribution texts for every distributed component are maintained in [`resources/legal/THIRD_PARTY_NOTICES.txt`](./resources/legal/THIRD_PARTY_NOTICES.txt).
 
 ---
 
@@ -130,4 +130,4 @@ The prebuilt WebAssembly module [`host/platform/native/wasm/f7-native-wasm.wasm`
 
 ---
 
-For the complete, generated inventory and verbatim license/notice texts of all 1,028 shipped components, see [`legal/THIRD_PARTY_NOTICES.txt`](./legal/THIRD_PARTY_NOTICES.txt) and [`LICENSE`](./LICENSE).
+For the complete, generated inventory and verbatim license/notice texts of all 1,028 shipped components, see [`resources/legal/THIRD_PARTY_NOTICES.txt`](./resources/legal/THIRD_PARTY_NOTICES.txt) and [`LICENSE`](./LICENSE).

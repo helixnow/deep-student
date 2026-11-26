@@ -30,7 +30,7 @@ import {
   runUpdate,
   scanMigrationFiles,
   sha256,
-} from '../check-migrations.mjs';
+} from '../ci/check-migrations.mjs';
 
 // ----------------------------------------------------------------------------
 // 测试夹具：构造最小仓库结构

@@ -1,6 +1,6 @@
 /**
  * scripts/check-frontend-layers.mjs 的行为契约（内存 fixture，不读真实 src/）。
- * 层图真值见 config/frontend-layers.json，基线见 config/frontend-layers-baseline.json。
+ * 层图真值见 scripts/lint/frontend-layers.json，基线见 scripts/lint/frontend-layers-baseline.json。
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ import {
   resolveImport,
   summarizePairs,
   // @ts-expect-error 脚本为无类型声明的 .mjs（与 CLI 共用同一实现）
-} from '../../../scripts/check-frontend-layers.mjs';
+} from '../../../scripts/lint/check-frontend-layers.mjs';
 
 const config = {
   layers: [
@@ -157,8 +157,8 @@ describe('checkFrontendLayers', () => {
   it('fails on unassigned top-level entries, including non-code files', () => {
     const r = run({ 'newdir/a.ts': '', 'utils/u.ts': "import '@/newdir/a';" }, ['loose.css']);
     expect(r.problems).toEqual([
-      'src/loose.css 未在 config/frontend-layers.json 中登记层级',
-      'src/newdir 未在 config/frontend-layers.json 中登记层级',
+      'src/loose.css 未在 scripts/lint/frontend-layers.json 中登记层级',
+      'src/newdir 未在 scripts/lint/frontend-layers.json 中登记层级',
     ]);
     expect(r.absentEntries).toContain('lib');
   });
@@ -189,10 +189,10 @@ describe('diffBaseline / summarizePairs', () => {
 
 describe('repo layer map', () => {
   it('assigns every current top-level src entry and the baseline is sorted', () => {
-    const repoConfig = JSON.parse(readFileSync(resolve(process.cwd(), 'config/frontend-layers.json'), 'utf8'));
+    const repoConfig = JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/lint/frontend-layers.json'), 'utf8'));
     expect(repoConfig.layers.map((l: { name: string }) => l.name)).toEqual(['foundation', 'platform', 'ui', 'feature', 'app']);
     const baseline = JSON.parse(
-      readFileSync(resolve(process.cwd(), 'config/frontend-layers-baseline.json'), 'utf8'),
+      readFileSync(resolve(process.cwd(), 'scripts/lint/frontend-layers-baseline.json'), 'utf8'),
     ).violations as string[];
     expect([...baseline].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(baseline);
     expect(new Set(baseline).size).toBe(baseline.length);

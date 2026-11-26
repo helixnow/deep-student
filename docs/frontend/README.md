@@ -25,7 +25,7 @@
 <a id="debt"></a>
 ## 现有欠账（不要再加）
 
-以下是基线提交上的存量问题。本目录不要求顺手修，但**新代码不得增加计数**。计数口径：`src/**/*.tsx|ts`，排除测试、`__tests__`、`src/button-audit`、`src/mcp-debug`。
+以下是基线提交上的存量问题。本目录不要求顺手修，但**新代码不得增加计数**。计数口径：`src/**/*.tsx|ts`，排除测试、`__tests__`、`src/mcp-debug`。
 
 | 欠账 | 约数 | 对应规则 |
 |---|---|---|
@@ -40,7 +40,6 @@
 
 ## 其他参考
 
-- 组件审计页：`npm run dev` 后打开 `/button-audit.html`（源码 `src/button-audit/`），列出每类控件的所有现存形态、频次与目标形态。
 - 移动端五条验收规范：`docs/dev/mobile-uiux-unify/README.md`；页面标题与动作层级：`docs/dev/mobile-uiux-unify/page-chrome-standard.md`。
 - Workbench 无障碍清单：`docs/dev/workbench-a11y-checklist.md`。
 - 对外文案口径（品牌用语，不含视觉）：`docs/brand/messaging.md`。

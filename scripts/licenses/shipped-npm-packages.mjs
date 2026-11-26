@@ -5,7 +5,7 @@
 //    Node 解析规则闭包（dependencies、已安装的 peer、匹配任一发行平台的 optionalDependencies）。
 //    与 electron/scripts/node-modules-closure.cjs 的打包闭包同一规则，但只读 lock，不依赖本机安装了哪些平台包。
 // 2. 前端（dist/）：Vite/Rollup 实际渲染进 bundle 的模块所在的包，加上 vite-plugin-static-copy 原样复制的文件
-//    所在的包。由 collect-frontend-bundle-packages.mjs 构建一次生成 legal/frontend-bundle-packages.json。
+//    所在的包。由 collect-frontend-bundle-packages.mjs 构建一次生成 resources/legal/frontend-bundle-packages.json。
 // 前端库在 package.json 里是 devDependencies（运行时不 import），所以不能按 lock 的 dev 标记取舍。
 
 import { createHash } from 'node:crypto';
@@ -22,7 +22,7 @@ export const RELEASE_TARGETS = Object.freeze([
   { platform: 'linux', arch: 'arm64' },
 ]);
 
-export const FRONTEND_MANIFEST = path.join('legal', 'frontend-bundle-packages.json');
+export const FRONTEND_MANIFEST = path.join('resources', 'legal', 'frontend-bundle-packages.json');
 
 /** 与 generate-third-party-notices.mjs / check-license-compliance.mjs 相同：剔除 release-please 改写的版本号。 */
 export function packageLockHash(lock) {

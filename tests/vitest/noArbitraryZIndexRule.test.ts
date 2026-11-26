@@ -1,6 +1,6 @@
 import { afterAll, describe, it } from 'vitest';
 import { RuleTester } from 'eslint';
-import rule from '../../eslint-rules/no-arbitrary-z-index.js';
+import rule from '../../scripts/lint/eslint-rules/no-arbitrary-z-index.js';
 
 /**
  * ds-components/no-arbitrary-z-index 的行为契约。

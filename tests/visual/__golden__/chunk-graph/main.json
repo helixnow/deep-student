@@ -5545,7 +5545,7 @@
    "modules": {
     "host/kernel/platforms.ts": 47,
     "index.html": 0,
-    "scripts/model-capability-registry.json": 151762,
+    "resources/registries/model-capability-registry.json": 151762,
     "src/api/dataGovernance.ts": 17796,
     "src/api/memoryApi.ts": 2412,
     "src/api/practiceApi.ts": 1493,
@@ -12087,7 +12087,7 @@
    ],
    "dynamicImports": [],
    "modules": {
-    "scripts/opencode-go-plans.json": 12110,
+    "resources/registries/opencode-go-plans.json": 12110,
     "src/utils/opencodeGoPlans.ts": 2025,
     "src/utils/reasoning/channels.ts": 5728,
     "src/utils/reasoning/registry.ts": 1319
@@ -26109,7 +26109,7 @@
    ],
    "dynamicImports": [],
    "modules": {
-    "scripts/provider-protocol-registry.json": 6977,
+    "resources/registries/provider-protocol-registry.json": 6977,
     "src/features/settings/components/modelConverters.ts": 12728,
     "src/features/settings/components/VendorSettingsContext.tsx": 423,
     "src/utils/providerProtocolRegistry.ts": 3232
@@ -26632,7 +26632,7 @@
    "modules": [
     "host/kernel/platforms.ts",
     "index.html",
-    "scripts/model-capability-registry.json",
+    "resources/registries/model-capability-registry.json",
     "src/App.tsx",
     "src/api/dataGovernance.ts",
     "src/api/memoryApi.ts",

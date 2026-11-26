@@ -13,8 +13,8 @@ on:
       - 'host/e2e/data-compat/**'
       - 'tests/fixtures/migration-upgrade/**'
       - 'tests/fixtures/migrations/**'
-      - 'scripts/check-migrations.mjs'
-      - 'scripts/migration-ci/**'
+      - 'scripts/ci/check-migrations.mjs'
+      - 'scripts/ci/migration/**'
       - '.github/workflows/migration-nightly.yml'
 permissions:
   contents: read
@@ -38,21 +38,21 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --legacy-peer-deps
-      - run: node scripts/check-migrations.mjs
+      - run: node scripts/ci/check-migrations.mjs
       - name: Fetch full fixture tier
         id: full
         env:
           MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
-        run: bash scripts/migration-ci/fetch-fixtures.sh --tier full --dest "$RUNNER_TEMP/full" --mode skip
+        run: bash scripts/ci/migration/fetch-fixtures.sh --tier full --dest "$RUNNER_TEMP/full" --mode skip
       - name: Fetch scale fixture tier
         id: scale
         env:
           MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
-        run: bash scripts/migration-ci/fetch-fixtures.sh --tier scale --dest "$RUNNER_TEMP/scale" --mode skip
+        run: bash scripts/ci/migration/fetch-fixtures.sh --tier scale --dest "$RUNNER_TEMP/scale" --mode skip
       - name: Host migration tests
         run: |
           set -euo pipefail
@@ -76,7 +76,7 @@ jobs:
             MIGRATION_GATE_MODE="$mode" npx vitest run -c vitest.host.config.ts \
               host/platform/storage/tests/migration-integration.test.ts -t 'MIGRATION_FIXTURE_ROOT'
           done
-          node scripts/migration-ci/generate-report.mjs \
+          node scripts/ci/migration/generate-report.mjs \
             --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json" \
             --candidate-commit "$GITHUB_SHA" --platform linux-x86_64 --fixture-tier full \
             --fixture-hash "${{ steps.full.outputs.fixture_hash }}" \

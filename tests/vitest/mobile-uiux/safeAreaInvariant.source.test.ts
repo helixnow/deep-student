@@ -131,7 +131,7 @@ describe('safe-area invariant: invariant-18 anchor paths exist', () => {
   const fromRoot = (relPath: string) => resolve(process.cwd(), relPath);
 
   it('keeps third-party NOTICES under legal/', () => {
-    expect(existsSync(fromRoot('legal/THIRD_PARTY_NOTICES.txt'))).toBe(true);
+    expect(existsSync(fromRoot('resources/legal/THIRD_PARTY_NOTICES.txt'))).toBe(true);
   });
 
   it.each([

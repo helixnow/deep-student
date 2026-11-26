@@ -211,7 +211,7 @@ DeepStudent
 │   └── locales/                 #   国际化（zh-CN / en-US）
 ├── contracts/ipc/               # 1,066 条命令 · 128 个事件 · 989 个类型定义（零 Rust 依赖）
 ├── resources/                   # 应用配置、capabilities、SQL 迁移与 dstu-workshop 技能/模板
-├── legal/                       # THIRD_PARTY_NOTICES.txt 及 WASM / 前端许可证清单
+├── resources/                       # THIRD_PARTY_NOTICES.txt 及 WASM / 前端许可证清单
 └── .github/workflows/           # CI、类型检查与全平台打包流水线
 ```
 
@@ -302,7 +302,7 @@ node scripts/portability/scan.mjs --profile host/profiles/mobile.json
 
 ## 致谢
 
-DeepStudent 建立在众多开源项目之上，完整的致谢与许可证文本请参阅 [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) 与 [legal/THIRD_PARTY_NOTICES.txt](legal/THIRD_PARTY_NOTICES.txt)，核心包括：
+DeepStudent 建立在众多开源项目之上，完整的致谢与许可证文本请参阅 [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) 与 [resources/legal/THIRD_PARTY_NOTICES.txt](resources/legal/THIRD_PARTY_NOTICES.txt)，核心包括：
 
 - **框架、运行时与应用外壳：** [Electron](https://www.electronjs.org) · [Capacitor](https://capacitorjs.com) · [Cordis](https://github.com/cordiverse/cordis) · [Node.js](https://nodejs.org) · [React](https://react.dev) · [Vite](https://vite.dev) · [TypeScript](https://www.typescriptlang.org)
 - **数据、向量与原生 / WASI-WASM 引擎：** [SQLite](https://www.sqlite.org) / [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) / [@sqlite.org/sqlite-wasm](https://sqlite.org/wasm) · [LanceDB](https://lancedb.com) · [Apache Arrow](https://arrow.apache.org) · [koffi](https://koffi.dev) · F7 WASI Native Engines（Starlark / Symphonia / fsrs-rs / docx-rs / calamine）· [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)

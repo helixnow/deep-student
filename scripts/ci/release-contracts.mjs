@@ -56,7 +56,7 @@ export function verifyMetadata(root, expectedVersion) {
   assert.equal(npm.version, version, 'package-lock.json root version mismatch');
   assert.equal(npm.packages?.['']?.version, version, 'package-lock.json packages[""] version mismatch');
   const mobileLock = json(root, 'mobile/package-lock.json');
-  const notices = read(root, 'legal/THIRD_PARTY_NOTICES.txt');
+  const notices = read(root, 'resources/legal/THIRD_PARTY_NOTICES.txt');
   const npmStrippedSha = strippedLockSha(npm);
   const mobileStrippedSha = strippedLockSha(mobileLock);
   assert.ok(notices.includes(`package-lock.json SHA256: ${npmStrippedSha}`),
@@ -74,7 +74,7 @@ function identity(root, sourceSha, workflowSha) {
   assertSource(root, sourceSha);
   requireSha(workflowSha, 'workflow SHA');
   const metadata = verifyMetadata(root);
-  for (const file of ['package.json', 'package-lock.json', 'mobile/package-lock.json', 'resources/app/tauri.conf.json', 'legal/THIRD_PARTY_NOTICES.txt']) {
+  for (const file of ['package.json', 'package-lock.json', 'mobile/package-lock.json', 'resources/app/tauri.conf.json', 'resources/legal/THIRD_PARTY_NOTICES.txt']) {
     const original = execFileSync('git', ['-C', root, 'show', `${sourceSha}:${file}`], { maxBuffer: 16 * 1024 * 1024 });
     assert.equal(fileHash(root, file), hash(original), `release source was mutated: ${file}`);
   }
