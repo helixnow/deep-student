@@ -219,6 +219,9 @@ export class PiAdapter implements ExternalCodingAdapter {
       if (input.model) {
         args.push('--model', input.model);
       }
+      if (input.reasoningEffort) {
+        args.push('--thinking', input.reasoningEffort);
+      }
       args.push(...this.extraArgs);
 
       const mcpExtraEnv: Record<string, string> = {};
