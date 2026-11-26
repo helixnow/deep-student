@@ -2320,7 +2320,17 @@
       "searchPlaceholder": "搜索模型...",
       "noReasoningEffort": "没有可选的推理强度",
       "unavailable": "不可用",
-      "emptyFavorites": "暂无收藏模型，悬停模型右侧点击星标即可收藏"
+      "emptyFavorites": "暂无收藏模型，悬停模型右侧点击星标即可收藏",
+      "webSearchShort": "联网",
+      "multiSelectShort": "多选",
+      "paramsShort": "参数",
+      "webSearchCliHint": "本地编程 CLI 使用自身工具链，此开关仅对内置对话模型生效",
+      "cliSearchPlaceholder": "搜索或输入自定义模型 ID...",
+      "cliFollowDefault": "跟随 CLI 默认配置",
+      "cliDefaultTag": "默认",
+      "cliCustomModel": "使用自定义模型 \"{{model}}\"",
+      "cliEffortDefault": "默认",
+      "backToCliList": "返回编程 CLI"
     }
   },
   "workspace": {

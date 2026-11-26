@@ -335,4 +335,60 @@ describe('CliAgentProber', () => {
       await fs.rm(overrideDir, { recursive: true, force: true });
     }
   });
+
+  it('parses local CLI model configs (~/.claude/settings.json, ~/.codex/config.toml, opencode.json) and merges curated models', async () => {
+    const mockFiles: Record<string, string> = {
+      '/home/dev/.claude/settings.json': JSON.stringify({
+        env: {
+          ANTHROPIC_MODEL: 'glm-5-coding',
+          ANTHROPIC_SMALL_FAST_MODEL: 'glm-4-air',
+        },
+      }),
+      '/home/dev/.codex/config.toml': 'model = "gpt-5.4-pro"\nmodel_reasoning_effort = "xhigh"\n',
+      '/home/dev/.config/opencode/opencode.json': JSON.stringify({
+        model: 'deepseek/deepseek-reasoner',
+        provider: {
+          myproxy: {
+            models: {
+              'qwen3-coder': {},
+            },
+          },
+        },
+      }),
+    };
+
+    const prober = new CliAgentProber({
+      homeDir: '/home/dev',
+      env: {},
+      fileExists: async (p) => p in mockFiles,
+      readTextFile: async (p) => mockFiles[p] ?? null,
+      commandRunner: async (cmd, args) => {
+        if (args[0] === '--version' && (cmd === 'claude' || cmd === 'codex' || cmd === 'opencode')) {
+          return { exitCode: 0, stdout: `${cmd} 1.2.3`, stderr: '', resolvedPath: `/bin/${cmd}` };
+        }
+        if (cmd === 'codex' && args[0] === 'app-server') {
+          return { exitCode: 0, stdout: 'Usage: codex app-server', stderr: '' };
+        }
+        return { exitCode: null, stdout: '', stderr: '', notFound: true };
+      },
+    });
+
+    const detected = await prober.probeAll();
+    const byId = new Map(detected.map((a) => [a.id, a]));
+
+    const claude = byId.get('claude')!;
+    expect(claude.defaultModel).toBe('glm-5-coding');
+    expect(claude.availableModels).toContain('glm-5-coding');
+    expect(claude.availableModels).toContain('glm-4-air');
+    expect(claude.availableModels).toContain('claude-sonnet-4-6');
+
+    const codex = byId.get('codex')!;
+    expect(codex.defaultModel).toBe('gpt-5.4-pro');
+    expect(codex.availableModels?.[0]).toBe('gpt-5.4-pro');
+    expect(codex.availableModels).toContain('gpt-5.4');
+
+    const opencode = byId.get('opencode')!;
+    expect(opencode.defaultModel).toBe('deepseek/deepseek-reasoner');
+    expect(opencode.availableModels).toContain('myproxy/qwen3-coder');
+  });
 });

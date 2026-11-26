@@ -312,6 +312,57 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
     expect(onPermissionPresetChange).toHaveBeenCalledWith('cautious', undefined);
   });
 
+  it('exposes Web Search toggle, Advanced Params launcher, and Danger Full Access confirmation in the T3 footer bar', async () => {
+    const user = userEvent.setup();
+    const onWebSearchEnabledChange = vi.fn();
+    const onSetPanelState = vi.fn();
+    const onPermissionPresetChange = vi.fn();
+
+    renderInputBar({
+      sessionId: 'sess-t3-footer',
+      enableThinking: false,
+      thinkingStateLabel: '推理: 关闭',
+      thinkingDepthOptions: [],
+      onToggleThinking: vi.fn(),
+      runtimeModelOptions: [
+        { id: 'deepseek-v3.2', label: 'DeepSeek V3.2', providerLabel: 'DeepSeek', iconId: 'deepseek-v3.2' },
+      ],
+      runtimeModelLabel: 'DeepSeek V3.2',
+      runtimeCurrentModelId: 'deepseek-v3.2',
+      webSearchEnabled: true,
+      onWebSearchEnabledChange,
+      renderAdvancedPanel: () => <div data-testid="advanced-panel" />,
+      onSetPanelState,
+      permissionPreset: 'relaxed',
+      onPermissionPresetChange,
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+    const webBtn = await screen.findByTestId('t3-footer-web-search');
+    expect(webBtn).toHaveAttribute('aria-checked', 'true');
+    await user.click(webBtn);
+    expect(onWebSearchEnabledChange).toHaveBeenCalledWith(false);
+
+    // Danger Full Access requires DsAlertDialog confirmation before persisting
+    await user.click(screen.getByTestId('t3-permission-trigger'));
+    await user.click(screen.getByTestId('t3-permission-option-danger_full_access'));
+    expect(onPermissionPresetChange).not.toHaveBeenCalled();
+
+    const confirmBtn = screen.getAllByRole('button').find((btn) =>
+      /dangerConfirmAction|确认开启危险完全访问/i.test(btn.textContent ?? ''),
+    );
+    expect(confirmBtn).toBeDefined();
+    await user.click(confirmBtn!);
+    await waitFor(() => {
+      expect(onPermissionPresetChange).toHaveBeenCalledWith('danger_full_access', true);
+    });
+
+    // Clicking 参数 closes the model popover and opens the advanced parameters panel
+    const paramsBtn = screen.getByTestId('t3-footer-advanced');
+    await user.click(paramsBtn);
+    expect(onSetPanelState).toHaveBeenCalledWith('advanced', true);
+  });
+
   it('locks popover width and height across provider switches without jitter and adapts layout tier to viewport width', async () => {
     const user = userEvent.setup();
     const prevInnerWidth = window.innerWidth;

@@ -32,6 +32,8 @@ export interface AgentMeshStoreState {
   customTemplates: CustomCliTemplate[];
   workspaceBindings: Record<string, WorkspaceBinding>;
   selectedCliBySession: Record<string, string | null>;
+  selectedCliModelBySession: Record<string, string | null>;
+  selectedCliEffortBySession: Record<string, string | null>;
   threads: Record<string, MeshThreadState>;
   sessionThreadOrder: Record<string, string[]>;
   peerExchanges: Record<string, PeerExchangeRecord[]>;
@@ -47,6 +49,8 @@ export interface AgentMeshStoreState {
   removeCustomTemplate: (templateId: string) => void;
   setWorkspaceBindingState: (chatSessionId: string, binding: WorkspaceBinding | null) => void;
   setSelectedCliForSession: (chatSessionId: string, agentId: string | null) => void;
+  setSelectedCliModelForSession: (chatSessionId: string, model: string | null) => void;
+  setSelectedCliEffortForSession: (chatSessionId: string, effort: string | null) => void;
   upsertThread: (thread: MeshThreadState) => void;
   patchThread: (
     threadId: string,
@@ -78,6 +82,8 @@ function createInitialDataState() {
     customTemplates: [] as CustomCliTemplate[],
     workspaceBindings: {} as Record<string, WorkspaceBinding>,
     selectedCliBySession: {} as Record<string, string | null>,
+    selectedCliModelBySession: {} as Record<string, string | null>,
+    selectedCliEffortBySession: {} as Record<string, string | null>,
     threads: {} as Record<string, MeshThreadState>,
     sessionThreadOrder: {} as Record<string, string[]>,
     peerExchanges: {} as Record<string, PeerExchangeRecord[]>,
@@ -134,13 +140,54 @@ export const useAgentMeshStore = create<AgentMeshStoreState>((set) => ({
     if (!chatSessionId) return;
     set((state) => {
       const normalized = agentId?.trim() ? agentId.trim().replace(/^@+/, '') : null;
+      const prevAgent = state.selectedCliBySession[chatSessionId] ?? null;
       const next = { ...state.selectedCliBySession };
+      const nextModels = { ...state.selectedCliModelBySession };
+      const nextEfforts = { ...state.selectedCliEffortBySession };
       if (!normalized || normalized === 'deepstudent') {
         delete next[chatSessionId];
+        delete nextModels[chatSessionId];
+        delete nextEfforts[chatSessionId];
       } else {
         next[chatSessionId] = normalized;
+        if (prevAgent && prevAgent !== normalized) {
+          delete nextModels[chatSessionId];
+          delete nextEfforts[chatSessionId];
+        }
       }
-      return { selectedCliBySession: next };
+      return {
+        selectedCliBySession: next,
+        selectedCliModelBySession: nextModels,
+        selectedCliEffortBySession: nextEfforts,
+      };
+    });
+  },
+
+  setSelectedCliModelForSession: (chatSessionId, model) => {
+    if (!chatSessionId) return;
+    set((state) => {
+      const trimmed = model?.trim() || null;
+      const next = { ...state.selectedCliModelBySession };
+      if (!trimmed) {
+        delete next[chatSessionId];
+      } else {
+        next[chatSessionId] = trimmed;
+      }
+      return { selectedCliModelBySession: next };
+    });
+  },
+
+  setSelectedCliEffortForSession: (chatSessionId, effort) => {
+    if (!chatSessionId) return;
+    set((state) => {
+      const trimmed = effort?.trim() || null;
+      const next = { ...state.selectedCliEffortBySession };
+      if (!trimmed || trimmed === 'off') {
+        delete next[chatSessionId];
+      } else {
+        next[chatSessionId] = trimmed;
+      }
+      return { selectedCliEffortBySession: next };
     });
   },
 
@@ -467,6 +514,22 @@ export function selectSelectedCliForSession(
 ): string | null {
   if (!chatSessionId) return null;
   return state.selectedCliBySession[chatSessionId] ?? null;
+}
+
+export function selectSelectedCliModelForSession(
+  state: AgentMeshStoreState,
+  chatSessionId: string | null | undefined,
+): string | null {
+  if (!chatSessionId) return null;
+  return state.selectedCliModelBySession[chatSessionId] ?? null;
+}
+
+export function selectSelectedCliEffortForSession(
+  state: AgentMeshStoreState,
+  chatSessionId: string | null | undefined,
+): string | null {
+  if (!chatSessionId) return null;
+  return state.selectedCliEffortBySession[chatSessionId] ?? null;
 }
 
 export function selectHasSessionMeshActivity(

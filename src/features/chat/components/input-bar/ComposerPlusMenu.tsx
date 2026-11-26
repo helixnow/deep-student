@@ -1,12 +1,14 @@
 /**
- * Composer left "+" menu.
+ * Composer left "+" menu（上下文与扩展入口）
  *
- * Desktop: flyout secondary menus (files / mode / skills / connectors)，
- * built on AppMenu + AppMenuSub — same shell as the previous attachment menu.
+ * 职责聚焦于向当前会话注入资料与扩展能力（与右侧 T3 模型/运行时选择器形成清晰分工）：
+ *   1. 添加文件（本地附件 / 资源库 / 拍照）
+ *   2. 知识库（RAG 开关 / 主动检索 / 检索范围）
+ *   3. 技能（桌面飞出面板 / 移动端内联面板）
+ *   4. 连接器（MCP 服务器面板）
  *
- * Mobile: 根层只放动作（附件/资源库/技能/连接器/对话控制）。
- * 模式与执行档位走页内二级面板（避免窄屏飞出层被裁切），
- * 技能与连接器跳转到内联面板。行高 ≥44px 满足触控目标。
+ * 运行时状态控制（联网搜索 / 对话采样参数 / 权限执行档位）已统一收入右侧模型选择器底栏；
+ * 工具栏行内仍保留活跃高权限降级胶囊与插件工坊活跃胶囊，保证常驻可见与一键退出。
  */
 
 import { requestKbScopePicker, useKbScope } from '../../kbScope/kbScope';
@@ -15,23 +17,17 @@ import { useTranslation } from 'react-i18next';
 import {
   Books,
   Camera,
-  CaretLeft,
-  CaretRight,
-  Check,
   FolderOpen,
-  Globe,
+  FolderSimple,
   Hammer,
   Lightning,
   LinkSimple,
-  Package,
   Paperclip,
   Plus,
   ShieldWarning,
-  SlidersHorizontal,
   Sparkle,
   Warning,
   X,
-  FolderSimple,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -55,12 +51,6 @@ import { Z_INDEX } from '@/config/zIndex';
 import type { PermissionPreset } from '../../core/types/store';
 
 export type ComposerPermissionPreset = PermissionPreset;
-const PERMISSION_PRESETS: ComposerPermissionPreset[] = [
-  'cautious',
-  'relaxed',
-  'full_access',
-  'danger_full_access',
-];
 
 export interface ComposerPlusMenuProps {
   open: boolean;
@@ -73,8 +63,7 @@ export interface ComposerPlusMenuProps {
   isMobile?: boolean;
   /**
    * 相机捕获能力：仅控制拍照入口是否出现。上游传入
-   * inputBarCapabilities.canCapturePhoto()（平台/capture 特性判定），
-   * 早已不是 pointer: coarse。prop 名为历史遗留，待改名为 canCapturePhoto。
+   * inputBarCapabilities.canCapturePhoto()（平台/capture 特性判定）。
    */
   isMobileEnv?: boolean;
   onAddAttachment: () => void;
@@ -99,7 +88,7 @@ export interface ComposerPlusMenuProps {
   onOpenMcpPanel?: () => void;
   mcpEnabled?: boolean;
   selectedMcpServerCount?: number;
-  /** 打开对话控制（高级设置）面板（桌面浮层 / 移动端内联面板） */
+  /** 兼容保留（已迁入右侧模型选择器底栏「参数」） */
   onOpenAdvancedPanel?: () => void;
   /** 知识库主动检索开关（开启后注入系统提示词，要求模型优先检索本地知识库） */
   knowledgeBaseProactive?: boolean;
@@ -107,10 +96,10 @@ export interface ComposerPlusMenuProps {
   /** 知识库检索开关（session features 'rag'，控制 RAG 工具是否可用） */
   ragEnabled?: boolean;
   onRagEnabledChange?: (enabled: boolean) => void | Promise<void>;
-  /** 联网搜索开关（session features 'webSearch'，控制 web_search 工具是否可用） */
+  /** 兼容保留（已迁入右侧模型选择器底栏「联网」） */
   webSearchEnabled?: boolean;
   onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
-  /** 插件工坊模式开关（激活/退出 dstu-plugin-development 技能） */
+  /** 插件工坊活跃状态胶囊展示与一键退出 */
   pluginWorkshopActive?: boolean;
   onTogglePluginWorkshop?: () => void | Promise<void>;
 }
@@ -140,58 +129,31 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onOpenMcpPanel,
   mcpEnabled = false,
   selectedMcpServerCount = 0,
-  onOpenAdvancedPanel,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
   ragEnabled = true,
   onRagEnabledChange,
-  webSearchEnabled = true,
-  onWebSearchEnabledChange,
   pluginWorkshopActive = false,
   onTogglePluginWorkshop,
 }) => {
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
-  const [confirmDangerOpen, setConfirmDangerOpen] = React.useState(false);
-  const [mobilePane, setMobilePane] = React.useState<'root' | 'mode'>('root');
-  // 权限档位切换等待后端落库确认（IPC 在途期间禁用菜单项）；
-  // 失败时弹窗提示并保持旧档位，避免假 active 或静默丢档。
   const [permissionSyncing, setPermissionSyncing] = React.useState(false);
   const [switchError, setSwitchError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (!open) setMobilePane('root');
-  }, [open]);
-
-  const modeSummary = t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`);
-  const modeDescription = t('chatV2:inputBar.plusMenu.modeDefaultDescription');
-
-  const applyPermissionPreset = useCallback(
-    async (preset: ComposerPermissionPreset, confirm?: boolean) => {
-      if (!onPermissionPresetChange || preset === permissionPreset) return;
-      if (permissionSyncing) return;
+  const downgradePermissionPreset = useCallback(
+    async (preset: ComposerPermissionPreset) => {
+      if (!onPermissionPresetChange || preset === permissionPreset || permissionSyncing) return;
       setPermissionSyncing(true);
       try {
-        await onPermissionPresetChange(preset, confirm);
+        await onPermissionPresetChange(preset);
       } catch (error) {
-        console.error('[ComposerPlusMenu] permission preset switch failed:', preset, error);
+        console.error('[ComposerPlusMenu] permission preset downgrade failed:', preset, error);
         setSwitchError(error instanceof Error ? error.message : String(error));
       } finally {
         setPermissionSyncing(false);
       }
     },
     [onPermissionPresetChange, permissionPreset, permissionSyncing],
-  );
-
-  const handlePermissionPresetSelect = useCallback(
-    (preset: ComposerPermissionPreset) => {
-      if (preset === permissionPreset) return;
-      if (preset === 'danger_full_access') {
-        setConfirmDangerOpen(true);
-        return;
-      }
-      applyPermissionPreset(preset);
-    },
-    [applyPermissionPreset, permissionPreset],
   );
 
   const handleKnowledgeBaseProactiveChange = useCallback(
@@ -210,14 +172,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     [onRagEnabledChange],
   );
 
-  const handleWebSearchEnabledChange = useCallback(
-    (checked: boolean) => {
-      if (!onWebSearchEnabledChange) return;
-      void onWebSearchEnabledChange(checked);
-    },
-    [onWebSearchEnabledChange],
-  );
-
   const handleOpenConnectors = useCallback(() => {
     onOpenChange(false);
     onOpenMcpPanel?.();
@@ -228,26 +182,9 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     onOpenSkillPanel?.();
   }, [onOpenChange, onOpenSkillPanel]);
 
-  const handleOpenAdvancedPanel = useCallback(() => {
-    onOpenChange(false);
-    onOpenAdvancedPanel?.();
-  }, [onOpenChange, onOpenAdvancedPanel]);
-
-  const handleTogglePluginWorkshop = useCallback(() => {
-    onOpenChange(false);
-    void onTogglePluginWorkshop?.();
-  }, [onOpenChange, onTogglePluginWorkshop]);
-
-  const showMode = Boolean(sessionId && onPermissionPresetChange);
   const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange || onRagEnabledChange);
-  const showWebSearch = Boolean(onWebSearchEnabledChange);
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
-  const showAdvanced = Boolean(onOpenAdvancedPanel);
-  const showPluginWorkshop = Boolean(onTogglePluginWorkshop);
-  // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层）
-  // 行目标体系化：触控行高跟随 pointer:coarse（设备能力）而非布局断点，
-  // 统一走 --touch-target-size token（44px），与 AppMenu.css 的 coarse 基线一致
   const useFlatMobileMenu = isMobile;
   const mobileItemClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
 
@@ -296,20 +233,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     </>
   );
 
-  const renderWebSearchItem = (itemClassName?: string) =>
-    showWebSearch ? (
-      <AppMenuSwitchItem
-        className={itemClassName}
-        icon={<Globe className="w-4 h-4" />}
-        checked={webSearchEnabled}
-        onCheckedChange={handleWebSearchEnabledChange}
-        data-testid="plus-menu-web-search"
-        title={t('chatV2:inputBar.plusMenu.webSearchHint')}
-      >
-        {t('chatV2:inputBar.plusMenu.webSearch')}
-      </AppMenuSwitchItem>
-    ) : null;
-
   return (
     <div className="flex items-center gap-1">
       <AppMenu open={open} onOpenChange={onOpenChange}>
@@ -347,74 +270,12 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
 
         <AppMenuContent
           align="start"
-          width={useFlatMobileMenu ? 248 : 200}
+          width={useFlatMobileMenu ? 248 : 196}
           maxHeight={useFlatMobileMenu ? 'min(28rem, calc(100dvh - 7.5rem))' : undefined}
-          // ★ L4 修复：魔法数 320 收敛到 Z_INDEX 体系（高于移动顶栏 1100）
           style={{ zIndex: Z_INDEX.composerPanel }}
           data-testid="composer-plus-menu"
         >
           {useFlatMobileMenu ? (
-            mobilePane === 'mode' ? (
-              <>
-                <AppMenuGroup>
-                  <AppMenuItem
-                    className={mobileItemClass}
-                    icon={<CaretLeft className="w-4 h-4" />}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setMobilePane('root');
-                    }}
-                    data-testid="plus-menu-mode-back"
-                  >
-                    {t('common:back')}
-                  </AppMenuItem>
-                </AppMenuGroup>
-                <AppMenuSeparator />
-                <AppMenuGroup label={t('chatV2:inputBar.plusMenu.mode')} data-testid="plus-menu-mode-panel">
-                  {PERMISSION_PRESETS.map((preset) => (
-                    <AppMenuItem
-                      key={preset}
-                      className={cn(
-                        mobileItemClass,
-                        preset === 'danger_full_access' && 'text-destructive',
-                      )}
-                      disabled={permissionSyncing}
-                      onClick={() => handlePermissionPresetSelect(preset)}
-                      data-testid={`plus-menu-permission-${preset}`}
-                      title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
-                      suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
-                    >
-                      {t(`chatV2:authority.permissionPreset.modes.${preset}`)}
-                    </AppMenuItem>
-                  ))}
-                  {showPluginWorkshop && (
-                    <>
-                      <AppMenuSeparator />
-                      <AppMenuSwitchItem
-                        className={mobileItemClass}
-                        checked={pluginWorkshopActive}
-                        onCheckedChange={() => handleTogglePluginWorkshop()}
-                        data-testid="plus-menu-mode-plugin-workshop"
-                        title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
-                      >
-                        {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
-                      </AppMenuSwitchItem>
-                    </>
-                  )}
-                </AppMenuGroup>
-                {showKnowledgeBase && (
-                  <>
-                    <AppMenuSeparator />
-                    <AppMenuGroup
-                      label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
-                      data-testid="plus-menu-knowledge-base-panel"
-                    >
-                      {renderKnowledgeBaseItems(mobileItemClass)}
-                    </AppMenuGroup>
-                  </>
-                )}
-              </>
-            ) : (
             <>
               <AppMenuGroup>
                 <AppMenuItem
@@ -445,50 +306,19 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 </AppMenuItem>
               </AppMenuGroup>
 
-              {showMode && (
+              {showKnowledgeBase && (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuItem
-                    className={mobileItemClass}
-                    icon={<Sparkle className="w-4 h-4" />}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setMobilePane('mode');
-                    }}
-                    data-testid="plus-menu-mode"
-                    suffix={(
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        <span className="max-w-[5.5rem] truncate text-[12px]">{modeSummary}</span>
-                        <CaretRight className="h-3.5 w-3.5 shrink-0" />
-                      </span>
-                    )}
+                  <AppMenuGroup
+                    label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
+                    data-testid="plus-menu-knowledge-base-panel"
                   >
-                    {t('chatV2:inputBar.plusMenu.mode')}
-                  </AppMenuItem>
+                    {renderKnowledgeBaseItems(mobileItemClass)}
+                  </AppMenuGroup>
                 </>
               )}
 
-              {!showMode && showKnowledgeBase && (
-                <>
-                  <AppMenuSeparator />
-                  {renderKnowledgeBaseItems(mobileItemClass)}
-                </>
-              )}
-
-              {((showSkills && onOpenSkillPanel) || showPluginWorkshop || showWebSearch || showConnectors || showAdvanced) && <AppMenuSeparator />}
-              {renderWebSearchItem(mobileItemClass)}
-              {showPluginWorkshop && (
-                <AppMenuItem
-                  className={mobileItemClass}
-                  icon={<Package className="w-4 h-4" />}
-                  onClick={handleTogglePluginWorkshop}
-                  data-testid="plus-menu-plugin-workshop"
-                  title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
-                  suffix={pluginWorkshopActive ? <Check className="h-4 w-4 text-primary" /> : undefined}
-                >
-                  {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
-                </AppMenuItem>
-              )}
+              {((showSkills && onOpenSkillPanel) || showConnectors) && <AppMenuSeparator />}
               {showSkills && onOpenSkillPanel && (
                 <AppMenuItem
                   className={mobileItemClass}
@@ -511,210 +341,124 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   {t('chatV2:inputBar.plusMenu.connectors')}
                 </AppMenuItem>
               )}
-              {showAdvanced && (
-                <AppMenuItem
-                  className={mobileItemClass}
-                  icon={<SlidersHorizontal className="w-4 h-4" />}
-                  onClick={handleOpenAdvancedPanel}
-                  data-testid="plus-menu-advanced"
-                >
-                  {t('common:chat_controls')}
-                </AppMenuItem>
-              )}
             </>
-            )
           ) : (
-          <AppMenuGroup>
-            <AppMenuSub openOnClick>
-              <AppMenuSubTrigger
-                icon={<Paperclip className="w-4 h-4" />}
-                data-testid="plus-menu-add-file"
-              >
-                {t('chatV2:inputBar.plusMenu.addFile')}
-              </AppMenuSubTrigger>
-              <AppMenuSubContent className="min-w-[180px]">
-                <AppMenuItem
-                  icon={<Paperclip className="w-4 h-4" />}
-                  onClick={onAddAttachment}
-                  data-testid="plus-menu-add-attachment"
-                >
-                  {t('analysis:input_bar.attachments.add')}
-                </AppMenuItem>
-                <AppMenuItem
-                  icon={<FolderOpen className="w-4 h-4" />}
-                  onClick={onOpenResourceLibrary}
-                  data-testid="plus-menu-resource-library"
-                >
-                  {t('chatV2:inputBar.resourceLibrary')}
-                </AppMenuItem>
-                {isMobileEnv && onOpenCamera && (
-                  <AppMenuItem
-                    icon={<Camera className="w-4 h-4" />}
-                    onClick={onOpenCamera}
-                    data-testid="plus-menu-camera"
-                  >
-                    {t('chatV2:inputBar.camera')}
-                  </AppMenuItem>
-                )}
-              </AppMenuSubContent>
-            </AppMenuSub>
-
-            {showMode && (
+            <AppMenuGroup>
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
-                  icon={<Sparkle className="w-4 h-4" />}
-                  data-testid="plus-menu-mode"
+                  icon={<Paperclip className="w-4 h-4" />}
+                  data-testid="plus-menu-add-file"
                 >
-                  {t('chatV2:inputBar.plusMenu.mode')}
+                  {t('chatV2:inputBar.plusMenu.addFile')}
                 </AppMenuSubTrigger>
-                <AppMenuSubContent
-                  className="w-[min(280px,calc(100vw-24px))]"
-                  data-testid="plus-menu-mode-panel"
-                >
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-caption leading-snug text-muted-foreground px-2 py-1.5">
-                    {modeDescription}
-                  </AppMenuLabel>
-                  <AppMenuSeparator />
-                  {PERMISSION_PRESETS.map((preset) => (
+                <AppMenuSubContent className="min-w-[180px]">
+                  <AppMenuItem
+                    icon={<Paperclip className="w-4 h-4" />}
+                    onClick={onAddAttachment}
+                    data-testid="plus-menu-add-attachment"
+                  >
+                    {t('analysis:input_bar.attachments.add')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<FolderOpen className="w-4 h-4" />}
+                    onClick={onOpenResourceLibrary}
+                    data-testid="plus-menu-resource-library"
+                  >
+                    {t('chatV2:inputBar.resourceLibrary')}
+                  </AppMenuItem>
+                  {isMobileEnv && onOpenCamera && (
                     <AppMenuItem
-                      key={preset}
-                      className={cn(preset === 'danger_full_access' && 'text-destructive')}
-                      disabled={permissionSyncing}
-                      onClick={() => handlePermissionPresetSelect(preset)}
-                      data-testid={`plus-menu-permission-${preset}`}
-                      title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
-                      suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
+                      icon={<Camera className="w-4 h-4" />}
+                      onClick={onOpenCamera}
+                      data-testid="plus-menu-camera"
                     >
-                      <span className="flex flex-col items-start gap-0.5">
-                        <span>{t(`chatV2:authority.permissionPreset.modes.${preset}`)}</span>
-                        <span className="text-2xs text-muted-foreground">
-                          {t(`chatV2:authority.permissionPreset.shortHints.${preset}`)}
-                        </span>
-                      </span>
+                      {t('chatV2:inputBar.camera')}
                     </AppMenuItem>
-                  ))}
-                  {showPluginWorkshop && (
-                    <>
-                      <AppMenuSeparator />
-                      <AppMenuSwitchItem
-                        checked={pluginWorkshopActive}
-                        onCheckedChange={() => handleTogglePluginWorkshop()}
-                        data-testid="plus-menu-mode-plugin-workshop"
-                        title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
-                      >
-                        {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
-                      </AppMenuSwitchItem>
-                    </>
                   )}
                 </AppMenuSubContent>
               </AppMenuSub>
-            )}
 
-            {showKnowledgeBase && (
-              <AppMenuSub openOnClick>
-                <AppMenuSubTrigger
-                  icon={<Books className="w-4 h-4" />}
-                  data-testid="plus-menu-knowledge-base"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">
-                      {t('chatV2:inputBar.plusMenu.knowledgeBase')}
+              {showKnowledgeBase && (
+                <AppMenuSub openOnClick>
+                  <AppMenuSubTrigger
+                    icon={<Books className="w-4 h-4" />}
+                    data-testid="plus-menu-knowledge-base"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">
+                        {t('chatV2:inputBar.plusMenu.knowledgeBase')}
+                      </span>
+                      {ragEnabled && knowledgeBaseProactive && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                      )}
                     </span>
-                    {ragEnabled && knowledgeBaseProactive && (
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                    )}
-                  </span>
-                </AppMenuSubTrigger>
-                <AppMenuSubContent
-                  className="w-[min(280px,calc(100vw-24px))]"
-                  data-testid="plus-menu-knowledge-base-panel"
-                >
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-caption leading-snug text-muted-foreground px-2 py-1.5">
-                    {t('chatV2:inputBar.plusMenu.kbProactiveHint')}
-                  </AppMenuLabel>
-                  <AppMenuSeparator />
-                  {renderKnowledgeBaseItems()}
-                </AppMenuSubContent>
-              </AppMenuSub>
-            )}
-
-            {renderWebSearchItem()}
-
-            {showPluginWorkshop && (
-              <AppMenuItem
-                icon={<Package className="w-4 h-4" />}
-                onClick={handleTogglePluginWorkshop}
-                data-testid="plus-menu-plugin-workshop"
-                title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
-                suffix={pluginWorkshopActive ? <Check className="h-4 w-4 text-primary" /> : undefined}
-              >
-                {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
-              </AppMenuItem>
-            )}
-
-            {showSkills && (
-              <AppMenuSub openOnClick>
-                <AppMenuSubTrigger
-                  icon={<Hammer className="w-4 h-4" />}
-                  data-testid="btn-toggle-skill"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">{t('skills:title')}</span>
-                    {skillBadge}
-                  </span>
-                </AppMenuSubTrigger>
-                {open ? (
+                  </AppMenuSubTrigger>
                   <AppMenuSubContent
-                    className="w-[min(360px,calc(100vw-24px))] max-h-[min(520px,70vh)] overflow-hidden p-0"
-                    data-testid="plus-menu-skills-panel"
-                    onMouseDown={(event) => event.stopPropagation()}
+                    className="w-[min(280px,calc(100vw-24px))]"
+                    data-testid="plus-menu-knowledge-base-panel"
                   >
-                    <div className="flex max-h-[min(520px,70vh)] flex-col overflow-hidden">
-                      {renderSkillPanel?.()}
-                    </div>
+                    <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-caption leading-snug text-muted-foreground px-2 py-1.5">
+                      {t('chatV2:inputBar.plusMenu.kbProactiveHint')}
+                    </AppMenuLabel>
+                    <AppMenuSeparator />
+                    {renderKnowledgeBaseItems()}
                   </AppMenuSubContent>
-                ) : null}
-              </AppMenuSub>
-            )}
+                </AppMenuSub>
+              )}
 
-            {showConnectors && (
-              <AppMenuSub openOnClick>
-                <AppMenuSubTrigger
-                  icon={<LinkSimple className="w-4 h-4" />}
-                  data-testid="plus-menu-connectors"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">
-                      {t('chatV2:inputBar.plusMenu.connectors')}
-                    </span>
-                    {connectorsBadge}
-                  </span>
-                </AppMenuSubTrigger>
-                <AppMenuSubContent className="min-w-[200px]" data-testid="plus-menu-connectors-panel">
-                  <AppMenuItem
-                    icon={<LinkSimple className="w-4 h-4" />}
-                    onClick={handleOpenConnectors}
-                    data-testid="plus-menu-open-connectors"
+              {showSkills && (
+                <AppMenuSub openOnClick>
+                  <AppMenuSubTrigger
+                    icon={<Hammer className="w-4 h-4" />}
+                    data-testid="btn-toggle-skill"
                   >
-                    {t('chatV2:inputBar.plusMenu.openConnectors')}
-                  </AppMenuItem>
-                  <AppMenuFooter className="text-caption text-muted-foreground">
-                    {t('chatV2:inputBar.plusMenu.connectorsHint')}
-                  </AppMenuFooter>
-                </AppMenuSubContent>
-              </AppMenuSub>
-            )}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{t('skills:title')}</span>
+                      {skillBadge}
+                    </span>
+                  </AppMenuSubTrigger>
+                  {open ? (
+                    <AppMenuSubContent
+                      className="w-[min(360px,calc(100vw-24px))] max-h-[min(520px,70vh)] overflow-hidden p-0"
+                      data-testid="plus-menu-skills-panel"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex max-h-[min(520px,70vh)] flex-col overflow-hidden">
+                        {renderSkillPanel?.()}
+                      </div>
+                    </AppMenuSubContent>
+                  ) : null}
+                </AppMenuSub>
+              )}
 
-            {showAdvanced && (
-              <AppMenuItem
-                icon={<SlidersHorizontal className="w-4 h-4" />}
-                onClick={handleOpenAdvancedPanel}
-                data-testid="plus-menu-advanced"
-              >
-                {t('common:chat_controls')}
-              </AppMenuItem>
-            )}
-          </AppMenuGroup>
+              {showConnectors && (
+                <AppMenuSub openOnClick>
+                  <AppMenuSubTrigger
+                    icon={<LinkSimple className="w-4 h-4" />}
+                    data-testid="plus-menu-connectors"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">
+                        {t('chatV2:inputBar.plusMenu.connectors')}
+                      </span>
+                      {connectorsBadge}
+                    </span>
+                  </AppMenuSubTrigger>
+                  <AppMenuSubContent className="min-w-[200px]" data-testid="plus-menu-connectors-panel">
+                    <AppMenuItem
+                      icon={<LinkSimple className="w-4 h-4" />}
+                      onClick={handleOpenConnectors}
+                      data-testid="plus-menu-open-connectors"
+                    >
+                      {t('chatV2:inputBar.plusMenu.openConnectors')}
+                    </AppMenuItem>
+                    <AppMenuFooter className="text-caption text-muted-foreground">
+                      {t('chatV2:inputBar.plusMenu.connectorsHint')}
+                    </AppMenuFooter>
+                  </AppMenuSubContent>
+                </AppMenuSub>
+              )}
+            </AppMenuGroup>
           )}
         </AppMenuContent>
       </AppMenu>
@@ -749,15 +493,11 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {permissionPreset === 'full_access' && (
         <button
           type="button"
-          // Compact inline chip next to "+" — full guidance lives in title/aria-label.
-          // 实体命中区：coarse 下按钮自身抬到 --touch-target-size（44px），
-          // 不再用 after 伪元素扩区（会与相邻 gap-1 控件命中重叠）；
-          // 视觉胶囊由内层 span 保持 h-6 不变，工具条高度不受影响。
           className={cn(
             'group inline-flex shrink-0 items-center justify-center focus-visible:outline-none',
             '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
           )}
-          onClick={() => applyPermissionPreset('relaxed')}
+          onClick={() => void downgradePermissionPreset('relaxed')}
           data-testid="full-access-active"
           title={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
           aria-label={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
@@ -779,12 +519,11 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {permissionPreset === 'danger_full_access' && (
         <button
           type="button"
-          // 同上：实体命中区替代伪元素扩区，视觉胶囊保持 h-6
           className={cn(
             'group inline-flex shrink-0 items-center justify-center focus-visible:outline-none',
             '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
           )}
-          onClick={() => applyPermissionPreset('relaxed')}
+          onClick={() => void downgradePermissionPreset('relaxed')}
           data-testid="danger-full-access-active"
           title={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
           aria-label={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
@@ -804,19 +543,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         </button>
       )}
       <DsAlertDialog
-        open={confirmDangerOpen}
-        onOpenChange={setConfirmDangerOpen}
-        title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
-        description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
-        confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
-        confirmVariant="danger"
-        onConfirm={() => {
-          setConfirmDangerOpen(false);
-          // 危险确认对话框的"确认"就是后端 confirm 门的一次性凭据
-          void applyPermissionPreset('danger_full_access', true);
-        }}
-      />
-      <DsAlertDialog
         open={switchError !== null}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) setSwitchError(null);
@@ -834,9 +560,11 @@ ComposerPlusMenu.displayName = 'ComposerPlusMenu';
 
 export default ComposerPlusMenu;
 
-
 /** 知识库「检索范围」：显示当前范围，点击打开文件夹选择器（由 KbScopePickerHost 承载） */
-const KbScopeMenuItem: React.FC<{ sessionId: string; className?: string }> = ({ sessionId, className }) => {
+const KbScopeMenuItem: React.FC<{ sessionId: string; className?: string }> = ({
+  sessionId,
+  className,
+}) => {
   const { t } = useTranslation(['chatV2']);
   const scope = useKbScope(sessionId);
   return (
@@ -847,7 +575,10 @@ const KbScopeMenuItem: React.FC<{ sessionId: string; className?: string }> = ({ 
       data-testid="plus-menu-kb-scope"
     >
       {scope.label
-        ? t('chatV2:inputBar.plusMenu.kbScopeOnly', { defaultValue: '只检索：{{name}}', name: scope.label })
+        ? t('chatV2:inputBar.plusMenu.kbScopeOnly', {
+            defaultValue: '只检索：{{name}}',
+            name: scope.label,
+          })
         : t('chatV2:inputBar.plusMenu.kbScopeAll', { defaultValue: '检索范围：全部资料' })}
     </AppMenuItem>
   );

@@ -80,6 +80,7 @@ export interface PrepareNativeTurnTimelineInput {
   readonly chatSessionId: string;
   readonly agentId: string;
   readonly rosterName?: string;
+  readonly model?: string;
   readonly prompt: string;
   readonly userPrompt?: string;
   readonly userMessageId?: string;
@@ -223,13 +224,15 @@ export function prepareNativeTurnTimeline(
     }
   }
 
-  // 3) Create & persist assistant message with CLI display name as `modelId`.
-  const modelId = resolveAgentDisplayModelId(
+  // 3) Create & persist assistant message with CLI display name (+ optional model) as `modelId`.
+  const baseAgentLabel = resolveAgentDisplayModelId(
     input.agentId,
     input.cachedAgents,
     input.customTemplates,
     input.rosterName,
   );
+  const trimmedCliModel = input.model?.trim();
+  const modelId = trimmedCliModel ? `${baseAgentLabel} (${trimmedCliModel})` : baseAgentLabel;
   const asstMsgId = input.assistantMessageId?.trim() || generateMessageId();
   const asstTimestamp = Math.max(Date.now(), userTimestamp + 1);
 

@@ -57,18 +57,24 @@ import {
   type AgentMentionItem,
   type AgentMentionStatus,
 } from './useModelMentionAutocomplete';
-import { CLI_ENGINE_ID_PREFIX } from './RuntimeModelSubmenuBody';
+import {
+  CLI_ENGINE_ID_PREFIX,
+  parseCliModelSelectionId,
+} from './RuntimeModelSubmenuBody';
 import { ModelMentionChips } from './ModelMentionChip';
 const LazyExternalCliApprovalBar = React.lazy(() =>
   import('./ExternalCliApprovalBar').then((m) => ({ default: m.ExternalCliApprovalBar })),
 );
 import {
+  formatCompactCliModelName,
   isAgentMeshHostConnected,
   normalizeAgentHandle,
   probeAgents,
   resolveAgentDisplayName,
+  resolveCliAvailableModels,
   selectActiveExternalThreadForSession,
   selectSelectedCliForSession,
+  selectSelectedCliModelForSession,
   useAgentMeshStore,
   type DetectedMeshAgent,
 } from '@/features/agent-mesh';
@@ -980,6 +986,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const selectedCliAgentId = useAgentMeshStore((meshState) =>
       selectSelectedCliForSession(meshState, sessionId),
     );
+    const selectedCliModel = useAgentMeshStore((meshState) =>
+      selectSelectedCliModelForSession(meshState, sessionId),
+    );
 
     const installedExternalAgents = useMemo(
       () => meshAgents.filter((agent) => agent.driverKind !== 'builtin' && agent.installed),
@@ -1067,7 +1076,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     const runtimeModelLabel = useMemo(() => {
       if (selectedSessionCliAgent) {
-        return resolveAgentDisplayName(selectedSessionCliAgent.id, selectedSessionCliAgent.name);
+        const baseName = resolveAgentDisplayName(
+          selectedSessionCliAgent.id,
+          selectedSessionCliAgent.name,
+        );
+        return selectedCliModel
+          ? `${baseName} · ${formatCompactCliModelName(selectedCliModel)}`
+          : baseName;
       }
       return (
         getModelDisplayLabel(runtimeOverrideModelInfo) ||
@@ -1080,6 +1095,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       );
     }, [
       selectedSessionCliAgent,
+      selectedCliModel,
       currentModelInfo,
       model2OverrideId,
       effectiveUnpinnedModelId,
@@ -1165,9 +1181,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     // 🆕 单选本地编程 CLI 引擎（T3-Code 风格：写入会话级 selectedCliBySession，不污染 LLM model2OverrideId）
     const handleSelectCliAgent = useCallback(
-      (agentId: string) => {
+      (agentId: string, cliModel?: string | null) => {
         if (sessionId) {
-          useAgentMeshStore.getState().setSelectedCliForSession(sessionId, agentId);
+          const meshActions = useAgentMeshStore.getState();
+          meshActions.setSelectedCliForSession(sessionId, agentId);
+          if (cliModel !== undefined) {
+            meshActions.setSelectedCliModelForSession(sessionId, cliModel);
+          }
         }
         setSelectedModels([]);
         setCompareMode(false);
@@ -1715,6 +1735,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         providerLabel: t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' }),
         iconId: agent.id,
         isExternalCli: true,
+        cliAgentId: agent.id,
+        cliDriverKind: agent.driverKind,
+        cliDefaultModel: agent.defaultModel ?? null,
+        cliAvailableModels: resolveCliAvailableModels(agent),
       }));
       if (!availableModels || availableModels.length === 0) {
         return cliOptions;
@@ -1759,11 +1783,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     ]);
 
     const handleSelectRuntimeModel = useCallback((modelId: string) => {
-      if (modelId.startsWith(CLI_ENGINE_ID_PREFIX)) {
-        const cliAgentId = modelId.slice(CLI_ENGINE_ID_PREFIX.length).trim();
-        if (cliAgentId) {
-          handleSelectCliAgent(cliAgentId);
-        }
+      const cliParsed = parseCliModelSelectionId(modelId);
+      if (cliParsed) {
+        handleSelectCliAgent(cliParsed.cliAgentId, cliParsed.cliModel);
         return;
       }
       const selected = availableModels?.find((model) => model.id === modelId);
@@ -2060,7 +2082,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
               onRemove={handleDeselectModel}
               disabled={isStreaming}
               sessionId={sessionId}
-              sessionCliAgent={selectedSessionCliAgent}
+              sessionCliAgent={{
+                id: selectedSessionCliAgent.id,
+                name: selectedSessionCliAgent.name,
+                selectedModel: selectedCliModel,
+              }}
               onClearSessionCli={handleClearSessionCli}
               className="mb-0"
             />
@@ -2074,6 +2100,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       handleDeselectModel,
       isStreaming,
       pendingExternalApproval,
+      selectedCliModel,
       selectedSessionCliAgent,
       sessionId,
       showSessionCliWorkspaceRow,

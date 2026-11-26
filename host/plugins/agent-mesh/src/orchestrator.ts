@@ -122,6 +122,8 @@ interface QueuedTurnTask {
   contextText: string | null;
   ownedGlobs: string[];
   readOnly: boolean;
+  model?: string;
+  reasoningEffort?: string;
   nativeTimeline?: NativeTurnTimelineSession | null;
   signal?: AbortSignal;
   resolveCompletion: (result: CompletedTurnOutcome) => void;
@@ -438,6 +440,7 @@ export class MeshOrchestrator implements AgentMeshService {
         chatSessionId,
         agentId,
         rosterName,
+        model: rawInput.model,
         prompt,
         userPrompt: rawInput.userPrompt,
         userMessageId: rawInput.userMessageId,
@@ -475,6 +478,8 @@ export class MeshOrchestrator implements AgentMeshService {
       contextText: rawInput.contextText ?? null,
       ownedGlobs: rawInput.ownedGlobs ?? [],
       readOnly: rawInput.readOnly === true,
+      model: rawInput.model?.trim() || undefined,
+      reasoningEffort: rawInput.reasoningEffort?.trim() || undefined,
       nativeTimeline,
       signal: rawInput.signal,
       resolveCompletion: completionResolve,
@@ -1477,6 +1482,8 @@ export class MeshOrchestrator implements AgentMeshService {
           env: mcpSpec.envVars,
           signal: abortController.signal,
           readOnly: task.readOnly,
+          model: task.model,
+          reasoningEffort: task.reasoningEffort,
           onEvent: (ev) => this.handleAdapterRuntimeEvent(actor, record, ev, timeline),
         });
 

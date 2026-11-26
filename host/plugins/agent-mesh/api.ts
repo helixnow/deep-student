@@ -116,6 +116,8 @@ export interface StartMeshTurnInput {
   ownedGlobs?: string[];
   awaitCompletion?: boolean;
   readOnly?: boolean;
+  model?: string;
+  reasoningEffort?: string;
   timelineMode?: 'native_chat' | 'headless';
   userMessageId?: string;
   assistantMessageId?: string;

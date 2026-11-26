@@ -428,6 +428,8 @@ export class CodexAdapter implements ExternalCodingAdapter {
       threadId: resolvedThreadId,
       cwd: input.cwd,
       input: [{ type: 'text', text: input.prompt }],
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.reasoningEffort ? { effort: input.reasoningEffort } : {}),
     });
 
     const turnObj = asRecord(turnStartResponse.turn);
@@ -469,6 +471,12 @@ export class CodexAdapter implements ExternalCodingAdapter {
     const args: string[] = [...mcpArgs, 'exec', '--json'];
     if (input.model) {
       args.push('--model', input.model);
+    }
+    if (input.reasoningEffort) {
+      const safeEffort = input.reasoningEffort.replace(/["\\\r\n]/g, '').trim();
+      if (safeEffort) {
+        args.push('-c', `model_reasoning_effort="${safeEffort}"`);
+      }
     }
     args.push(...this.extraArgs);
 

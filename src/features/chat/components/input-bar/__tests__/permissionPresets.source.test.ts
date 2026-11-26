@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const plusMenuSource = readFileSync(path.join(here, '../ComposerPlusMenu.tsx'), 'utf8');
+const t3SelectorSource = readFileSync(path.join(here, '../T3ModelSelectorPopover.tsx'), 'utf8');
+const combinedPermissionUiSource = `${plusMenuSource}\n${t3SelectorSource}`;
 const blockingApprovalSource = readFileSync(path.join(here, '../BlockingApprovalBar.tsx'), 'utf8');
 const zhLocale = JSON.parse(readFileSync(
   path.join(here, '../../../../../locales/zh-CN/chatV2.json'),
@@ -18,15 +20,15 @@ const enLocale = JSON.parse(readFileSync(
 describe('permission preset source contract', () => {
   it('keeps all fixed preset identifiers and an app-owned danger confirmation', () => {
     for (const preset of ['cautious', 'relaxed', 'full_access', 'danger_full_access']) {
-      expect(plusMenuSource).toContain(`'${preset}'`);
+      expect(t3SelectorSource).toContain(`'${preset}'`);
       expect(zhLocale.authority.permissionPreset.modes[preset]).toBeTruthy();
       expect(enLocale.authority.permissionPreset.modes[preset]).toBeTruthy();
     }
-    expect(plusMenuSource).toContain('<DsAlertDialog');
-    expect(plusMenuSource).not.toContain('window.confirm');
-    expect(plusMenuSource).not.toContain('plus-menu-mode-plan');
-    expect(plusMenuSource).not.toContain('plus-menu-mode-ask');
-    expect(plusMenuSource).not.toContain('onAuthorityModeChange');
+    expect(t3SelectorSource).toContain('<DsAlertDialog');
+    expect(combinedPermissionUiSource).not.toContain('window.confirm');
+    expect(combinedPermissionUiSource).not.toContain('plus-menu-mode-plan');
+    expect(combinedPermissionUiSource).not.toContain('plus-menu-mode-ask');
+    expect(combinedPermissionUiSource).not.toContain('onAuthorityModeChange');
   });
 
   it('exposes session remember but not always/global persistent memory', () => {

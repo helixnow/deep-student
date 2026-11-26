@@ -13,7 +13,11 @@ import { Robot, TerminalWindow, UsersThree, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
-import { WorkspaceFolderPill, resolveAgentDisplayName } from '@/features/agent-mesh';
+import {
+  WorkspaceFolderPill,
+  formatCompactCliModelName,
+  resolveAgentDisplayName,
+} from '@/features/agent-mesh';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import {
   isAgentMentionItem,
@@ -185,7 +189,7 @@ export interface ModelMentionChipsProps {
   /** 会话 ID（供会话级 CLI 引擎模式绑定工作目录） */
   sessionId?: string | null;
   /** 当前会话绑定的本地编程 CLI 引擎（T3-Code 引擎切换） */
-  sessionCliAgent?: { id: string; name: string } | null;
+  sessionCliAgent?: { id: string; name: string; selectedModel?: string | null } | null;
   /** 清除当前会话绑定的 CLI 引擎（回到常规 LLM） */
   onClearSessionCli?: () => void;
   /** 自定义类名 */
@@ -213,6 +217,10 @@ export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
   const sessionCliDisplayName = sessionCliAgent
     ? resolveAgentDisplayName(sessionCliAgent.id, sessionCliAgent.name)
     : '';
+  const sessionCliBadgeLabel =
+    sessionCliAgent?.selectedModel?.trim()
+      ? `${sessionCliDisplayName} · ${formatCompactCliModelName(sessionCliAgent.selectedModel)}`
+      : sessionCliDisplayName;
 
   return (
     <div
@@ -222,13 +230,18 @@ export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
       {models.length === 0 && sessionCliAgent && (
         <span
           data-testid={`session-cli-engine-badge-${sessionCliAgent.id}`}
+          title={
+            sessionCliAgent.selectedModel
+              ? `${sessionCliDisplayName} (${sessionCliAgent.selectedModel})`
+              : sessionCliDisplayName
+          }
           className={cn(
             'inline-flex items-center gap-1.5 rounded-full border border-border/45 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-foreground select-none',
             disabled && 'opacity-60',
           )}
         >
           <TerminalWindow size={12} weight="duotone" className="shrink-0 text-primary" />
-          <span className="max-w-[130px] truncate">{sessionCliDisplayName}</span>
+          <span className="max-w-[200px] truncate">{sessionCliBadgeLabel}</span>
           {!disabled && onClearSessionCli && (
             <DsButton
               variant="ghost"

@@ -351,10 +351,10 @@ describe('T3-Code CLI Engine Picker & 100% Native Chat Turn Flow', () => {
     });
   });
 
-  describe('2. ComposerToolbar & InputBarV2 Engine Selection, Folder Pill & API Key Suppression', () => {
-    it('shows CLI engine label without LLM thinking sliders when cli-agent is active', async () => {
+  describe('2. ComposerToolbar & InputBarV2 Engine Selection, Per-CLI Model Drilldown, Folder Pill & API Key Suppression', () => {
+    it('shows CLI reasoning effort levels for Codex/Claude and 没有可选的推理强度 for CLIs without effort tiers (never LLM sliders)', async () => {
       const user = userEvent.setup();
-      render(
+      const { rerender } = render(
         <InputBarUI
           inputValue=""
           canSend={true}
@@ -388,6 +388,17 @@ describe('T3-Code CLI Engine Picker & 100% Native Chat Turn Flow', () => {
               providerId: '__coding_cli__',
               providerLabel: '本地编程 CLI',
               isExternalCli: true,
+              cliAgentId: 'codex',
+              cliDriverKind: 'codex',
+            },
+            {
+              id: 'cli-agent:opencode',
+              label: 'OpenCode',
+              providerId: '__coding_cli__',
+              providerLabel: '本地编程 CLI',
+              isExternalCli: true,
+              cliAgentId: 'opencode',
+              cliDriverKind: 'opencode',
             },
           ]}
           onSelectRuntimeModel={vi.fn()}
@@ -398,8 +409,126 @@ describe('T3-Code CLI Engine Picker & 100% Native Chat Turn Flow', () => {
 
       await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
       expect(await screen.findByTestId('t3-model-selector')).toBeInTheDocument();
-      expect(screen.getByTestId('t3-reasoning-empty')).toHaveTextContent('没有可选的推理强度');
+      expect(screen.getByTestId('t3-cli-reasoning-group')).toBeInTheDocument();
       expect(screen.queryByRole('slider')).toBeNull();
+
+      rerender(
+        <InputBarUI
+          inputValue=""
+          canSend={true}
+          canAbort={false}
+          isStreaming={false}
+          attachments={[]}
+          panelStates={createDefaultPanelStates()}
+          onInputChange={vi.fn()}
+          onSend={vi.fn()}
+          onAbort={vi.fn()}
+          onAddAttachment={vi.fn()}
+          onUpdateAttachment={vi.fn()}
+          onRemoveAttachment={vi.fn()}
+          onClearAttachments={vi.fn()}
+          onSetPanelState={vi.fn()}
+          runtimeCurrentModelId="cli-agent:opencode"
+          runtimeModelLabel="OpenCode"
+          runtimeModelProviderLabel="本地编程 CLI"
+          runtimeModelOptions={[
+            {
+              id: 'cli-agent:opencode',
+              label: 'OpenCode',
+              providerId: '__coding_cli__',
+              providerLabel: '本地编程 CLI',
+              isExternalCli: true,
+              cliAgentId: 'opencode',
+              cliDriverKind: 'opencode',
+            },
+          ]}
+          onSelectRuntimeModel={vi.fn()}
+        />,
+      );
+      expect(screen.getByTestId('t3-cli-drilldown-header')).toHaveTextContent('OpenCode');
+      expect(screen.getByTestId('t3-reasoning-empty')).toHaveTextContent('没有可选的推理强度');
+    });
+
+    it('drills into a Coding CLI to pick a preset or custom model + effort, displays them in pills, and forwards model + reasoningEffort to startTurn', async () => {
+      const agentsWithDefaults: DetectedMeshAgent[] = [
+        {
+          ...INSTALLED_AGENTS[1],
+          defaultModel: 'claude-sonnet-4-6',
+          availableModels: ['claude-sonnet-4-6', 'claude-opus-4-6'],
+        },
+        INSTALLED_AGENTS[0],
+      ];
+      useAgentMeshStore.getState().setAgents(agentsWithDefaults);
+
+      const startTurnSpy = vi.fn(async (req) => ({
+        threadId: 'thread-claude-model-1',
+        nativeTimelineAttached: true,
+        thread: {
+          threadId: 'thread-claude-model-1',
+          chatSessionId: req.chatSessionId,
+          agentId: req.agentId,
+          agentName: 'Claude Code',
+          rootPath: req.cwd,
+          status: 'idle' as const,
+          nativeTimelineAttached: true,
+        },
+      }));
+      registerAgentMeshHostBridge({ startTurn: startTurnSpy } satisfies AgentMeshHostBridge);
+
+      const store = createChatStore('sess-cli-model-1');
+      render(<InputBarV2 store={store} availableModels={SAMPLE_MODELS} />);
+
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+
+      // Click unified local Coding CLI icon in left rail -> shows Claude Code & Codex CLI
+      await user.click(await screen.findByTestId('t3-rail-group-__coding_cli__'));
+      await user.click(screen.getByTestId('t3-cli-agent-row-claude'));
+
+      // In-place 2nd-level drilldown renders follow-default + preset models + right-pane effort
+      expect(screen.getByTestId('t3-cli-drilldown-header')).toHaveTextContent('Claude Code');
+      expect(screen.getByTestId('t3-cli-model-default-claude')).toBeInTheDocument();
+      expect(screen.getByTestId('t3-cli-model-claude-claude-opus-4-6')).toBeInTheDocument();
+
+      // Select CLI reasoning effort 'high' in right pane
+      const effortGroup = screen.getByTestId('t3-cli-reasoning-group');
+      const highBtn = within(effortGroup).getAllByRole('menuitemradio').find((el) =>
+        /high|高/i.test(el.textContent ?? ''),
+      )!;
+      await user.click(highBtn);
+
+      // Type a custom model ID in search box and select custom model row
+      const cliSearch = screen.getByTestId('t3-model-search-input');
+      await user.type(cliSearch, 'glm-5-coding');
+      const customModelRow = screen.getByTestId('t3-cli-model-custom-claude');
+      expect(customModelRow).toHaveTextContent('glm-5-coding');
+      await user.click(customModelRow);
+
+      // Bottom-right pill & inline session CLI badge both display Claude Code · glm-5-coding
+      expect(screen.getByTestId('thinking-runtime-state-label')).toHaveTextContent(
+        'Claude Code · glm-5-coding',
+      );
+      expect(screen.getByTestId('session-cli-engine-badge-claude')).toHaveTextContent(
+        'Claude Code · glm-5-coding',
+      );
+
+      // Submit a turn -> forwards model: 'glm-5-coding' & reasoningEffort: 'high' to startTurn
+      act(() => {
+        store.getState().setInputValue('使用自定义模型审查架构');
+      });
+      await user.click(screen.getByTestId('btn-send'));
+
+      await waitFor(() => {
+        expect(startTurnSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            chatSessionId: 'sess-cli-model-1',
+            agentId: 'claude',
+            model: 'glm-5-coding',
+            reasoningEffort: 'high',
+            timelineMode: 'native_chat',
+          }),
+        );
+      });
     });
 
     it('switches session between CLI engine and LLM in InputBarV2 without polluting model2OverrideId, shows WorkspaceFolderPill, and suppresses missingApiKey banner', async () => {
