@@ -2330,7 +2330,9 @@
       "cliDefaultTag": "Default",
       "cliCustomModel": "Use custom model \"{{model}}\"",
       "cliEffortDefault": "Default",
-      "backToCliList": "Back to Coding CLIs"
+      "backToCliList": "Back to Coding CLIs",
+      "backToModels": "Back to Models",
+      "paramsCliNotice": "Local coding CLIs manage their own sampling; parameters below apply to built-in models"
     }
   },
   "workspace": {

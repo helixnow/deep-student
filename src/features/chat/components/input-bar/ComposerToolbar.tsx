@@ -376,6 +376,9 @@ export interface ComposerToolbarProps {
   onOpenMcpPanel?: () => void;
   mcpEnabled: boolean;
   selectedMcpServerCount: number;
+  renderAdvancedPanel?: (options?: { embedded?: boolean; onClose?: () => void }) => React.ReactNode;
+  advancedPanelRequested?: boolean;
+  onConsumeAdvancedPanelRequest?: () => void;
   onOpenAdvancedPanel?: () => void;
   pluginWorkshopActive?: boolean;
   onTogglePluginWorkshop?: () => void | Promise<void>;
@@ -469,6 +472,9 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   onOpenMcpPanel,
   mcpEnabled,
   selectedMcpServerCount,
+  renderAdvancedPanel,
+  advancedPanelRequested = false,
+  onConsumeAdvancedPanelRequest,
   onOpenAdvancedPanel,
   pluginWorkshopActive,
   onTogglePluginWorkshop,
@@ -587,6 +593,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     resolvedTriggerBrand === 'anthropic' || TRIGGER_MONO_CURRENT_COLOR_BRANDS.has(resolvedTriggerBrand);
 
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [modelMenuInitialView, setModelMenuInitialView] = useState<'models' | 'params'>('models');
   const [popoverLayout, setPopoverLayout] = useState<T3PopoverLayoutState>(() =>
     computeT3PopoverLayout(null, isMobile)
   );
@@ -604,9 +611,28 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     if (open) {
       syncPopoverLayout();
       onThinkingMenuWillOpen();
+    } else {
+      setModelMenuInitialView('models');
     }
     setIsModelMenuOpen(open);
   }, [onThinkingMenuWillOpen, syncPopoverLayout]);
+
+  // 接管外部触发的对话参数请求（如快捷键 ⌘⇧K），直接展开模型选择器并原位切入「参数」视图，不再弹出独立面板
+  useEffect(() => {
+    if (!advancedPanelRequested || !hasThinkingRuntimeMenu || !renderAdvancedPanel) return;
+    onConsumeAdvancedPanelRequest?.();
+    syncPopoverLayout();
+    onThinkingMenuWillOpen();
+    setModelMenuInitialView('params');
+    setIsModelMenuOpen(true);
+  }, [
+    advancedPanelRequested,
+    hasThinkingRuntimeMenu,
+    onConsumeAdvancedPanelRequest,
+    onThinkingMenuWillOpen,
+    renderAdvancedPanel,
+    syncPopoverLayout,
+  ]);
 
   // 菜单展开期间监听窗口与聊天列容器尺寸变化（分屏开合 / 侧栏折叠 / 窗口拖拽），实时收敛自适应宽度与净空高度
   useEffect(() => {
@@ -810,7 +836,9 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                       onSetThinkingDepth={onSetThinkingDepth}
                       webSearchEnabled={webSearchEnabled}
                       onWebSearchEnabledChange={onWebSearchEnabledChange}
+                      renderAdvancedPanel={renderAdvancedPanel}
                       onOpenAdvancedPanel={onOpenAdvancedPanel}
+                      initialView={modelMenuInitialView}
                       sessionId={sessionId}
                       permissionPreset={permissionPreset}
                       onPermissionPresetChange={onPermissionPresetChange}

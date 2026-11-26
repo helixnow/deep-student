@@ -243,8 +243,8 @@ export interface InputBarUIProps {
 
   /** 渲染模型选择面板（模式插件提供） */
   renderModelPanel?: (options?: { hideHeader?: boolean; onClose?: () => void }) => React.ReactNode;
-  /** 渲染高级设置面板（模式插件提供） */
-  renderAdvancedPanel?: () => React.ReactNode;
+  /** 渲染高级设置面板（模式插件提供；embedded=true 用于模型选择器内原位变异视图） */
+  renderAdvancedPanel?: (options?: { embedded?: boolean; onClose?: () => void }) => React.ReactNode;
   /** 渲染 MCP 工具面板（模式插件提供） */
   renderMcpPanel?: () => React.ReactNode;
   /** 渲染技能选择面板；variant=menu 用于加号菜单次级飞出层 */

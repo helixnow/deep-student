@@ -278,7 +278,7 @@ export function parseAgyModelsOutput(rawOutput: string): string[] {
     if (/^(fetching available models|usage:|available models|flags:|error:|-h\b|--help\b)/i.test(line)) {
       continue;
     }
-    const tableMatch = line.match(/^([a-z0-9][a-z0-9._/-]{1,80})(?:\s{2,}.+)?$/i);
+    const tableMatch = line.match(/^([a-z0-9][a-z0-9._/-]{1,80})(?:(?:\t+|\s{2,}).+)?$/i);
     if (!tableMatch) continue;
     const id = tableMatch[1]!.trim();
     if (!id || seen.has(id)) continue;

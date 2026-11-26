@@ -1793,11 +1793,17 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       handlePickSingleModel(selected);
     }, [availableModels, handlePickSingleModel, handleSelectCliAgent]);
 
-    // 高级设置面板渲染函数
+    // 高级设置面板渲染函数（支持模型选择器内 embedded 原位变异模式）
     const renderAdvancedPanel = useMemo(() => {
       if (!modePlugin?.renderAdvancedPanel) return undefined;
       const AdvancedPanel = modePlugin.renderAdvancedPanel;
-      return () => <AdvancedPanel store={store} onClose={() => setPanelState('advanced', false)} />;
+      return (opts?: { embedded?: boolean; onClose?: () => void }) => (
+        <AdvancedPanel
+          store={store}
+          onClose={opts?.onClose ?? (() => setPanelState('advanced', false))}
+          embeddedInPopover={opts?.embedded}
+        />
+      );
     }, [modePlugin?.renderAdvancedPanel, store, setPanelState]);
 
     // MCP 工具面板渲染函数
