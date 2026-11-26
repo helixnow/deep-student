@@ -15,6 +15,7 @@ import type {} from '../chat-pipeline/api.ts';
 import {
   type AgentMeshService,
   type AskPeerInput,
+  type CliBinaryOverrideInput,
   type CustomCliTemplateInput,
   type GetCheckpointDiffInput,
   type HandoffInput,
@@ -104,6 +105,8 @@ export default definePlugin({
         'swarmControl',
         'saveCustomCliTemplate',
         'deleteCustomCliTemplate',
+        'saveCliOverride',
+        'deleteCliOverride',
         'askPeer',
         'handoff',
       ],
@@ -346,6 +349,14 @@ export default definePlugin({
       deleteCustomCliTemplate: Object.freeze(async (...raw: unknown[]) => {
         const { args } = stripRemoteCallTail(raw);
         return orchestrator.deleteCustomCliTemplate((args[0] ?? '') as { id: string } | string);
+      }),
+      saveCliOverride: Object.freeze(async (...raw: unknown[]) => {
+        const { args } = stripRemoteCallTail(raw);
+        return orchestrator.saveCliOverride((args[0] ?? {}) as CliBinaryOverrideInput);
+      }),
+      deleteCliOverride: Object.freeze(async (...raw: unknown[]) => {
+        const { args } = stripRemoteCallTail(raw);
+        return orchestrator.deleteCliOverride((args[0] ?? '') as { agentId: string } | string);
       }),
       askPeer: Object.freeze(async (...raw: unknown[]) => {
         const { args, signal } = stripRemoteCallTail(raw);

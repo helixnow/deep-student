@@ -106,6 +106,23 @@ export function normalizeHostDetectedAgent(raw: unknown): DetectedMeshAgent | nu
     authenticated: rec.authenticated === undefined ? undefined : Boolean(rec.authenticated),
     version: typeof rec.version === 'string' ? rec.version : undefined,
     command: typeof rec.command === 'string' ? rec.command : undefined,
+    executablePath:
+      typeof rec.executablePath === 'string'
+        ? rec.executablePath
+        : typeof rec.binaryPath === 'string'
+          ? rec.binaryPath
+          : null,
+    customExecutablePath:
+      typeof rec.customExecutablePath === 'string' && rec.customExecutablePath.trim()
+        ? rec.customExecutablePath.trim()
+        : null,
+    extraArgs: Array.isArray(rec.extraArgs)
+      ? rec.extraArgs.map((item) => String(item).trim()).filter(Boolean)
+      : undefined,
+    probeError:
+      typeof rec.probeError === 'string' && rec.probeError.trim()
+        ? rec.probeError.trim()
+        : null,
     defaultModel:
       typeof rec.defaultModel === 'string' && rec.defaultModel.trim()
         ? rec.defaultModel.trim()
@@ -503,6 +520,8 @@ function adaptHostCallerToBridge(
       swarmControl: (input) => call('swarmControl', input) as Promise<SwarmSessionState | null>,
       saveCustomCliTemplate: (tpl) => call('saveCustomCliTemplate', tpl) as Promise<CustomCliTemplate | void>,
       deleteCustomCliTemplate: (id) => call('deleteCustomCliTemplate', id) as Promise<{ ok?: boolean } | void>,
+      saveCliOverride: (input) => call('saveCliOverride', input),
+      deleteCliOverride: (input) => call('deleteCliOverride', input) as Promise<{ deleted?: boolean; agentId?: string } | void>,
       askPeer: (input) => call('askPeer', input) as Promise<PeerExchangeRecord | null>,
       handoff: (input) => call('handoff', input) as Promise<{ exchange: PeerExchangeRecord; targetTurn?: unknown } | null>,
     };

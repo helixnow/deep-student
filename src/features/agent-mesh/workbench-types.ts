@@ -27,6 +27,13 @@ export interface MeshAdapterCapabilities {
   mcpInjection: boolean;
 }
 
+export interface MeshCliBinaryOverrideInput {
+  agentId: string;
+  executablePath?: string | null;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+}
+
 export interface MeshAgentInfo {
   id: string;
   driver: MeshDriverKind;
@@ -36,6 +43,9 @@ export interface MeshAgentInfo {
   authenticated?: boolean;
   version?: string | null;
   binaryPath?: string | null;
+  customExecutablePath?: string | null;
+  extraArgs?: string[];
+  probeError?: string | null;
   authHint?: string | null;
   roleHint?: string | null;
   capabilities: MeshAdapterCapabilities;
@@ -335,6 +345,8 @@ export interface MeshWorkbenchHostAdapter {
   swarmControl?(input: MeshSwarmControlInput): Promise<unknown>;
   saveCustomCliTemplate?(template: MeshCustomCliTemplate): Promise<unknown>;
   deleteCustomCliTemplate?(input: { id: string }): Promise<unknown>;
+  saveCliOverride?(input: MeshCliBinaryOverrideInput): Promise<unknown>;
+  deleteCliOverride?(input: { agentId: string }): Promise<unknown>;
 }
 
 export type MeshCenterViewMode = 'board' | 'stream';

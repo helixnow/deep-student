@@ -23,6 +23,7 @@ import type {
   MeshBoardMessage,
   MeshCenterViewMode,
   MeshCheckpointRecord as WorkbenchCheckpointRecord,
+  MeshCliBinaryOverrideInput,
   MeshCustomCliTemplate,
   MeshDiffSummary as WorkbenchDiffSummary,
   MeshDriverKind,
@@ -55,6 +56,7 @@ export type {
   MeshBoardMessage,
   MeshCenterViewMode,
   WorkbenchCheckpointRecord,
+  MeshCliBinaryOverrideInput,
   MeshCustomCliTemplate,
   WorkbenchDiffSummary,
   MeshDriverKind,
@@ -198,6 +200,8 @@ export function connectMeshWorkbenchPlugin(ctx: Context): () => void {
     swarmControl: (input) => callRemote('swarmControl', input),
     saveCustomCliTemplate: (tpl) => callRemote('saveCustomCliTemplate', tpl),
     deleteCustomCliTemplate: (input) => callRemote('deleteCustomCliTemplate', input),
+    saveCliOverride: (input) => callRemote('saveCliOverride', input),
+    deleteCliOverride: (input) => callRemote('deleteCliOverride', input),
   };
 
   const genericCaller: GenericAgentMeshHostCaller = (method, ...args) =>

@@ -469,4 +469,125 @@ describe('CliAgentProber', () => {
     expect(codex.authStatus).toBe('authenticated');
     expect(codex.capabilities.midTurnSteer).toBe(true);
   });
+
+  it('skips broken PATH shim to next healthy PATH executable and rejects crashed custom templates', async () => {
+    const prober = new CliAgentProber({
+      platform: 'darwin',
+      homeDir: '/Users/dev',
+      env: {},
+      fileExists: async () => false,
+      readTextFile: async () => null,
+      resolveAllExecutables: async (cmd) => {
+        if (cmd === 'opencode') {
+          return ['/Users/dev/.local/bin/opencode', '/opt/homebrew/bin/opencode'];
+        }
+        return [];
+      },
+      commandRunner: async (cmd, args) => {
+        if (cmd === 'opencode' && args[0] === '--version') {
+          return {
+            exitCode: 1,
+            stdout: '',
+            stderr: 'Error: broken npm shim\nNode.js v26.5.0\n',
+            resolvedPath: '/Users/dev/.local/bin/opencode',
+          };
+        }
+        if (cmd === '/opt/homebrew/bin/opencode' && args[0] === '--version') {
+          return {
+            exitCode: 0,
+            stdout: '1.14.19\n',
+            stderr: '',
+            resolvedPath: '/opt/homebrew/bin/opencode',
+          };
+        }
+        if (cmd === '/usr/local/bin/broken-custom' && args[0] === '--version') {
+          return {
+            exitCode: 1,
+            stdout: '',
+            stderr: 'Error: missing shared lib\nNode.js v26.5.0\n',
+            resolvedPath: '/usr/local/bin/broken-custom',
+          };
+        }
+        return { exitCode: null, stdout: '', stderr: '', notFound: true };
+      },
+    });
+
+    const detected = await prober.probeAll({
+      customTemplates: [
+        {
+          id: 'broken',
+          name: 'Broken Custom',
+          command: '/usr/local/bin/broken-custom',
+          argsTemplate: ['{{prompt}}'],
+        },
+      ],
+    });
+
+    const opencode = detected.find((a) => a.id === 'opencode')!;
+    expect(opencode.installed).toBe(true);
+    expect(opencode.resolvedPath).toBe('/opt/homebrew/bin/opencode');
+    expect(opencode.version).toBe('1.14.19');
+
+    const custom = detected.find((a) => a.id === 'custom:broken')!;
+    expect(custom.installed).toBe(false);
+    expect(custom.resolvedPath).toBeNull();
+    expect(custom.probeError).toContain('missing shared lib');
+  });
+
+  it('honors per-CLI custom executablePath overrides and surfaces probeError if custom path is invalid', async () => {
+    const prober = new CliAgentProber({
+      platform: 'darwin',
+      homeDir: '/Users/dev',
+      env: {},
+      fileExists: async () => false,
+      readTextFile: async () => null,
+      resolveAllExecutables: async () => ['/usr/local/bin/claude'],
+      commandRunner: async (cmd, args) => {
+        if (cmd === '/custom/bin/claude' && args[0] === '--version') {
+          return {
+            exitCode: 0,
+            stdout: '2.5.0 (Claude Code)',
+            stderr: '',
+            resolvedPath: '/custom/bin/claude',
+          };
+        }
+        if (cmd === '/bad/path/codex' && args[0] === '--version') {
+          return {
+            exitCode: null,
+            stdout: '',
+            stderr: 'ENOENT',
+            notFound: true,
+            resolvedPath: null,
+          };
+        }
+        return { exitCode: null, stdout: '', stderr: '', notFound: true };
+      },
+    });
+
+    const detected = await prober.probeAll({
+      cliOverrides: [
+        {
+          agentId: 'claude',
+          executablePath: '/custom/bin/claude',
+          extraArgs: ['--verbose'],
+        },
+        {
+          agentId: 'codex',
+          executablePath: '/bad/path/codex',
+        },
+      ],
+    });
+
+    const claude = detected.find((a) => a.id === 'claude')!;
+    expect(claude.installed).toBe(true);
+    expect(claude.resolvedPath).toBe('/custom/bin/claude');
+    expect(claude.customExecutablePath).toBe('/custom/bin/claude');
+    expect(claude.extraArgs).toEqual(['--verbose']);
+    expect(claude.version).toBe('2.5.0');
+
+    const codex = detected.find((a) => a.id === 'codex')!;
+    expect(codex.installed).toBe(false);
+    expect(codex.customExecutablePath).toBe('/bad/path/codex');
+    expect(codex.probeError).toBeTruthy();
+  });
 });

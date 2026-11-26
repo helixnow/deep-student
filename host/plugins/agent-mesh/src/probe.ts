@@ -10,6 +10,7 @@ import path from 'node:path';
 import type {
   AdapterCapabilities,
   CliAuthStatus,
+  CliBinaryOverride,
   CustomCliTemplate,
   DetectedCliAgent,
   ExternalAgentDriverKind,
@@ -41,6 +42,11 @@ export type ProbeCommandRunner = (
 
 export type FileExistsPort = (filePath: string) => Promise<boolean>;
 export type ReadTextFilePort = (filePath: string) => Promise<string | null>;
+export type ResolveExecutablesPort = (
+  command: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+) => Promise<string[]>;
 
 export interface CliProberOptions {
   readonly ttlMs?: number;
@@ -48,6 +54,7 @@ export interface CliProberOptions {
   readonly commandRunner?: ProbeCommandRunner;
   readonly fileExists?: FileExistsPort;
   readonly readTextFile?: ReadTextFilePort;
+  readonly resolveAllExecutables?: ResolveExecutablesPort;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;
   readonly platform?: NodeJS.Platform;
@@ -57,6 +64,7 @@ export interface CliProberOptions {
 export interface ProbeAllInput {
   readonly forceRefresh?: boolean;
   readonly customTemplates?: readonly CustomCliTemplate[];
+  readonly cliOverrides?: readonly CliBinaryOverride[];
 }
 
 interface BuiltInCliDescriptor {
@@ -130,7 +138,7 @@ export const DRIVER_DEFAULT_CAPABILITIES: Readonly<
     midTurnSteer: false,
     interrupt: true,
     approvalCallback: false,
-    sessionResume: true,
+    sessionResume: false,
     sessionFork: false,
     nativeSubagentTree: false,
     backgroundTaskEvents: false,
@@ -406,9 +414,16 @@ export function buildStandardPosixBinDirs(homeDir?: string): string[] {
     ...(trimmedHome
       ? [
           path.posix.join(trimmedHome, '.local', 'bin'),
+          path.posix.join(trimmedHome, '.claude', 'local'),
+          path.posix.join(trimmedHome, '.opencode', 'bin'),
+          path.posix.join(trimmedHome, '.kimi-code', 'bin'),
           path.posix.join(trimmedHome, '.grok', 'bin'),
           path.posix.join(trimmedHome, '.bun', 'bin'),
           path.posix.join(trimmedHome, '.cargo', 'bin'),
+          path.posix.join(trimmedHome, '.volta', 'bin'),
+          path.posix.join(trimmedHome, '.fnm', 'current', 'bin'),
+          path.posix.join(trimmedHome, '.local', 'share', 'mise', 'shims'),
+          path.posix.join(trimmedHome, '.asdf', 'shims'),
         ]
       : []),
     '/opt/homebrew/bin',
@@ -450,13 +465,13 @@ export function augmentEnvWithPosixUserPath(
   return next;
 }
 
-export async function resolveExecutableOnPath(
+export async function resolveAllExecutablesOnPath(
   command: string,
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform = process.platform,
-): Promise<string | null> {
+): Promise<string[]> {
   const trimmed = command.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return [];
 
   const hasSeparator = trimmed.includes('/') || (platform === 'win32' && trimmed.includes('\\'));
   const pathExtensions =
@@ -470,16 +485,34 @@ export async function resolveExecutableOnPath(
     if (platform !== 'win32') return [base];
     const ext = path.win32.extname(base);
     if (ext.length > 0) return [base];
-    return [base, ...pathExtensions.map((suffix) => `${base}${suffix.toLowerCase()}`), ...pathExtensions.map((suffix) => `${base}${suffix.toUpperCase()}`)];
+    return [
+      base,
+      ...pathExtensions.map((suffix) => `${base}${suffix.toLowerCase()}`),
+      ...pathExtensions.map((suffix) => `${base}${suffix.toUpperCase()}`),
+    ];
+  };
+
+  const results: string[] = [];
+  const seenKeys = new Set<string>();
+  const addIfExecutable = async (candidate: string): Promise<void> => {
+    if (!(await isExecutableFile(candidate, platform))) return;
+    let canonical = candidate;
+    try {
+      canonical = await fs.realpath(candidate);
+    } catch {
+      canonical = candidate;
+    }
+    const key = platform === 'win32' ? canonical.toLowerCase() : canonical;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    results.push(candidate);
   };
 
   if (hasSeparator) {
     for (const candidate of candidatesForBase(trimmed)) {
-      if (await isExecutableFile(candidate, platform)) {
-        return candidate;
-      }
+      await addIfExecutable(candidate);
     }
-    return null;
+    return results;
   }
 
   const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path');
@@ -494,13 +527,20 @@ export async function resolveExecutableOnPath(
   for (const dir of dirs) {
     const joined = platform === 'win32' ? path.win32.join(dir, trimmed) : path.posix.join(dir, trimmed);
     for (const candidate of candidatesForBase(joined)) {
-      if (await isExecutableFile(candidate, platform)) {
-        return candidate;
-      }
+      await addIfExecutable(candidate);
     }
   }
 
-  return null;
+  return results;
+}
+
+export async function resolveExecutableOnPath(
+  command: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string | null> {
+  const matches = await resolveAllExecutablesOnPath(command, env, platform);
+  return matches[0] ?? null;
 }
 
 export function createDefaultProbeCommandRunner(
@@ -653,6 +693,28 @@ function isHealthyVersionProbe(res: ProbeCommandResult): boolean {
   return !res.notFound && !res.timedOut && res.exitCode === 0;
 }
 
+function extractProbeErrorSnippet(res: ProbeCommandResult): string | null {
+  if (res.timedOut) return 'Version probe timed out';
+  if (res.notFound) return 'Executable not found or not executable';
+  const raw = `${res.stderr}\n${res.stdout}`.trim();
+  if (raw) {
+    const lines = raw
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !/^(?:throw\s+new\s+error|\^|at\s+\S)/i.test(line));
+    const preferred =
+      lines.find((line) => /error:|missing|not found|enoent|eacces|permission|denied/i.test(line)) ??
+      lines[0];
+    if (preferred) {
+      return preferred.length > 160 ? `${preferred.slice(0, 157)}...` : preferred;
+    }
+  }
+  if (typeof res.exitCode === 'number' && res.exitCode !== 0) {
+    return `Exited with code ${res.exitCode}`;
+  }
+  return null;
+}
+
 function buildDarwinBundledFallbackPaths(
   driver: Exclude<ExternalAgentDriverKind, 'custom'>,
   homeDir: string,
@@ -696,11 +758,27 @@ function hasNonEmptyEnv(
   return null;
 }
 
-function fingerprintTemplates(templates: readonly CustomCliTemplate[]): string {
-  if (templates.length === 0) return '';
-  return templates
-    .map((t) => `${t.id}:${t.name}:${t.command}:${(t.resumeArgsTemplate ?? []).length}`)
-    .join('|');
+function fingerprintProbeInputs(
+  templates: readonly CustomCliTemplate[],
+  overrides: readonly CliBinaryOverride[],
+): string {
+  const tplPart =
+    templates.length === 0
+      ? ''
+      : templates
+          .map((t) => `${t.id}:${t.name}:${t.command}:${(t.resumeArgsTemplate ?? []).length}`)
+          .join('|');
+  const overridePart =
+    overrides.length === 0
+      ? ''
+      : [...overrides]
+          .sort((a, b) => a.agentId.localeCompare(b.agentId))
+          .map(
+            (o) =>
+              `${o.agentId}=${o.executablePath ?? ''}:${(o.extraArgs ?? []).join(',')}:${o.updatedAt ?? ''}`,
+          )
+          .join('|');
+  return `${tplPart}##${overridePart}`;
 }
 
 export class CliAgentProber {
@@ -709,6 +787,7 @@ export class CliAgentProber {
   private readonly commandRunner: ProbeCommandRunner;
   private readonly fileExists: FileExistsPort;
   private readonly readTextFile: ReadTextFilePort;
+  private readonly resolveAllExecutables: ResolveExecutablesPort;
   private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly homeDir: string;
   private readonly platform: NodeJS.Platform;
@@ -731,6 +810,7 @@ export class CliAgentProber {
     this.commandRunner = options.commandRunner ?? createDefaultProbeCommandRunner(platform);
     this.fileExists = options.fileExists ?? defaultFileExists;
     this.readTextFile = options.readTextFile ?? defaultReadTextFile;
+    this.resolveAllExecutables = options.resolveAllExecutables ?? resolveAllExecutablesOnPath;
     this.homeDir = options.homeDir ?? os.homedir();
     this.platform = platform;
     this.env = augmentEnvWithPosixUserPath(options.env ?? process.env, this.homeDir, platform);
@@ -754,7 +834,8 @@ export class CliAgentProber {
 
   async probeAll(input: ProbeAllInput = {}): Promise<DetectedCliAgent[]> {
     const templates = input.customTemplates ?? [];
-    const cacheKey = fingerprintTemplates(templates);
+    const cliOverrides = input.cliOverrides ?? [];
+    const cacheKey = fingerprintProbeInputs(templates, cliOverrides);
     const currentTime = this.now();
 
     if (
@@ -770,7 +851,7 @@ export class CliAgentProber {
       return this.inflight.promise;
     }
 
-    const promise = this.executeProbeAll(templates).finally(() => {
+    const promise = this.executeProbeAll(templates, cliOverrides).finally(() => {
       if (this.inflight?.promise === promise) {
         this.inflight = null;
       }
@@ -781,12 +862,21 @@ export class CliAgentProber {
 
   private async executeProbeAll(
     customTemplates: readonly CustomCliTemplate[],
+    cliOverrides: readonly CliBinaryOverride[],
   ): Promise<DetectedCliAgent[]> {
-    const builtInPromises = BUILT_IN_DESCRIPTORS.map((desc) => this.probeBuiltIn(desc));
+    const overridesById = new Map<string, CliBinaryOverride>();
+    for (const ov of cliOverrides) {
+      const cleanId = ov.agentId.trim().replace(/^@+/, '');
+      if (cleanId) overridesById.set(cleanId, ov);
+    }
+
+    const builtInPromises = BUILT_IN_DESCRIPTORS.map((desc) =>
+      this.probeBuiltIn(desc, overridesById.get(desc.id)),
+    );
     const customPromises = customTemplates.map((tpl) => this.probeCustomTemplate(tpl));
     const agents = await Promise.all([...builtInPromises, ...customPromises]);
 
-    const cacheKey = fingerprintTemplates(customTemplates);
+    const cacheKey = fingerprintProbeInputs(customTemplates, cliOverrides);
     this.cachedResult = {
       key: cacheKey,
       expiresAt: this.now() + Math.max(0, this.ttlMs),
@@ -812,23 +902,76 @@ export class CliAgentProber {
     }
   }
 
-  private async probeBuiltIn(desc: BuiltInCliDescriptor): Promise<DetectedCliAgent> {
+  private async probeBuiltIn(
+    desc: BuiltInCliDescriptor,
+    override?: CliBinaryOverride,
+  ): Promise<DetectedCliAgent> {
     const probedAt = this.now();
-    let res = await this.safeRun(desc.command, desc.versionArgs);
-    let activeCommand = desc.command;
-    let installed = isHealthyVersionProbe(res);
+    const customExecutablePath = override?.executablePath?.trim() || null;
+    const extraArgs = override?.extraArgs ? [...override.extraArgs] : [];
 
-    // If PATH binary is missing or crashed (e.g. broken npm optional dependency shim),
-    // probe known macOS app-bundled CLI binaries before giving up.
-    if (!installed && this.platform === 'darwin') {
-      for (const fallbackPath of buildDarwinBundledFallbackPaths(desc.id, this.homeDir)) {
-        if (!(await this.fileExists(fallbackPath))) continue;
-        const fallbackRes = await this.safeRun(fallbackPath, desc.versionArgs);
-        if (isHealthyVersionProbe(fallbackRes)) {
-          res = { ...fallbackRes, resolvedPath: fallbackRes.resolvedPath ?? fallbackPath };
-          activeCommand = fallbackPath;
-          installed = true;
-          break;
+    let res: ProbeCommandResult;
+    let activeCommand: string;
+    let installed = false;
+    let lastErrorSnippet: string | null = null;
+
+    if (customExecutablePath) {
+      // User explicitly configured a binary path: probe that exact binary so failures
+      // surface clearly instead of silently falling back to an unintended executable.
+      activeCommand = customExecutablePath;
+      res = await this.safeRun(customExecutablePath, desc.versionArgs);
+      installed = isHealthyVersionProbe(res);
+      if (!installed) {
+        lastErrorSnippet = extractProbeErrorSnippet(res);
+      }
+    } else {
+      activeCommand = desc.command;
+      res = await this.safeRun(desc.command, desc.versionArgs);
+      installed = isHealthyVersionProbe(res);
+      if (!installed && !res.notFound) {
+        lastErrorSnippet = extractProbeErrorSnippet(res);
+      }
+
+      // If the first PATH hit was found but crashed/timed out (e.g. broken npm/pnpm shim
+      // shadowing a healthy binary in /opt/homebrew/bin or ~/.bun/bin), try all remaining
+      // PATH candidates. Skip when `res.notFound` since PATH already returned 0 matches.
+      if (!installed && !res.notFound) {
+        const tried = new Set<string>();
+        if (res.resolvedPath) tried.add(res.resolvedPath);
+        const pathCandidates = await this.resolveAllExecutables(
+          desc.command,
+          this.env,
+          this.platform,
+        ).catch(() => []);
+        for (const candidatePath of pathCandidates) {
+          if (tried.has(candidatePath)) continue;
+          tried.add(candidatePath);
+          const candidateRes = await this.safeRun(candidatePath, desc.versionArgs);
+          if (isHealthyVersionProbe(candidateRes)) {
+            res = { ...candidateRes, resolvedPath: candidateRes.resolvedPath ?? candidatePath };
+            activeCommand = candidatePath;
+            installed = true;
+            lastErrorSnippet = null;
+            break;
+          }
+          if (!candidateRes.notFound && !lastErrorSnippet) {
+            lastErrorSnippet = extractProbeErrorSnippet(candidateRes);
+          }
+        }
+      }
+
+      // If PATH binaries are missing or crashed, probe known macOS app-bundled CLI binaries.
+      if (!installed && this.platform === 'darwin') {
+        for (const fallbackPath of buildDarwinBundledFallbackPaths(desc.id, this.homeDir)) {
+          if (!(await this.fileExists(fallbackPath))) continue;
+          const fallbackRes = await this.safeRun(fallbackPath, desc.versionArgs);
+          if (isHealthyVersionProbe(fallbackRes)) {
+            res = { ...fallbackRes, resolvedPath: fallbackRes.resolvedPath ?? fallbackPath };
+            activeCommand = fallbackPath;
+            installed = true;
+            lastErrorSnippet = null;
+            break;
+          }
         }
       }
     }
@@ -844,6 +987,9 @@ export class CliAgentProber {
         displayName: desc.displayName,
         command: desc.command,
         resolvedPath: null,
+        ...(customExecutablePath ? { customExecutablePath } : {}),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+        ...(lastErrorSnippet ? { probeError: lastErrorSnippet } : {}),
         installed: false,
         version: null,
         authStatus: 'unknown',
@@ -865,6 +1011,8 @@ export class CliAgentProber {
       displayName: desc.displayName,
       command: desc.command,
       resolvedPath: resolvedCmd,
+      ...(customExecutablePath ? { customExecutablePath } : {}),
+      ...(extraArgs.length > 0 ? { extraArgs } : {}),
       installed: true,
       version,
       authStatus: auth.status,
@@ -1040,8 +1188,11 @@ export class CliAgentProber {
           }
         }
       }
-    } catch {
+    } catch (err) {
       // Never fail probing due to malformed user config files or CLI output.
+      if (err instanceof Error && err.message.length === 0) {
+        defaultModel = defaultModel ?? null;
+      }
     }
 
     // When a CLI dynamically reports its own live model catalog (`agy models`, `opencode models`,
@@ -1205,9 +1356,11 @@ export class CliAgentProber {
   private async probeCustomTemplate(template: CustomCliTemplate): Promise<DetectedCliAgent> {
     const probedAt = this.now();
     const res = await this.safeRun(template.command, ['--version']);
-    const combinedOutput = `${res.stdout}\n${res.stderr}`.trim();
-    const version = extractSemanticVersion(combinedOutput);
-    const installed = !res.notFound && !res.timedOut && (res.exitCode === 0 || version !== null || res.resolvedPath !== null);
+    const installed = isHealthyVersionProbe(res);
+    const version = installed
+      ? (extractSemanticVersion(res.stdout) ?? extractSemanticVersion(res.stderr))
+      : null;
+    const probeError = installed ? null : extractProbeErrorSnippet(res);
 
     const capabilities: AdapterCapabilities = {
       ...DRIVER_DEFAULT_CAPABILITIES.custom,
@@ -1225,8 +1378,9 @@ export class CliAgentProber {
       displayName: template.name,
       command: template.command,
       resolvedPath: installed ? (res.resolvedPath ?? template.command) : null,
+      ...(probeError ? { probeError } : {}),
       installed,
-      version: installed ? version : null,
+      version,
       authStatus: templateAuthKey ? 'authenticated' : 'unknown',
       authHint: templateAuthKey ? `Template env sets ${templateAuthKey}` : undefined,
       capabilities,

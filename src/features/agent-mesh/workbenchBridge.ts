@@ -14,6 +14,7 @@ import type {
   MeshBoardMessage,
   MeshCenterViewMode,
   MeshCheckpointRecord,
+  MeshCliBinaryOverrideInput,
   MeshCustomCliTemplate,
   MeshDriverKind,
   MeshExternalThread,
@@ -262,6 +263,17 @@ function normalizeAgentInfo(raw: unknown): MeshAgentInfo | null {
           : typeof r.command === 'string'
             ? r.command
             : null,
+    customExecutablePath:
+      typeof r.customExecutablePath === 'string' && r.customExecutablePath.trim()
+        ? r.customExecutablePath.trim()
+        : null,
+    extraArgs: Array.isArray(r.extraArgs)
+      ? r.extraArgs.map((item) => String(item).trim()).filter(Boolean)
+      : [],
+    probeError:
+      typeof r.probeError === 'string' && r.probeError.trim()
+        ? r.probeError.trim()
+        : null,
     authHint: typeof r.authHint === 'string' ? r.authHint : null,
     roleHint: typeof r.roleHint === 'string' ? r.roleHint : (preset?.roleHint ?? null),
     capabilities,
@@ -751,6 +763,8 @@ export interface AgentMeshWorkbenchState {
   emergencyStopAllExternal: (reason?: string) => Promise<number>;
   saveCustomTemplate: (template: MeshCustomCliTemplate) => Promise<void>;
   removeCustomTemplate: (id: string) => Promise<void>;
+  saveCliOverride: (input: MeshCliBinaryOverrideInput) => Promise<void>;
+  resetCliOverride: (agentId: string) => Promise<void>;
   resetStoreForTests: () => void;
 }
 
@@ -1595,6 +1609,55 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       agents: prev.agents.filter((a) => !(a.driver === 'custom' && a.id === cleanId)),
     }));
     await activeHostAdapter?.deleteCustomCliTemplate?.({ id: cleanId });
+  },
+
+  saveCliOverride: async (input) => {
+    const cleanId = input.agentId.trim().replace(/^@/, '').toLowerCase();
+    if (!cleanId) return;
+    const cleanPath = typeof input.executablePath === 'string' ? input.executablePath.trim() : '';
+    const cleanArgs = (input.extraArgs ?? []).map((arg) => arg.trim()).filter(Boolean);
+    set((prev) => ({
+      agents: prev.agents.map((agent) =>
+        agent.id === cleanId
+          ? {
+              ...agent,
+              customExecutablePath: cleanPath || null,
+              extraArgs: cleanArgs,
+              ...(cleanPath ? { binaryPath: cleanPath } : {}),
+            }
+          : agent,
+      ),
+    }));
+    if (activeHostAdapter?.saveCliOverride) {
+      await activeHostAdapter.saveCliOverride({
+        agentId: cleanId,
+        executablePath: cleanPath || null,
+        extraArgs: cleanArgs,
+        ...(input.env ? { env: input.env } : {}),
+      });
+      await get().probeDetectedAgents(true);
+    }
+  },
+
+  resetCliOverride: async (agentId) => {
+    const cleanId = agentId.trim().replace(/^@/, '').toLowerCase();
+    if (!cleanId) return;
+    set((prev) => ({
+      agents: prev.agents.map((agent) =>
+        agent.id === cleanId
+          ? {
+              ...agent,
+              customExecutablePath: null,
+              extraArgs: [],
+              probeError: null,
+            }
+          : agent,
+      ),
+    }));
+    if (activeHostAdapter?.deleteCliOverride) {
+      await activeHostAdapter.deleteCliOverride({ agentId: cleanId });
+      await get().probeDetectedAgents(true);
+    }
   },
 
   resetStoreForTests: () => {

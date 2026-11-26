@@ -35,6 +35,7 @@ import {
   type ActiveFileLease as ContractActiveFileLease,
   type AdapterRegistryPort,
   type CheckpointPort,
+  type CliBinaryOverride as ContractCliBinaryOverride,
   type CustomCliTemplate as ContractCustomCliTemplate,
   type DetectedCliAgent as ContractDetectedCliAgent,
   type ExternalCodingAdapter as ContractExternalCodingAdapter,
@@ -85,6 +86,11 @@ function toContractDetectedAgent(agent: AdapterDetectedCliAgent): ContractDetect
     authenticated,
     version: agent.version,
     executablePath: agent.resolvedPath,
+    ...(agent.customExecutablePath !== undefined
+      ? { customExecutablePath: agent.customExecutablePath }
+      : {}),
+    ...(agent.extraArgs && agent.extraArgs.length > 0 ? { extraArgs: [...agent.extraArgs] } : {}),
+    ...(agent.probeError !== undefined ? { probeError: agent.probeError } : {}),
     authHint: agent.authHint ?? null,
     ...(agent.defaultModel !== undefined ? { defaultModel: agent.defaultModel } : {}),
     ...(agent.availableModels ? { availableModels: [...agent.availableModels] } : {}),
@@ -250,6 +256,7 @@ function wrapConcreteAdapter(inner: AdapterExternalCodingAdapter): ContractExter
 export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
   readonly registry: ExternalAdapterRegistry;
   private readonly knownTemplateSignatures = new Map<string, string>();
+  private readonly knownOverrideSignatures = new Map<string, string>();
   private wrappedAdapters = new WeakMap<AdapterExternalCodingAdapter, ContractExternalCodingAdapter>();
 
   constructor(options: ExternalAdapterRegistryOptions = {}) {
@@ -282,11 +289,45 @@ export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
     }
   }
 
+  private syncCliOverrides(cliOverrides?: readonly ContractCliBinaryOverride[]): void {
+    if (!cliOverrides) return;
+    const incomingIds = new Set<string>();
+    for (const ov of cliOverrides) {
+      const cleanId = ov.agentId.trim().replace(/^@+/, '').toLowerCase();
+      if (!cleanId) continue;
+      incomingIds.add(cleanId);
+      const signature = JSON.stringify([
+        ov.executablePath ?? null,
+        ov.extraArgs,
+        ov.env,
+        ov.updatedAt,
+      ]);
+      if (this.knownOverrideSignatures.get(cleanId) !== signature) {
+        this.registry.setCliOverride({
+          agentId: cleanId,
+          executablePath: ov.executablePath,
+          extraArgs: ov.extraArgs,
+          env: ov.env,
+          updatedAt: ov.updatedAt,
+        });
+        this.knownOverrideSignatures.set(cleanId, signature);
+      }
+    }
+    for (const existingId of [...this.knownOverrideSignatures.keys()]) {
+      if (!incomingIds.has(existingId)) {
+        this.registry.removeCliOverride(existingId);
+        this.knownOverrideSignatures.delete(existingId);
+      }
+    }
+  }
+
   async probeAgents(options?: {
     forceRefresh?: boolean;
     customTemplates?: readonly ContractCustomCliTemplate[];
+    cliOverrides?: readonly ContractCliBinaryOverride[];
   }): Promise<ContractDetectedCliAgent[]> {
     this.syncCustomTemplates(options?.customTemplates);
+    this.syncCliOverrides(options?.cliOverrides);
     const probed = await this.registry.probeAgents(options?.forceRefresh === true);
     return [DEFAULT_BUILTIN_COORDINATOR_AGENT, ...probed.map(toContractDetectedAgent)];
   }
@@ -294,12 +335,14 @@ export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
   getAdapter(
     agentId: string,
     customTemplates?: readonly ContractCustomCliTemplate[],
+    cliOverrides?: readonly ContractCliBinaryOverride[],
   ): ContractExternalCodingAdapter | null {
     const cleanId = agentId.trim().replace(/^@+/, '');
     if (!cleanId || cleanId === 'deepstudent') {
       return null;
     }
     this.syncCustomTemplates(customTemplates);
+    this.syncCliOverrides(cliOverrides);
     try {
       const inner = this.registry.getAdapter(cleanId);
       let wrapped = this.wrappedAdapters.get(inner);
@@ -317,6 +360,7 @@ export class ConcreteAdapterRegistryPort implements AdapterRegistryPort {
   async dispose(): Promise<void> {
     this.wrappedAdapters = new WeakMap();
     this.knownTemplateSignatures.clear();
+    this.knownOverrideSignatures.clear();
     await this.registry.dispose();
   }
 }

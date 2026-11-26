@@ -12,6 +12,8 @@ import { openStartupDatabase, type StartupDatabase } from '../../../platform/sto
 import type {
   BoardMessagePriority,
   BoardSenderKind,
+  CliBinaryOverride,
+  CliBinaryOverrideInput,
   CustomCliTemplate,
   CustomCliTemplateInput,
   MeshCheckpointRecord,
@@ -122,6 +124,14 @@ CREATE TABLE IF NOT EXISTS mesh_custom_templates (
   command TEXT NOT NULL,
   args_json TEXT NOT NULL DEFAULT '[]',
   resume_args_json TEXT NOT NULL DEFAULT '[]',
+  env_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mesh_cli_overrides (
+  agent_id TEXT PRIMARY KEY,
+  executable_path TEXT,
+  extra_args_json TEXT NOT NULL DEFAULT '[]',
   env_json TEXT NOT NULL DEFAULT '{}',
   updated_at TEXT NOT NULL
 );
@@ -268,6 +278,17 @@ function rowToCustomTemplate(row: Row): CustomCliTemplate {
     command: String(row.command),
     args: parseJsonStringArray(row.args_json),
     resumeArgs: parseJsonStringArray(row.resume_args_json),
+    env: parseJsonStringRecord(row.env_json),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function rowToCliOverride(row: Row): CliBinaryOverride {
+  const rawPath = row.executable_path === null || row.executable_path === undefined ? null : String(row.executable_path).trim();
+  return {
+    agentId: String(row.agent_id),
+    executablePath: rawPath || null,
+    extraArgs: parseJsonStringArray(row.extra_args_json),
     env: parseJsonStringRecord(row.env_json),
     updatedAt: String(row.updated_at),
   };
@@ -927,6 +948,70 @@ export class AgentMeshStorage {
   deleteCustomTemplate(id: string): boolean {
     // boundary-allow sql-outside-repository: agent-mesh SQLite delete
     const res = this.db.run('DELETE FROM mesh_custom_templates WHERE id = ?', [id]);
+    return res.changes > 0;
+  }
+
+  // ---- Built-in CLI Binary & Args Overrides ---------------------------------
+
+  listCliOverrides(): CliBinaryOverride[] {
+    // boundary-allow sql-outside-repository: agent-mesh SQLite query
+    const rows = this.db.all('SELECT * FROM mesh_cli_overrides ORDER BY agent_id ASC');
+    return rows.map(rowToCliOverride);
+  }
+
+  getCliOverride(agentId: string): CliBinaryOverride | null {
+    const cleanId = agentId.trim().replace(/^@+/, '').toLowerCase();
+    if (!cleanId) return null;
+    // boundary-allow sql-outside-repository: agent-mesh SQLite query
+    const row = this.db.get('SELECT * FROM mesh_cli_overrides WHERE agent_id = ?', [cleanId]);
+    return row ? rowToCliOverride(row) : null;
+  }
+
+  saveCliOverride(input: CliBinaryOverrideInput): CliBinaryOverride | null {
+    const cleanId = input.agentId.trim().replace(/^@+/, '').toLowerCase();
+    if (!cleanId) {
+      throw new Error('AGENT_MESH_INVALID_CLI_OVERRIDE: agentId is required');
+    }
+    const cleanPath = typeof input.executablePath === 'string' ? input.executablePath.trim() : '';
+    const cleanArgs = (input.extraArgs ?? []).map((a) => a.trim()).filter(Boolean);
+    const cleanEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input.env ?? {})) {
+      const ck = k.trim();
+      if (ck) cleanEnv[ck] = String(v);
+    }
+
+    if (!cleanPath && cleanArgs.length === 0 && Object.keys(cleanEnv).length === 0) {
+      this.deleteCliOverride(cleanId);
+      return null;
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.db.run(
+      // boundary-allow sql-outside-repository: agent-mesh SQLite upsert
+      `INSERT INTO mesh_cli_overrides (
+        agent_id, executable_path, extra_args_json, env_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        executable_path = excluded.executable_path,
+        extra_args_json = excluded.extra_args_json,
+        env_json = excluded.env_json,
+        updated_at = excluded.updated_at`,
+      [
+        cleanId,
+        cleanPath || null,
+        JSON.stringify(cleanArgs),
+        JSON.stringify(cleanEnv),
+        updatedAt,
+      ],
+    );
+    return this.getCliOverride(cleanId);
+  }
+
+  deleteCliOverride(agentId: string): boolean {
+    const cleanId = agentId.trim().replace(/^@+/, '').toLowerCase();
+    if (!cleanId) return false;
+    // boundary-allow sql-outside-repository: agent-mesh SQLite delete
+    const res = this.db.run('DELETE FROM mesh_cli_overrides WHERE agent_id = ?', [cleanId]);
     return res.changes > 0;
   }
 

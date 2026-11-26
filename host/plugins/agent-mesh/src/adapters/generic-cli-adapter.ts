@@ -39,15 +39,14 @@ export const BUILT_IN_GENERIC_TEMPLATES: Readonly<Record<'agy' | 'dsh', CustomCl
     name: 'Antigravity CLI',
     command: 'agy',
     argsTemplate: ['--prompt', '{{prompt}}'],
-    resumeArgsTemplate: ['--resume', '{{sessionId}}', '--prompt', '{{prompt}}'],
+    resumeArgsTemplate: ['--conversation', '{{sessionId}}', '--prompt', '{{prompt}}'],
     outputFormat: 'auto',
   },
   dsh: {
     id: 'dsh',
     name: 'DeepSeek Harness',
     command: 'dsh',
-    argsTemplate: ['run', '--prompt', '{{prompt}}'],
-    resumeArgsTemplate: ['run', '--resume', '{{sessionId}}', '--prompt', '{{prompt}}'],
+    argsTemplate: ['--profile', 'headless', '{{prompt}}'],
     outputFormat: 'auto',
   },
 };
@@ -55,6 +54,7 @@ export const BUILT_IN_GENERIC_TEMPLATES: Readonly<Record<'agy' | 'dsh', CustomCl
 export interface GenericCliAdapterOptions {
   readonly driver?: GenericDriverKind;
   readonly template?: CustomCliTemplate;
+  readonly extraArgs?: readonly string[];
   readonly processSupervisor?: ProcessTreeSupervisor;
   readonly safetyIdleTimeoutMs?: number;
   readonly now?: () => number;
@@ -95,12 +95,14 @@ export class GenericCliAdapter implements ExternalCodingAdapter {
   private readonly supervisor: ProcessTreeSupervisor;
   private readonly ownsSupervisor: boolean;
   private readonly safetyIdleTimeoutMs: number | undefined;
+  private readonly extraArgs: readonly string[];
   private readonly now: () => number;
   private readonly activeTurns = new Map<string, ActiveGenericTurn>();
 
   constructor(options: GenericCliAdapterOptions = {}) {
     const driver = options.driver ?? (options.template ? 'custom' : 'agy');
     this.driver = driver;
+    this.extraArgs = options.extraArgs ? [...options.extraArgs] : [];
 
     if (options.template) {
       this.template = options.template;
@@ -238,7 +240,7 @@ export class GenericCliAdapter implements ExternalCodingAdapter {
         model: input.model ?? '',
       });
 
-      const prefixFlags: string[] = [];
+      const prefixFlags: string[] = [...this.extraArgs];
       const templateUsesModelToken = rawTokens.some((tok) => /\{\{\s*model\s*\}\}/u.test(tok));
       if (input.model && !templateUsesModelToken && this.driver === 'agy') {
         prefixFlags.push('--model', input.model);
