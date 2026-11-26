@@ -1,27 +1,35 @@
 /**
- * Chat V2 - ModelMentionChip 模型提及气泡组件
+ * Chat V2 - ModelMentionChip 统一 `@agent` / `@model` 提及胶囊组件
  *
  * 渲染为不可编辑的气泡/chip，支持：
- * 1. 显示模型名称
- * 2. 点击 × 删除
- * 3. 键盘删除（Backspace）
- * 4. 暗色/亮色模式
+ * 1. 智能体胶囊（精细极简中性描边 + 专属终端/智能体微图标 + `@claude` / `@codex`）
+ * 2. 当存在已选外部编程 CLI 胶囊时，在胶囊行并排呈现轻巧 `WorkspaceFolderPill`（`📁 folderName ▾`）
+ * 3. 模型胶囊（保持原有样式、点击 × 与 Backspace 删除）
  */
 
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from '@phosphor-icons/react';
+import { Robot, TerminalWindow, UsersThree, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
+import {
+  WorkspaceFolderPill,
+  formatCompactCliModelName,
+  resolveAgentDisplayName,
+} from '@/features/agent-mesh';
 import type { ModelInfo } from '../../utils/parseModelMentions';
+import {
+  isAgentMentionItem,
+  isExternalCliMentionItem,
+} from './useModelMentionAutocomplete';
 
 // ============================================================================
 // 类型定义
 // ============================================================================
 
 export interface ModelMentionChipProps {
-  /** 模型信息 */
+  /** 模型或智能体候选信息 */
   model: ModelInfo;
   /** 删除回调 */
   onRemove: (modelId: string) => void;
@@ -31,20 +39,45 @@ export interface ModelMentionChipProps {
   className?: string;
 }
 
+function simplifyModelName(name: string, modelId?: string): string {
+  let simplified = name || modelId || '';
+  const dashIndex = simplified.indexOf(' - ');
+  if (dashIndex !== -1) {
+    simplified = simplified.slice(dashIndex + 3);
+  }
+
+  const trimmed = simplified.trim();
+  const looksLikeHumanLabel = /[\s（()\u4e00-\u9fff]/.test(trimmed);
+
+  if (looksLikeHumanLabel) {
+    simplified = trimmed.replace(/[（(].*?[）)]/g, '').trim();
+  } else {
+    const parts = trimmed.split('/');
+    if (parts.length > 1) {
+      simplified = parts[parts.length - 1];
+    } else {
+      simplified = trimmed;
+    }
+  }
+
+  if (!simplified) {
+    simplified = modelId || name;
+  }
+
+  return simplified;
+}
+
 // ============================================================================
 // 组件实现
 // ============================================================================
 
-/**
- * ModelMentionChip - 模型提及气泡组件
- */
 export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
   model,
   onRemove,
   disabled = false,
   className,
 }) => {
-  const { t } = useTranslation(['common']);
+  const { t } = useTranslation(['common', 'chatV2']);
   const handleRemove = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -53,57 +86,61 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
         onRemove(model.id);
       }
     },
-    [model.id, onRemove, disabled]
+    [model.id, onRemove, disabled],
   );
 
-  // 简化模型名称显示：
-  // 1. 移除供应商前缀（如 "SiliconFlow - xxx" -> "xxx"）
-  // 2. 对于纯模型 ID 路径（如 "Qwen/Qwen3-8B"）才按 / 取最后一段
-  // 3. 对于 "Qwen3.5 Plus (多模态/混合思考)" 这类展示名，保留主名称并去掉括号说明
-  const simplifyModelName = (name: string, modelId?: string): string => {
-    let simplified = name || modelId || '';
-    // 移除供应商前缀（格式：供应商名 - 模型名）
-    const dashIndex = simplified.indexOf(' - ');
-    if (dashIndex !== -1) {
-      simplified = simplified.slice(dashIndex + 3);
-    }
+  if (isAgentMentionItem(model)) {
+    const AgentIcon =
+      model.driverKind === 'swarm_broadcast'
+        ? UsersThree
+        : model.driverKind === 'builtin'
+          ? Robot
+          : TerminalWindow;
 
-    const trimmed = simplified.trim();
-    const looksLikeHumanLabel = /[\s（()\u4e00-\u9fff]/.test(trimmed);
-
-    // 对人类可读标签，优先保留括号前的主名称
-    if (looksLikeHumanLabel) {
-      simplified = trimmed
-        .replace(/[（(].*?[）)]/g, '')
-        .trim();
-    } else {
-      // 对于 xxx/xxx/abc 这类模型 ID 路径，只取最后一段
-      const parts = trimmed.split('/');
-      if (parts.length > 1) {
-        simplified = parts[parts.length - 1];
-      } else {
-        simplified = trimmed;
-      }
-    }
-
-    // 兜底：如果清洗后为空，则回退到 modelId 或原始名称
-    if (!simplified) {
-      simplified = modelId || name;
-    }
-
-    return simplified;
-  };
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full',
+          'text-xs font-medium border border-border/45 bg-foreground/[0.035] text-foreground',
+          'select-none cursor-default transition-colors duration-150',
+          disabled && 'opacity-60',
+          !disabled && 'hover:bg-foreground/[0.06]',
+          className,
+        )}
+        style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' } as React.CSSProperties}
+        title={model.name}
+        data-testid={`agent-mention-chip-${model.agentHandle}`}
+        data-model-id={model.id}
+        data-agent-handle={model.agentHandle}
+      >
+        <AgentIcon size={12} weight="duotone" className="shrink-0 text-primary/85" />
+        <span className="truncate max-w-[110px]">@{model.agentHandle}</span>
+        {!disabled && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={handleRemove}
+            className={cn(
+              'ml-0.5 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative',
+              coarseHitClassForBadge16,
+            )}
+            aria-label={t('chatV2:common.removeNamed', { name: model.name })}
+          >
+            <X size={10} weight="bold" />
+          </DsButton>
+        )}
+      </span>
+    );
+  }
 
   const simplifiedName = simplifyModelName(model.name, model.model);
-  // 截断过长的名称
-  const displayName = simplifiedName.length > 30 
-    ? simplifiedName.slice(0, 27) + '...' 
-    : simplifiedName;
+  const displayName =
+    simplifiedName.length > 30 ? simplifiedName.slice(0, 27) + '...' : simplifiedName;
 
   return (
     <span
       className={cn(
-        // 🔧 样式统一：与技能标签 (ContextRefChips) 保持一致
         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full',
         'text-xs font-medium border border-transparent',
         'bg-primary/10 text-primary border-primary/20',
@@ -111,19 +148,26 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
         'transition-all duration-200 hover:scale-105',
         disabled && 'opacity-60',
         !disabled && 'hover:bg-primary/20',
-        className
+        className,
       )}
-      // 🔧 安卓 WebView 修复：禁止字体大小自动调整
       style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' } as React.CSSProperties}
       title={model.name}
       data-model-id={model.id}
     >
       <span className="text-primary/70 text-2xs leading-none">@</span>
-      {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
-      {/* ★ M5：16px 删除按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
       {!disabled && (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className={cn('ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative', coarseHitClassForBadge16)} aria-label={t('chatV2:common.removeNamed', { name: model.name })}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={handleRemove}
+          className={cn(
+            'ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative',
+            coarseHitClassForBadge16,
+          )}
+          aria-label={t('chatV2:common.removeNamed', { name: model.name })}
+        >
           <X size={10} weight="bold" />
         </DsButton>
       )}
@@ -136,32 +180,92 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
 // ============================================================================
 
 export interface ModelMentionChipsProps {
-  /** 已选中的模型列表 */
+  /** 已选中的智能体与模型列表 */
   models: ModelInfo[];
-  /** 删除单个模型 */
+  /** 删除单个胶囊 */
   onRemove: (modelId: string) => void;
   /** 是否禁用 */
   disabled?: boolean;
+  /** 会话 ID（供会话级 CLI 引擎模式绑定工作目录） */
+  sessionId?: string | null;
+  /** 当前会话绑定的本地编程 CLI 引擎（T3-Code 引擎切换） */
+  sessionCliAgent?: { id: string; name: string; selectedModel?: string | null } | null;
+  /** 清除当前会话绑定的 CLI 引擎（回到常规 LLM） */
+  onClearSessionCli?: () => void;
   /** 自定义类名 */
   className?: string;
 }
 
-/**
- * ModelMentionChips - 多个模型提及气泡容器
- */
 export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
   models,
   onRemove,
   disabled = false,
+  sessionId,
+  sessionCliAgent,
+  onClearSessionCli,
   className,
 }) => {
-  if (models.length === 0) {
+  const { t } = useTranslation(['common', 'chatV2', 'agentMesh']);
+  const firstExternalAgent = models.find(isExternalCliMentionItem);
+  const showWorkspacePill = Boolean(firstExternalAgent) || Boolean(sessionCliAgent);
+
+  if (models.length === 0 && !sessionCliAgent) {
     return null;
   }
 
+  const effectiveSessionId = sessionId ?? firstExternalAgent?.sessionId;
+  const sessionCliDisplayName = sessionCliAgent
+    ? resolveAgentDisplayName(sessionCliAgent.id, sessionCliAgent.name)
+    : '';
+  const sessionCliBadgeLabel =
+    sessionCliAgent?.selectedModel?.trim()
+      ? `${sessionCliDisplayName} · ${formatCompactCliModelName(sessionCliAgent.selectedModel)}`
+      : sessionCliDisplayName;
+
   return (
-    // 🔧 移动端优化：减小间距
-    <div className={cn('flex flex-wrap gap-1 mb-1', className)}>
+    <div
+      data-testid={models.length === 0 && sessionCliAgent ? 'session-cli-workspace-bar' : undefined}
+      className={cn('flex flex-wrap items-center gap-1.5 mb-1', className)}
+    >
+      {models.length === 0 && sessionCliAgent && (
+        <span
+          data-testid={`session-cli-engine-badge-${sessionCliAgent.id}`}
+          title={
+            sessionCliAgent.selectedModel
+              ? `${sessionCliDisplayName} (${sessionCliAgent.selectedModel})`
+              : sessionCliDisplayName
+          }
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border border-border/45 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-foreground select-none',
+            disabled && 'opacity-60',
+          )}
+        >
+          <TerminalWindow size={12} weight="duotone" className="shrink-0 text-primary" />
+          <span className="max-w-[200px] truncate">{sessionCliBadgeLabel}</span>
+          {!disabled && onClearSessionCli && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClearSessionCli();
+              }}
+              className={cn(
+                'ml-0.5 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative',
+                coarseHitClassForBadge16,
+              )}
+              aria-label={t('chatV2:common.removeNamed', {
+                name: sessionCliDisplayName,
+                defaultValue: `移除 ${sessionCliDisplayName}`,
+              })}
+            >
+              <X size={10} weight="bold" />
+            </DsButton>
+          )}
+        </span>
+      )}
       {models.map((model) => (
         <ModelMentionChip
           key={model.id}
@@ -170,6 +274,12 @@ export const ModelMentionChips: React.FC<ModelMentionChipsProps> = ({
           disabled={disabled}
         />
       ))}
+      {showWorkspacePill && (
+        <WorkspaceFolderPill
+          sessionId={effectiveSessionId}
+          disabled={disabled}
+        />
+      )}
     </div>
   );
 };

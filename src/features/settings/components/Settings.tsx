@@ -4,11 +4,10 @@ import { useTranslation } from 'react-i18next';
 import '../styles/settings.css';
 import '../styles/api-config-section.css';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody } from '@/components/ui/DsDialog';
 import UnifiedErrorHandler from '@/components/UnifiedErrorHandler';
 import { AppMenuDemo } from '@/components/ui/app-menu';
-import { CaretLeft, CaretRight, Cloud, Stack } from '@phosphor-icons/react';
+import { Stack } from '@phosphor-icons/react';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
@@ -231,7 +230,6 @@ export const Settings: React.FC<SettingsComponentProps> = ({
 
   // 顶栏标题与右侧动作（面包屑依赖供应商/MCP 编辑目标）
   const {
-    titleText: settingsTitleText,
     titleNode: settingsTitleNode,
     rightActions: settingsHeaderRightActions,
     onMenuClick: settingsHeaderBack,
@@ -520,64 +518,28 @@ export const Settings: React.FC<SettingsComponentProps> = ({
       renderMcpToolEditor={renderMcpToolEditor}
       invoke={invoke}
       setConfig={setConfig}
-      onMobileBack={mobilePageMode ? handleHeaderBack : undefined}
-      mobileTitle={mobilePageMode ? settingsTitleText : undefined}
-      mobileRightActions={mobilePageMode ? settingsHeaderRightActions : undefined}
     />
   );
 
   const renderRightPanel = () => (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {screenPosition === 'right' && (
-        <div
-          data-testid="settings-mobile-right-header"
-          className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/40 bg-[color:var(--shell-workspace-panel)] px-2 py-1"
-        >
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="md"
-            data-testid="settings-mobile-right-back"
-            aria-label={t('settings:a11y.back_to_settings', { defaultValue: 'Back to settings' })}
-            onClick={handleHeaderBack}
-            className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
-          >
-            <CaretLeft size={20} weight="regular" aria-hidden="true" />
-            <span className="text-sm font-medium">{t('common:back', { defaultValue: 'Back' })}</span>
-          </DsButton>
-          {settingsTitleText ? (
-            <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
-              {settingsTitleText}
-            </h2>
-          ) : null}
-          {settingsHeaderRightActions ? (
-            <div className="flex shrink-0 items-center gap-1">
-              {settingsHeaderRightActions}
-            </div>
-          ) : null}
-        </div>
-      )}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <SettingsMobileRightPanel
-          rightPanelType={rightPanelType}
-          modelEditor={modelEditor}
-          handleSaveModelProfileAndClose={handleSaveModelProfileAndClose}
-          handleCloseModelEditor={handleCloseModelEditor}
-          renderMcpToolEditorEmbedded={renderMcpToolEditorEmbedded}
-          renderMcpPolicyEditorEmbedded={renderMcpPolicyEditorEmbedded}
-          mcpPreview={mcpPreview}
-          stripMcpPrefix={stripMcpPrefix}
-          t={t}
-          vendorModalOpen={vendorModalOpen}
-          editingVendor={editingVendor}
-          handleSaveVendorModal={handleSaveVendorModal}
-          closeRightPanel={closeRightPanel}
-          setVendorModalOpen={setVendorModalOpen}
-          setEditingVendor={setEditingVendor}
-          vendorConfigModalRef={vendorConfigModalRef}
-        />
-      </div>
-    </div>
+    <SettingsMobileRightPanel
+      rightPanelType={rightPanelType}
+      modelEditor={modelEditor}
+      handleSaveModelProfileAndClose={handleSaveModelProfileAndClose}
+      handleCloseModelEditor={handleCloseModelEditor}
+      renderMcpToolEditorEmbedded={renderMcpToolEditorEmbedded}
+      renderMcpPolicyEditorEmbedded={renderMcpPolicyEditorEmbedded}
+      mcpPreview={mcpPreview}
+      stripMcpPrefix={stripMcpPrefix}
+      t={t}
+      vendorModalOpen={vendorModalOpen}
+      editingVendor={editingVendor}
+      handleSaveVendorModal={handleSaveVendorModal}
+      closeRightPanel={closeRightPanel}
+      setVendorModalOpen={setVendorModalOpen}
+      setEditingVendor={setEditingVendor}
+      vendorConfigModalRef={vendorConfigModalRef}
+    />
   );
 
   const appMenuDemoDialog = (
@@ -636,35 +598,6 @@ export const Settings: React.FC<SettingsComponentProps> = ({
               className="min-h-0 flex-1"
             >
               <div className="flex h-full min-h-0 w-full flex-col overflow-hidden text-foreground" data-settings-mobile-level="sections">
-                {!mobileSearchQuery.trim() && (
-                  <div className="mx-auto w-full max-w-[40rem] shrink-0 px-4 pt-3 sm:px-5">
-                    <button
-                      type="button"
-                      data-testid="settings-mobile-cloud-sync-shortcut"
-                      onClick={() => {
-                        applySettingsRoute({ tab: 'data-governance', dataGovernanceTab: 'sync' });
-                        setMobileNavView('content');
-                        setMobileSearchQuery('');
-                      }}
-                      className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/8 px-4 py-3 text-left transition-colors hover:bg-primary/12 active:bg-primary/15 [@media(pointer:coarse)]:min-h-12"
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                          <Cloud size={18} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold text-foreground">
-                            {t('settings:quick_cloud_sync_title', { defaultValue: '云存储与同步' })}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {t('settings:quick_cloud_sync_desc', { defaultValue: '配置 WebDAV / S3 云同步、跨设备扫码配对与数据备份' })}
-                          </span>
-                        </span>
-                      </span>
-                      <CaretRight size={16} className="shrink-0 text-primary/70" aria-hidden="true" />
-                    </button>
-                  </div>
-                )}
                 {renderMobileSectionList()}
               </div>
             </MobileSlidingLayout>

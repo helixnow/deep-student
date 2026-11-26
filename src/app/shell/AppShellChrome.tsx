@@ -104,6 +104,7 @@ export interface AppShellChromeProps {
   unifiedGoBack: () => void;
   unifiedGoForward: () => void;
   desktopShellViewLabel: string;
+  desktopShellHeaderBreadcrumb?: string | null;
   cardsHubMobileTabs: React.ReactNode;
   handleViewChange: (view: CurrentView) => void;
   setCurrentView: (view: CurrentView) => void;
@@ -155,7 +156,7 @@ export function AppShellChrome(props: AppShellChromeProps) {
     commandPaletteNavigate, toggleDarkMode, isDarkMode, switchLanguage,
     handleMobileAppNavigate, mobileHeaderCanGoBack, handleMobileHeaderBack,
     unifiedCanGoBack, unifiedCanGoForward, unifiedGoBack, unifiedGoForward,
-    desktopShellViewLabel, cardsHubMobileTabs, handleViewChange, setCurrentView,
+    desktopShellViewLabel, desktopShellHeaderBreadcrumb, cardsHubMobileTabs, handleViewChange, setCurrentView,
     layout, interactions, toggleDesktopWindowMaximize, activeShell,
     currentChatHeaderTitle, currentChatHeaderGroupName, currentChatHeaderSessionId,
     saveCurrentChatHeaderTitle, setDesktopPageHeaderTarget, setDesktopChatHeaderTarget,
@@ -405,10 +406,28 @@ export function AppShellChrome(props: AppShellChromeProps) {
 
                     <div className="min-w-0 flex-1 pl-1">
                       <div className="min-w-0 desktop-shell-header-title">
-                        <TextSwap
-                          text={desktopShellViewLabel}
-                          className="block max-w-full truncate"
-                        />
+                        {desktopShellHeaderBreadcrumb ? (
+                          <span
+                            className="flex min-w-0 items-center gap-1.5"
+                            data-shell-header-breadcrumb="true"
+                          >
+                            <span className="shrink-0 text-muted-foreground">
+                              {desktopShellViewLabel}
+                            </span>
+                            <span className="shrink-0 text-muted-foreground/50" aria-hidden="true">
+                              /
+                            </span>
+                            <TextSwap
+                              text={desktopShellHeaderBreadcrumb}
+                              className="block min-w-0 truncate"
+                            />
+                          </span>
+                        ) : (
+                          <TextSwap
+                            text={desktopShellViewLabel}
+                            className="block max-w-full truncate"
+                          />
+                        )}
                       </div>
                     </div>
                   </div>

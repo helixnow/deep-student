@@ -32,7 +32,8 @@ it('WP-128 official profile routes backup configuration through real settings an
     const loaded = await loadStartupProfile(host.runtime, { official: OFFICIAL_PROFILE_PATH });
     const ids = loaded.installed.map(entry => entry.id);
     expect(loaded.degraded).toEqual([]);
-    expect(ids).toHaveLength(44);
+    expect(ids).toHaveLength(45);
+    expect(ids).toContain('dstu.agent-mesh');
     expect(ids).toContain('dstu.plugin-workshop');
     expect(ids).toEqual(expect.arrayContaining(['dstu.platform.crypto', 'dstu.platform.files', 'dstu.platform.http']));
     expect(ids).toContain('dstu.platform.backup-config');

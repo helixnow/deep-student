@@ -102,8 +102,8 @@ describe('Flashcards mobile navigation', () => {
     expect(container.querySelectorAll('[data-mobile-shell="header"]')).toHaveLength(1);
     const drawerPage = container.querySelector('[data-mobile-drawer-page]') as HTMLElement;
     expect(drawerPage).not.toBeNull();
-    // 移动端保留顶部一级 Tab 栏以便单手直达，同时抽屉关闭时不渲染侧栏导航项
-    expect(screen.getByTestId('fc-tab-library')).toBeInTheDocument();
+    // 移动端导航收敛至共享抽屉，关闭抽屉时不显示桌面顶部 Tab 栏也不渲染侧栏导航项
+    expect(screen.queryByTestId('fc-tab-library')).not.toBeInTheDocument();
     expect(within(drawerPage).queryByRole('button', { name: 'tabs.library' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'common:mobile_header.open_sidebar' }));

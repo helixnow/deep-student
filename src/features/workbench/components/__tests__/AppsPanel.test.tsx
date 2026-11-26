@@ -666,18 +666,16 @@ describe('AppsPanel Sandbox discovery (S3-08)', () => {
     appRegistry.unregister('sandbox', sandboxDef);
   });
 
-  it('exposes Sandbox in All Apps browse view and search without leaking resource-bound hidden apps', () => {
+  it('keeps All Apps browse grid clean while exposing Sandbox in search without leaking resource-bound hidden apps', () => {
     const launchSpy = vi.spyOn(workbenchBus, 'launch');
     render(<AppsPanel />);
     act(() => openAppsPanel());
 
-    // 浏览态：主列表 #wb-apps-listbox 保持既有应用不变，沙箱展示在「工作台工具」区块且可点击启动
+    // 浏览态：主列表 #wb-apps-listbox 严格遵循 showInLauncher: false，不额外堆叠「工作台工具」区块
     const primaryListbox = document.querySelector('#wb-apps-listbox')!;
     expect(primaryListbox.querySelector('[data-testid="wb-apps-item-sandbox"]')).toBeNull();
-    const toolsSection = screen.getByTestId('wb-apps-tools-section');
-    expect(toolsSection).toBeInTheDocument();
-    const sandboxTile = screen.getByTestId('wb-apps-item-sandbox');
-    expect(toolsSection.contains(sandboxTile)).toBe(true);
+    expect(screen.queryByTestId('wb-apps-tools-section')).toBeNull();
+    expect(screen.queryByTestId('wb-apps-item-sandbox')).toBeNull();
     expect(screen.queryByTestId('wb-apps-item-resource-preview')).toBeNull();
 
     // 搜索态：按名称 / typeId 检索均可命中沙箱并 Enter 启动

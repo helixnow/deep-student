@@ -56,6 +56,9 @@ async function startHost({ user = [], inject = {} }: Profile = {}): Promise<{ ho
       config: entry.config,
       source: entry.specifier,
     }));
+    if (!entries.some((e) => e.id === 'dstu.agent-mesh') && !user.some((u) => u.id === 'dstu.agent-mesh' && u.disabled)) {
+      installs.push({ plugin: definePlugin({ meta: { id: 'dstu.agent-mesh' }, apply() {} }), source: 'builtin' });
+    }
     const host = await createTestHost();
     const result = await installProfile(host.runtime, installs);
     host.runtime.emitUiManifest();
@@ -130,6 +133,7 @@ describe('FE-A3 full stack: Host profile → v2 manifest/status → UiKernel rec
       expect(kernelSnapshot(kernel)).toEqual(golden());
       expect(changes).not.toHaveBeenCalled();
       expect(kernel.pairing()).toEqual([
+        { id: 'dstu.agent-mesh', kind: 'plugin', hosts: ['dstu.agent-mesh'], availability: 'available', active: true },
         { id: 'dstu.anki', kind: 'half', parent: 'dstu.ui.shell', hosts: ['dstu.anki'], availability: 'available', active: true },
         { id: 'dstu.plugin-workshop', kind: 'plugin', hosts: ['dstu.plugin-workshop'], availability: 'available', active: true },
       ]);
@@ -156,6 +160,7 @@ describe('FE-A3 full stack: Host profile → v2 manifest/status → UiKernel rec
       expect(removedSlotEntries(after.slots, golden().slots)).toEqual({});
       expect(after.chat).toEqual(golden().chat);
       expect(kernel.pairing()).toEqual([
+        { id: 'dstu.agent-mesh', kind: 'plugin', hosts: ['dstu.agent-mesh'], availability: 'available', active: true },
         { id: 'dstu.anki', kind: 'half', parent: 'dstu.ui.shell', hosts: ['dstu.anki'], availability: 'missing', active: false },
         { id: 'dstu.plugin-workshop', kind: 'plugin', hosts: ['dstu.plugin-workshop'], availability: 'available', active: true },
       ]);
@@ -183,7 +188,7 @@ describe('FE-A3 full stack: Host profile → v2 manifest/status → UiKernel rec
       const stop = await reconcile(kernel, bridgeTo(host).bridge);
       const after = kernelSnapshot(kernel);
       expect(after).toEqual(golden());
-      expect(kernel.pairing()[0]).toMatchObject({ id: 'dstu.anki', availability: 'degraded', active: true });
+      expect(kernel.pairing().find((p) => p.id === 'dstu.anki')).toMatchObject({ id: 'dstu.anki', availability: 'degraded', active: true });
 
       render(createElement(viewComponent(kernel, 'flashcards'), { content: 'cards page' }));
       expect(await screen.findByText('SERVICE_MISSING: missing service "paths", missing service "storage"')).toBeTruthy();

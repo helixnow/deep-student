@@ -535,8 +535,13 @@
       "titleTruncated": "{{name}} · {{status}} · {{truncation}}"
     },
     "slashCommand": {
-      "title": "Skill commands",
-      "active": "Active"
+      "title": "Slash commands & skills",
+      "active": "Active",
+      "backToCommands": "Back to commands",
+      "groupControl": "Session & Control",
+      "groupStudy": "Study & Memory",
+      "groupPlugin": "Plugins & Study Packs",
+      "groupSkill": "Skills & Workflows"
     }
   },
   "queue": {
@@ -2308,7 +2313,27 @@
     "favoriteFailed": "Could not save favorite. Please try again.",
     "multiSelectCount": "{{count}} selected · answered in parallel on send",
     "multiSelectEmpty": "Check several models to answer in parallel",
-    "removeSelected": "Remove {{model}}"
+    "removeSelected": "Remove {{model}}",
+    "favoriteModel": "Favorite {{name}}",
+    "unfavoriteModel": "Unfavorite {{name}}",
+    "t3": {
+      "searchPlaceholder": "Search models...",
+      "noReasoningEffort": "No configurable reasoning effort",
+      "unavailable": "Unavailable",
+      "emptyFavorites": "No favorite models yet. Hover a model and click the star to save one.",
+      "webSearchShort": "Web",
+      "multiSelectShort": "Compare",
+      "paramsShort": "Params",
+      "webSearchCliHint": "Local coding CLIs use their own toolchains; this toggle applies to built-in chat models",
+      "cliSearchPlaceholder": "Search or type custom model ID...",
+      "cliFollowDefault": "Follow CLI Default",
+      "cliDefaultTag": "Default",
+      "cliCustomModel": "Use custom model \"{{model}}\"",
+      "cliEffortDefault": "Default",
+      "backToCliList": "Back to Coding CLIs",
+      "backToModels": "Back to Models",
+      "paramsCliNotice": "Local coding CLIs manage their own sampling; parameters below apply to built-in models"
+    }
   },
   "workspace": {
     "title": "Workspace",
@@ -2911,5 +2936,307 @@
     "openResourcesLabel": "Open Learning Resources",
     "openFlashcardsLabel": "Go to Flashcards",
     "dismiss": "Dismiss starter cue"
+  },
+  "slashCommands": {
+    "common": {
+      "enable": "Enable",
+      "disable": "Disable",
+      "onBadge": "On",
+      "offBadge": "Off",
+      "busyStreaming": "Wait for the current reply to finish before running this command",
+      "loading": "Loading..."
+    },
+    "goal": {
+      "label": "Goal Mode",
+      "description": "Start a cross-turn autonomous study goal, or pause/resume/clear the active goal",
+      "argHint": "<objective | pause | resume | clear>",
+      "emptyHint": "Enter a goal objective, e.g. /goal Master all Chapter 3 mistakes tonight",
+      "noActiveGoal": "No active goal in this session",
+      "statusToast": "Active goal: {{objective}} ({{status}} · {{tokens}} tokens used)",
+      "pausedToast": "Paused autonomous goal continuation",
+      "resumedToast": "Resumed autonomous goal continuation",
+      "clearedToast": "Cleared session goal",
+      "updatedToast": "Updated session goal",
+      "sub": {
+        "status": "View Goal Status",
+        "statusDesc": "Show active objective, status, and token usage",
+        "pause": "Pause Goal",
+        "pauseDesc": "Pause automatic cross-turn continuation",
+        "resume": "Resume Goal",
+        "resumeDesc": "Resume a paused or blocked session goal",
+        "clear": "Clear Goal",
+        "clearDesc": "Remove the persistent goal from this session"
+      }
+    },
+    "plan": {
+      "label": "Plan Mode",
+      "description": "Toggle gated planning mode before edits, or submit a task in plan mode",
+      "argHint": "[task | on | off]",
+      "enabledToast": "Plan mode enabled: AI will propose a plan for approval before making changes",
+      "disabledToast": "Plan mode disabled",
+      "sub": {
+        "on": "Enable Plan Mode",
+        "onDesc": "Require plan approval before write actions",
+        "off": "Exit Plan Mode",
+        "offDesc": "Return to standard interactive execution"
+      }
+    },
+    "compact": {
+      "description": "Summarize earlier messages to free context window space, or undo the last summary",
+      "argHint": "[focus instructions | undo]",
+      "noActiveToUndo": "No active context summary to undo in this session",
+      "undoSuccess": "Reverted the latest context summary and restored original history",
+      "focusAppliedToast": "Recorded summary focus: {{focus}}",
+      "sub": {
+        "undo": "Undo Last Summary",
+        "undoDesc": "Restore raw messages replaced by the active summary"
+      }
+    },
+    "new": {
+      "label": "New Session",
+      "description": "Start a fresh session in the current Study Space (optionally with an initial prompt)",
+      "argHint": "[initial prompt]"
+    },
+    "think": {
+      "label": "Reasoning Depth",
+      "description": "Toggle extended thinking and switch reasoning effort levels",
+      "argHint": "[off | minimal | low | medium | high | xhigh | max]",
+      "switchedOff": "Extended thinking turned off",
+      "switchedLevel": "Reasoning effort set to: {{level}}",
+      "sub": {
+        "off": "Off",
+        "minimal": "Minimal",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra High",
+        "max": "Max"
+      }
+    },
+    "mode": {
+      "label": "Permission Mode",
+      "description": "Switch tool and shell approval preset for this session",
+      "argHint": "<cautious | relaxed | full>",
+      "switchedToast": "Permission preset set to: {{mode}}"
+    },
+    "model": {
+      "label": "Switch Model",
+      "description": "Switch the active chat model for this session",
+      "argHint": "[model name]",
+      "openPanel": "Open Model Picker",
+      "switchedToast": "Session model switched to: {{model}}"
+    },
+    "branch": {
+      "label": "Branch Session",
+      "description": "Fork a new session thread from the latest turn to explore an alternative path",
+      "argHint": "[new direction]",
+      "emptySession": "Cannot branch an empty session",
+      "success": "Created a new branched session from the current turn"
+    },
+    "undo": {
+      "label": "Undo Last Turn",
+      "description": "Revert the latest Q&A turn and restore your prompt into the input box",
+      "emptySession": "No messages to undo in this session",
+      "success": "Reverted last turn and restored your prompt to the input box"
+    },
+    "web": {
+      "label": "Web Search",
+      "description": "Toggle live web search for this session",
+      "enabledToast": "Web search enabled for this session",
+      "disabledToast": "Web search disabled for this session"
+    },
+    "kb": {
+      "label": "Knowledge Base",
+      "description": "Toggle local RAG retrieval, proactive lookup, or choose folder scope",
+      "proactiveBadge": "Proactive",
+      "enabledToast": "Local knowledge base retrieval enabled",
+      "disabledToast": "Local knowledge base retrieval disabled",
+      "proactiveEnabledToast": "Proactive knowledge base retrieval enabled",
+      "proactiveDisabledToast": "Proactive knowledge base retrieval disabled",
+      "sub": {
+        "on": "Enable Knowledge Base",
+        "off": "Disable Knowledge Base",
+        "proactive": "Toggle Proactive Lookup",
+        "scope": "Select Folder Scope..."
+      }
+    },
+    "context": {
+      "label": "Session Status",
+      "description": "View active model, context window usage, permissions, skills, and goal at zero token cost",
+      "cardTitle": "Session Status & Context Overview",
+      "windowLabel": "Context Window",
+      "switchesLabel": "Retrieval & Web",
+      "switchesValue": "KB {{rag}} · Web {{web}}",
+      "extensionsLabel": "Extensions & Usage",
+      "extensionsValue": "Skills {{skills}} · MCP {{mcp}} · {{tokens}} tok",
+      "goalMeta": "({{status}} · {{tokens}} tokens used)"
+    },
+    "export": {
+      "label": "Export Session",
+      "description": "Export this conversation as Markdown, JSON, or a portable snapshot",
+      "sub": {
+        "markdown": "Export as Markdown (.md)",
+        "json": "Export as JSON (.json)",
+        "snapshot": "Export Portable Snapshot (.deepstudent.json)"
+      }
+    },
+    "rename": {
+      "label": "Rename Session",
+      "description": "Rename the current conversation title",
+      "argHint": "<new title>",
+      "emptyHint": "Provide a new title, e.g. /rename Linear Algebra Eigenvalues",
+      "success": "Session renamed to: {{title}}"
+    },
+    "mcp": {
+      "label": "MCP Connectors",
+      "description": "Open the external MCP server connectors panel",
+      "emptyToast": "No external MCP servers configured yet; add one under Settings → MCP"
+    },
+    "skills": {
+      "label": "Skills Panel",
+      "description": "Open the skills selector or run /skills clear to unpin all skills",
+      "argHint": "[clear]",
+      "clearedToast": "Cleared all manually pinned skills for this session",
+      "sub": {
+        "clear": "Clear Pinned Skills",
+        "clearDesc": "Deactivate all manually pinned skills in this session"
+      }
+    },
+    "doctor": {
+      "label": "System Check",
+      "description": "Inspect model configuration, retrieval switches, memory kernel, and plugin health",
+      "cardTitle": "Workbench Diagnostics",
+      "checkModel": "Chat Model Service",
+      "modelMissing": "No eligible chat model configured; check Settings → Model Services",
+      "checkRetrieval": "Retrieval & Web",
+      "retrievalDetail": "Web: {{web}} · Knowledge Base: {{rag}}",
+      "checkMemory": "Memory Kernel",
+      "memoryDetail": "{{rules}} hard rules · {{weaknesses}} active weak spots",
+      "available": "Ready",
+      "checkPlugins": "Plugins & Runtime Mode",
+      "safeModeActive": "Safe Mode active (custom plugins paused)",
+      "degradedPlugins": "{{count}} degraded plugin(s) detected",
+      "pluginsHealthy": "Healthy"
+    },
+    "help": {
+      "label": "Slash Help",
+      "description": "Browse all slash commands by category and keyboard shortcuts",
+      "cardTitle": "Slash Command Reference (click any item to insert)",
+      "shortcutSummary": "@model multi-model PK · Double-Esc to stop"
+    },
+    "btw": {
+      "label": "Side Ask",
+      "description": "Ask a quick side question in an isolated card without polluting main chat history",
+      "argHint": "<side question>",
+      "emptyHint": "Enter a quick side question, e.g. /btw What is the geometric meaning of the Jacobian?",
+      "cardTitle": "Side Note Q&A",
+      "isolatedBadge": "Zero context pollution",
+      "thinking": "Answering side question...",
+      "insertToChat": "Insert into Chat",
+      "toFlashcard": "Turn into Flashcard",
+      "llmPrompt": "You are answering a learner's quick side question in an isolated scratch card. Provide a concise, clear, intuitive explanation (include a short example or key formula if helpful, with no filler):\n\n{{question}}"
+    },
+    "remember": {
+      "label": "Save Hard Rule",
+      "description": "Save an L1 interaction hard rule into Memory v2 (supports [math]/[english]/[essay] prefix)",
+      "argHint": "[scope:] <rule>",
+      "emptyHint": "Enter a rule to remember, e.g. /remember math: give intuition before formal proof",
+      "savedToast": "Saved to Memory v2 hard rules (applies starting next turn)"
+    },
+    "learn": {
+      "label": "Distill Rule",
+      "description": "Distill a reusable L1 hard rule from your recent correction and save to Memory v2",
+      "argHint": "[optional hint]",
+      "emptySession": "No recent conversation to distill from yet; try /remember <rule>",
+      "cardTitle": "Distill Hard Rule from Recent Turn",
+      "distilling": "Distilling candidate rule...",
+      "inputPlaceholder": "Review or edit the single-sentence rule to save...",
+      "saveButton": "Save as Pinned Rule",
+      "llmPrompt": "Based on the recent learner-assistant exchange below (and optional hint: {{hint}}), distill ONE concise, reusable interaction rule from the learner's perspective (under 40 words; output ONLY the rule sentence itself with no quotes or preamble):\n\n{{context}}"
+    },
+    "feynman": {
+      "label": "Feynman Examiner",
+      "description": "Have AI probe your blind spots and edge cases in 3–5 Socratic rounds to verify mastery",
+      "argHint": "[topic or concept]"
+    },
+    "tutor": {
+      "label": "Socratic Tutor",
+      "description": "Guided step-by-step tutoring with hints instead of spoiling final answers",
+      "argHint": "[question or problem]"
+    },
+    "anki": {
+      "label": "Make Flashcards",
+      "description": "Turn key takeaways or attached study materials into FSRS-6 flashcards",
+      "argHint": "[topic or card count]"
+    },
+    "quiz": {
+      "label": "Generate Quiz",
+      "description": "Create targeted practice questions from current context and active weak spots",
+      "argHint": "[topic or count]"
+    },
+    "mindmap": {
+      "label": "Build Mindmap",
+      "description": "Synthesize the current discussion or chapter into a structured mindmap",
+      "argHint": "[topic]"
+    },
+    "handout": {
+      "label": "Build Handout",
+      "description": "Organize lecture transcripts or Q&A into a structured Markdown handout note with backlinks",
+      "argHint": "[handout topic]"
+    },
+    "grade": {
+      "label": "Essay Grading",
+      "description": "Score and polish essays using Kaoyan, IELTS, Gaokao, or general rubrics",
+      "argHint": "[kaoyan | ielts | gaokao]",
+      "sub": {
+        "general": "General Academic & Writing Rubric",
+        "kaoyan": "Kaoyan English Essay Rubric",
+        "ielts": "IELTS Writing 4-Criteria Rubric",
+        "gaokao": "Gaokao Essay Rubric"
+      }
+    },
+    "memory": {
+      "label": "Memory Kernel",
+      "description": "Inspect active hard rules & weak spots, toggle privacy mode, or run hygiene checks",
+      "cardTitle": "Memory Kernel Snapshot",
+      "privacyActiveBadge": "Privacy Mode On",
+      "privacyEnabledToast": "Privacy mode enabled: memory injection and extraction paused",
+      "privacyDisabledToast": "Privacy mode disabled: Memory v2 kernel resumed",
+      "rulesCount": "Hard rules: {{count}} ({{used}}/{{max}} chars)",
+      "weaknessCount": "Active weak spots: {{count}}",
+      "hygieneSummary": "Hygiene scan finished: {{count}} optimization suggestion(s) ready in AI Memory.",
+      "unavailable": "Memory kernel unavailable",
+      "sub": {
+        "inspect": "Inspect Active Memory",
+        "inspectDesc": "Preview rule character budget and active weak spots",
+        "privacy": "Toggle Privacy Mode",
+        "privacyDesc": "Pause or resume memory reading and extraction",
+        "clean": "Run Memory Hygiene",
+        "cleanDesc": "Check for duplicate/conflicting rules and stale weak spots"
+      }
+    },
+    "today": {
+      "label": "Today Sprint",
+      "description": "Summarize due FSRS cards, pending mistakes, and weak spots into an actionable plan"
+    },
+    "read": {
+      "label": "Side-by-Side Reader",
+      "description": "Toggle the textbook companion reader or resource side panel"
+    },
+    "schedule": {
+      "label": "Schedule Task",
+      "description": "Create recurring study reviews or scheduled automations in natural language",
+      "argHint": "<schedule & task>",
+      "emptyHint": "Describe the schedule, e.g. /schedule Summarize my mistakes every day at 21:30"
+    },
+    "workshop": {
+      "label": "Plugin Workshop",
+      "description": "Toggle AI Plugin Workshop mode or describe a custom study widget to build",
+      "argHint": "[plugin idea]"
+    },
+    "dspack": {
+      "workflowDescription": "Declarative study workflow from pack \"{{pack}}\"",
+      "workflowPrompt": "Run the \"{{workflow}}\" study workflow from pack \"{{pack}}\". {{input}}"
+    }
   }
 }

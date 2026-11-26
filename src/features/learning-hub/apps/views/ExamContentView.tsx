@@ -1492,73 +1492,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 ReviewPlanView={ReviewPlanView}
               />
             ) : viewMode === 'review' && hasQuestions ? (
-              /* 错题本视图（顶部提供轻量错题摘录拖拽胶囊条，直连思维导图考点卡） */
+              /* 错题本视图 */
               <div className="flex h-full min-h-0 flex-col">
-                {!isSmallScreen && mistakeQuestions.length > 0 && (
-                  <div
-                    data-testid="exam-mistake-excerpt-strip"
-                    className="hidden md:flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
-                  >
-                    <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]"
-                      aria-hidden="true"
-                    />
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {t('exam_sheet:interop.dragMistakeStripTitle', {
-                        defaultValue: '拖入导图考点卡',
-                      })}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {mistakeQuestions.map((mistake) => {
-                        const fullIdx = questions.findIndex((q) => q.id === mistake.id);
-                        const meta = deriveQuestionExcerptMeta({
-                          resourceId: sessionId,
-                          question: mistake,
-                          questionIndex: fullIdx >= 0 ? fullIdx : undefined,
-                        });
-                        return (
-                          <button
-                            key={mistake.id}
-                            type="button"
-                            draggable
-                            data-testid={`exam-mistake-drag-pill-${mistake.id}`}
-                            data-agent-entity={`exam:${mistake.id}`}
-                            onClick={() => handleOpenQuestion(mistake.id)}
-                            onDragStart={(e) => {
-                              e.stopPropagation();
-                              handleQuestionDragStart(
-                                e,
-                                mistake,
-                                fullIdx >= 0 ? fullIdx : undefined,
-                              );
-                            }}
-                            title={t('exam_sheet:interop.dragQuestionHint', {
-                              defaultValue: '将当前题目或错题拖入思维导图知识卡片',
-                            })}
-                            className="inline-flex shrink-0 cursor-grab items-center gap-1 rounded-md border border-border/35 bg-background/75 px-2 py-0.5 text-xs transition-colors hover:bg-foreground/[0.04] active:cursor-grabbing"
-                          >
-                            <DotsSixVertical
-                              size={12}
-                              className="shrink-0 text-muted-foreground/70"
-                              aria-hidden="true"
-                            />
-                            <span className="font-mono text-xs font-medium tabular-nums text-foreground">
-                              {meta.questionLabel}
-                            </span>
-                            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                              {meta.accuracyText}
-                            </span>
-                            {meta.errorCauseLabels[0] && (
-                              <span className="rounded bg-[hsl(var(--destructive)/0.10)] px-1 py-px text-2xs text-[hsl(var(--destructive))]">
-                                {meta.errorCauseLabels[0]}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <ReviewQuestionsView
                     questions={questions}

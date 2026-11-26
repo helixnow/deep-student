@@ -96,24 +96,9 @@ describe('S1-14(a) Resource Library visible upload entries', () => {
     cleanup();
   });
 
-  it('renders visible upload/import button in FinderToolbar from explicit onImportFiles or createMenuItems', () => {
-    const onImportExplicit = vi.fn();
-    const { rerender } = render(
-      <FinderToolbar
-        breadcrumbs={[]}
-        onBreadcrumbClick={vi.fn()}
-        onImportFiles={onImportExplicit}
-      />,
-    );
-
-    const toolbarBtn = screen.getByTestId('finder-toolbar-import');
-    expect(toolbarBtn).toBeVisible();
-    expect(toolbarBtn).toHaveTextContent('导入资料…');
-    fireEvent.click(toolbarBtn);
-    expect(onImportExplicit).toHaveBeenCalledTimes(1);
-
+  it('keeps FinderToolbar free of loud primary upload pills while retaining create menu trigger', () => {
     const onNewTextbook = vi.fn();
-    rerender(
+    render(
       <FinderToolbar
         breadcrumbs={[]}
         onBreadcrumbClick={vi.fn()}
@@ -121,10 +106,8 @@ describe('S1-14(a) Resource Library visible upload entries', () => {
       />,
     );
 
-    const derivedBtn = screen.getByTestId('finder-toolbar-import');
-    expect(derivedBtn).toBeVisible();
-    fireEvent.click(derivedBtn);
-    expect(onNewTextbook).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('finder-toolbar-import')).toBeNull();
+    expect(screen.getByRole('button', { name: '新建' })).toBeVisible();
   });
 
   it('renders visible import button in FinderFileList empty state and wires it to handler or hidden file input', () => {

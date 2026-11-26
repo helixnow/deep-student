@@ -6,6 +6,7 @@
     "uiLab": false
   },
   "plugins": [
+    "dstu.agent-mesh",
     "dstu.plugin-workshop",
     "dstu.ui.anki",
     "dstu.ui.app",
@@ -100,11 +101,53 @@
     },
     "chat.composer.commands": {
       "cardinality": "list",
-      "entries": []
+      "entries": [
+        {
+          "id": "swarm",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.agent-mesh",
+          "origin": "builtin",
+          "value": {
+            "description": "在当前对话开启主智能体与外部编程 CLI 共享上下文协作",
+            "icon": "<SparkleIcon>",
+            "label": "多智能体蜂群协作",
+            "name": "swarm",
+            "run": "ƒ"
+          }
+        },
+        {
+          "id": "handoff",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.agent-mesh",
+          "origin": "builtin",
+          "value": {
+            "description": "释放当前文件租约、保存快照并交给指定 @agent 接续处理",
+            "icon": "<ArrowsLeftRightIcon>",
+            "label": "交接给其他编程 CLI",
+            "name": "handoff",
+            "run": "ƒ"
+          }
+        }
+      ]
     },
     "chat.message.actions": {
       "cardinality": "list",
-      "entries": []
+      "entries": [
+        {
+          "id": "dispatch-external-cli",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.agent-mesh",
+          "origin": "builtin",
+          "value": {
+            "icon": "<TerminalWindowIcon>",
+            "label": "派发给外部编程 CLI",
+            "run": "ƒ"
+          }
+        }
+      ]
     },
     "chat.toolResults": {
       "cardinality": "keyed",
@@ -13337,6 +13380,59 @@
           }
         },
         {
+          "id": "agent-mesh",
+          "key": "agent-mesh",
+          "order": 55,
+          "owner": "dstu.agent-mesh",
+          "origin": "builtin",
+          "value": {
+            "component": "<MeshSettingsSection>",
+            "contentVisible": {
+              "ƒ=": true
+            },
+            "group": "integrations",
+            "id": "agent-mesh",
+            "navigation": {
+              "category": {
+                "icon": "<PlugIcon>",
+                "id": "integrations",
+                "order": 40,
+                "titleKey": "settings:categories.integrations"
+              },
+              "categoryOrder": 50,
+              "icon": "<TerminalWindowIcon>",
+              "legacyGroup": 2,
+              "mobileAccent": "var(--settings-nav-accent-indigo)",
+              "mobileDescriptionKey": "agentMesh:settings.mobileDescription",
+              "order": 126
+            },
+            "order": 55,
+            "placement": "main",
+            "searchDetails": [
+              {
+                "keywords": [
+                  "cli",
+                  "claude",
+                  "codex",
+                  "opencode",
+                  "pi",
+                  "swarm",
+                  "agent",
+                  "编程",
+                  "外部编程",
+                  "蜂群"
+                ],
+                "labelKey": "agentMesh:settings.tabTitle",
+                "order": 470
+              }
+            ],
+            "titleKey": "agentMesh:settings.tabTitle",
+            "visible": {
+              "ƒ=": true
+            }
+          }
+        },
+        {
           "id": "statistics",
           "key": "statistics",
           "order": 60,
@@ -14690,22 +14786,9 @@
           }
         },
         {
-          "id": "tool_approval_request",
-          "key": "tool_approval_request",
-          "order": 1,
-          "owner": "dstu.ui.chat",
-          "origin": "builtin",
-          "value": {
-            "deliverTerminalByBlockId": true,
-            "onEnd": "ƒ",
-            "onError": "ƒ",
-            "onStart": "ƒ"
-          }
-        },
-        {
           "id": "thinking",
           "key": "thinking",
-          "order": 2,
+          "order": 1,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14718,7 +14801,7 @@
         {
           "id": "content",
           "key": "content",
-          "order": 3,
+          "order": 2,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14731,7 +14814,7 @@
         {
           "id": "tool_call",
           "key": "tool_call",
-          "order": 4,
+          "order": 3,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14744,7 +14827,7 @@
         {
           "id": "image_gen",
           "key": "image_gen",
-          "order": 5,
+          "order": 4,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14757,7 +14840,7 @@
         {
           "id": "tool_call_preparing",
           "key": "tool_call_preparing",
-          "order": 6,
+          "order": 5,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14770,7 +14853,7 @@
         {
           "id": "rag",
           "key": "rag",
-          "order": 7,
+          "order": 6,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14783,7 +14866,7 @@
         {
           "id": "memory",
           "key": "memory",
-          "order": 8,
+          "order": 7,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14796,7 +14879,7 @@
         {
           "id": "web_search",
           "key": "web_search",
-          "order": 9,
+          "order": 8,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14809,7 +14892,7 @@
         {
           "id": "multimodal_rag",
           "key": "multimodal_rag",
-          "order": 10,
+          "order": 9,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14822,7 +14905,7 @@
         {
           "id": "academic_search",
           "key": "academic_search",
-          "order": 11,
+          "order": 10,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14835,11 +14918,24 @@
         {
           "id": "insight_recall",
           "key": "insight_recall",
-          "order": 12,
+          "order": 11,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
             "onChunk": "ƒ",
+            "onEnd": "ƒ",
+            "onError": "ƒ",
+            "onStart": "ƒ"
+          }
+        },
+        {
+          "id": "tool_approval_request",
+          "key": "tool_approval_request",
+          "order": 12,
+          "owner": "dstu.ui.chat",
+          "origin": "builtin",
+          "value": {
+            "deliverTerminalByBlockId": true,
             "onEnd": "ƒ",
             "onError": "ƒ",
             "onStart": "ƒ"
@@ -15106,7 +15202,8 @@
         [
           "mcp",
           "search",
-          "plugin-manager"
+          "plugin-manager",
+          "agent-mesh"
         ],
         [
           "statistics",
@@ -15149,7 +15246,8 @@
           "items": [
             "mcp",
             "search",
-            "plugin-manager"
+            "plugin-manager",
+            "agent-mesh"
           ]
         },
         {
@@ -15195,6 +15293,11 @@
         },
         {
           "id": "mcp",
+          "contentVisible": true,
+          "redirect": null
+        },
+        {
+          "id": "agent-mesh",
           "contentVisible": true,
           "redirect": null
         },
@@ -15271,6 +15374,7 @@
         "mcp:settings:tabs.mcp_tools",
         "search:settings:tabs.external_search",
         "plugin-manager:plugin_manager:title",
+        "agent-mesh:agentMesh:settings.tabTitle",
         "statistics:settings:tabs.statistics",
         "data-governance:settings:tabs.data_governance",
         "params:settings:tabs.params",

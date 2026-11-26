@@ -565,12 +565,6 @@
   padding-top: 0;
 }
 
-.wb-apps-tools-section {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 55%, transparent 45%);
-}
-
 /* 命令行：图标 + 名称/描述双行 + 右侧快捷键 */
 .wb-apps-command-text {
   flex: 1;

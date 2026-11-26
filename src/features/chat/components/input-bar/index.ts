@@ -44,13 +44,14 @@ export type {
 } from './types';
 
 // 模型 @mention 自动完成组件
-export { ModelMentionPopover, shouldHandleModelMentionKey } from './ModelMentionPopover';
 export type { ModelMentionPopoverProps } from './ModelMentionPopover';
-export { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
+export {
+  useModelMentionAutocomplete,
+  shouldHandleModelMentionKey,
+} from './useModelMentionAutocomplete';
 
 // 技能斜杠命令内联补全
 export {
-  SkillSlashPopover,
   useSkillSlashCommands,
   shouldHandleSkillSlashKey,
 } from './SkillSlashPopover';

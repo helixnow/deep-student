@@ -1397,6 +1397,19 @@ export type VfsUploadFileResult = {
   ocrStatus?: OcrStatus | null;
   indexStatus?: IndexStatus | null;
 };
+/** VfsUpdateFileContentParams */
+export type VfsUpdateFileContentParams = {
+  fileId: string;
+  base64Content: string;
+  syncOriginalPath?: boolean | null;
+};
+/** VfsUpdateFileContentResult */
+export type VfsUpdateFileContentResult = {
+  file: VfsFile;
+  sha256: string;
+  originalPathSynced: boolean;
+  originalPathError?: string | null;
+};
 /** dstu_vfs::vfs::handlers::BatchIndexResult */
 export type dstu_vfs__vfs__handlers__BatchIndexResult = {
   successCount: number;
@@ -3185,6 +3198,13 @@ export interface Commands {
     result: VfsUploadFileResult;
     error: string;
   };
+  vfs_update_file_content: {
+    args: {
+      params: VfsUpdateFileContentParams;
+    };
+    result: VfsUpdateFileContentResult;
+    error: string;
+  };
 }
 
 export interface Events {
@@ -3774,3 +3794,5 @@ export type VfsUploadAttachmentCommandArgs = Commands['vfs_upload_attachment']['
 export type VfsUploadAttachmentCommandResult = Commands['vfs_upload_attachment']['result'];
 export type VfsUploadFileCommandArgs = Commands['vfs_upload_file']['args'];
 export type VfsUploadFileCommandResult = Commands['vfs_upload_file']['result'];
+export type VfsUpdateFileContentCommandArgs = Commands['vfs_update_file_content']['args'];
+export type VfsUpdateFileContentCommandResult = Commands['vfs_update_file_content']['result'];

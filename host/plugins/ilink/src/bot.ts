@@ -22,9 +22,21 @@ import {
 } from './client.ts';
 import { IlinkPhotoBatchAggregator } from './photo-batch.ts';
 import { IlinkPairingGuard, normalizeIlinkPairingCode } from './pairing-guard.ts';
+import {
+  formatRemoteSlashHelp,
+  isRemoteControlSlashCommand,
+  isRemoteStopSlashCommand,
+  parseRemoteSlashCommand,
+} from './control-commands.ts';
 
 export { IlinkPhotoBatchAggregator } from './photo-batch.ts';
 export { IlinkPairingGuard, evaluateChannelReadiness } from './pairing-guard.ts';
+export {
+  formatRemoteSlashHelp,
+  isRemoteControlSlashCommand,
+  isRemoteStopSlashCommand,
+  parseRemoteSlashCommand,
+} from './control-commands.ts';
 import {
   emptyStatusSnapshot,
   type ChannelPlugin,
@@ -446,12 +458,12 @@ export class IlinkBotPlugin implements ChannelPlugin {
         if (this.photoBatch) {
           const scope = { accountId: credentials.accountId, peer, sessionId: message.session_id ?? null };
           const attachments = this.photoBatch.attachments(message);
-          const batchControl = /^\/(?:stop|status|approve|reject|pair)(?:\s|$)/i.test(text.trim());
+          const batchControl = isRemoteControlSlashCommand(text.trim());
           if (attachments.length || this.photoBatch.aggregator.isCollecting(scope) || batchControl) {
             if (message.message_id === null || message.message_id === undefined) {
               this.log('[ilinkbot] photo batching requires message_id');
               if (!batchControl) continue;
-              if (/^\/stop(?:\s|$)/i.test(text.trim())) this.photoBatch.aggregator.cancel(scope);
+              if (isRemoteStopSlashCommand(text.trim())) this.photoBatch.aggregator.cancel(scope);
               else this.photoBatch.aggregator.flush(scope);
             } else {
               const result = this.photoBatch.aggregator.push({ ...scope, messageId: message.message_id, text, attachments });
@@ -462,7 +474,8 @@ export class IlinkBotPlugin implements ChannelPlugin {
         if (rustTrim(text).length === 0) continue;
         // Rust parses control commands through task_command; Stop/Inspect/Approve/Help never
         // take a task slot, so a stop can never be queued behind running turns.
-        const isControlMessage = this.tasks?.isControlMessage(text) ?? false;
+        const parsedControl = parseRemoteSlashCommand(text);
+        const isControlMessage = (this.tasks?.isControlMessage(text) ?? false) || parsedControl !== null;
         if (!isControlMessage && !rate.checkAndRecord(peer)) {
           const token = credentials.contextTokens[peer] ?? '';
           if (token.length > 0) {
@@ -484,6 +497,10 @@ export class IlinkBotPlugin implements ChannelPlugin {
           continue;
         }
         if (!this.tasks) {
+          if (parsedControl?.kind === 'help') {
+            await this.sendReply(ctx.settings, credentials, peer, token, formatRemoteSlashHelp());
+            continue;
+          }
           this.log('[ilinkbot] remote task bridge is not installed (L06 task_command/headless)');
           this.events.emitActivity(PLUGIN_ID, 'warn', '远程任务通路未就绪');
           continue;

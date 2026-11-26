@@ -25,12 +25,61 @@ import { useQueueSettings } from '../../queue/useQueueSettings';
 import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry, resolveSessionFeatureFlags } from '../../registry';
 import { ModelPicker, type ModelPickerMode } from './ModelPicker';
-import { SkillSelector } from '../../skills/components/SkillSelector';
 import { parseLeadingSkillCommands } from '../../skills/slashCommands';
+
+const LazySkillSelector = React.lazy(() =>
+  import('../../skills/components/SkillSelector').then((m) => ({ default: m.SkillSelector })),
+);
+import { parseSubmittedBuiltinSlashCommand } from '../../commands/slashCommandProtocol';
+import type {
+  SlashCommandExecutorDeps,
+  SlashOverlayCardState,
+} from '../../commands/slashCommandExecutor';
+import type { BuiltinSlashActionPayload, SlashCommandRuntimeStatus } from './SkillSlashPopover';
+
+const LazySlashOverlayCard = React.lazy(() =>
+  import('./SlashOverlayCards').then((m) => ({ default: m.SlashOverlayCard })),
+);
+
+async function runBuiltinSlashCommandLazy(
+  deps: SlashCommandExecutorDeps,
+  action: BuiltinSlashActionPayload,
+): Promise<void> {
+  const { executeBuiltinSlashCommand } = await import('../../commands/slashCommandExecutor');
+  await executeBuiltinSlashCommand(deps, action);
+}
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props } from './types';
-import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
+import {
+  isExternalCliMentionItem,
+  useModelMentionAutocomplete,
+  type AgentMentionItem,
+  type AgentMentionStatus,
+} from './useModelMentionAutocomplete';
+import {
+  CLI_ENGINE_ID_PREFIX,
+  parseCliModelSelectionId,
+} from './RuntimeModelSubmenuBody';
+import { ModelMentionChips } from './ModelMentionChip';
+const LazyExternalCliApprovalBar = React.lazy(() =>
+  import('./ExternalCliApprovalBar').then((m) => ({ default: m.ExternalCliApprovalBar })),
+);
+import {
+  formatCompactCliModelName,
+  isAgentMeshHostConnected,
+  normalizeAgentHandle,
+  probeAgents,
+  resolveAgentDisplayName,
+  resolveCliAvailableModels,
+  selectActiveExternalThreadForSession,
+  selectSelectedCliForSession,
+  selectSelectedCliModelForSession,
+  useAgentMeshStore,
+  type DetectedMeshAgent,
+} from '@/features/agent-mesh';
+
+export { CLI_ENGINE_ID_PREFIX };
 import { useRecentChatModels } from '../../hooks/useRecentChatModels';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
@@ -277,7 +326,7 @@ function getLatestPersistedUserMessageText(state: {
 
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
-    const { t } = useTranslation(['chatV2']);
+    const { t } = useTranslation(['chatV2', 'agentMesh']);
     const { recentModels, recordSelection } = useRecentChatModels(availableModels ?? []);
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
@@ -313,6 +362,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       pendingApprovalRequest,
       permissionPreset,
       setPermissionPreset,
+      authorityMode,
+      goal,
       knowledgeBaseProactive,
       ragEnabled,
       webSearchEnabled,
@@ -370,6 +421,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           pendingApprovalRequest: s.pendingBlockingInteraction,
           permissionPreset: s.permissionPreset ?? 'relaxed',
           setPermissionPreset: s.setPermissionPreset,
+          authorityMode: s.authorityMode ?? 'ask',
+          goal: s.goal ?? null,
           // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
           // 恢复/测试路径可能给到普通对象）
           knowledgeBaseProactive:
@@ -904,15 +957,74 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 获取模式插件（自动合并继承链）
     const modePlugin = useMemo(() => modeRegistry.getResolved(mode), [mode]);
 
-    // 🔧 多选模型状态（使用外部面板，不再使用 @mention 弹窗）
+    // 🔧 多选模型与智能体状态
     const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
+    const [selectedAgents, setSelectedAgents] = useState<AgentMentionItem[]>([]);
     // 🆕 ModelPicker 模式：single 替换会话模型；compare 多选并行
     const [compareMode, setCompareMode] = useState(false);
     const [modelProfileDisplayMap, setModelProfileDisplayMap] = useState<Map<string, string>>(new Map());
 
-    // 使用 ref 存储 selectedModels，让回调能访问最新值
+    // 使用 ref 存储 selectedModels / selectedAgents，让回调能访问最新值
     const selectedModelsRef = useRef(selectedModels);
     selectedModelsRef.current = selectedModels;
+    const selectedAgentsRef = useRef(selectedAgents);
+    selectedAgentsRef.current = selectedAgents;
+
+    const meshAgents = useAgentMeshStore((meshState) => meshState.agents);
+    const activeSwarm = useAgentMeshStore((meshState) =>
+      sessionId && meshState.swarmBySession[sessionId]?.status !== 'completed'
+        ? (meshState.swarmBySession[sessionId] ?? null)
+        : null,
+    );
+    const meshThreadsMap = useAgentMeshStore((meshState) => meshState.threads);
+    const sessionThreadIds = useAgentMeshStore((meshState) =>
+      sessionId ? meshState.sessionThreadOrder[sessionId] : undefined,
+    );
+    const activeExternalThread = useAgentMeshStore((meshState) =>
+      selectActiveExternalThreadForSession(meshState, sessionId),
+    );
+    const selectedCliAgentId = useAgentMeshStore((meshState) =>
+      selectSelectedCliForSession(meshState, sessionId),
+    );
+    const selectedCliModel = useAgentMeshStore((meshState) =>
+      selectSelectedCliModelForSession(meshState, sessionId),
+    );
+
+    const installedExternalAgents = useMemo(
+      () => meshAgents.filter((agent) => agent.driverKind !== 'builtin' && agent.installed),
+      [meshAgents],
+    );
+
+    const selectedSessionCliAgent = useMemo(
+      () =>
+        selectedCliAgentId
+          ? installedExternalAgents.find(
+              (a) =>
+                a.id === selectedCliAgentId ||
+                normalizeAgentHandle(a.handle || a.id) === selectedCliAgentId,
+            ) ?? null
+          : null,
+      [installedExternalAgents, selectedCliAgentId],
+    );
+    const selectedSessionCliAgentRef = useRef<DetectedMeshAgent | null>(selectedSessionCliAgent);
+    selectedSessionCliAgentRef.current = selectedSessionCliAgent;
+
+    const sessionMeshThreads = useMemo(() => {
+      if (!sessionThreadIds || sessionThreadIds.length === 0) return [];
+      return sessionThreadIds
+        .map((id) => meshThreadsMap[id])
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    }, [meshThreadsMap, sessionThreadIds]);
+
+    useEffect(() => {
+      if (isAgentMeshHostConnected() && useAgentMeshStore.getState().agents.length === 0) {
+        void probeAgents();
+      }
+    }, []);
+
+    useEffect(() => {
+      setSelectedAgents([]);
+    }, [sessionId]);
 
     useEffect(() => {
       let active = true;
@@ -958,7 +1070,20 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setChatParams({ modelDisplayName: resolvedStoredModelDisplayName });
     }, [modelDisplayName, resolvedStoredModelDisplayName, setChatParams]);
 
+    const runtimeCurrentModelId = selectedSessionCliAgent
+      ? `${CLI_ENGINE_ID_PREFIX}${selectedSessionCliAgent.id}`
+      : model2OverrideId;
+
     const runtimeModelLabel = useMemo(() => {
+      if (selectedSessionCliAgent) {
+        const baseName = resolveAgentDisplayName(
+          selectedSessionCliAgent.id,
+          selectedSessionCliAgent.name,
+        );
+        return selectedCliModel
+          ? `${baseName} · ${formatCompactCliModelName(selectedCliModel)}`
+          : baseName;
+      }
       return (
         getModelDisplayLabel(runtimeOverrideModelInfo) ||
         (model2OverrideId ? resolvedStoredModelDisplayName : undefined) ||
@@ -969,6 +1094,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         undefined
       );
     }, [
+      selectedSessionCliAgent,
+      selectedCliModel,
       currentModelInfo,
       model2OverrideId,
       effectiveUnpinnedModelId,
@@ -976,8 +1103,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       runtimeOverrideModelInfo,
     ]);
     const runtimeModelProviderLabel = useMemo(
-      () => getModelProviderLabel(activeRuntimeModelInfo),
-      [activeRuntimeModelInfo]
+      () =>
+        selectedSessionCliAgent
+          ? t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' })
+          : getModelProviderLabel(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo, selectedSessionCliAgent, t]
     );
     const runtimeModelIconId = useMemo(() => {
       return (
@@ -1025,6 +1155,22 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setSelectedModels([]);
     }, []);
 
+    // 选中智能体回调（始终允许多选以支持 2+ @agent 语义协同编排）
+    const handleSelectAgent = useCallback((agent: AgentMentionItem) => {
+      setSelectedAgents((prev) => {
+        if (prev.some((item) => item.id === agent.id)) return prev;
+        return [...prev, agent];
+      });
+    }, []);
+
+    const handleDeselectAgent = useCallback((agentItemId: string) => {
+      setSelectedAgents((prev) => prev.filter((item) => item.id !== agentItemId));
+    }, []);
+
+    const clearSelectedAgents = useCallback(() => {
+      setSelectedAgents([]);
+    }, []);
+
     // 🆕 对比模式 toggle：开启时维持 selectedModels；关闭时清空
     const handleCompareModeChange = useCallback((nextMode: ModelPickerMode) => {
       setCompareMode(nextMode === 'compare');
@@ -1033,8 +1179,34 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, []);
 
-    // 🆕 单选模式：选中即替换会话模型并关闭面板
+    // 🆕 单选本地编程 CLI 引擎（T3-Code 风格：写入会话级 selectedCliBySession，不污染 LLM model2OverrideId）
+    const handleSelectCliAgent = useCallback(
+      (agentId: string, cliModel?: string | null) => {
+        if (sessionId) {
+          const meshActions = useAgentMeshStore.getState();
+          meshActions.setSelectedCliForSession(sessionId, agentId);
+          if (cliModel !== undefined) {
+            meshActions.setSelectedCliModelForSession(sessionId, cliModel);
+          }
+        }
+        setSelectedModels([]);
+        setCompareMode(false);
+        store.getState().setPanelState('model', false);
+      },
+      [sessionId, store],
+    );
+
+    const handleClearSessionCli = useCallback(() => {
+      if (sessionId) {
+        useAgentMeshStore.getState().setSelectedCliForSession(sessionId, null);
+      }
+    }, [sessionId]);
+
+    // 🆕 单选模式：选中常规 LLM 即清除会话 CLI 引擎并替换会话模型、关闭面板
     const handlePickSingleModel = useCallback((model: ModelInfo) => {
+      if (sessionId) {
+        useAgentMeshStore.getState().setSelectedCliForSession(sessionId, null);
+      }
       setChatParams({
         model2OverrideId: model.id,
         modelDisplayName: model.model || model.name || model.id,
@@ -1043,7 +1215,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setSelectedModels([]);
       setCompareMode(false);
       store.getState().setPanelState('model', false);
-    }, [recordSelection, setChatParams, store]);
+    }, [recordSelection, sessionId, setChatParams, store]);
 
     // 🆕 对比/重试模式行点击：切换选中
     const handleToggleCompareModel = useCallback((model: ModelInfo) => {
@@ -1103,9 +1275,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const inputBarOptions = useMemo(() => {
       const opts: Parameters<typeof useInputBarV2>[1] = {};
       if (availableModels && availableModels.length > 0) opts.availableModels = availableModels;
-      // 🔧 面板模式：传递获取/清空选中模型的回调
+      // 🔧 面板模式：传递获取/清空选中模型与智能体的回调
       opts.getSelectedModels = () => selectedModelsRef.current;
       opts.clearSelectedModels = clearSelectedModels;
+      opts.getSelectedAgents = () => selectedAgentsRef.current;
+      opts.clearSelectedAgents = clearSelectedAgents;
+      opts.getSelectedSessionCli = () => selectedSessionCliAgentRef.current;
       // ★ PDF 页码引用
       opts.buildPdfRefTags = buildPdfRefTags;
       opts.getSelectedPagesContext = getSelectedPagesContext;
@@ -1116,7 +1291,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       // 🆕 队列模式启用开关（控制 useInputBarV2 内部 submit 路由）
       opts.queueEnabled = queueSettings.queueEnabled;
       return opts;
-    }, [availableModels, clearSelectedModels, buildPdfRefTags, getSelectedPagesContext, clearPdfPageRefs, queueSettings.queueEnabled]);
+    }, [availableModels, clearSelectedModels, clearSelectedAgents, buildPdfRefTags, getSelectedPagesContext, clearPdfPageRefs, queueSettings.queueEnabled]);
 
     // 从 Store 订阅状态和 Actions
     const {
@@ -1142,7 +1317,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     // 手动压缩上下文（放在 useInputBarV2 之后：依赖其解构出的 isStreaming）
     const compactionPendingRef = useRef(false);
-    const handleCompactContext = useCallback(async () => {
+    const handleCompactContext = useCallback(async (focusHint?: string) => {
       const modelConfigId =
         model2OverrideId || activeRuntimeModelInfo?.id || currentModelInfo?.id || modelId;
       if (
@@ -1181,6 +1356,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
                 : t('chatV2:compaction.completed'),
               t('chatV2:compaction.completedTitle'),
             );
+            if (focusHint && focusHint.trim()) {
+              showGlobalNotification(
+                'info',
+                t('chatV2:slashCommands.compact.focusAppliedToast', { focus: focusHint.trim() }),
+              );
+            }
             // 🆕 手动压缩同样立即刷新水位环（命令返回值携带压缩后估算）
             if (typeof result.tokensAfter === 'number' && result.tokensAfter > 0) {
               store.getState().setContextUsageOverride({
@@ -1285,22 +1466,184 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [panelStates.model, modelRetryTarget, store, clearSelectedModels]);
 
-    // 🔧 模型 @mention 内联补全（原为硬禁用死开关，现由安全实现接管：
-    // 光标处精确删除 `@query`，不再复用旧 useModelMentions 的空白折叠逻辑）
+    // 🔧 统一 @agent + @model 内联补全（零外部 CLI 且无活跃蜂群时 availableAgents 为空，100% 零打扰）
+    const availableAgents = useMemo<AgentMentionItem[]>(() => {
+      if (installedExternalAgents.length === 0 && !activeSwarm) {
+        return [];
+      }
+
+      const resolveCapabilityBadge = (agent: DetectedMeshAgent): string => {
+        const caps = agent.capabilities ?? {};
+        if (caps.midTurnSteer && caps.nativeSubagentTree) {
+          return t('agentMesh:mention.capabilities.steerAndSubagents', {
+            defaultValue: '实时纠偏 · 子代理树',
+          });
+        }
+        if (caps.midTurnSteer && caps.mcpInjection) {
+          return t('agentMesh:mention.capabilities.steerAndMcp', {
+            defaultValue: '实时纠偏 · 网格互通',
+          });
+        }
+        if (caps.mcpInjection && caps.sessionResume) {
+          return t('agentMesh:mention.capabilities.mcpAndResume', {
+            defaultValue: '网格互通 · 断点续跑',
+          });
+        }
+        return t('agentMesh:mention.capabilities.cli', {
+          defaultValue: '外部 CLI',
+        });
+      };
+
+      const resolveLiveThreadStatus = (
+        agentId: string,
+        handle: string,
+        fallbackStatus?: AgentMentionStatus,
+      ): { status: AgentMentionStatus; subagentCount: number } => {
+        for (let i = sessionMeshThreads.length - 1; i >= 0; i -= 1) {
+          const thread = sessionMeshThreads[i];
+          if (
+            thread.agentId === agentId ||
+            normalizeAgentHandle(thread.agentId) === handle ||
+            thread.rosterName === handle
+          ) {
+            const runningChildren = thread.childSubagents.filter(
+              (c) => c.status === 'running',
+            ).length;
+            if (thread.status === 'running') {
+              return { status: 'working', subagentCount: runningChildren };
+            }
+            if (thread.status === 'waiting_children') {
+              return {
+                status: 'waiting_children',
+                subagentCount: Math.max(1, runningChildren || thread.childSubagents.length),
+              };
+            }
+            if (thread.status === 'waiting_approval') {
+              return { status: 'waiting_approval', subagentCount: runningChildren };
+            }
+          }
+        }
+        return { status: fallbackStatus ?? 'ready', subagentCount: 0 };
+      };
+
+      const items: AgentMentionItem[] = [];
+      const seenHandles = new Set<string>();
+
+      if (activeSwarm) {
+        items.push({
+          id: 'mesh-agent:all',
+          name: t('agentMesh:mention.swarmAll', { defaultValue: '全体蜂群成员' }),
+          model: '@all',
+          aliases: ['all', 'everyone'],
+          mentionKind: 'agent',
+          agentId: 'all',
+          agentHandle: 'all',
+          driverKind: 'swarm_broadcast',
+          isExternalCli: false,
+          agentStatus: 'ready',
+          capabilityBadge: t('agentMesh:mention.capabilities.broadcast', {
+            defaultValue: '全员唤醒',
+          }),
+          sessionId: sessionId || undefined,
+        });
+        seenHandles.add('all');
+
+        for (const member of activeSwarm.members) {
+          const handle = normalizeAgentHandle(member.rosterName);
+          if (!handle || seenHandles.has(handle)) continue;
+          const isBuiltIn = normalizeAgentHandle(member.agentId) === 'deepstudent';
+          const mappedStatus: AgentMentionStatus =
+            member.status === 'working'
+              ? 'working'
+              : member.status === 'waiting_children'
+                ? 'waiting_children'
+                : member.status === 'waiting_approval'
+                  ? 'waiting_approval'
+                  : member.status === 'parked'
+                    ? 'parked'
+                    : 'ready';
+          items.push({
+            id: `mesh-swarm:${handle}`,
+            name: member.roleTitle || resolveAgentDisplayName(member.agentId),
+            model: `@${handle}`,
+            aliases: [handle, member.agentId],
+            mentionKind: 'agent',
+            agentId: member.agentId,
+            agentHandle: handle,
+            driverKind: isBuiltIn ? 'builtin' : 'swarm_member',
+            isExternalCli: !isBuiltIn,
+            agentStatus: mappedStatus,
+            capabilityBadge: member.roleTitle || resolveAgentDisplayName(member.agentId),
+            subagentCount: member.activeSubagentCount,
+            sessionId: sessionId || undefined,
+          });
+          seenHandles.add(handle);
+        }
+      }
+
+      for (const agent of installedExternalAgents) {
+        const handle = normalizeAgentHandle(agent.handle || agent.id);
+        if (!handle || seenHandles.has(handle)) continue;
+        const live = resolveLiveThreadStatus(agent.id, handle, agent.status);
+        items.push({
+          id: `mesh-agent:${handle}`,
+          name: resolveAgentDisplayName(agent.id, agent.name),
+          model: `@${handle}`,
+          aliases: [handle, agent.id, ...(agent.aliases ?? [])],
+          mentionKind: 'agent',
+          agentId: agent.id,
+          agentHandle: handle,
+          driverKind: agent.driverKind,
+          isExternalCli: true,
+          agentStatus: live.status,
+          capabilityBadge: resolveCapabilityBadge(agent),
+          subagentCount: live.subagentCount,
+          sessionId: sessionId || undefined,
+        });
+        seenHandles.add(handle);
+      }
+
+      if (!seenHandles.has('deepstudent')) {
+        items.push({
+          id: 'mesh-agent:deepstudent',
+          name: 'DeepStudent',
+          model: '@deepstudent',
+          aliases: ['deepstudent', 'ds', 'coordinator'],
+          mentionKind: 'agent',
+          agentId: 'deepstudent',
+          agentHandle: 'deepstudent',
+          driverKind: 'builtin',
+          isExternalCli: false,
+          agentStatus: isStreaming ? 'working' : 'ready',
+          capabilityBadge: t('agentMesh:mention.capabilities.coordinator', {
+            defaultValue: '全局编排 · 学习闭环',
+          }),
+          sessionId: sessionId || undefined,
+        });
+      }
+
+      return items;
+    }, [activeSwarm, installedExternalAgents, isStreaming, sessionId, sessionMeshThreads, t]);
+
     const handleRemoveLastSelectedModel = useCallback(() => {
       setSelectedModels(prev => prev.slice(0, -1));
     }, []);
 
     const { state: modelMentionState, actions: modelMentionActions } = useModelMentionAutocomplete({
       availableModels,
+      availableAgents,
       inputValue,
       // 重试模式下模型选择走 ModelPicker 面板，避免两套选择心智叠加
       enabled: !modelRetryTarget,
       selectedModels,
+      selectedAgents,
       // 🔧 重试模式下不显示 chips（选中的模型仅在面板内显示）
       displaySelectedModels: modelRetryTarget ? [] : selectedModels,
+      displaySelectedAgents: modelRetryTarget ? [] : selectedAgents,
       onSelectModel: handleSelectModel,
+      onSelectAgent: handleSelectAgent,
       onDeselectModel: handleDeselectModel,
+      onDeselectAgent: handleDeselectAgent,
       onRemoveLastModel: handleRemoveLastSelectedModel,
     });
 
@@ -1327,14 +1670,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 移动端面板已改为 composer 内联展开（P0-1），不存在底部抽屉形态
     const renderModelPanel = useMemo(() => {
       const RuntimeModelPanel = modePlugin?.renderModelPanel;
-      if (!RuntimeModelPanel && (!availableModels || availableModels.length === 0)) {
+      const hasAvailableModels = Boolean(availableModels && availableModels.length > 0);
+      const hasExternalCliAgents = installedExternalAgents.length > 0;
+      if (!RuntimeModelPanel && !hasAvailableModels && !hasExternalCliAgents) {
         return undefined;
       }
 
       return (options?: { hideHeader?: boolean; onClose?: () => void }) => {
         const hideHeader = options?.hideHeader ?? false;
         const handleClose = options?.onClose ?? handleCloseModelPanel;
-        if (availableModels && availableModels.length > 0) {
+        if (hasAvailableModels || hasExternalCliAgents) {
           // 推导面板模式：retry 强制 compare；显式 compareMode 或已有 selectedModels 时进入 compare
           const pickerMode: ModelPickerMode =
             compareMode || selectedModels.length > 0 ? 'compare' : 'single';
@@ -1343,10 +1688,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
               mode={pickerMode}
               onModeChange={handleCompareModeChange}
               allowCompareToggle={multiModelSelectEnabled}
-              singleSelectedId={model2OverrideId}
+              singleSelectedId={selectedSessionCliAgent ? null : model2OverrideId}
               compareSelected={selectedModels}
               onSelectSingle={handlePickSingleModel}
               onToggleCompare={handleToggleCompareModel}
+              externalCliAgents={installedExternalAgents}
+              selectedCliAgentId={selectedSessionCliAgent?.id ?? null}
+              onSelectCliAgent={handleSelectCliAgent}
               onClose={handleClose}
               disabled={isStreaming}
               hideHeader={hideHeader}
@@ -1361,12 +1709,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       };
     }, [
       availableModels,
+      installedExternalAgents,
+      selectedSessionCliAgent,
       compareMode,
       selectedModels,
       multiModelSelectEnabled,
       model2OverrideId,
       handleCompareModeChange,
       handlePickSingleModel,
+      handleSelectCliAgent,
       handleToggleCompareModel,
       handleCloseModelPanel,
       handleRetryWithModels,
@@ -1377,9 +1728,23 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     ]);
 
     const runtimeModelOptions = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return [];
+      const cliOptions = installedExternalAgents.map((agent) => ({
+        id: `${CLI_ENGINE_ID_PREFIX}${agent.id}`,
+        label: resolveAgentDisplayName(agent.id, agent.name),
+        providerId: '__coding_cli__',
+        providerLabel: t('agentMesh:picker.localCodingCli', { defaultValue: '本地编程 CLI' }),
+        iconId: agent.id,
+        isExternalCli: true,
+        cliAgentId: agent.id,
+        cliDriverKind: agent.driverKind,
+        cliDefaultModel: agent.defaultModel ?? null,
+        cliAvailableModels: resolveCliAvailableModels(agent),
+      }));
+      if (!availableModels || availableModels.length === 0) {
+        return cliOptions;
+      }
       const recentRankById = new Map(recentModels.map((model, index) => [model.id, index] as const));
-      return availableModels.map((model) => ({
+      const llmOptions = availableModels.map((model) => ({
         id: model.id,
         label: model.model || model.name || model.id,
         providerLabel: model.vendorName,
@@ -1388,7 +1753,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         isRecent: recentRankById.has(model.id),
         recentRank: recentRankById.get(model.id),
       }));
-    }, [availableModels, recentModels]);
+      return cliOptions.length > 0 ? [...cliOptions, ...llmOptions] : llmOptions;
+    }, [availableModels, installedExternalAgents, recentModels, t]);
 
     // 🆕 runtime 模型子菜单内的多选（并行回答）：复用 ModelPicker compare 模式的同一份状态与回调，
     // 不改变发送路径（发送时仍读取 selectedModels → parallelModelIds）
@@ -1417,16 +1783,27 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     ]);
 
     const handleSelectRuntimeModel = useCallback((modelId: string) => {
+      const cliParsed = parseCliModelSelectionId(modelId);
+      if (cliParsed) {
+        handleSelectCliAgent(cliParsed.cliAgentId, cliParsed.cliModel);
+        return;
+      }
       const selected = availableModels?.find((model) => model.id === modelId);
       if (!selected) return;
       handlePickSingleModel(selected);
-    }, [availableModels, handlePickSingleModel]);
+    }, [availableModels, handlePickSingleModel, handleSelectCliAgent]);
 
-    // 高级设置面板渲染函数
+    // 高级设置面板渲染函数（支持模型选择器内 embedded 原位变异模式）
     const renderAdvancedPanel = useMemo(() => {
       if (!modePlugin?.renderAdvancedPanel) return undefined;
       const AdvancedPanel = modePlugin.renderAdvancedPanel;
-      return () => <AdvancedPanel store={store} onClose={() => setPanelState('advanced', false)} />;
+      return (opts?: { embedded?: boolean; onClose?: () => void }) => (
+        <AdvancedPanel
+          store={store}
+          onClose={opts?.onClose ?? (() => setPanelState('advanced', false))}
+          embeddedInPopover={opts?.embedded}
+        />
+      );
     }, [modePlugin?.renderAdvancedPanel, store, setPanelState]);
 
     // MCP 工具面板渲染函数
@@ -1465,31 +1842,171 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     const renderSkillPanel = useMemo(() => {
       return (opts?: { variant?: 'panel' | 'menu'; onClose?: () => void }) => (
-        <SkillSelector
-          activeSkillIds={activeSkillIds}
-          onToggleSkill={handleToggleSkill}
-          onClose={() => {
-            if (opts?.variant === 'menu') {
-              opts.onClose?.();
-              return;
-            }
-            setPanelState('skill', false);
-          }}
-          disabled={isStreaming}
-          sessionId={sessionId}
-          variant={opts?.variant ?? 'panel'}
-        />
+        <React.Suspense fallback={null}>
+          <LazySkillSelector
+            activeSkillIds={activeSkillIds}
+            onToggleSkill={handleToggleSkill}
+            onClose={() => {
+              if (opts?.variant === 'menu') {
+                opts.onClose?.();
+                return;
+              }
+              setPanelState('skill', false);
+            }}
+            disabled={isStreaming}
+            sessionId={sessionId}
+            variant={opts?.variant ?? 'panel'}
+          />
+        </React.Suspense>
       );
     }, [activeSkillIds, handleToggleSkill, setPanelState, isStreaming, sessionId]);
 
-    // ★ 技能斜杠命令：消息开头的 /skill-id 令牌在发送前解析为显式激活
-    //（最多叠加 5 个，遇到非技能令牌即停）
+    // ★ 统一斜杠命令执行引擎与上浮交互卡片（/btw, /learn, /memory, /context, /doctor, /help）
+    const [slashOverlayCardState, setSlashOverlayCardState] = useState<SlashOverlayCardState | null>(null);
+    useEffect(() => {
+      setSlashOverlayCardState(null);
+    }, [sessionSwitchKey]);
+
+    const sendRawPromptForSlash = useCallback(async (promptText: string) => {
+      store.getState().setInputValue(promptText);
+      await sendMessage();
+    }, [store, sendMessage]);
+
+    const slashExecutorDeps = useMemo<SlashCommandExecutorDeps>(() => ({
+      store,
+      sessionId,
+      isStreaming,
+      t,
+      onCompactContext: handleCompactContext,
+      activeSkillIds,
+      activateSkill,
+      toggleSkill: handleToggleSkill,
+      clearAllSkills: handleClearAllSkills,
+      runtimeModelOptions,
+      onSelectRuntimeModel: handleSelectRuntimeModel,
+      onOpenRuntimeModelPanel: handleOpenRuntimeModelPanel,
+      enableThinking: effectiveEnableThinking,
+      thinkingCanDisable: thinkingControl.canDisable,
+      thinkingDepthOptions: runtimeModelSupportsReasoning ? thinkingControl.options : [],
+      onToggleThinking: handleToggleThinking,
+      onSetThinkingDepth: handleSetThinkingDepth,
+      permissionPreset,
+      onPermissionPresetChange: (preset, confirm) => setPermissionPreset(preset, confirm),
+      webSearchEnabled,
+      onWebSearchEnabledChange: handleWebSearchEnabledChange,
+      ragEnabled,
+      onRagEnabledChange: handleRagEnabledChange,
+      knowledgeBaseProactive,
+      onKnowledgeBaseProactiveChange: handleKnowledgeBaseProactiveChange,
+      setPanelState,
+      hasMcpPanel: Boolean(renderMcpPanel),
+      onTextbookToggle,
+      sendRawPrompt: sendRawPromptForSlash,
+      openOverlayCard: setSlashOverlayCardState,
+    }), [
+      store,
+      sessionId,
+      isStreaming,
+      t,
+      handleCompactContext,
+      activeSkillIds,
+      activateSkill,
+      handleToggleSkill,
+      handleClearAllSkills,
+      runtimeModelOptions,
+      handleSelectRuntimeModel,
+      handleOpenRuntimeModelPanel,
+      effectiveEnableThinking,
+      thinkingControl.canDisable,
+      thinkingControl.options,
+      runtimeModelSupportsReasoning,
+      handleToggleThinking,
+      handleSetThinkingDepth,
+      permissionPreset,
+      setPermissionPreset,
+      webSearchEnabled,
+      handleWebSearchEnabledChange,
+      ragEnabled,
+      handleRagEnabledChange,
+      knowledgeBaseProactive,
+      handleKnowledgeBaseProactiveChange,
+      setPanelState,
+      renderMcpPanel,
+      onTextbookToggle,
+      sendRawPromptForSlash,
+    ]);
+
+    const slashExecutorDepsRef = useRef(slashExecutorDeps);
+    slashExecutorDepsRef.current = slashExecutorDeps;
+
+    const handleExecuteBuiltinSlashCommand = useCallback(async (action: BuiltinSlashActionPayload) => {
+      await runBuiltinSlashCommandLazy(slashExecutorDepsRef.current, action);
+    }, []);
+
+    const slashRuntimeStatus = useMemo<SlashCommandRuntimeStatus>(() => ({
+      hasActiveGoal: Boolean(goal && goal.status !== 'complete'),
+      goalStatusLabel: goal ? goal.status : undefined,
+      authorityMode,
+      enableThinking: effectiveEnableThinking,
+      thinkingStateLabel,
+      thinkingDepthValue: runtimeModelSupportsReasoning
+        ? (normalizedThinkingSelection.reasoningEffort as string | undefined)
+        : undefined,
+      permissionPreset,
+      permissionLabel: t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`),
+      webSearchEnabled,
+      ragEnabled,
+      knowledgeBaseProactive,
+      runtimeModelLabel,
+      runtimeCurrentModelId,
+      runtimeModelOptions,
+      pluginWorkshopActive: activeSkillIds.includes('dstu-plugin-development'),
+      textbookOpen,
+      hasTextbookToggle: Boolean(onTextbookToggle),
+      selectedMcpServerCount: nonBuiltinMcpServerCount,
+      activeSkillCount: displayActiveSkillIds.length,
+    }), [
+      goal,
+      authorityMode,
+      effectiveEnableThinking,
+      thinkingStateLabel,
+      runtimeModelSupportsReasoning,
+      normalizedThinkingSelection.reasoningEffort,
+      permissionPreset,
+      t,
+      webSearchEnabled,
+      ragEnabled,
+      knowledgeBaseProactive,
+      runtimeModelLabel,
+      runtimeCurrentModelId,
+      runtimeModelOptions,
+      activeSkillIds,
+      textbookOpen,
+      onTextbookToggle,
+      nonBuiltinMcpServerCount,
+      displayActiveSkillIds.length,
+    ]);
+
+    // ★ 斜杠命令与技能前缀联合路由：
+    // 1. 先检查是否命中 33 个内置斜杠命令（/goal, /compact, /plan, /btw, /remember, /feynman, /anki 等）
+    // 2. 未命中时回退到 /skill-id 前缀激活解析（最多叠加 5 个）
     const sendMessageWithSkillCommands = useCallback(async () => {
       const rawInput = store.getState().inputValue;
-      if (rawInput.trim().toLowerCase() === '/compact') {
-        if (isStreaming || compactionPendingRef.current || store.getState().compactionInProgress) return;
+      const builtinInvocation = parseSubmittedBuiltinSlashCommand(rawInput);
+      if (builtinInvocation) {
+        if (builtinInvocation.spec.id === 'compact') {
+          if (isStreaming || compactionPendingRef.current || store.getState().compactionInProgress) return;
+        } else if (compactionPendingRef.current || store.getState().compactionInProgress) {
+          return;
+        } else if (isStreaming && !builtinInvocation.spec.allowDuringStream) {
+          showGlobalNotification('info', t('chatV2:slashCommands.common.busyStreaming'));
+          return;
+        }
         store.getState().setInputValue('');
-        await handleCompactContext();
+        await runBuiltinSlashCommandLazy(slashExecutorDepsRef.current, {
+          commandId: builtinInvocation.spec.id,
+          args: builtinInvocation.rawArgs,
+        });
         return;
       }
       if (compactionPendingRef.current || store.getState().compactionInProgress) return;
@@ -1509,11 +2026,20 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         store.getState().setInputValue(parsed.rest);
       }
       await sendMessage();
-    }, [store, activeSkillIds, activateSkill, sendMessage, handleCompactContext, isStreaming]);
+    }, [store, activeSkillIds, activateSkill, sendMessage, isStreaming, t]);
 
     const steerMessageWithSkillCommands = useCallback(async () => {
       const rawInput = store.getState().inputValue;
       if (compactionPendingRef.current || store.getState().compactionInProgress) return;
+      const builtinInvocation = parseSubmittedBuiltinSlashCommand(rawInput);
+      if (builtinInvocation && builtinInvocation.spec.allowDuringStream) {
+        store.getState().setInputValue('');
+        await runBuiltinSlashCommandLazy(slashExecutorDepsRef.current, {
+          commandId: builtinInvocation.spec.id,
+          args: builtinInvocation.rawArgs,
+        });
+        return;
+      }
       const parsed = parseLeadingSkillCommands(rawInput);
       if (parsed.skillIds.length > 0) {
         for (const skillId of parsed.skillIds) {
@@ -1535,6 +2061,57 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [store, activeSkillIds, activateSkill, steerMessage, abortStream, sendMessage]);
 
+    const hasExternalMentionChip = Boolean(
+      modelMentionState?.selectedModels.some(isExternalCliMentionItem),
+    );
+    const showSessionCliWorkspaceRow = Boolean(selectedSessionCliAgent) && !hasExternalMentionChip;
+    const pendingExternalApproval = activeExternalThread?.pendingApproval ?? null;
+
+    const mergedComposerInlinePanel = useMemo(() => {
+      if (!composerInlinePanel && !showSessionCliWorkspaceRow && !pendingExternalApproval) {
+        return undefined;
+      }
+      return (
+        <div className="flex w-full flex-col gap-2">
+          {composerInlinePanel}
+          {pendingExternalApproval && activeExternalThread && (
+            <React.Suspense fallback={null}>
+              <LazyExternalCliApprovalBar
+                thread={activeExternalThread}
+                approval={pendingExternalApproval}
+              />
+            </React.Suspense>
+          )}
+          {showSessionCliWorkspaceRow && selectedSessionCliAgent && (
+            <ModelMentionChips
+              models={[]}
+              onRemove={handleDeselectModel}
+              disabled={isStreaming}
+              sessionId={sessionId}
+              sessionCliAgent={{
+                id: selectedSessionCliAgent.id,
+                name: selectedSessionCliAgent.name,
+                selectedModel: selectedCliModel,
+              }}
+              onClearSessionCli={handleClearSessionCli}
+              className="mb-0"
+            />
+          )}
+        </div>
+      );
+    }, [
+      activeExternalThread,
+      composerInlinePanel,
+      handleClearSessionCli,
+      handleDeselectModel,
+      isStreaming,
+      pendingExternalApproval,
+      selectedCliModel,
+      selectedSessionCliAgent,
+      sessionId,
+      showSessionCliWorkspaceRow,
+    ]);
+
     const ResolvedInputBarUI = InputBarUIModule.InputBarUI;
 
     return (
@@ -1544,7 +2121,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             使「引导」气泡和下方 chat 输入栏左右边对齐。 */}
         <div className="w-full px-4 md:px-8">
           <ThreadContentShell>
-            <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
+            <QueuedMessageStack
+              store={store}
+              allowSteer={queueSettings.allowSteer || Boolean(activeExternalThread)}
+            />
             {isCompactingContext && (
               <div
                 role="status"
@@ -1567,7 +2147,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 队列模式：允许流式时入队，并在队列满时禁用发送
         queueEnabled={queueSettings.queueEnabled}
         queueFull={queueLength >= QUEUE_HARD_CAP}
-        allowSteer={queueSettings.allowSteer}
+        allowSteer={queueSettings.allowSteer || Boolean(activeExternalThread)}
         canSubmit={canSubmit && !isCompactingContext}
         contextWindowUsage={contextWindowUsage}
         sessionUsage={sessionUsage}
@@ -1584,17 +2164,52 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         onClearAttachments={clearAttachments}
         onFilesUpload={onFilesUpload}
         onSetPanelState={setPanelState}
-        onCompactContext={handleCompactContext}
+        onCompactContext={() => handleCompactContext()}
         isCompactingContext={isCompactingContext}
         compactContextStatus={compactContextStatus}
         getCompactionInfo={getCompactionInfo}
+        slashRuntimeStatus={slashRuntimeStatus}
+        onExecuteBuiltinSlashCommand={handleExecuteBuiltinSlashCommand}
+        slashOverlayCard={
+          slashOverlayCardState ? (
+            <React.Suspense fallback={null}>
+              <LazySlashOverlayCard
+                card={slashOverlayCardState}
+                onClose={() => setSlashOverlayCardState(null)}
+                onInsertToComposer={(text) => {
+                  const prev = store.getState().inputValue;
+                  store.getState().setInputValue(prev ? `${prev}\n${text}` : text);
+                }}
+                onCreateFlashcardFromBtw={(question, answer) => {
+                  void runBuiltinSlashCommandLazy(slashExecutorDepsRef.current, {
+                    commandId: 'anki',
+                    args: `${question}\n${answer}`,
+                  });
+                }}
+                runtimeModelLabel={runtimeModelLabel}
+                effectiveChatModelId={model2OverrideId || effectiveUnpinnedModelId}
+                thinkingStateLabel={thinkingStateLabel}
+                permissionLabel={t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`)}
+                authorityMode={authorityMode}
+                webSearchEnabled={webSearchEnabled}
+                ragEnabled={ragEnabled}
+                knowledgeBaseProactive={knowledgeBaseProactive}
+                activeSkillIds={displayActiveSkillIds}
+                selectedMcpServerCount={nonBuiltinMcpServerCount}
+                contextWindowUsage={contextWindowUsage}
+                sessionUsage={sessionUsage}
+                goal={goal}
+              />
+            </React.Suspense>
+          ) : undefined
+        }
         // UI 配置
         placeholder={placeholder}
         sendShortcut={sendShortcut}
         leftAccessory={mergedLeftAccessory}
         extraButtonsRight={mergedRightAccessory}
         inputToolSlot={inputToolSlot}
-        composerInlinePanel={composerInlinePanel}
+        composerInlinePanel={mergedComposerInlinePanel}
         className={className}
         autoFocus={autoFocus}
         // 模式插件面板
@@ -1624,7 +2239,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         runtimeModelLabel={runtimeModelLabel}
         runtimeModelProviderLabel={runtimeModelProviderLabel}
         runtimeModelIconId={runtimeModelIconId}
-        runtimeCurrentModelId={model2OverrideId}
+        runtimeCurrentModelId={runtimeCurrentModelId}
         runtimeModelOptions={runtimeModelOptions}
         onSelectRuntimeModel={handleSelectRuntimeModel}
         runtimeModelMultiSelect={runtimeModelMultiSelect}
@@ -1662,7 +2277,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         onRemovePdfPageRef={removePdfPageRef}
         onClearPdfPageRefs={clearPdfPageRefs}
         // ★ U01：缺失 AI 模型 / API 密钥一键引导
-        missingApiKey={missingApiKey}
+        missingApiKey={
+          missingApiKey &&
+          !selectedSessionCliAgent &&
+          !selectedAgents.some((agent) => agent.isExternalCli)
+        }
         onOpenApiSettings={handleOpenApiSettings}
         suppressDraftRestore={isDataLoaded === false}
         latestPersistedUserText={latestPersistedUserText}

@@ -38,9 +38,23 @@ import { useChatInputInbox } from '../../context/chatInputInbox';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates } from '../../core/types/common';
-import { ModelMentionPopover } from './ModelMentionPopover';
-import { SkillSlashPopover, useSkillSlashCommands } from './SkillSlashPopover';
-import { useOptionalUiKernel } from '@/ui-kernel/react';
+const LazyModelMentionPopover = React.lazy(() =>
+  import('./ModelMentionPopover').then((m) => ({ default: m.ModelMentionPopover })),
+);
+const LazySkillSlashPopover = React.lazy(() =>
+  import('./SkillSlashPopoverView').then((m) => ({ default: m.SkillSlashPopover })),
+);
+import {
+  matchSubmittedPluginSlashCommand,
+  useSkillSlashCommands,
+  type SlashApplyTrigger,
+  type SlashCommandRuntimeStatus,
+} from './SkillSlashPopover';
+import {
+  isZeroModelSlashSubmission,
+  parseSubmittedBuiltinSlashCommand,
+} from '../../commands/slashCommandProtocol';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 import { runSlotCallback } from '@/ui-kernel/outlet';
 import { ModelMentionChips } from './ModelMentionChip';
 import { ContextRefChips } from './ContextRefChips';
@@ -51,7 +65,9 @@ import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 // P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
 import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
-import { BlockingInteractionBar } from './BlockingInteractionBar';
+const LazyBlockingInteractionBar = React.lazy(() =>
+  import('./BlockingInteractionBar').then((m) => ({ default: m.BlockingInteractionBar })),
+);
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
@@ -620,6 +636,9 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   // ★ U01：缺失 AI 模型 / API 密钥引导横幅
   missingApiKey = false,
   onOpenApiSettings,
+  slashRuntimeStatus,
+  onExecuteBuiltinSlashCommand,
+  slashOverlayCard,
   suppressDraftRestore = false,
   latestPersistedUserText = null,
 }) => {
@@ -1683,15 +1702,63 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   }, [sessionSwitchKey]);
 
   // ========== 技能斜杠命令内联补全 ==========
-  // 输入期即时补全 /skill-id（原先仅发送时解析，未知令牌会被原样发出）
+  const effectiveSlashRuntimeStatus = useMemo<SlashCommandRuntimeStatus>(() => ({
+    enableThinking,
+    thinkingStateLabel,
+    thinkingDepthValue,
+    permissionPreset,
+    permissionLabel: permissionPreset
+      ? t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`)
+      : undefined,
+    webSearchEnabled,
+    ragEnabled,
+    knowledgeBaseProactive,
+    runtimeModelLabel,
+    runtimeCurrentModelId,
+    runtimeModelOptions,
+    pluginWorkshopActive: Boolean(activeSkillIds?.includes('dstu-plugin-development')),
+    textbookOpen,
+    hasTextbookToggle: Boolean(onTextbookToggle),
+    selectedMcpServerCount,
+    activeSkillCount: activeSkillIds?.length ?? 0,
+    ...slashRuntimeStatus,
+  }), [
+    enableThinking,
+    thinkingStateLabel,
+    thinkingDepthValue,
+    permissionPreset,
+    t,
+    webSearchEnabled,
+    ragEnabled,
+    knowledgeBaseProactive,
+    runtimeModelLabel,
+    runtimeCurrentModelId,
+    runtimeModelOptions,
+    activeSkillIds,
+    textbookOpen,
+    onTextbookToggle,
+    selectedMcpServerCount,
+    slashRuntimeStatus,
+  ]);
+
   const skillSlash = useSkillSlashCommands({
     inputValue,
     caretPos: composerCaretPos,
     enabled: !(isStreaming && !queueEnabled),
     activeSkillIds,
+    runtimeStatus: effectiveSlashRuntimeStatus,
   });
 
   const uiKernel = useOptionalUiKernel();
+  const composerCommandEntries = useOptionalSlot('chat.composer.commands');
+  const slashPopoverEverOpenedRef = useRef(false);
+  if (skillSlash.open) {
+    slashPopoverEverOpenedRef.current = true;
+  }
+  const modelMentionEverOpenedRef = useRef(false);
+  if (modelMentionState?.showAutoComplete) {
+    modelMentionEverOpenedRef.current = true;
+  }
   const pendingSlashSendRef = useRef(false);
   const [slashSendTick, setSlashSendTick] = useState(0);
   const latestRenderedInputRef = useRef(inputValue);
@@ -1701,15 +1768,47 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
     liveSlashInputRef.current = inputValue;
   }, [inputValue]);
 
+  const handleStepOutSlashSubpicker = useCallback(() => {
+    const next = skillSlash.stepOutSubpicker();
+    if (!next) return;
+    liveSlashInputRef.current = next.value;
+    onInputChange(next.value);
+    setComposerCaretPos(next.caret);
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.focus();
+      requestAnimationFrame(() => {
+        textarea.setSelectionRange(next.caret, next.caret);
+      });
+    }
+  }, [skillSlash, onInputChange]);
+
   // 补全应用：更新输入值并把光标精确落在补全令牌之后
-  const applySkillSlashSelection = useCallback((index?: number) => {
-    const result = skillSlash.applySelection(index);
+  const applySkillSlashSelection = useCallback((index?: number, trigger: SlashApplyTrigger = 'enter') => {
+    const result = skillSlash.applySelection(index, trigger);
     if (!result) return false;
     liveSlashInputRef.current = result.value;
     let targetCaret = result.caret;
     onInputChange(result.value);
     setComposerCaretPos(result.caret);
-    if (result.command) {
+    if (result.builtinAction) {
+      void onExecuteBuiltinSlashCommand?.(result.builtinAction);
+    } else if (result.packWorkflowCommand) {
+      const { workflow, strippedInput } = result.packWorkflowCommand;
+      const promptText = t('chatV2:slashCommands.dspack.workflowPrompt', {
+        pack: workflow.packName,
+        workflow: workflow.workflowTitle,
+        input: strippedInput,
+      }).trim();
+      pendingSlashSendRef.current = true;
+      liveSlashInputRef.current = promptText;
+      targetCaret = promptText.length;
+      onInputChange(promptText);
+      setComposerCaretPos(promptText.length);
+      if (promptText === latestRenderedInputRef.current) {
+        setSlashSendTick((tick) => tick + 1);
+      }
+    } else if (result.command) {
       const { entry, strippedInput } = result.command;
       let liveCaret = result.caret;
       runSlotCallback(uiKernel, 'chat.composer.commands', entry, () =>
@@ -1757,7 +1856,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       });
     }
     return true;
-  }, [skillSlash, onInputChange, uiKernel, sessionId]);
+  }, [skillSlash, onInputChange, onExecuteBuiltinSlashCommand, uiKernel, sessionId, t]);
 
   // ========== 面板动画状态 ==========
   // 🔧 统一使用 useDeferredOpen 实现所有面板的弹出收起动画
@@ -2172,11 +2271,62 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
 
   // 处理发送
   const handleSend = useCallback(() => {
-    if (!canSendWithAttachments) {
+    const currentRawText = inputValueRef.current;
+    const submittedBuiltin = parseSubmittedBuiltinSlashCommand(currentRawText);
+    const submittedPlugin = !submittedBuiltin
+      ? matchSubmittedPluginSlashCommand(currentRawText, composerCommandEntries)
+      : null;
+    if (submittedPlugin) {
+      const { entry, strippedInput } = submittedPlugin;
+      flushPillsAndDraftForSend();
+      let liveCaret = strippedInput.length;
+      liveSlashInputRef.current = strippedInput;
+      onInputChange(strippedInput);
+      setComposerCaretPos(liveCaret);
+      runSlotCallback(uiKernel, 'chat.composer.commands', entry, () =>
+        entry.value.run({
+          input: strippedInput,
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          getInput: () => liveSlashInputRef.current,
+          setInput: (text: string) => {
+            liveSlashInputRef.current = text;
+            liveCaret = text.length;
+            onInputChange(text);
+            setComposerCaretPos(liveCaret);
+          },
+          insertText: (text: string) => {
+            const current = liveSlashInputRef.current;
+            const pos = Math.max(0, Math.min(liveCaret, current.length));
+            const next = current.slice(0, pos) + text + current.slice(pos);
+            liveSlashInputRef.current = next;
+            liveCaret = pos + text.length;
+            onInputChange(next);
+            setComposerCaretPos(liveCaret);
+          },
+          send: (text?: string) => {
+            pendingSlashSendRef.current = true;
+            if (text !== undefined) {
+              liveSlashInputRef.current = text;
+              onInputChange(text);
+              setComposerCaretPos(text.length);
+            }
+            if (text === undefined || text === latestRenderedInputRef.current) {
+              setSlashSendTick((tick) => tick + 1);
+            }
+          },
+        }),
+      );
+      return;
+    }
+
+    const bypassMissingKey = isZeroModelSlashSubmission(currentRawText);
+    const bypassStreamBlock = Boolean(submittedBuiltin?.spec.allowDuringStream);
+
+    if (!canSendWithAttachments && !submittedBuiltin) {
       showGlobalNotification('warning', t('common:messages.error.empty_input'));
       return;
     }
-    if (missingApiKey) {
+    if (missingApiKey && !bypassMissingKey) {
       setMissingApiKeyAttention(true);
       configureApiKeyBtnRef.current?.focus();
       showGlobalNotification(
@@ -2187,7 +2337,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       );
       return;
     }
-    if (disabledSend) {
+    if (disabledSend && !bypassStreamBlock && !bypassMissingKey) {
       // ★ 键盘 Enter 触发时按钮禁用态不可见，给出与 tooltip 一致的原因反馈
       if (sendBlockedReason) {
         showGlobalNotification('info', sendBlockedReason);
@@ -2203,7 +2353,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, missingApiKey, isZh, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onSend, t]);
+  }, [canSendWithAttachments, composerCommandEntries, missingApiKey, isZh, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onInputChange, onSend, sessionId, t, uiKernel]);
 
   useEffect(() => {
     if (!pendingSlashSendRef.current) return;
@@ -3274,52 +3424,68 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           </div>
         )}
 
+        {slashOverlayCard && (
+          <div className="w-full">
+            {slashOverlayCard}
+          </div>
+        )}
+
         {pendingApprovalRequest ? (
-          <BlockingInteractionBar
-            interaction={pendingApprovalRequest}
-            sessionId={sessionId || ''}
-            restoreFocusRef={textareaRef}
-          />
+          <React.Suspense fallback={null}>
+            <LazyBlockingInteractionBar
+              interaction={pendingApprovalRequest}
+              sessionId={sessionId || ''}
+              restoreFocusRef={textareaRef}
+            />
+          </React.Suspense>
         ) : (
           <>
         {/* 输入区域 */}
         <div className="mb-2 relative">
           {/* ★ 技能斜杠命令内联补全弹层（锚定输入栏上方，非模态） */}
-          <SkillSlashPopover
-            open={skillSlash.open}
-            query={skillSlash.query}
-            suggestions={skillSlash.suggestions}
-            selectedIndex={skillSlash.selectedIndex}
-            onSelect={(index) => applySkillSlashSelection(index)}
-            onSelectedIndexChange={skillSlash.setSelectedIndex}
-          />
+          {(skillSlash.open || slashPopoverEverOpenedRef.current) && (
+            <React.Suspense fallback={null}>
+              <LazySkillSlashPopover
+                open={skillSlash.open}
+                query={skillSlash.query}
+                activeParentCommand={skillSlash.activeParentCommand}
+                suggestions={skillSlash.suggestions}
+                selectedIndex={skillSlash.selectedIndex}
+                onSelect={(index) => applySkillSlashSelection(index, 'click')}
+                onSelectedIndexChange={skillSlash.setSelectedIndex}
+                onStepOutSubpicker={handleStepOutSlashSubpicker}
+              />
+            </React.Suspense>
+          )}
 
           {/* 模型 @mention 自动完成弹窗 */}
-          {modelMentionState && modelMentionActions && (
-            <ModelMentionPopover
-              open={modelMentionState.showAutoComplete}
-              suggestions={modelMentionState.suggestions}
-              selectedIndex={modelMentionState.selectedIndex}
-              query={modelMentionState.query}
-              onSelect={(model) => {
-                // 🔧 Chip 模式：添加到 chips，并只移除 `@query` 片段（多行草稿安全）
-                const result = modelMentionActions.selectSuggestion(model);
-                onInputChange(result.value);
-                setComposerCaretPos(result.caret);
-                // 聚焦回输入框，光标回到 mention 起点
-                const textarea = textareaRef.current;
-                if (textarea) {
-                  textarea.focus();
-                  requestAnimationFrame(() => {
-                    textarea.setSelectionRange(result.caret, result.caret);
-                    modelMentionActions.updateCursorPosition(result.caret);
-                  });
-                }
-              }}
-              onSelectedIndexChange={modelMentionActions.setSelectedIndex}
-              onClose={modelMentionActions.closeAutoComplete}
-              anchorRef={textareaRef as React.RefObject<HTMLElement>}
-            />
+          {modelMentionState && modelMentionActions && (modelMentionState.showAutoComplete || modelMentionEverOpenedRef.current) && (
+            <React.Suspense fallback={null}>
+              <LazyModelMentionPopover
+                open={modelMentionState.showAutoComplete}
+                suggestions={modelMentionState.suggestions}
+                selectedIndex={modelMentionState.selectedIndex}
+                query={modelMentionState.query}
+                onSelect={(model) => {
+                  // 🔧 Chip 模式：添加到 chips，并只移除 `@query` 片段（多行草稿安全）
+                  const result = modelMentionActions.selectSuggestion(model);
+                  onInputChange(result.value);
+                  setComposerCaretPos(result.caret);
+                  // 聚焦回输入框，光标回到 mention 起点
+                  const textarea = textareaRef.current;
+                  if (textarea) {
+                    textarea.focus();
+                    requestAnimationFrame(() => {
+                      textarea.setSelectionRange(result.caret, result.caret);
+                      modelMentionActions.updateCursorPosition(result.caret);
+                    });
+                  }
+                }}
+                onSelectedIndexChange={modelMentionActions.setSelectedIndex}
+                onClose={modelMentionActions.closeAutoComplete}
+                anchorRef={textareaRef as React.RefObject<HTMLElement>}
+              />
+            </React.Suspense>
           )}
 
           {/* ★ 长文本粘贴建议条：默认保留为文本，可一键转为附件 */}
@@ -3658,6 +3824,9 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
           mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
+          renderAdvancedPanel={renderAdvancedPanel}
+          advancedPanelRequested={Boolean(panelStates?.advanced)}
+          onConsumeAdvancedPanelRequest={() => onSetPanelState('advanced', false)}
           onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
           pluginWorkshopActive={pluginWorkshopActive}
           onTogglePluginWorkshop={onToggleSkill ? handleTogglePluginWorkshop : undefined}
@@ -3683,6 +3852,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           runtimeModelProviderLabel={runtimeModelProviderLabel}
           runtimeModelIconId={runtimeModelIconId}
           runtimeCurrentModelId={runtimeCurrentModelId}
+          runtimeModelUnavailable={Boolean(missingApiKey)}
           runtimeModelOptions={runtimeModelOptions}
           onSelectRuntimeModel={onSelectRuntimeModel}
           runtimeModelMultiSelect={runtimeModelMultiSelect}

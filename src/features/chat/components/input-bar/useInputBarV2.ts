@@ -25,6 +25,22 @@ import {
 } from './injectModeUtils';
 import { keepsTurnsWithoutChatModel, resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 import { clearComposerDraft } from './composerDraftStorage';
+import { generateId } from '../../core/store/createChatStore';
+import { resetBridgeState } from '../../core/middleware/eventBridge';
+import {
+  agentMeshHost,
+  isAgentMeshHostConnected,
+  normalizeAgentHandle,
+  resolveAgentDisplayName,
+  selectActiveExternalThreadForSession,
+  selectSelectedCliEffortForSession,
+  selectSelectedCliForSession,
+  selectSelectedCliModelForSession,
+  useAgentMeshStore,
+  type DetectedMeshAgent,
+  type MeshThreadState,
+} from '@/features/agent-mesh';
+import type { AgentMentionItem } from './useModelMentionAutocomplete';
 
 let sessionDraftLruClearer: ((sessionId: string) => void) | null = null;
 
@@ -48,6 +64,12 @@ export interface UseInputBarV2Options {
   getSelectedModels?: () => ModelInfo[];
   /** 清空已选中的模型 - 发送成功后调用 */
   clearSelectedModels?: () => void;
+  /** 获取已选中的智能体（@agent chips）- 发送前调用 */
+  getSelectedAgents?: () => AgentMentionItem[];
+  /** 清空已选中的智能体 - 发送成功后调用 */
+  clearSelectedAgents?: () => void;
+  /** 获取当前会话绑定的本地编程 CLI 引擎（T3-Code 模式） */
+  getSelectedSessionCli?: () => DetectedMeshAgent | null;
   /** ★ 构建 PDF 页码引用标签字符串（如 [PDF@sourceId:1][PDF@sourceId:3]） */
   buildPdfRefTags?: () => string;
   /** ★ 获取「选择此页」抽取的页面正文快照（发送时自动注入 <selection> 上下文） */
@@ -86,6 +108,7 @@ export function useInputBarV2(
   const sendInFlightRef = useRef(false);
   // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较
   const {
+    sessionId,
     inputValue,
     attachments,
     panelStates,
@@ -95,6 +118,7 @@ export function useInputBarV2(
   } = useStore(
     store,
     useShallow((s) => ({
+      sessionId: s.sessionId,
       inputValue: s.inputValue,
       attachments: s.attachments,
       panelStates: s.panelStates,
@@ -104,24 +128,31 @@ export function useInputBarV2(
     }))
   );
 
+  const activeExternalThread = useAgentMeshStore((meshState) =>
+    selectActiveExternalThreadForSession(meshState, sessionId),
+  );
+  const isExternalRunning = Boolean(activeExternalThread);
+
   // ========== 派生状态 ==========
 
-  // 是否正在流式生成（包含 aborting，避免“可输入但无法发送”的中间态错觉）
-  const isStreaming = sessionStatus === 'streaming' || sessionStatus === 'aborting';
+  // 是否正在流式生成（包含 aborting 与外部 CLI 活跃回合，激活原生停止按钮与排队/引导栏）
+  const isStreaming =
+    sessionStatus === 'streaming' || sessionStatus === 'aborting' || isExternalRunning;
 
   // 是否可以发送：idle 状态下可发送；权限档位切换 IPC 在途时暂停发送，
   // 避免后端以旧档位执行本轮工具（切换竞态）。
   const canSend = sessionStatus === 'idle' && !permissionPresetSyncing;
 
-  // 是否可以中断：streaming 状态下可中断
-  const canAbort = sessionStatus === 'streaming';
+  // 是否可以中断：streaming 状态或外部 CLI 运行中可中断
+  const canAbort = sessionStatus === 'streaming' || isExternalRunning;
 
   // 队列设置（来自外部）
   const queueEnabled = options?.queueEnabled ?? false;
 
-  // 是否可提交（idle 直发 OR streaming 且队列未满）
+  // 是否可提交（idle 直发 OR streaming/外部 CLI 运行中且队列未满）
   const canSubmit = (sessionStatus === 'idle' && !permissionPresetSyncing)
-    || (queueEnabled && queueLength < QUEUE_HARD_CAP);
+    || (queueEnabled && queueLength < QUEUE_HARD_CAP)
+    || (isExternalRunning && queueLength < QUEUE_HARD_CAP);
 
   // ========== 封装 Actions ==========
 
@@ -154,6 +185,30 @@ export function useInputBarV2(
 
     const state = store.getState();
 
+    const resolveEffectiveSessionCli = (
+      targetOpts: UseInputBarV2Options | undefined,
+      sid: string | null | undefined,
+    ): DetectedMeshAgent | null => {
+      if (targetOpts?.getSelectedSessionCli) {
+        return targetOpts.getSelectedSessionCli();
+      }
+      const meshState = useAgentMeshStore.getState();
+      const cliId = selectSelectedCliForSession(meshState, sid);
+      if (!cliId) return null;
+      return (
+        meshState.agents.find(
+          (a) =>
+            a.driverKind !== 'builtin' &&
+            a.installed &&
+            (a.id === cliId || normalizeAgentHandle(a.handle || a.id) === cliId),
+        ) ?? null
+      );
+    };
+
+    const liveExternalBeforeGuard = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
     // 守卫检查
     // ★ B5 修复：所有 early-return 路径统一给出可见反馈（与注入模式守卫一致），
     // 竞态下用户点发送不再「无声失败」
@@ -164,8 +219,8 @@ export function useInputBarV2(
       state.sessionStatus === 'streaming' ||
       (isAbortingTransition && queueEnabled);
     if (willEnqueue) {
-      // 队列守卫：必须启用且未满
-      if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
+      // 队列守卫：必须启用（或外部 CLI 回合运行中支持排队/引导）且未满
+      if ((!queueEnabled && !liveExternalBeforeGuard) || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
         console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
         showGlobalNotification(
           'warning',
@@ -196,24 +251,46 @@ export function useInputBarV2(
     }
 
     const rawContent = state.inputValue.trim();
+    const initialOpts = optionsRef.current;
+    const precheckAgents = initialOpts?.getSelectedAgents ? initialOpts.getSelectedAgents() : [];
+    const precheckModels = initialOpts?.getSelectedModels ? initialOpts.getSelectedModels() : [];
+    const precheckSessionCli = resolveEffectiveSessionCli(initialOpts, state.sessionId);
+    const liveExternalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    const isDirectSingleExternalTurn =
+      (precheckAgents.length === 1 &&
+        precheckAgents[0].isExternalCli &&
+        precheckModels.length === 0) ||
+      (precheckAgents.length === 0 &&
+        precheckModels.length === 0 &&
+        Boolean(precheckSessionCli));
+    const isQueueForRunningExternal =
+      Boolean(liveExternalThread) &&
+      precheckAgents.length === 0 &&
+      precheckModels.length === 0 &&
+      typeof state.enqueueMessage === 'function';
 
-    const readiness = await resolveChatReadiness();
-    if (!readiness.ok && !keepsTurnsWithoutChatModel()) {
-      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
-      if (readiness.cta === 'OPEN_SETTINGS_MODELS') triggerOpenSettingsModels();
-      return;
-    }
+    if (!isDirectSingleExternalTurn && !isQueueForRunningExternal) {
+      const readiness = await resolveChatReadiness();
+      if (!readiness.ok && !keepsTurnsWithoutChatModel()) {
+        showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
+        if (readiness.cta === 'OPEN_SETTINGS_MODELS') triggerOpenSettingsModels();
+        return;
+      }
 
-    // 自动分配模型的提示通知
-    if (readiness.code === 'MODEL2_AUTO_ASSIGNED' && readiness.message) {
-      showGlobalNotification('info', readiness.message);
+      // 自动分配模型的提示通知
+      if (readiness.code === 'MODEL2_AUTO_ASSIGNED' && readiness.message) {
+        showGlobalNotification('info', readiness.message);
+      }
     }
 
     const latestState = store.getState();
     const currentAttachments = latestState.attachments;
     const effectiveAttachments = currentAttachments;
     const pendingContextRefs = Array.isArray(latestState.pendingContextRefs)
-      ? latestState.pendingContextRefs
+      ? [...latestState.pendingContextRefs]
       : null;
     
     // ========== 多变体支持（chips 模式） ==========
@@ -241,7 +318,6 @@ export function useInputBarV2(
         // 使用 id 字段（API 配置数据库 ID）因为后端需要它来查找模型配置
         // 后端会从配置中提取真正的模型名称传递给前端用于 UI 显示
         const modelIds = selectedModels.map(m => m.id);
-        console.log('[useInputBarV2] 🚀 Multi-variant mode (chips):', modelIds);
         
         // 🔧 调试日志
         if ((window as any).__multiVariantDebug?.log) {
@@ -256,7 +332,6 @@ export function useInputBarV2(
         // 🔧 单模型覆盖：选择 1 个模型时，覆盖当前使用的模型
         const selectedModel = selectedModels[selectedModels.length - 1];
         const selectedModelId = selectedModel.id;
-        console.log('[useInputBarV2] 🔄 Single model override:', selectedModelId);
         
         // 🔧 调试日志
         if ((window as any).__multiVariantDebug?.log) {
@@ -397,7 +472,36 @@ export function useInputBarV2(
     const selectedPagesSnapshot = pdfRefTags ? opts?.getSelectedPagesContext?.() ?? null : null;
     if (pdfRefTags) {
       finalContent = content ? `${content}\n${pdfRefTags}` : pdfRefTags;
-      console.log('[useInputBarV2] 📄 Appending PDF page ref tags:', pdfRefTags);
+    }
+
+    // ========== 智能体 @agent / 会话 CLI 引擎路由决策 ==========
+    const selectedAgents = opts?.getSelectedAgents ? opts.getSelectedAgents() : [];
+    const sessionCli = resolveEffectiveSessionCli(opts, latestState.sessionId);
+    const explicitExternalAgent =
+      selectedAgents.length === 1 &&
+      selectedAgents[0].isExternalCli &&
+      (!selectedModels || selectedModels.length === 0)
+        ? selectedAgents[0]
+        : null;
+    const isSessionCliEngineTurn =
+      selectedAgents.length === 0 &&
+      (!selectedModels || selectedModels.length === 0) &&
+      Boolean(sessionCli);
+    const isSingleExternalFastPath = Boolean(explicitExternalAgent) || isSessionCliEngineTurn;
+    const isMultiAgentCoordinatorRoute =
+      selectedAgents.length >= 2 ||
+      (selectedAgents.length === 1 &&
+        selectedAgents[0].isExternalCli &&
+        Boolean(selectedModels && selectedModels.length > 0));
+    const isSwarmBroadcastFastPath =
+      selectedAgents.length === 1 &&
+      selectedAgents[0].driverKind === 'swarm_broadcast' &&
+      (!selectedModels || selectedModels.length === 0);
+
+    if (isMultiAgentCoordinatorRoute) {
+      const handles = selectedAgents.map((agent) => `@${agent.agentHandle}`).join(', ');
+      const routingHeader = `[协同智能体: ${handles}]`;
+      finalContent = finalContent ? `${routingHeader}\n${finalContent}` : routingHeader;
     }
 
     // 合并附件
@@ -418,6 +522,7 @@ export function useInputBarV2(
     // 2) 首条消息 empty→docked remount 或页面刷新时不会把已发送内容恢复进输入框
     // sendMessageWithIds 仍会再清一次（attachments / sticky refs），此处只提前清文本。
     const previousInput = latestState.inputValue;
+    const previousAttachments = [...currentAttachments];
     clearComposerDraft(latestState.sessionId);
     opts?.onClearDraft?.(latestState.sessionId);
     if (latestState.sessionId) {
@@ -426,6 +531,334 @@ export function useInputBarV2(
     latestState.setInputValue('');
 
     try {
+      // ── Fast-Path 2: 蜂群 @all 广播高优指令 ──
+      if (isSwarmBroadcastFastPath && isAgentMeshHostConnected() && latestState.sessionId) {
+        await agentMeshHost.swarmControl({
+          action: 'post_board',
+          chatSessionId: latestState.sessionId,
+          text: `@all ${finalContent}`,
+          priority: 'correction',
+          mentions: ['all'],
+        });
+        latestState.clearAttachments();
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        opts?.clearSelectedAgents?.();
+        return;
+      }
+
+      // ── 运行中的外部 CLI 会话：继续输入自动进入 QueuedMessageStack（支持一键 Steer 纠偏） ──
+      const currentExternalThread = selectActiveExternalThreadForSession(
+        useAgentMeshStore.getState(),
+        latestState.sessionId,
+      );
+      if (
+        currentExternalThread &&
+        selectedAgents.length === 0 &&
+        (!selectedModels || selectedModels.length === 0) &&
+        typeof latestState.enqueueMessage === 'function' &&
+        (latestState.queuedMessages?.length ?? 0) < QUEUE_HARD_CAP
+      ) {
+        const nonStickyRefs = (latestState.pendingContextRefs ?? []).filter(
+          (r) => r.isSticky !== true,
+        );
+        latestState.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
+        latestState.clearAttachments();
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        return;
+      }
+
+      // ── Fast-Path 1: 单个外部编程 CLI 100% 原生 Chat V2 消息流执行 ──
+      if (isSingleExternalFastPath && !willEnqueue && !currentExternalThread) {
+        const targetAgentId = explicitExternalAgent
+          ? explicitExternalAgent.agentId
+          : sessionCli!.id;
+        const agentDisplayName = explicitExternalAgent
+          ? explicitExternalAgent.name || resolveAgentDisplayName(targetAgentId)
+          : resolveAgentDisplayName(sessionCli!.id, sessionCli!.name);
+        const displayUserContent = explicitExternalAgent
+          ? finalContent
+            ? `@${explicitExternalAgent.agentHandle} ${finalContent}`
+            : `@${explicitExternalAgent.agentHandle}`
+          : finalContent;
+
+        const targetSessionId = latestState.sessionId || 'default';
+        const meshSnapshot = useAgentMeshStore.getState();
+        const sessionBoundCliId = selectSelectedCliForSession(meshSnapshot, latestState.sessionId);
+        const appliesSessionCliOverrides =
+          isSessionCliEngineTurn ||
+          Boolean(sessionBoundCliId && normalizeAgentHandle(sessionBoundCliId) === normalizeAgentHandle(targetAgentId));
+        const selectedCliModel = appliesSessionCliOverrides
+          ? selectSelectedCliModelForSession(meshSnapshot, latestState.sessionId)
+          : null;
+        const selectedCliEffort = appliesSessionCliOverrides
+          ? selectSelectedCliEffortForSession(meshSnapshot, latestState.sessionId)
+          : null;
+        const effectiveAssistantLabel = selectedCliModel
+          ? `${agentDisplayName} (${selectedCliModel})`
+          : agentDisplayName;
+        const userMessageId = generateId('msg');
+        const assistantMessageId = generateId('msg');
+
+        const latestBeforeCommit = store.getState();
+        let createdNativeMessages = false;
+        const createdUserBlockIds: string[] = [];
+
+        if (typeof latestBeforeCommit.sendMessageWithIds === 'function') {
+          await latestBeforeCommit.sendMessageWithIds(
+            displayUserContent,
+            readyAttachments,
+            userMessageId,
+            assistantMessageId,
+          );
+          createdNativeMessages = true;
+
+          const postCommitState = store.getState();
+          if (postCommitState.messageMap instanceof Map) {
+            const createdUser = postCommitState.messageMap.get(userMessageId);
+            if (createdUser?.blockIds) {
+              createdUserBlockIds.push(...createdUser.blockIds);
+            }
+            const createdAssistant = postCommitState.messageMap.get(assistantMessageId);
+            if (createdAssistant) {
+              const nextMap = new Map(postCommitState.messageMap);
+              nextMap.set(assistantMessageId, {
+                ...createdAssistant,
+                _meta: {
+                  ...createdAssistant._meta,
+                  modelId: effectiveAssistantLabel,
+                  modelDisplayName: effectiveAssistantLabel,
+                },
+              });
+              store.setState({ messageMap: nextMap });
+            }
+          }
+        }
+
+        const rollbackNativeTurn = (restoreDraft: boolean) => {
+          if (createdNativeMessages) {
+            store.setState((s) => {
+              const nextMap = s.messageMap instanceof Map ? new Map(s.messageMap) : s.messageMap;
+              if (nextMap instanceof Map) {
+                nextMap.delete(userMessageId);
+                nextMap.delete(assistantMessageId);
+              }
+              const nextBlocks = s.blocks instanceof Map ? new Map(s.blocks) : s.blocks;
+              if (nextBlocks instanceof Map) {
+                createdUserBlockIds.forEach((id) => nextBlocks.delete(id));
+              }
+              const nextOrder = Array.isArray(s.messageOrder)
+                ? s.messageOrder.filter((id) => id !== userMessageId && id !== assistantMessageId)
+                : s.messageOrder;
+              return {
+                ...(nextMap instanceof Map ? { messageMap: nextMap } : {}),
+                ...(nextBlocks instanceof Map ? { blocks: nextBlocks } : {}),
+                ...(Array.isArray(nextOrder) ? { messageOrder: nextOrder } : {}),
+                sessionStatus: 'idle' as const,
+                currentStreamingMessageId: null,
+                ...(restoreDraft ? { attachments: previousAttachments } : {}),
+              };
+            });
+          }
+          if (restoreDraft) {
+            store.getState().setInputValue(previousInput);
+          }
+        };
+
+        let startedThread: MeshThreadState | null = null;
+        try {
+          let binding = useAgentMeshStore.getState().workspaceBindings[targetSessionId] ?? null;
+          if (!binding && latestState.sessionId) {
+            binding = await agentMeshHost.getWorkspaceBinding(latestState.sessionId);
+          }
+          const cwd = binding?.rootPath ?? '';
+          const promptForExternal = selectedPagesSnapshot?.text
+            ? `<study_context source="${selectedPagesSnapshot.sourceName}" locator="${selectedPagesSnapshot.locator}">\n${selectedPagesSnapshot.text}\n</study_context>\n\n${finalContent}`
+            : finalContent;
+
+          resetBridgeState(targetSessionId);
+
+          startedThread = await agentMeshHost.startTurn({
+            chatSessionId: targetSessionId,
+            agentId: targetAgentId,
+            rosterName:
+              explicitExternalAgent?.driverKind === 'swarm_member'
+                ? explicitExternalAgent.agentHandle
+                : undefined,
+            cwd,
+            prompt: promptForExternal,
+            userPrompt: displayUserContent,
+            ...(selectedCliModel ? { model: selectedCliModel } : {}),
+            ...(selectedCliEffort ? { reasoningEffort: selectedCliEffort } : {}),
+            timelineMode: 'native_chat',
+            userMessageId,
+            assistantMessageId,
+            isolatedBranch: binding?.isolatedBranch,
+            pdfRefTags: pdfRefTags || undefined,
+            pdfContext: selectedPagesSnapshot,
+            contextRefs: pendingContextRefs ?? undefined,
+          });
+        } catch (startErr) {
+          rollbackNativeTurn(true);
+          throw startErr;
+        }
+
+        if (!startedThread && !isAgentMeshHostConnected()) {
+          rollbackNativeTurn(true);
+          showGlobalNotification(
+            'warning',
+            i18n.t(
+              'agentMesh:routing.hostUnavailable',
+              '外部智能体宿主桥接未就绪，请在桌面端启用多智能体插件',
+            ),
+          );
+          return;
+        }
+
+        // Mock / 非原生事件桥回退：当宿主未返回 nativeTimelineAttached === true 时，
+        // 在助手消息上创建内容块并镜像 useAgentMeshStore 状态更新直至终态。
+        if (startedThread && startedThread.nativeTimelineAttached !== true && createdNativeMessages) {
+          const targetThreadId = startedThread.threadId;
+          let contentBlockId: string | null = null;
+          const curStore = store.getState();
+          if (typeof curStore.createBlock === 'function') {
+            contentBlockId = curStore.createBlock(assistantMessageId, 'content');
+          } else if (curStore.blocks instanceof Map && curStore.messageMap instanceof Map) {
+            const fallbackBlockId = generateId('blk');
+            contentBlockId = fallbackBlockId;
+            store.setState((s) => {
+              const nextBlocks = new Map(s.blocks);
+              nextBlocks.set(fallbackBlockId, {
+                id: fallbackBlockId,
+                type: 'content',
+                status: 'pending',
+                messageId: assistantMessageId,
+                content: '',
+                startedAt: Date.now(),
+              });
+              const nextMap = new Map(s.messageMap);
+              const assistantMsg = nextMap.get(assistantMessageId);
+              if (assistantMsg) {
+                nextMap.set(assistantMessageId, {
+                  ...assistantMsg,
+                  blockIds: [...assistantMsg.blockIds, fallbackBlockId],
+                });
+              }
+              return { blocks: nextBlocks, messageMap: nextMap };
+            });
+          }
+
+          let lastMirroredText = '';
+          let settled = false;
+          let unsubscribeMirror: (() => void) | null = null;
+
+          const syncMirroredThread = (thread: MeshThreadState) => {
+            if (settled) return;
+            const s = store.getState();
+            if (contentBlockId && thread.assistantText !== lastMirroredText) {
+              if (typeof s.updateBlock === 'function') {
+                const existingBlock = s.blocks instanceof Map ? s.blocks.get(contentBlockId) : undefined;
+                s.updateBlock(contentBlockId, {
+                  content: thread.assistantText,
+                  ...(thread.assistantText.length > 0 && !existingBlock?.firstChunkAt
+                    ? { firstChunkAt: Date.now() }
+                    : {}),
+                  ...(existingBlock?.status !== 'success' && existingBlock?.status !== 'error'
+                    ? { status: 'running' }
+                    : {}),
+                });
+              } else if (
+                typeof s.updateBlockContent === 'function' &&
+                thread.assistantText.startsWith(lastMirroredText)
+              ) {
+                s.updateBlockContent(contentBlockId, thread.assistantText.slice(lastMirroredText.length));
+              }
+              lastMirroredText = thread.assistantText;
+            }
+
+            if (
+              thread.status === 'idle' ||
+              thread.status === 'stopped' ||
+              thread.status === 'failed'
+            ) {
+              settled = true;
+              unsubscribeMirror?.();
+              unsubscribeMirror = null;
+
+              const terminalStore = store.getState();
+              if (contentBlockId) {
+                if (thread.status === 'failed') {
+                  const errMsg = thread.errorMessage || 'External CLI execution failed';
+                  if (typeof terminalStore.setBlockError === 'function') {
+                    terminalStore.setBlockError(contentBlockId, errMsg);
+                  } else if (typeof terminalStore.updateBlockStatus === 'function') {
+                    terminalStore.updateBlockStatus(contentBlockId, 'error');
+                  }
+                } else if (typeof terminalStore.updateBlockStatus === 'function') {
+                  terminalStore.updateBlockStatus(contentBlockId, 'success');
+                }
+              }
+
+              if (typeof terminalStore.completeStream === 'function') {
+                const reason =
+                  thread.status === 'failed'
+                    ? 'error'
+                    : thread.status === 'stopped'
+                      ? 'cancelled'
+                      : 'success';
+                terminalStore.completeStream(reason, thread.errorMessage);
+              }
+              if (store.getState().sessionStatus !== 'idle') {
+                store.setState({
+                  sessionStatus: 'idle',
+                  currentStreamingMessageId: null,
+                });
+              }
+
+              const afterSettle = store.getState();
+              if (
+                afterSettle.sessionStatus === 'idle' &&
+                !afterSettle.dequeuing &&
+                (afterSettle.queuedMessages?.length ?? 0) > 0 &&
+                typeof afterSettle.maybeDequeue === 'function'
+              ) {
+                void afterSettle.maybeDequeue();
+              }
+            }
+          };
+
+          const initialThread =
+            useAgentMeshStore.getState().threads[targetThreadId] ?? startedThread;
+          syncMirroredThread(initialThread);
+
+          if (!settled) {
+            unsubscribeMirror = useAgentMeshStore.subscribe((meshState) => {
+              const latestThread = meshState.threads[targetThreadId];
+              if (!latestThread) return;
+              if (latestThread.nativeTimelineAttached === true) {
+                settled = true;
+                unsubscribeMirror?.();
+                unsubscribeMirror = null;
+                return;
+              }
+              syncMirroredThread(latestThread);
+            });
+          }
+        }
+
+        if (!createdNativeMessages) {
+          latestState.clearAttachments();
+        }
+        if (pdfRefTags && opts?.clearPdfPageRefs) {
+          opts.clearPdfPageRefs();
+        }
+        opts?.clearSelectedAgents?.();
+        return;
+      }
+
       if (selectedPagesSnapshot?.text) {
         const { selectionToChat } = await import('@/features/chat/context/selectionRef');
         await selectionToChat({
@@ -472,15 +905,14 @@ export function useInputBarV2(
 
       // ★ 发送成功后清除 PDF 页码选择
       if (pdfRefTags && opts?.clearPdfPageRefs) {
-        console.log('[useInputBarV2] 📄 PDF page refs consumed, clearing selection');
         opts.clearPdfPageRefs();
       }
 
-      // 🔧 发送成功后清空模型 chips
+      // 🔧 发送成功后清空模型与智能体 chips
       if (opts?.clearSelectedModels) {
-        console.log('[useInputBarV2] 🏷️ Clearing model chips');
         opts.clearSelectedModels();
       }
+      opts?.clearSelectedAgents?.();
     } catch (error: unknown) {
       console.error('[useInputBarV2] Send message failed:', error);
       // 本地回合尚未提交时恢复正文，便于重试；已 commit 则保持空输入
@@ -497,9 +929,31 @@ export function useInputBarV2(
     }
   }, [store, queueEnabled]);
 
-  // 中断流式
+  // 中断流式（含外部 CLI 活跃回合）
   const abortStream = useCallback(async () => {
     const state = store.getState();
+    const externalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    if (externalThread) {
+      await agentMeshHost.interruptTurn({
+        threadId: externalThread.threadId,
+        chatSessionId: state.sessionId || externalThread.chatSessionId,
+      });
+      if (!externalThread.nativeTimelineAttached && store.getState().sessionStatus === 'streaming') {
+        if (typeof store.getState().completeStream === 'function') {
+          store.getState().completeStream('cancelled');
+        }
+        if (store.getState().sessionStatus === 'streaming') {
+          store.setState({
+            sessionStatus: 'idle',
+            currentStreamingMessageId: null,
+          });
+        }
+      }
+      return;
+    }
 
     // 守卫检查
     if (!state.canAbort()) {
@@ -518,6 +972,27 @@ export function useInputBarV2(
   // 抢占打断并发送（Steer）
   const steerMessage = useCallback(async () => {
     const state = store.getState();
+    const externalThread = selectActiveExternalThreadForSession(
+      useAgentMeshStore.getState(),
+      state.sessionId,
+    );
+    if (externalThread && state.inputValue.trim()) {
+      const steerText = state.inputValue.trim();
+      clearComposerDraft(state.sessionId);
+      optionsRef.current?.onClearDraft?.(state.sessionId);
+      if (state.sessionId) {
+        sessionDraftLruClearer?.(state.sessionId);
+      }
+      state.setInputValue('');
+      await agentMeshHost.steerTurn({
+        threadId: externalThread.threadId,
+        chatSessionId: state.sessionId || externalThread.chatSessionId,
+        text: steerText,
+        priority: 'correction',
+      });
+      return;
+    }
+
     if (queueEnabled) {
       const prevQueueLen = state.queuedMessages?.length ?? 0;
       await sendMessage();

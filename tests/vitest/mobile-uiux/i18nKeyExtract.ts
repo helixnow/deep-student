@@ -280,6 +280,7 @@ export const SPLIT_INPUT_BAR_SCAN_FILES: readonly ScanFileSpec[] = [
   { file: 'src/features/chat/components/input-bar/InputBarV2.tsx' },
   { file: 'src/features/chat/components/input-bar/useInputBarV2.ts' },
   { file: 'src/features/chat/components/input-bar/ComposerToolbar.tsx' },
+  { file: 'src/features/chat/components/input-bar/T3ModelSelectorPopover.tsx' },
   { file: 'src/features/chat/components/input-bar/ComposerTextarea.tsx' },
   { file: 'src/features/chat/components/input-bar/ComposerPlusMenu.tsx' },
   { file: 'src/features/chat/components/input-bar/ComposerInlinePanel.tsx' },

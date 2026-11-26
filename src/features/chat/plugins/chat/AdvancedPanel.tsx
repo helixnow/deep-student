@@ -99,13 +99,20 @@ interface AdvancedPanelProps {
   onClose: () => void;
   /** 侧栏模式：隐藏头部，使用单列布局 */
   sidebarMode?: boolean;
+  /** 模型选择器浮层内原位变异模式：隐藏头部、移除嵌套 ScrollArea，采用紧凑双列网格 */
+  embeddedInPopover?: boolean;
 }
 
 // ============================================================================
 // 组件
 // ============================================================================
 
-export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, sidebarMode = false }) => {
+export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({
+  store,
+  onClose,
+  sidebarMode = false,
+  embeddedInPopover = false,
+}) => {
   const { t } = useTranslation(['chat_host', 'common', 'chatV2', 'enhanced_rag']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
@@ -254,25 +261,16 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   // 多模态精排：未显式设置时跟随全局 Rerank 开关（发送链路同样按此回退）
   const multimodalEnableReranking = chatParams.multimodalEnableReranking ?? ragEnableReranking;
 
-  return (
-    <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
-      {/* 面板头部 - 仅侧栏模式隐藏（侧栏有自己的标题栏）；
-          📱 移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键） */}
-      {!sidebarMode && (
-        <ComposerPanel.Header
-          icon={SlidersHorizontal}
-          title={t('common:chat_controls')}
-          subtitle={isMobile ? undefined : t('chat_host:advanced.notice')}
-          onClose={onClose}
-          closeAriaLabel={t('common:actions.cancel')}
-          className="mb-3"
-        />
-      )}
-
-      {/* 设置区域 - 可滚动 */}
-      <CustomScrollArea className={isMobile || sidebarMode ? 'flex-1 min-h-0' : undefined} viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : undefined)}>
-        {/* 侧栏模式强制单列布局，非侧栏模式使用响应式双列 */}
-        <div className={sidebarMode ? 'flex flex-col gap-2 pb-1' : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'}>
+  const controlsGrid = (
+    <div
+      className={
+        sidebarMode
+          ? 'flex flex-col gap-2 pb-1'
+          : embeddedInPopover
+            ? 'grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 pb-1'
+            : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'
+      }
+    >
         {/* 温度 */}
         <div className="p-2">
           <div className="flex items-center gap-1.5">
@@ -490,7 +488,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         </div>
 
         {/* 知识库检索配置 */}
-        <div className={cn('p-2', !sidebarMode && 'md:col-span-2')}>
+        <div className={cn('p-2', !sidebarMode && (embeddedInPopover ? 'sm:col-span-2' : 'md:col-span-2'))}>
           <div className="flex items-center gap-1.5 mb-2">
             <Stack size={12} className="text-muted-foreground shrink-0" />
             <Label className="text-xs font-medium shrink-0">
@@ -500,7 +498,15 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               {t('chat_host:rag.panel.vfs_subtitle')}
             </span>
           </div>
-          <div className={sidebarMode ? 'flex flex-col gap-2' : 'grid grid-cols-1 md:grid-cols-3 gap-2'}>
+          <div
+            className={
+              sidebarMode
+                ? 'flex flex-col gap-2'
+                : embeddedInPopover
+                  ? 'grid grid-cols-1 sm:grid-cols-3 gap-2'
+                  : 'grid grid-cols-1 md:grid-cols-3 gap-2'
+            }
+          >
             {/* Top-K 滑条 */}
             <div className="rounded-md border border-border/35 bg-card/60 p-2">
               <SnappySlider
@@ -607,7 +613,30 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </div>
           </div>
         </div>
-      </div>
+    </div>
+  );
+
+  if (embeddedInPopover) {
+    return <div data-testid="t3-embedded-advanced-panel">{controlsGrid}</div>;
+  }
+
+  return (
+    <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
+      {!sidebarMode && (
+        <ComposerPanel.Header
+          icon={SlidersHorizontal}
+          title={t('common:chat_controls')}
+          subtitle={isMobile ? undefined : t('chat_host:advanced.notice')}
+          onClose={onClose}
+          closeAriaLabel={t('common:actions.cancel')}
+          className="mb-3"
+        />
+      )}
+      <CustomScrollArea
+        className={isMobile || sidebarMode ? 'flex-1 min-h-0' : undefined}
+        viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : undefined)}
+      >
+        {controlsGrid}
       </CustomScrollArea>
     </div>
   );

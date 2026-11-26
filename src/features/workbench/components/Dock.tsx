@@ -385,7 +385,7 @@ function DockImpl({
     ...minimizedSlotIds,
     APPS_DOCK_TYPE_ID,
     AGENT_CONTROL_DOCK_ID,
-    ...(effectiveAutohide ? [DOCK_COLLAPSE_ID] : []),
+    ...(isCompactViewport && effectiveAutohide ? [DOCK_COLLAPSE_ID] : []),
   ];
   const orderedKey = orderedIds.join('|');
   const normalizedSize = Number.isFinite(size) ? size : 100;
@@ -1577,7 +1577,7 @@ function DockImpl({
           onTipPointerLeave={handleTipItemLeave}
           onFocus={() => focusDockItem(AGENT_CONTROL_DOCK_ID)}
         />
-        {effectiveAutohide && (
+        {isCompactViewport && effectiveAutohide && (
           <div
             data-testid={`wb-dock-item-${DOCK_COLLAPSE_ID}`}
             data-wb-dock-item-wrap=""

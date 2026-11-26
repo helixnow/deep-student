@@ -55,3 +55,5 @@ export function settingsNavigation(slotEntries: readonly SlotEntry<SettingsSecti
   }
   return { sidebarNavGroups, sidebarNavItems, sidebarCategories, settingsSearchIndex: [...entries.values()] };
 }
+
+export { resolveSettingsBreadcrumbLabel } from '@/ui-kernel/settingsBreadcrumb';

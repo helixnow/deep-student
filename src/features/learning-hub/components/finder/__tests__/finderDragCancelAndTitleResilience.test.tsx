@@ -346,7 +346,6 @@ describe('80-char mixed CJK/Latin/Emoji/special-char title resilience in Finder'
   });
 
   it('keeps FinderToolbar breadcrumbs truncated with title tooltip and right-side actions protected across modes', () => {
-    const onImportFiles = vi.fn();
     const { rerender } = render(
       <FinderToolbar
         breadcrumbs={[
@@ -355,7 +354,7 @@ describe('80-char mixed CJK/Latin/Emoji/special-char title resilience in Finder'
           { id: 'b3', name: ADVERSARIAL_80_TITLE },
         ]}
         onBreadcrumbClick={vi.fn()}
-        onImportFiles={onImportFiles}
+        createMenuItems={<div>menu</div>}
         onViewModeChange={vi.fn()}
         onSearchChange={vi.fn()}
         titlebarMode={false}
@@ -371,10 +370,10 @@ describe('80-char mixed CJK/Latin/Emoji/special-char title resilience in Finder'
     expect(currentCrumb.className).toContain('flex-1');
     expect(currentCrumb.className).toContain('truncate');
 
-    // Right-side import button stays visible and inside a shrink-0 group
-    const importBtn = screen.getByTestId('finder-toolbar-import');
-    expect(importBtn).toBeVisible();
-    expect(importBtn.className).toContain('shrink-0');
+    // Right-side create menu button stays visible inside a shrink-0 utility group
+    const newBtn = screen.getByRole('button', { name: '新建' });
+    expect(newBtn).toBeVisible();
+    expect(newBtn.closest('.shrink-0')).not.toBeNull();
 
     // Also verify titlebarMode with empty breadcrumbs + long currentTitle
     rerender(
@@ -382,7 +381,7 @@ describe('80-char mixed CJK/Latin/Emoji/special-char title resilience in Finder'
         breadcrumbs={[]}
         currentTitle={ADVERSARIAL_80_TITLE}
         onBreadcrumbClick={vi.fn()}
-        onImportFiles={onImportFiles}
+        createMenuItems={<div>menu</div>}
         titlebarMode="window"
       />,
     );
@@ -390,7 +389,7 @@ describe('80-char mixed CJK/Latin/Emoji/special-char title resilience in Finder'
     expect(rootTitle).toHaveTextContent(ADVERSARIAL_80_TITLE);
     expect(rootTitle.className).toContain('min-w-0');
     expect(rootTitle.className).toContain('truncate');
-    expect(screen.getByTestId('finder-toolbar-import')).toBeVisible();
+    expect(screen.getByRole('button', { name: '新建' })).toBeVisible();
   });
 
   it.each(['list', 'grid'] as const)(

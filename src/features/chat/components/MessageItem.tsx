@@ -1716,10 +1716,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {/* 📱 移动端左侧：弱化元信息，只保留必要状态 */}
                 {isSmallScreen && !isUser && (
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {message.timestamp && (
+                      <span
+                        className="text-caption leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
+                        title={new Date(message.timestamp).toLocaleString(locale)}
+                      >
+                        {formatMessageTime(message.timestamp)}
+                      </span>
+                    )}
                     {!isReadOnlySession && !isLocked && (
                       <>
                         <MemoryKernelAttributionPill
-                          className="mr-1"
+                          compact
                           messageId={messageId}
                           sessionId={storeSessionId}
                           variantId={activeVariant?.id}
@@ -1728,7 +1736,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           isFirstAssistantTurn={isFirstAssistantTurn}
                         />
                         <SkillAttributionPill
-                          className="mr-1"
+                          compact
                           messageId={messageId}
                           sessionId={storeSessionId}
                           variantId={activeVariant?.id}
@@ -1738,14 +1746,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           sessionSkillStateJson={storeSkillStateJson}
                         />
                       </>
-                    )}
-                    {message.timestamp && (
-                      <span
-                        className="text-caption leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
-                        title={new Date(message.timestamp).toLocaleString(locale)}
-                      >
-                        {formatMessageTime(message.timestamp)}
-                      </span>
                     )}
                   </div>
                 )}
@@ -1785,7 +1785,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {!isUser && !isReadOnlySession && !isLocked && (
                       <>
                         <MemoryKernelAttributionPill
-                          className="mr-1.5"
+                          className="mr-0.5"
                           messageId={messageId}
                           sessionId={storeSessionId}
                           variantId={activeVariant?.id}
@@ -1794,7 +1794,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           isFirstAssistantTurn={isFirstAssistantTurn}
                         />
                         <SkillAttributionPill
-                          className="mr-1.5"
+                          className="mr-0.5"
                           messageId={messageId}
                           sessionId={storeSessionId}
                           variantId={activeVariant?.id}
@@ -1807,7 +1807,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     )}
                     {!isUser && !isMultiVariant && isVersioned && (
                       <div
-                        className="inline-flex items-center gap-0.5 mr-1.5 px-0.5 py-0.5 rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground/80 select-none"
+                        className="inline-flex items-center gap-0.5 mr-1 text-caption text-muted-foreground/70 select-none"
                         data-testid="message-version-switcher"
                         aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
                       >
@@ -1817,11 +1817,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToPrevVersion}
                           disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-muted/60 hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
-                          <CaretLeft size={13} />
+                          <CaretLeft size={12} />
                         </button>
-                        <span data-testid="message-version-indicator" className="px-1 tabular-nums">
+                        <span data-testid="message-version-indicator" className="px-0.5 tabular-nums">
                           {activeVersionIndex + 1} / {versionCount}
                         </span>
                         <button
@@ -1830,9 +1830,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToNextVersion}
                           disabled={!canNextVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-muted/60 hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
-                          <CaretRight size={13} />
+                          <CaretRight size={12} />
                         </button>
                       </div>
                     )}
@@ -1931,7 +1931,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   <div className="flex items-center gap-0.5">
                     {!isUser && !isMultiVariant && isVersioned && (
                       <div
-                        className="inline-flex items-center gap-0.5 mr-1.5 px-0.5 py-0.5 rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground/80 select-none"
+                        className="inline-flex items-center gap-0.5 mr-1 text-caption text-muted-foreground/70 select-none"
                         data-testid="message-version-switcher"
                         aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
                       >
@@ -1941,11 +1941,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToPrevVersion}
                           disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
-                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretLeft size={13} />
                         </button>
-                        <span data-testid="message-version-indicator" className="px-1 tabular-nums">
+                        <span data-testid="message-version-indicator" className="px-0.5 tabular-nums">
                           {activeVersionIndex + 1} / {versionCount}
                         </span>
                         <button
@@ -1954,7 +1954,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToNextVersion}
                           disabled={!canNextVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
-                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretRight size={13} />
                         </button>

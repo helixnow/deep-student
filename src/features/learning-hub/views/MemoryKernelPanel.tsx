@@ -40,6 +40,8 @@ import {
 interface MemoryKernelPanelProps {
   /** External refresh counter bumped when `memory://changed` arrives. */
   refreshSignal?: number;
+  /** Whether the kernel panel starts expanded. Defaults to true for standalone usage. */
+  defaultExpanded?: boolean;
 }
 
 interface DeletedRuleSnapshot {
@@ -72,12 +74,15 @@ function BudgetBar({ label, used, max }: { label: string; used: number; max: num
   );
 }
 
-export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSignal = 0 }) => {
+export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
+  refreshSignal = 0,
+  defaultExpanded = true,
+}) => {
   const { t } = useTranslation(['settings', 'common']);
   const [view, setView] = useState<MemoryInspectionView | null>(null);
   const [auditLogs, setAuditLogs] = useState<MemoryAuditLogItem[]>([]);
   const [unavailable, setUnavailable] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [showPreview, setShowPreview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [reflectionReport, setReflectionReport] = useState<MemoryDialecticReflectionReport | null>(null);
@@ -359,17 +364,22 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
   return (
     <section
       data-memory-kernel-panel
-      className="rounded-lg border border-primary/20 bg-primary/[0.025] overflow-hidden"
+      className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden"
     >
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border/35 bg-background/60">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2 px-3 py-2',
+          expanded && 'border-b border-border/35',
+        )}
+      >
         <button
           type="button"
           onClick={() => setExpanded(prev => !prev)}
-          className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors text-left"
+          className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-foreground/85 hover:text-foreground transition-colors text-left"
         >
-          {expanded ? <CaretDown size={13} /> : <CaretRight size={13} />}
-          <Sparkle size={14} className="text-primary" weight="fill" />
+          {expanded ? <CaretDown size={13} className="text-muted-foreground" /> : <CaretRight size={13} className="text-muted-foreground" />}
+          <Sparkle size={14} className="text-muted-foreground" />
           <span>{t('settings:memory.kernel.title')}</span>
           <span className="text-xs font-normal text-muted-foreground">
             {t('settings:memory.kernel.subtitle')}
