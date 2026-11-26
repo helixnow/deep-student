@@ -442,6 +442,8 @@ export interface ComposerToolbarProps {
 // 主组件
 // ============================================================================
 
+const ANTHROPIC_TRIGGER_BRAND_STYLE: React.CSSProperties = { color: '#D97757' };
+
 export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   isMobile,
   isMobileEnv,
@@ -761,7 +763,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                     type="button"
                     data-testid="thinking-runtime-menu-trigger"
                     className={cn(
-                      'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-muted/65 px-2.5 text-xs font-medium text-[color:var(--text-primary)] transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                      'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[var(--radius-shell-control)] bg-muted/65 px-2.5 text-xs font-medium text-[color:var(--text-primary)] transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
                       coarseSolidTouchHeightClass
                     )}
                     title={thinkingRuntimeTitle}
@@ -788,7 +790,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                         showTooltip={false}
                         variant={triggerUsesMonoBrand ? 'mono' : 'color'}
                         renderMode={triggerUsesMonoBrand ? 'default' : 'glyph'}
-                        style={resolvedTriggerBrand === 'anthropic' ? { color: '#D97757' } : undefined}
+                        style={resolvedTriggerBrand === 'anthropic' ? ANTHROPIC_TRIGGER_BRAND_STYLE : undefined}
                         className="shrink-0 text-foreground"
                       />
                     ) : (
