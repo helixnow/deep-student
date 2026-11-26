@@ -203,8 +203,8 @@ describe('U04 Heavy Mixed Rich Content — Containment, Dark-Mode Readability & 
 
       // Table horizontal scroll container prevents bubble blowout
       const tableScrollRule = markdownCss.slice(
-        markdownCss.indexOf('.chat-v2 .markdown-content .table-scroll-area {'),
-        markdownCss.indexOf('}', markdownCss.indexOf('.chat-v2 .markdown-content .table-scroll-area {')) + 1,
+        markdownCss.indexOf('.chat-v2 .markdown-content .table-scroll-area.scroll-area--native {'),
+        markdownCss.indexOf('}', markdownCss.indexOf('.chat-v2 .markdown-content .table-scroll-area.scroll-area--native {')) + 1,
       );
       expect(tableScrollRule).toContain('max-width: 100%;');
       expect(tableScrollRule).toContain('min-width: 0;');
@@ -212,8 +212,8 @@ describe('U04 Heavy Mixed Rich Content — Containment, Dark-Mode Readability & 
 
       // Display KaTeX container + standalone .katex-display containment & vertical breathing room
       const mathScrollRule = markdownCss.slice(
-        markdownCss.indexOf('.chat-v2 .markdown-content .math-scroll-area {'),
-        markdownCss.indexOf('}', markdownCss.indexOf('.chat-v2 .markdown-content .math-scroll-area {')) + 1,
+        markdownCss.indexOf('.chat-v2 .markdown-content .math-scroll-area.scroll-area--native {'),
+        markdownCss.indexOf('}', markdownCss.indexOf('.chat-v2 .markdown-content .math-scroll-area.scroll-area--native {')) + 1,
       );
       expect(mathScrollRule).toContain('max-width: 100%;');
       expect(mathScrollRule).toContain('min-width: 0;');
