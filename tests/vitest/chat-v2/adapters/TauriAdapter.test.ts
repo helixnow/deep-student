@@ -20,6 +20,10 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(),
 }));
 
+vi.mock('@/features/workbench', () => ({
+  resolveOpenDesktopCanvasNoteId: vi.fn(() => undefined),
+}));
+
 // Import after mocking
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';

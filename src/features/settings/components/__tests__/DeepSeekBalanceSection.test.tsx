@@ -29,7 +29,15 @@ vi.mock('react-i18next', () => ({
       const template = map[key] ?? key;
       return template.replace('{{count}}', String(options?.count ?? ''));
     },
+    i18n: {
+      language: 'zh-CN',
+      resolvedLanguage: 'zh-CN',
+    },
   }),
+  initReactI18next: {
+    type: '3rdParty',
+    init: () => undefined,
+  },
 }));
 
 const vendor: VendorConfig = {

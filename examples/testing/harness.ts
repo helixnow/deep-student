@@ -26,7 +26,18 @@ export interface ExampleManifest {
   name: string;
   version: string;
   engines: { deepStudent: string };
-  deepStudent: { manifestVersion: 1; id: string; platforms: string[]; host?: string; ui?: string; permissions?: string[]; requires?: Record<string, string> };
+  deepStudent: {
+    manifestVersion: 1 | 2;
+    id: string;
+    platforms: string[];
+    tier?: 'declarative' | 'ui-only' | 'full';
+    kind?: string;
+    host?: string;
+    ui?: string;
+    permissions?: string[];
+    requires?: Record<string, string>;
+    declarative?: Record<string, string[]>;
+  };
 }
 
 export interface ExamplePackage {

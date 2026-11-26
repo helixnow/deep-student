@@ -454,8 +454,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   const probeRemoteSyncDataset = useCallback(
     async (config: cloudApi.CloudStorageConfig): Promise<boolean> => {
-      if (typeof cloudApi.listFiles !== 'function') return false;
       try {
+        if (typeof cloudApi.listFiles !== 'function') return false;
         const files = await cloudApi.listFiles(config, 'data_governance/');
         return Array.isArray(files) && files.length > 0;
       } catch {

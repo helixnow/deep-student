@@ -82,12 +82,9 @@ it('subtitle import writes __change_log in the Rust order (queued progress drain
   await waitFor(() => status() === 'completed' || status() === 'completed_with_issues', 60_000);
 
   const rows = log().slice(afterUpload).map(r => [r.table_name, r.record_id, r.operation]);
-  expect(rows.slice(0, 7)).toEqual([
-    ['files', fileId, 'UPDATE'],
-    ['resources', resourceId, 'UPDATE'],
-    ['files', fileId, 'UPDATE'],
-    ['files', fileId, 'UPDATE'],
-    ['resources', resourceId, 'UPDATE'],
+  // Local-derived progress/index_status echoes on `resources` and `files` are suppressed
+  // from `__change_log` (commit 8441daddc), leaving only the authoritative `files` UPDATEs.
+  expect(rows).toEqual([
     ['files', fileId, 'UPDATE'],
     ['files', fileId, 'UPDATE'],
   ]);

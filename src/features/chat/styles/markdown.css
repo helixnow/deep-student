@@ -756,7 +756,7 @@
 
 /* Native horizontal scroll container for tables — keeps a visible thin scrollbar
    when overflowing and avoids OverlayScrollbars theme re-init overhead */
-.chat-v2 .markdown-content .table-scroll-area {
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -770,33 +770,33 @@
 }
 
 /* Always-visible thin horizontal scrollbar thumb when wide tables or display KaTeX overflow,
-   overriding global transparent-until-hover so users never mistake overflow for hard clipping. */
-.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar,
-.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar {
+   extending the canonical .scroll-area--native fallback so users never mistake overflow for hard clipping. */
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native::-webkit-scrollbar,
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native::-webkit-scrollbar {
   height: 8px;
 }
 
-.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-track,
-.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-track {
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native::-webkit-scrollbar-track,
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb,
-.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb {
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native::-webkit-scrollbar-thumb,
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb:hover,
-.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb:hover {
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native::-webkit-scrollbar-thumb:hover,
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
 }
 
-.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb:active,
-.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb:active {
+.chat-v2 .markdown-content .table-scroll-area.scroll-area--native::-webkit-scrollbar-thumb:active,
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-thumb-active);
   background-clip: padding-box;
 }
@@ -1568,7 +1568,7 @@
   min-width: 0;
 }
 
-.chat-v2 .markdown-content .math-scroll-area {
+.chat-v2 .markdown-content .math-scroll-area.scroll-area--native {
   display: block;
   width: 100%;
   max-width: 100%;

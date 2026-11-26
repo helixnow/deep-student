@@ -195,7 +195,11 @@ describe('docs/plugins/SECURITY.md', () => {
 
 describe('example plugins', () => {
   it('Host halves type-check with the Host settings (strict)', () => {
-    const files = new Map(examplePackages().map((e) => [path.join(EXAMPLES_DIR, e.dirName, 'index.ts'), null]));
+    const files = new Map(
+      examplePackages()
+        .filter((e) => Boolean(e.pkg.deepStudent.host))
+        .map((e) => [path.join(EXAMPLES_DIR, e.dirName, e.pkg.deepStudent.host!), null]),
+    );
     expect(typecheck(files, 'host').map((d) => `${path.relative(REPO_ROOT, d.file)}:${d.line}: ${d.message}`)).toEqual([]);
   }, TYPECHECK_TIMEOUT);
 });

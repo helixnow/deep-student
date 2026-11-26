@@ -135,7 +135,8 @@ describe('OS mode drag performance anti-regression', () => {
     expect(sections).toMatch(/React\.lazy\(\(\) => import\(/);
     // 设置插件随启动安装：分区模块只能经动态 import 进入，静态导入任何一个都会把它拉进启动 chunk。
     expect(sections.match(/^import (?!type )[^;]*;/gm)).toEqual(["import React from 'react';"]);
-    expect(mainContent).toContain('viewportRef={setSettingsScrollElement}');
+    expect(mainContent).toContain('viewportRef={handleViewportRef}');
+    expect(mainContent).toContain('setSettingsScrollElement(el)');
 
     const virtualList = readRepo(
       'src',
