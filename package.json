@@ -1,6 +1,6 @@
 {
   "name": "deep-student",
-  "version": "0.20.10",
+  "version": "0.20.11",
   "private": true,
   "description": "AI-native study workbench for deep reading, spaced repetition, practice, and knowledge mastery across Desktop, Web/PWA, and Mobile.",
   "license": "AGPL-3.0-or-later",
