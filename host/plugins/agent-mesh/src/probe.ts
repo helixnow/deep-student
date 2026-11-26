@@ -629,12 +629,58 @@ export function createDefaultProbeCommandRunner(
 export function extractSemanticVersion(rawOutput: string): string | null {
   const cleaned = rawOutput.trim();
   if (!cleaned) return null;
-  const semverMatch = /\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/u.exec(cleaned);
+  const nonErrorLines = cleaned
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line.length > 0 &&
+        !/^(?:node\.js\s+v\d|error:|throw\s+new\s+error|at\s+\S)/i.test(line),
+    );
+  const candidateText = nonErrorLines.join('\n').trim();
+  if (!candidateText) return null;
+  const semverMatch = /\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/u.exec(
+    candidateText,
+  );
   if (semverMatch?.[1]) {
     return semverMatch[1];
   }
-  const firstLine = cleaned.split(/\r?\n/u)[0]?.trim() ?? '';
+  const firstLine = nonErrorLines[0] ?? '';
   return firstLine.length > 0 && firstLine.length <= 64 ? firstLine : null;
+}
+
+function isHealthyVersionProbe(res: ProbeCommandResult): boolean {
+  return !res.notFound && !res.timedOut && res.exitCode === 0;
+}
+
+function buildDarwinBundledFallbackPaths(
+  driver: Exclude<ExternalAgentDriverKind, 'custom'>,
+  homeDir: string,
+): string[] {
+  if (driver !== 'codex') return [];
+  const candidates = [
+    '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex',
+    '/Applications/Codex.app/Contents/Resources/codex',
+  ];
+  const trimmedHome = homeDir.trim();
+  if (trimmedHome) {
+    candidates.push(
+      path.posix.join(
+        trimmedHome,
+        'Applications',
+        'ChatGPT.app',
+        'Contents',
+        'Resources',
+        'codex-cli',
+        'CodexCLI.app',
+        'Contents',
+        'MacOS',
+        'codex',
+      ),
+      path.posix.join(trimmedHome, 'Applications', 'Codex.app', 'Contents', 'Resources', 'codex'),
+    );
+  }
+  return candidates;
 }
 
 function hasNonEmptyEnv(
@@ -665,6 +711,7 @@ export class CliAgentProber {
   private readonly readTextFile: ReadTextFilePort;
   private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly homeDir: string;
+  private readonly platform: NodeJS.Platform;
   private readonly now: () => number;
 
   private cachedResult: {
@@ -685,6 +732,7 @@ export class CliAgentProber {
     this.fileExists = options.fileExists ?? defaultFileExists;
     this.readTextFile = options.readTextFile ?? defaultReadTextFile;
     this.homeDir = options.homeDir ?? os.homedir();
+    this.platform = platform;
     this.env = augmentEnvWithPosixUserPath(options.env ?? process.env, this.homeDir, platform);
     this.now = options.now ?? Date.now;
   }
@@ -766,10 +814,28 @@ export class CliAgentProber {
 
   private async probeBuiltIn(desc: BuiltInCliDescriptor): Promise<DetectedCliAgent> {
     const probedAt = this.now();
-    const res = await this.safeRun(desc.command, desc.versionArgs);
-    const combinedOutput = `${res.stdout}\n${res.stderr}`.trim();
-    const version = extractSemanticVersion(combinedOutput);
-    const installed = !res.notFound && !res.timedOut && (res.exitCode === 0 || version !== null);
+    let res = await this.safeRun(desc.command, desc.versionArgs);
+    let activeCommand = desc.command;
+    let installed = isHealthyVersionProbe(res);
+
+    // If PATH binary is missing or crashed (e.g. broken npm optional dependency shim),
+    // probe known macOS app-bundled CLI binaries before giving up.
+    if (!installed && this.platform === 'darwin') {
+      for (const fallbackPath of buildDarwinBundledFallbackPaths(desc.id, this.homeDir)) {
+        if (!(await this.fileExists(fallbackPath))) continue;
+        const fallbackRes = await this.safeRun(fallbackPath, desc.versionArgs);
+        if (isHealthyVersionProbe(fallbackRes)) {
+          res = { ...fallbackRes, resolvedPath: fallbackRes.resolvedPath ?? fallbackPath };
+          activeCommand = fallbackPath;
+          installed = true;
+          break;
+        }
+      }
+    }
+
+    const version = installed
+      ? (extractSemanticVersion(res.stdout) ?? extractSemanticVersion(res.stderr))
+      : null;
 
     if (!installed) {
       return {
@@ -786,11 +852,11 @@ export class CliAgentProber {
       };
     }
 
-    const resolvedCmd = res.resolvedPath ?? desc.command;
+    const resolvedCmd = res.resolvedPath ?? activeCommand;
     const [capabilities, auth, modelCatalog] = await Promise.all([
-      this.detectRefinedCapabilities(desc),
-      this.detectAuthHint(desc.id, desc.command),
-      this.detectDriverModels(desc.id, desc.command),
+      this.detectRefinedCapabilities(desc, activeCommand),
+      this.detectAuthHint(desc.id, activeCommand),
+      this.detectDriverModels(desc.id, activeCommand),
     ]);
 
     return {
