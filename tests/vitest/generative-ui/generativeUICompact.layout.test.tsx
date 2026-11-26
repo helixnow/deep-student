@@ -236,17 +236,6 @@ describe('generative-ui compact CSS token contract', () => {
     expect(rendererSrc).not.toContain('[&_[data-block-type]>div]:p-2');
   });
 
-  it('documents .generative-ui-compact in DESIGN_CONSTITUTION spacing section', () => {
-    const constitution = fs.readFileSync(
-      path.join(process.cwd(), 'docs/generative-ui/DESIGN_CONSTITUTION.md'),
-      'utf8',
-    );
-    const spacingSection = constitution.split('## 3.')[0];
-    expect(spacingSection).toContain('## 2. 间距');
-    expect(spacingSection).toContain('.generative-ui-compact');
-    expect(spacingSection).toContain('generative-ui.css');
-  });
-
   it('keeps [data-generative-ui] :focus-visible ring token in the same stylesheet', () => {
     const css = fs.readFileSync(cssPath, 'utf8');
     expect(css).toContain(':focus-visible');

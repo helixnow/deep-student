@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main, develop, nightly]
+    branches: [main]
   pull_request:
-    branches: [main, develop, nightly]
+    branches: [main]
   workflow_dispatch: {}
 
 # PR updates cancel obsolete work. Main commits retain their own verification:

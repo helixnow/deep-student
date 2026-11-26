@@ -1,0 +1,37 @@
+name: Feature Request | 功能建议
+description: Suggest an improvement or new capability for DeepStudent
+title: "[Feature]: "
+labels: ["enhancement", "status/needs-triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 涉及模块
+      options:
+        - Chat & AI Agent
+        - Notes / Knowledge Base
+        - PDF / Media / Learning Hub
+        - Flashcards / FSRS / QBank
+        - Cloud Sync & Backup
+        - Plugin v2 SDK / Ecosystem
+        - Mobile / WebUI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / 解决什么痛点
+      description: Describe the learning or workflow problem this feature addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution / 期望方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered / 备选方案或补充说明

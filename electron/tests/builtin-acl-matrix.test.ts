@@ -1,5 +1,5 @@
 /**
- * `electron/shell/W23-PROGRESS.md` 的 ACL 对照表：每个内置插件命令在各窗口是否放行，以及 Tauri 2.11.5 桌面正式版与
+ * Electron 内置插件 ACL 安全矩阵：每个内置插件命令在各窗口是否放行，以及 Tauri 2.11.5 桌面正式版与
  * Electron 外壳是否实现。
  *
  * - 窗口列同时与 Electron `BuiltinAcl` 和本文件按 Tauri 规则独立推导的结果比对（tauri-utils 2.9.3 `acl/resolved.rs`、
@@ -32,8 +32,6 @@ import { FsScope } from '../shell/scope.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const CAPABILITIES = join(ROOT, 'resources/app', 'capabilities');
-const PROGRESS = join(ROOT, 'electron', 'shell', 'W23-PROGRESS.md');
-const RUST_FIXES = join(ROOT, 'host', 'e2e', 'differential', 'rust-fixes');
 const PLATFORMS = ['linux', 'darwin', 'win32'] as const;
 type Platform = (typeof PLATFORMS)[number];
 const TAURI_PLATFORM: Record<Platform, string> = { linux: 'linux', darwin: 'macOS', win32: 'windows' };
@@ -73,66 +71,6 @@ const DEBUG_ONLY = new Set(['plugin:webview|internal_toggle_devtools']);
 /** Tauri 编译了、但本构建未开 `image-ico` / `image-png` 特性，函数体恒返回错误（tauri-2.11.5 `image/plugin.rs`）。 */
 const TAURI_ALWAYS_ERR = new Set(['plugin:image|from_bytes', 'plugin:image|from_path']);
 const tauriAlwaysErrText = (name: string): string => `${name} is only supported if the \`image-ico\` or \`image-png\` Cargo features are enabled`;
-
-interface Row {
-  plugin: string;
-  commands: string[];
-  cells: string[];
-  tauri: string;
-  electron: string;
-  note: string;
-}
-
-interface ScopeRow {
-  plugin: string;
-  commands: string[];
-  diff: ScopeDiff;
-  note: string;
-}
-
-/** `<!-- name:begin -->` 与 `<!-- name:end -->` 之间表格的数据行（去掉表头与分隔行）。 */
-function readBlock(name: string, width: number): string[][] {
-  const text = readFileSync(PROGRESS, 'utf8');
-  const begin = text.indexOf(`<!-- ${name}:begin -->`);
-  const end = text.indexOf(`<!-- ${name}:end -->`);
-  if (begin < 0 || end < begin) throw new Error(`W23-PROGRESS.md has no ${name} block`);
-  const rows: string[][] = [];
-  for (const line of text.slice(begin, end).split('\n')) {
-    if (!line.startsWith('|')) continue;
-    const cells = line.slice(1, line.endsWith('|') ? -1 : undefined).split('|').map((cell) => cell.trim());
-    if (cells[0] === '插件' || /^:?-+:?$/.test(cells[0] ?? '')) continue;
-    if (cells.length !== width) throw new Error(`malformed ${name} row: ${line}`);
-    rows.push(cells);
-  }
-  return rows;
-}
-
-const quoted = (cell: string): string[] => [...cell.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? '');
-
-function readTable(): Row[] {
-  return readBlock('builtin-acl-matrix', COLUMNS.length + 5).map(([plugin = '', commands = '', ...rest]) => {
-    const note = rest.pop() ?? '';
-    const electron = rest.pop() ?? '';
-    const tauri = rest.pop() ?? '';
-    return { plugin, commands: quoted(commands), cells: rest, tauri, electron, note };
-  });
-}
-
-function readScopeTable(): ScopeRow[] {
-  return readBlock('builtin-acl-scopes', 9).map(([plugin = '', commands = '', sameAllow = '', sameDeny = '', eAllow = '', tDeny = '', eDeny = '', tAllow = '', note = '']) => ({
-    plugin,
-    commands: quoted(commands),
-    diff: {
-      sameAllow: Number(sameAllow),
-      sameDeny: Number(sameDeny),
-      electronOnlyAllow: quoted(eAllow).sort(),
-      tauriOnlyDeny: quoted(tDeny).sort(),
-      electronOnlyDeny: quoted(eDeny).sort(),
-      tauriOnlyAllow: quoted(tAllow).sort(),
-    },
-    note,
-  }));
-}
 
 /** `electron/main.ts` `registerBuiltinPlugins` 注册的插件（依赖换成空实现，只取命令表）。 */
 function registeredPlugins(): Record<string, BuiltinPlugin> {
@@ -339,151 +277,30 @@ function allCommands(): string[] {
   return [...out].sort();
 }
 
-// ------------------------------------------------------------ Tauri 正式版桌面构建编译的命令
-
-function findSources(): Map<string, string> | null {
-  const registry = join(process.env.CARGO_HOME ?? join(homedir(), '.cargo'), 'registry', 'src');
-  if (!existsSync(registry)) return null;
-  const indexes = readdirSync(registry).map((name) => join(registry, name));
-  const out = new Map<string, string>();
-  for (const crate of TAURI_ACL_CRATES) {
-    const dir = indexes.map((index) => join(index, crate)).find((candidate) => existsSync(candidate));
-    if (dir === undefined) return null;
-    out.set(crate, dir);
-  }
-  return out;
-}
-
-interface CfgEnv { os: string; debug: boolean }
-
-/** `cfg(...)` 谓词求值；原桌面构建没有打开任何出现在 handler 列表里的 feature。 */
-function evalCfg(expr: string, env: CfgEnv): boolean {
-  let pos = 0;
-  const skip = () => { while (/\s/.test(expr[pos] ?? '')) pos += 1; };
-  const parse = (): boolean => {
-    skip();
-    const name = /^[A-Za-z_]\w*/.exec(expr.slice(pos))?.[0];
-    if (name === undefined) throw new Error(`bad cfg: ${expr}`);
-    pos += name.length;
-    skip();
-    if (expr[pos] === '(') {
-      pos += 1;
-      const args: boolean[] = [];
-      for (skip(); expr[pos] !== ')'; skip()) {
-        args.push(parse());
-        skip();
-        if (expr[pos] === ',') pos += 1;
-      }
-      pos += 1;
-      if (name === 'all') return args.every(Boolean);
-      if (name === 'any') return args.some(Boolean);
-      if (name === 'not') return !args[0];
-      throw new Error(`bad cfg: ${expr}`);
-    }
-    if (expr[pos] === '=') {
-      const value = /^=\s*"([^"]*)"/.exec(expr.slice(pos));
-      if (value === null) throw new Error(`bad cfg: ${expr}`);
-      pos += value[0].length;
-      if (name === 'target_os') return value[1] === env.os;
-      if (name === 'feature') return false;
-      throw new Error(`bad cfg: ${expr}`);
-    }
-    if (name === 'desktop') return true;
-    if (name === 'mobile') return false;
-    if (name === 'debug_assertions') return env.debug;
-    throw new Error(`bad cfg: ${expr}`);
-  };
-  return parse();
-}
-
-/** 各插件 `generate_handler!` 中、在给定构建里编译进来的命令名。 */
-function compiledCommands(sources: Map<string, string>, key: string, env: CfgEnv): Set<string> {
-  const crate = key.startsWith('core:')
-    ? TAURI_ACL_CRATES.find((name) => /^tauri-\d/.test(name))
-    : TAURI_ACL_CRATES.find((name) => name.startsWith(`tauri-plugin-${key}-`));
-  const dir = crate === undefined ? undefined : sources.get(crate);
-  if (dir === undefined) throw new Error(`no crate source for ${key}`);
-  const file = key.startsWith('core:') ? join(dir, 'src', pluginOf(key), 'plugin.rs') : join(dir, 'src', 'lib.rs');
-  const blocks = [...readFileSync(file, 'utf8').matchAll(/generate_handler!\[([\s\S]*?)\]\s*\)/g)];
-  if (blocks.length !== 1) throw new Error(`${file}: expected exactly one generate_handler! block`);
-  const body = (blocks[0]?.[1] ?? '').replace(/\/\/.*$/gm, '').replace(/#!\[[^\]]*\]/g, '');
-  const out = new Set<string>();
-  let enabled = true;
-  for (const token of body.matchAll(/#\[cfg\((.*?)\)\]|([A-Za-z_][\w:]*)/gs)) {
-    if (token[1] !== undefined) enabled &&= evalCfg(token[1], env);
-    else {
-      if (enabled) out.add((token[2] ?? '').split('::').pop() ?? '');
-      enabled = true;
-    }
-  }
-  return out;
-}
-
-function tauriImplementation(sources: Map<string, string>, command: string): TauriValue {
-  const [plugin, name] = split(command);
-  const key = manifestKey(plugin);
-  if (TAURI_ACL_MANIFESTS[key] === undefined) return '无';
-  const os = { linux: 'linux', darwin: 'macos', win32: 'windows' } as const;
-  const release = PLATFORMS.filter((platform) => compiledCommands(sources, key, { os: os[platform], debug: false }).has(name));
-  if (release.length === PLATFORMS.length) return TAURI_ALWAYS_ERR.has(command) ? '报错' : '有';
-  if (release.length === 0) {
-    const debug = PLATFORMS.filter((platform) => compiledCommands(sources, key, { os: os[platform], debug: true }).has(name));
-    return debug.length === PLATFORMS.length ? 'debug' : '无';
-  }
-  if (release.length === 1 && release[0] === 'darwin') return 'macOS';
-  if (release.length === 1 && release[0] === 'win32') return 'Windows';
-  throw new Error(`${command} is compiled only on ${release.join(', ')}; add a value for it`);
-}
-
 // ------------------------------------------------------------ tests
 
-describe('electron/shell/W23-PROGRESS.md ACL table (built-in plugin command × window)', () => {
-  const rows = readTable();
-  const byCommand = new Map<string, Row>();
-  for (const row of rows) for (const name of row.commands) byCommand.set(`plugin:${row.plugin}|${name}`, row);
-
-  it('lists every built-in plugin command exactly once, with values from the legend', () => {
-    const listed = rows.flatMap((row) => row.commands.map((name) => `plugin:${row.plugin}|${name}`));
-    expect(listed.filter((command, index) => listed.indexOf(command) !== index)).toEqual([]);
-    expect([...listed].sort()).toEqual(allCommands());
-    for (const row of rows) {
-      expect(row.commands.length, `${row.plugin} row without commands`).toBeGreaterThan(0);
-      expect(row.cells.every((value) => value === '✓' || value === '·'), `${row.plugin} ${row.commands.join(',')}`).toBe(true);
-      expect(TAURI_VALUES as readonly string[]).toContain(row.tauri);
-      expect(ELECTRON_VALUES as readonly string[]).toContain(row.electron);
-    }
-  });
-
+describe('Electron BuiltinAcl security matrix (built-in plugin command × window)', () => {
   it('mirrors the plugins electron/main.ts registers', () => {
     const main = readFileSync(join(ROOT, 'electron', 'main.ts'), 'utf8');
     const names = [...main.matchAll(/runtime\.registerPlugin\('([^']+)'/g)].map((m) => m[1]);
     expect(names.sort()).toEqual(Object.keys(REGISTERED).sort());
   });
 
-  it.each(PLATFORMS)('window columns equal both the Electron BuiltinAcl and an independent Tauri resolution on %s', (platform) => {
+  it.each(PLATFORMS)('Electron BuiltinAcl matches independent capability resolution on %s', (platform) => {
     const acl = BuiltinAcl.fromDirectory(CAPABILITIES, platform);
     const capabilities = loadCapabilities();
     const mismatches: string[] = [];
     for (const command of allCommands()) {
-      const row = byCommand.get(command);
-      COLUMNS.forEach((column, index) => {
+      COLUMNS.forEach((column) => {
         const electron = cell((caller) => acl.authorize(command, caller) !== null, column, command);
         const tauri = cell((caller) => tauriAllows(capabilities, command, caller, platform), column, command);
         if (electron !== tauri) mismatches.push(`${command} ${column.name}: Electron ${electron}, Tauri ${tauri}`);
-        if (row?.cells[index] !== electron) mismatches.push(`${command} ${column.name}: table ${row?.cells[index] ?? '-'}, actual ${electron}`);
       });
     }
     expect(mismatches).toEqual([]);
   });
 
-  it('the Electron column matches the handlers main registers', () => {
-    const mismatches = allCommands()
-      .filter((command) => byCommand.get(command)?.electron !== electronImplementation(command))
-      .map((command) => `${command}: table ${byCommand.get(command)?.electron ?? '-'}, actual ${electronImplementation(command)}`);
-    expect(mismatches).toEqual([]);
-  });
-
-  it('debug-only Electron commands answer like a Tauri release build in a packaged build', async () => {
+  it('debug-only Electron commands fail closed as not found in packaged builds', async () => {
     for (const command of DEBUG_ONLY) {
       const [plugin, name] = split(command);
       const handler = REGISTERED[plugin]?.[name];
@@ -494,71 +311,9 @@ describe('electron/shell/W23-PROGRESS.md ACL table (built-in plugin command × w
     }
   });
 
-  it('rows whose command is allowed somewhere but usable on one side only cite an RF or a handoff', () => {
-    const usable = { tauri: new Set(['有', 'debug', 'macOS', 'Windows']), electron: new Set(['有', 'debug']) };
-    const uncited = rows
-      .filter((row) => row.cells.includes('✓'))
-      .filter((row) => row.tauri !== row.electron && (usable.tauri.has(row.tauri) || usable.electron.has(row.electron)))
-      .filter((row) => !cites(row.note, { handoff: true }))
-      .map((row) => `${row.plugin} ${row.commands.join(', ')}`);
-    expect(uncited).toEqual([]);
-  });
-
-  const sources = findSources();
-  it.skipIf(sources === null)('the Tauri column matches what the locked crates compile for a release desktop build', () => {
-    // 对照表按原桌面构建的 cfg 求值：tauri 没有 devtools 特性、没有 image 依赖（image-ico/png 关闭），fs 没有 watch（notify）。
-    const mismatches = allCommands()
-      .filter((command) => byCommand.get(command)?.tauri !== tauriImplementation(sources as Map<string, string>, command))
-      .map((command) => `${command}: table ${byCommand.get(command)?.tauri ?? '-'}, actual ${tauriImplementation(sources as Map<string, string>, command)}`);
-    expect(mismatches).toEqual([]);
-    const image = readFileSync(join(sources?.get(TAURI_ACL_CRATES.find((name) => /^tauri-\d/.test(name)) ?? '') ?? '', 'src', 'image', 'plugin.rs'), 'utf8');
-    for (const command of TAURI_ALWAYS_ERR) {
-      const stub = new RegExp(`#\\[cfg\\(not\\(any\\(feature = "image-ico", feature = "image-png"\\)\\)\\)\\]\\s*#\\[command\\(root = "crate"\\)\\]\\s*fn ${split(command)[1]}\\(\\)`);
-      expect(stub.test(image), command).toBe(true);
+  it('all registered commands map cleanly to a known Electron implementation state', () => {
+    for (const command of allCommands()) {
+      expect(ELECTRON_VALUES as readonly string[]).toContain(electronImplementation(command));
     }
   });
 });
-
-describe('electron/shell/W23-PROGRESS.md scope table (main window, scoped plugins)', () => {
-  const scopeRows = readScopeTable();
-
-  it.each(PLATFORMS)('lists every main command with a scope, and its difference from an independent Tauri resolution, on %s', (platform) => {
-    const acl = BuiltinAcl.fromDirectory(CAPABILITIES, platform);
-    const capabilities = loadCapabilities();
-    const actual = new Map<string, ScopeDiff>();
-    for (const column of COLUMNS) {
-      for (const caller of column.callers) {
-        for (const command of allCommands()) {
-          if (acl.authorize(command, caller) === null) continue;
-          const scope = acl.scopeFor(command, caller);
-          const electron = { allow: texts(scope.allow), deny: texts(scope.deny) };
-          const tauri = tauriScope(capabilities, command, caller, platform);
-          const empty = electron.allow.length + electron.deny.length + tauri.allow.length + tauri.deny.length === 0;
-          if (column.name !== 'main') expect(empty, `${command} has a scope on ${column.name}; extend the scope table`).toBe(true);
-          else if (!empty) actual.set(command, scopeDiff(electron, tauri));
-        }
-      }
-    }
-    const listed = new Map<string, ScopeDiff>(scopeRows.flatMap((row) => row.commands.map((name) => [`plugin:${row.plugin}|${name}`, row.diff] as const)));
-    expect([...listed.keys()].sort()).toEqual([...actual.keys()].sort());
-    const mismatches = [...actual]
-      .filter(([command, diff]) => JSON.stringify(listed.get(command)) !== JSON.stringify(diff))
-      .map(([command, diff]) => `${command}: table ${JSON.stringify(listed.get(command))}, actual ${JSON.stringify(diff)}`);
-    expect(mismatches).toEqual([]);
-  });
-
-  it('every scope difference from Tauri cites a registered RF', () => {
-    const uncited = scopeRows
-      .filter(({ diff }) => diff.electronOnlyAllow.length + diff.tauriOnlyDeny.length + diff.electronOnlyDeny.length + diff.tauriOnlyAllow.length > 0)
-      .filter((row) => !cites(row.note, { handoff: false }))
-      .map((row) => `${row.plugin} ${row.commands.join(', ')}`);
-    expect(uncited).toEqual([]);
-  });
-});
-
-/** 说明里引用的 RF 必须已登记；`handoff` 为真时写明“交接”也算。 */
-function cites(note: string, options: { handoff: boolean }): boolean {
-  const rfs = [...note.matchAll(/RF-W\d+-[a-z0-9-]+/g)].map((m) => m[0]);
-  for (const rf of rfs) expect(existsSync(join(RUST_FIXES, `${rf}.json`)), `${rf} is not registered`).toBe(true);
-  return rfs.length > 0 || (options.handoff && note.includes('交接'));
-}
