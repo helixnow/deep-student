@@ -422,4 +422,51 @@ describe('CliAgentProber', () => {
       'deepseek/deepseek-v4-pro',
     ]);
   });
+
+  it('rejects crashed Node.js shims (ignoring Node.js vX.Y.Z in stderr) and falls back to macOS ChatGPT.app bundled Codex CLI', async () => {
+    const bundledCodex =
+      '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
+
+    const prober = new CliAgentProber({
+      platform: 'darwin',
+      homeDir: '/Users/dev',
+      env: {},
+      fileExists: async (p) => p === bundledCodex,
+      readTextFile: async () => null,
+      commandRunner: async (cmd, args) => {
+        if (cmd === 'codex' && args[0] === '--version') {
+          return {
+            exitCode: 1,
+            stdout: '',
+            stderr:
+              'Error: Missing optional dependency @openai/codex-darwin-arm64.\nNode.js v26.5.0\n',
+            resolvedPath: '/Users/dev/.local/bin/codex',
+          };
+        }
+        if (cmd === bundledCodex && args[0] === '--version') {
+          return {
+            exitCode: 0,
+            stdout: 'codex-cli 0.171.0-alpha.13.2\n',
+            stderr: '',
+            resolvedPath: bundledCodex,
+          };
+        }
+        if (cmd === bundledCodex && args[0] === 'app-server') {
+          return { exitCode: 0, stdout: 'Usage: codex app-server\n', stderr: '' };
+        }
+        if (cmd === bundledCodex && args[0] === 'login') {
+          return { exitCode: 0, stdout: 'Logged in using ChatGPT\n', stderr: '' };
+        }
+        return { exitCode: null, stdout: '', stderr: '', notFound: true };
+      },
+    });
+
+    const detected = await prober.probeAll();
+    const codex = detected.find((a) => a.id === 'codex')!;
+    expect(codex.installed).toBe(true);
+    expect(codex.resolvedPath).toBe(bundledCodex);
+    expect(codex.version).toBe('0.171.0-alpha.13.2');
+    expect(codex.authStatus).toBe('authenticated');
+    expect(codex.capabilities.midTurnSteer).toBe(true);
+  });
 });
