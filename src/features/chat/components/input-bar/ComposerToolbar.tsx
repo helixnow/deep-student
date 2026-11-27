@@ -785,7 +785,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                         showTooltip={false}
                         variant={triggerUsesMonoBrand ? 'mono' : 'color'}
                         renderMode={triggerUsesMonoBrand ? 'default' : 'glyph'}
-                        style={resolvedTriggerBrand === 'anthropic' ? { color: '#D97757' } : undefined}
                         className="shrink-0 text-foreground"
                       />
                     ) : (
