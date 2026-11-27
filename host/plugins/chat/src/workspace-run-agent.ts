@@ -10,7 +10,7 @@
  * required surface is published (see `workerRuntimeSurfaces`).
  */
 import {
-  AgentProfileResolver, CHATANKI_READONLY_TOOLS, installWorkspaceCardReadScope, newSubagentTask,
+  AgentProfileResolver, BROWSER_PROFILE_ID, CHATANKI_READONLY_TOOLS, installWorkspaceCardReadScope, newSubagentTask,
   nowCompletionTimestamp, WORKSPACE_WORKER_READY_EVENT, MAX_CONCURRENT_WORKERS, MAX_SUBAGENT_DEPTH,
   WORKER_PIPELINE_CANCEL_GRACE_SECS, WORKER_PIPELINE_TIMEOUT_SECS,
 } from '../../agent-workspace/portable.ts';
@@ -18,7 +18,9 @@ import type {
   AgentCompletionOutbox, AgentRuntimeConfig, JsonValue, SubagentTaskManager,
   WorkspaceAgent, WorkspaceCardReadScopeGuard, WorkspaceCoordinator,
 } from '../../agent-workspace/api.ts';
+import type { BrowserHostFacts } from '../../browser/api.ts';
 import { headlessToolSchemas, isAttemptCompletion } from '../../agent-orchestration/portable.ts';
+import { chatWorkspaceRuntime } from './runtime-roots.ts';
 import type { ChildBudgetAttachment, DelegatedBudgetSpec } from '../../chat-pipeline/api.ts';
 import type { WindowRef } from '../../../kernel/api.ts';
 import { rustTrim } from '../../../platform/util/index.ts';
@@ -62,6 +64,8 @@ export interface WorkerRuntimeSurfaces {
   headlessToolSchemas: () => WorkerToolSchema[];
   /** L05 `CHATANKI_READONLY_TOOLS` (custom_agents.rs). */
   chatankiReadonlyTools: readonly string[];
+  /** L19 `browserWorkerToolSchemas` (browser-tool-schemas.ts). */
+  browserWorkerToolSchemas?: () => WorkerToolSchema[];
 }
 
 /**
@@ -77,6 +81,7 @@ export function workerRuntimeSurfaces(): WorkerRuntimeSurfaces | null {
   return {
     headlessToolSchemas: () => (schemas as () => WorkerToolSchema[])(),
     chatankiReadonlyTools: chatanki as readonly string[],
+    browserWorkerToolSchemas: () => chatWorkspaceRuntime().browserWorkerToolSchemas?.() ?? [],
   };
 }
 
@@ -89,6 +94,7 @@ export interface WorkerRuntimeDeps {
   surfaces: WorkerRuntimeSurfaces;
   emit: (event: string, payload: unknown) => void;
   log: ChatLogger;
+  getBrowserHostFacts?: (sessionId?: string | null) => BrowserHostFacts | null;
 }
 
 // ============================================================
@@ -288,7 +294,8 @@ function chatankiReadonlyWorkerToolSchemas(): WorkerToolSchema[] {
 /** `extend_worker_tool_schemas`: exact allow-list match, no duplicates (fail-closed). */
 function extendWorkerToolSchemas(schemas: WorkerToolSchema[], allowedTools: readonly string[],
   surfaces: WorkerRuntimeSurfaces): void {
-  for (const schema of [...surfaces.headlessToolSchemas(), ...chatankiReadonlyWorkerToolSchemas()]) {
+  const browserSchemas = surfaces.browserWorkerToolSchemas?.() ?? [];
+  for (const schema of [...surfaces.headlessToolSchemas(), ...chatankiReadonlyWorkerToolSchemas(), ...browserSchemas]) {
     if (allowedTools.includes(schema.name) && !schemas.some(existing => existing.name === schema.name)) {
       schemas.push(schema);
     }
@@ -321,10 +328,19 @@ interface AgentCompletionEnvelopeInput {
   workspaceId: string; agentSessionId: string; parentSessionId: string | null; taskId: string | null;
   runId: string; correlationId: string | null; status: AgentCompletionStatus; finalOutput: string | null;
   error: string | null; completedAt: string; tokenUsage: TokenUsage | null;
+  hostFacts?: BrowserHostFacts | null;
 }
 /** Serde field order with `skip_serializing_if = "Option::is_none"`. */
 /** `AgentCompletionEnvelope::metadata` = `serde_json::to_value(self)`. */
 function envelopeMetadata(payload: string): JsonValue { return JSON.parse(payload); }
+
+export function formatBrowserHostFactsReceipt(facts: BrowserHostFacts): Record<string, unknown> {
+  return {
+    verified_by: 'host',
+    note: 'Host-verified deterministic browser session facts (not LLM-generated)',
+    ...facts,
+  };
+}
 
 export function agentCompletionEnvelope(input: AgentCompletionEnvelopeInput): Record<string, unknown> {
   return {
@@ -340,6 +356,7 @@ export function agentCompletionEnvelope(input: AgentCompletionEnvelopeInput): Re
     ...(input.error === null ? {} : { error: input.error }),
     completed_at: input.completedAt,
     ...(input.tokenUsage === null ? {} : { token_usage: input.tokenUsage }),
+    ...(input.hostFacts == null ? {} : { host_facts: formatBrowserHostFactsReceipt(input.hostFacts) }),
   };
 }
 
@@ -513,8 +530,17 @@ export async function runWorkspaceAgentBackend(deps: WorkerRuntimeDeps, request:
     try { childTaskId = coordinator.getTaskManager(workspaceId).getAgentTask(agentSessionId)?.id ?? agentSessionId; }
     catch { childTaskId = agentSessionId; }
     let profileHash = '';
-    try { profileHash = AgentProfileResolver.computedHash(AgentProfileResolver.resolveForAgent(agent)); }
-    catch { profileHash = ''; }
+    let resolvedProfileId: string | null = null;
+    try {
+      const resolvedProfile = AgentProfileResolver.resolveForAgent(agent);
+      resolvedProfileId = resolvedProfile.id;
+      profileHash = AgentProfileResolver.computedHash(resolvedProfile);
+    } catch {
+      profileHash = '';
+      resolvedProfileId = null;
+    }
+    const isBrowserWorker = resolvedProfileId === BROWSER_PROFILE_ID
+      || workerAllowedTools.some(tool => tool.startsWith('builtin-browser_') || tool.startsWith('browser_'));
     const parentTaskId = parentSessionId ?? request.requester_session_id;
     const budgetAttachment = deps.pipeline.attachChildToTree(parentTaskId, agentSessionId, null);
     const grantRegistration: GrantRegistrationGuard = issueWorkerGrant(agentSessionId, parentTaskId, childTaskId,
@@ -551,7 +577,7 @@ export async function runWorkspaceAgentBackend(deps: WorkerRuntimeDeps, request:
     const guard = streamGuard;
     spawned = true;
     void state.spawnTracked(runWorkerPipeline(deps, {
-      window, sendRequest, cancelToken, workspaceId, agentSessionId, isWorker, assistantMessageId,
+      window, sendRequest, cancelToken, workspaceId, agentSessionId, isWorker, isBrowserWorker, assistantMessageId,
       parentSessionId, taskId: childTaskId === agentSessionId ? null : childTaskId,
       originalMessageIds, skillId: agent.skillId,
       releasePermit, cardReadScope, streamGuard: guard, grantRegistration, budgetAttachment,
@@ -582,7 +608,7 @@ function markTaskRunning(coordinator: WorkspaceCoordinator, workspaceId: string,
 
 interface WorkerPipelineRun {
   window: WindowRef; sendRequest: BackendSendRequest; cancelToken: AbortController;
-  workspaceId: string; agentSessionId: string; isWorker: boolean; assistantMessageId: string;
+  workspaceId: string; agentSessionId: string; isWorker: boolean; isBrowserWorker: boolean; assistantMessageId: string;
   parentSessionId: string | null; taskId: string | null; originalMessageIds: string[]; skillId: string | null;
   releasePermit: () => void; cardReadScope: WorkspaceCardReadScopeGuard | null; streamGuard: StreamGuard;
   grantRegistration: GrantRegistrationGuard; budgetAttachment: ChildBudgetAttachment;
@@ -632,6 +658,16 @@ async function runWorkerPipeline(deps: WorkerRuntimeDeps, run: WorkerPipelineRun
     try { taskManager = coordinator.getTaskManager(workspaceId); } catch { taskManager = null; }
     const correlationId = run.originalMessageIds[0] ?? null;
 
+    const resolveHostFacts = (): BrowserHostFacts | null => {
+      if (!run.isBrowserWorker || typeof deps.getBrowserHostFacts !== 'function') return null;
+      try {
+        return deps.getBrowserHostFacts(agentSessionId) ?? null;
+      } catch (error) {
+        log.warn(`[Workspace::handlers] Failed to query browser host facts for ${agentSessionId}: ${errorText(error)}`);
+        return null;
+      }
+    };
+
     if (result.ok === true) {
       log.info(`[Workspace::handlers] Agent pipeline completed: agent=${agentSessionId}, message_id=${result.messageId}`);
       if (run.isWorker) {
@@ -641,6 +677,7 @@ async function runWorkerPipeline(deps: WorkerRuntimeDeps, run: WorkerPipelineRun
           workspaceId, agentSessionId, parentSessionId: run.parentSessionId, taskId: run.taskId,
           runId: run.assistantMessageId, correlationId, status: 'completed', finalOutput, error: null,
           completedAt: toRfc3339(), tokenUsage: workerMessageUsage(db, run.assistantMessageId),
+          hostFacts: resolveHostFacts(),
         };
         const envelope = agentCompletionEnvelope(input);
         const payload = JSON.stringify(envelope);
@@ -698,6 +735,7 @@ async function runWorkerPipeline(deps: WorkerRuntimeDeps, run: WorkerPipelineRun
         workspaceId, agentSessionId, parentSessionId: run.parentSessionId, taskId: run.taskId,
         runId: run.assistantMessageId, correlationId, status, finalOutput: null, error,
         completedAt: toRfc3339(), tokenUsage: workerMessageUsage(db, run.assistantMessageId),
+        hostFacts: resolveHostFacts(),
       };
       const envelope = agentCompletionEnvelope(input);
       const payload = JSON.stringify(envelope);

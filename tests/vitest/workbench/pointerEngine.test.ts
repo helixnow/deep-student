@@ -418,4 +418,229 @@ describe('WindowPointerEngine — 取消与回退', () => {
     expect(h.frames).toHaveLength(0);
     expect(h.engine.isActive()).toBe(false);
   });
+
+  it('拖入顶部 40px 菜单栏带仍稳定命中 top-maximize，不会闪烁丢失', () => {
+    const startFrame: Frame = { x: 200, y: 120, w: 600, h: 400 };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const zones: SnapZone[] = [];
+    const commits: Array<{ frame: Frame; zone: SnapZone }> = [];
+    const engine = new WindowPointerEngine({
+      getFrame: () => startFrame,
+      getDesktopSize: () => ({ w: 1600, h: 960 }),
+      getMinSize: () => ({ w: 320, h: 240 }),
+      getDesktopOffset: () => ({ x: 0, y: 40 }),
+      getCallbacks: () => ({
+        onFrameChange: () => {},
+        onSnapZoneChange: (z) => zones.push(z),
+        onCommit: (f, z) => commits.push({ frame: f, zone: z }),
+      }),
+    });
+
+    engine.startMove(pointerEvent('pointerdown', { clientX: 500, clientY: 140 }), target);
+    // clientY = 12 位于顶部 40px 菜单栏内（localY = -28），仍应稳定命中 top-maximize
+    movePointer(800, 12);
+    flushRaf();
+    expect(zones).toEqual(['top-maximize']);
+    releasePointer(800, 12);
+    expect(commits[0].zone).toBe('top-maximize');
+  });
+
+  it('四向缩放到达桌面边缘硬钳位，北边不钻入菜单栏、右/下边不出桌面', () => {
+    const h = createHarness({ startFrame: { x: 200, y: 120, w: 600, h: 400 } });
+    // 北边狂拖向上：y 必须停在 0，底边保持 520
+    h.engine.startResize(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), 'n', h.target);
+    movePointer(400, -300);
+    flushRaf();
+    expect(h.frames.at(-1)).toEqual({ x: 200, y: 0, w: 600, h: 520 });
+    releasePointer(400, -300);
+
+    // 东边狂拖向右：右边停在 1600
+    h.engine.startResize(pointerEvent('pointerdown', { clientX: 800, clientY: 300 }), 'e', h.target);
+    movePointer(2500, 300);
+    flushRaf();
+    expect(h.frames.at(-1)).toEqual({ x: 200, y: 120, w: 1400, h: 400 });
+    releasePointer(2500, 300);
+  });
+
+  it('tear-out 后按 Esc 取消回退到受管原位并调用 onMoveCancelled（不提交 floating）', () => {
+    let currentFrame: Frame = { x: 0, y: 0, w: 1600, h: 1000 };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const frames: Frame[] = [];
+    const commits: Array<{ frame: Frame; zone: SnapZone }> = [];
+    const onMoveCancelled = vi.fn();
+    const engine = new WindowPointerEngine({
+      getFrame: () => currentFrame,
+      getDesktopSize: () => ({ w: 1600, h: 1000 }),
+      getMinSize: () => ({ w: 320, h: 240 }),
+      getCallbacks: () => ({
+        onFrameChange: (f) => frames.push(f),
+        onSnapZoneChange: () => {},
+        onCommit: (f, z) => commits.push({ frame: f, zone: z }),
+      }),
+      onMoveArmed: () => {
+        currentFrame = { x: 400, y: 20, w: 720, h: 520 };
+      },
+      onMoveCancelled,
+    });
+
+    engine.startMove(pointerEvent('pointerdown', { clientX: 800, clientY: 20 }), target);
+    movePointer(820, 40);
+    flushRaf();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(frames.at(-1)).toEqual({ x: 0, y: 0, w: 1600, h: 1000 });
+    expect(onMoveCancelled).toHaveBeenCalledTimes(1);
+    expect(commits).toHaveLength(0);
+  });
+
+  it('拖拽到顶缘静止时按下/松开 Alt 即时切换 top-maximize 与 top-half', () => {
+    const h = createHarness();
+    h.engine.startMove(pointerEvent('pointerdown', { clientX: 800, clientY: 120 }), h.target);
+    movePointer(800, 5);
+    flushRaf();
+    expect(h.zones).toEqual(['top-maximize']);
+
+    // 指针不移动，直接按住 Alt → 即时切到 top-half
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt' }));
+    flushRaf();
+    expect(h.zones).toEqual(['top-maximize', 'top-half']);
+
+    // 指针不移动，松开 Alt → 即时切回 top-maximize
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
+    flushRaf();
+    expect(h.zones).toEqual(['top-maximize', 'top-half', 'top-maximize']);
+
+    releasePointer(800, 5);
+    expect(h.commits[0].zone).toBe('top-maximize');
+  });
+
+  it('邻窗边缘磁吸不会把窗口标题栏拉到 y < 0（顶部菜单栏下方）', () => {
+    const startFrame: Frame = { x: 200, y: 4, w: 600, h: 970 };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const frames: Frame[] = [];
+    const engine = new WindowPointerEngine({
+      getFrame: () => startFrame,
+      getDesktopSize: () => ({ w: 1600, h: 960 }),
+      getMinSize: () => ({ w: 320, h: 240 }),
+      getEdgeSnapCandidates: () => ({ vertical: [0, 1600], horizontal: [0, 960] }),
+      getCallbacks: () => ({
+        onFrameChange: (f) => frames.push(f),
+        onSnapZoneChange: () => {},
+        onCommit: () => {},
+      }),
+    });
+
+    engine.startMove(pointerEvent('pointerdown', { clientX: 500, clientY: 20 }), target);
+    // 拖至 y=0 附近，窗口底边 970 接近桌面底边 960（差 10px 触发磁吸），但 y 不得跌破 0
+    movePointer(520, 16);
+    flushRaf();
+    expect(frames.at(-1)!.y).toBeGreaterThanOrEqual(0);
+    engine.cancel();
+  });
+
+  it('最大化窗 tear-out 向下微拖松手不会被立即吸回 top-maximize；离开后重新拖回顶缘可正常吸附', () => {
+    let currentFrame: Frame = { x: 0, y: 0, w: 1600, h: 960 };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const zones: SnapZone[] = [];
+    const commits: Array<{ frame: Frame; zone: SnapZone }> = [];
+    const engine = new WindowPointerEngine({
+      getFrame: () => currentFrame,
+      getDesktopSize: () => ({ w: 1600, h: 960 }),
+      getMinSize: () => ({ w: 320, h: 240 }),
+      getDesktopOffset: () => ({ x: 0, y: 40 }),
+      getCallbacks: () => ({
+        onFrameChange: () => {},
+        onSnapZoneChange: (z) => zones.push(z),
+        onCommit: (f, z) => commits.push({ frame: f, zone: z }),
+      }),
+      onMoveArmed: () => {
+        currentFrame = { x: 400, y: 4, w: 720, h: 520 };
+      },
+    });
+
+    // 标题栏中线按下（localY = 18 <= 24），向下撕出至 localY = 30 并松手：不应被吸回
+    engine.startMove(pointerEvent('pointerdown', { clientX: 800, clientY: 58 }), target);
+    movePointer(800, 62); // localY = 22：触发 tear-out
+    flushRaf();
+    movePointer(800, 70); // localY = 30：以前会被滞回锁死在 top-maximize
+    flushRaf();
+    expect(zones).toEqual([]);
+    releasePointer(800, 70);
+    expect(commits).toHaveLength(1);
+    expect(commits[0].zone).toBeNull();
+
+    // 再次从顶部撕出并拖离顶缘后再主动推回顶缘：应正常命中 top-maximize
+    currentFrame = { x: 0, y: 0, w: 1600, h: 960 };
+    engine.startMove(pointerEvent('pointerdown', { clientX: 800, clientY: 58 }), target);
+    movePointer(800, 62);
+    flushRaf();
+    movePointer(800, 90); // localY = 50 > 24，解除顶缘抑制
+    flushRaf();
+    movePointer(800, 52); // localY = 12 <= 24，重新命中 top-maximize
+    flushRaf();
+    expect(zones).toEqual(['top-maximize']);
+    releasePointer(800, 52);
+    expect(commits[1].zone).toBe('top-maximize');
+  });
+
+  it('贴顶浮动窗横向拖动不会误触发 top-maximize；主动上推到顶缘仍可最大化', () => {
+    const h = createHarness({ startFrame: { x: 200, y: 0, w: 600, h: 400 } });
+    h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 18 }), h.target);
+    movePointer(700, 18); // 纯横向移动，localY 保持 18
+    flushRaf();
+    expect(h.zones).toEqual([]);
+    releasePointer(700, 18);
+    expect(h.commits[0].zone).toBeNull();
+    expect(h.commits[0].frame.x).toBe(500);
+
+    // 同一位置按下并主动向上推至屏顶（y <= 4）：应解除抑制并命中 top-maximize
+    h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 18 }), h.target);
+    movePointer(400, 2);
+    flushRaf();
+    expect(h.zones).toEqual(['top-maximize']);
+    releasePointer(400, 2);
+    expect(h.commits[1].zone).toBe('top-maximize');
+  });
+
+  it('子元素对 pointerup stopPropagation 时，window 捕获期仍正常 commit，不被 lostpointercapture 吸回', () => {
+    const h = createHarness();
+    h.target.addEventListener('pointerup', (ev) => ev.stopPropagation());
+    h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), h.target);
+    movePointer(560, 240);
+    flushRaf();
+    // 在 target 上派发 pointerup（target 冒泡拦截）：window 捕获监听必须抢先 commit
+    h.target.dispatchEvent(pointerEvent('pointerup', { clientX: 560, clientY: 240, pointerId: 1 }));
+    // 随后即使浏览器派发 lostpointercapture，手势已结束，不再回退
+    const lost = new Event('lostpointercapture');
+    Object.defineProperty(lost, 'pointerId', { value: 1 });
+    h.target.dispatchEvent(lost);
+
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0].frame).toEqual({ x: 260, y: 220, w: 600, h: 400 });
+    expect(h.engine.isActive()).toBe(false);
+  });
+
+  it('鼠标丢失 pointerup 后，后续 buttons=0 的 pointermove 自动落位结束，不永久卡死拖拽', () => {
+    const h = createHarness();
+    const makeMousePtr = (type: string, x: number, y: number, buttons: number): PointerEvent => {
+      const ev = pointerEvent(type, { clientX: x, clientY: y, pointerId: 1 });
+      Object.defineProperty(ev, 'buttons', { value: buttons });
+      Object.defineProperty(ev, 'pointerType', { value: 'mouse' });
+      return ev;
+    };
+    h.engine.startMove(makeMousePtr('pointerdown', 400, 120, 1), h.target);
+    window.dispatchEvent(makeMousePtr('pointermove', 520, 200, 1));
+    flushRaf();
+    expect(h.engine.isActive()).toBe(true);
+
+    // 模拟在视口外松手丢掉 pointerup，鼠标回到页面时 buttons=0
+    window.dispatchEvent(makeMousePtr('pointermove', 520, 200, 0));
+    expect(h.engine.isActive()).toBe(false);
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0].frame).toEqual({ x: 220, y: 180, w: 600, h: 400 });
+  });
 });

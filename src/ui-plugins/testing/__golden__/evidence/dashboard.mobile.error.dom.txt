@@ -23,10 +23,10 @@
                             <span .text-[12px].text-muted-foreground/60>
                               "暂无待处理事项"
                             <span .flex.gap-1.items-center.ml-auto>
-                              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+                              <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.relative.rounded.text-muted-foreground.text-xs.transition-colors type="button">
                                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                                 "本周周报"
-                              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+                              <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.relative.rounded.text-muted-foreground.text-xs.transition-colors type="button">
                                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                                 "与 AI 复盘"
                           <div .flex.flex-wrap.gap-3>
@@ -90,8 +90,7 @@
                             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
                               <div .flex.items-center.justify-between>
                                 <div .flex.gap-2.items-center>
-                                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                                    <svg viewBox="0 0 256 256" />
+                                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                                     "学习记录"
                               <p .text-muted-foreground.text-sm>
@@ -103,8 +102,7 @@
                             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
                               <div .flex.items-center.justify-between>
                                 <div .flex.gap-2.items-center>
-                                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                                    <svg viewBox="0 0 256 256" />
+                                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                                     "标签体系"
                               <p .text-muted-foreground.text-sm>
@@ -116,8 +114,7 @@
                             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
                               <div .flex.items-center.justify-between>
                                 <div .flex.gap-2.items-center>
-                                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                                    <svg viewBox="0 0 256 256" />
+                                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                                     "近7天新增"
                               <p .text-muted-foreground.text-sm>
@@ -129,8 +126,7 @@
                             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
                               <div .flex.items-center.justify-between>
                                 <div .flex.gap-2.items-center>
-                                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                                    <svg viewBox="0 0 256 256" />
+                                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                                     "数据质量"
                               <p .text-muted-foreground.text-sm>
@@ -142,8 +138,7 @@
                             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
                               <div .flex.items-center.justify-between>
                                 <div .flex.gap-2.items-center>
-                                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                                    <svg viewBox="0 0 256 256" />
+                                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                                     "资源文件"
                               <p .text-muted-foreground.text-sm>
@@ -158,5 +153,5 @@
                   <div .os-scrollbar-track>
                     <div .os-scrollbar-handle />
   <div data-evidence="mobile-header" data-hidden="false" data-show-menu="true" data-title="总览">
-    <button .!h-11.!w-11.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:w-[var(--button-height-sm)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="导出统计" type="button">
+    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:w-[var(--button-height-sm)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="导出统计" type="button">
       <svg viewBox="0 0 256 256" />

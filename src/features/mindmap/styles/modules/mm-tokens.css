@@ -109,7 +109,7 @@
   --mm-ease-structure: var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 
   /* 布局尺寸 */
-  --mm-toolbar-height: 42px;
+  --mm-toolbar-height: 36px;
   --mm-line-height: 28px;
   --mm-indent-width: 28px;
   --mm-bullet-size: 6px;

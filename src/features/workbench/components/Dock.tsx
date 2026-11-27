@@ -25,7 +25,7 @@ import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
 import { useMaterialTier } from '../core/materialTier';
 import { useDockMagnificationEffective } from '../core/dockMagnificationStore';
-import { WallpaperReplica } from '../core/liquidGlassLens';
+import { useDockLiquidGlassFilter } from './dockLiquidGlass';
 import { DockItem } from './DockItem';
 import { DockContextMenu } from './DockContextMenu';
 import { useDockPinned } from './DockPinnedStore';
@@ -618,10 +618,25 @@ function DockImpl({
 
   const dockZoneRef = React.useRef<HTMLDivElement | null>(null);
   const dockRef = React.useRef<HTMLDivElement | null>(null);
+  useDockLiquidGlassFilter(dockRef, !hidden && tier === 'full');
+  const isInsideDockPortal = React.useCallback((target: Node | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('.wb-agent-control-popover'));
+  }, []);
+  const hasOpenAgentControlPopover = React.useCallback((): boolean => {
+    if (typeof document === 'undefined') return false;
+    return document.querySelector('.wb-agent-control-popover[data-state="open"]') !== null;
+  }, []);
   const onAutohideOutsidePointerDown = React.useCallback(
     (event: Event) => {
       const target = event.target as Node | null;
-      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      if (
+        dockRef.current?.contains(target) ||
+        hotzoneRef.current?.contains(target) ||
+        isInsideDockPortal(target)
+      ) {
+        return;
+      }
       if (isCompactViewport && effectiveAutohide && revealedRef.current) {
         // 指针按下期间保持布局让位直至 pointerup/click 结算，防止发送按钮在松手前下移错位导致无法一次点中
         clearHoldClearanceTimers();
@@ -629,15 +644,27 @@ function DockImpl({
       }
       concealDockImmediate();
     },
-    [clearHoldClearanceTimers, concealDockImmediate, effectiveAutohide, isCompactViewport],
+    [
+      clearHoldClearanceTimers,
+      concealDockImmediate,
+      effectiveAutohide,
+      isCompactViewport,
+      isInsideDockPortal,
+    ],
   );
   const onAutohideOutsideClick = React.useCallback(
     (event: Event) => {
       const target = event.target as Node | null;
-      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      if (
+        dockRef.current?.contains(target) ||
+        hotzoneRef.current?.contains(target) ||
+        isInsideDockPortal(target)
+      ) {
+        return;
+      }
       concealDockImmediate();
     },
-    [concealDockImmediate],
+    [concealDockImmediate, isInsideDockPortal],
   );
   const onAutohideOutsideFocusIn = React.useCallback(
     (event: Event) => {
@@ -650,15 +677,23 @@ function DockImpl({
       ) {
         return;
       }
-      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      if (
+        dockRef.current?.contains(target) ||
+        hotzoneRef.current?.contains(target) ||
+        isInsideDockPortal(target)
+      ) {
+        return;
+      }
       concealDockImmediate();
     },
-    [concealDockImmediate],
+    [concealDockImmediate, isInsideDockPortal],
   );
   const onAutohideKeyDown = React.useCallback(
     (event: Event) => {
       const ke = event as KeyboardEvent;
       if (ke.key !== 'Escape' || ke.isComposing || ke.keyCode === 229) return;
+      // AI 桌面操控弹层打开时优先让弹层消费 Escape，避免先收起 Dock 却把弹层留在原地。
+      if (hasOpenAgentControlPopover()) return;
       if (!isAppsPanelOpen()) {
         ke.preventDefault();
         ke.stopPropagation();
@@ -671,7 +706,7 @@ function DockImpl({
       }
       concealDockImmediate();
     },
-    [concealDockImmediate],
+    [concealDockImmediate, hasOpenAgentControlPopover],
   );
   useEventRegistry(
     effectiveAutohide && revealed
@@ -986,6 +1021,8 @@ function DockImpl({
     resetMagnification();
     resetTipSession();
     if (!effectiveAutohide) return;
+    // AI 桌面操控弹层挂载在 Portal 中：指针移入弹层或弹层打开期间不收起 Dock
+    if (hasOpenAgentControlPopover()) return;
     // 焦点仍在 Dock 内（键盘用户）时不收起
     if (dockRef.current?.contains(document.activeElement)) return;
     scheduleConceal();
@@ -1109,7 +1146,8 @@ function DockImpl({
   const handleDockBlur = (event: React.FocusEvent) => {
     if (!effectiveAutohide) return;
     const next = event.relatedTarget as Node | null;
-    if (next && dockRef.current?.contains(next)) return;
+    if (next && (dockRef.current?.contains(next) || isInsideDockPortal(next))) return;
+    if (hasOpenAgentControlPopover()) return;
     scheduleConceal();
   };
 
@@ -1318,7 +1356,7 @@ function DockImpl({
           if (!target) return;
           if (
             target.closest(
-              '[data-testid="wb-dock-minimized-overflow"], [data-testid="wb-dock-window-list"], [data-testid="wb-dock-collapse-button"]',
+              '[data-testid="wb-dock-minimized-overflow"], [data-testid="wb-dock-window-list"], [data-testid="wb-dock-collapse-button"], [data-testid="wb-dock-agent-control-button"]',
             )
           ) {
             return;
@@ -1343,7 +1381,6 @@ function DockImpl({
           if (event.target === event.currentTarget) setRevealing(false);
         }}
       >
-        <WallpaperReplica hostRef={dockRef} />
         {pinned.map(renderItem)}
         {pinned.length > 0 && runningExtra.length > 0 && (
           <div

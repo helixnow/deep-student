@@ -50,7 +50,9 @@ import {
   TITLEBAR_CONTROL_CLASS,
   TITLEBAR_META_CLASS,
   TITLEBAR_TITLE_CLASS,
-} from '@/app/shell/titlebarUiTokens';
+} from '@/components/layout/desktopTitlebarTokens';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
+import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
 import { dstu, folderApi } from '@/dstu';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
@@ -153,6 +155,10 @@ export interface MediaLibraryPageProps {
   isSmallScreen: boolean;
   /** 经典壳桌面顶栏槽位；null 时标题行在页内 */
   titlebarTarget: HTMLElement | null;
+  /** 经典壳桌面端统一顶栏（useDesktopHeader 面包屑范式） */
+  useClassicDesktopHeader?: boolean;
+  /** 外部窗口标题栏已承载应用名（学习桌面）时隐藏页内重复标题 */
+  hideInternalTitle?: boolean;
   /** 受控多选态（由 MediaStudioApp 接入 UnifiedMobileHeader 时传入） */
   selectMode?: boolean;
   onSelectModeChange?: (next: boolean) => void;
@@ -169,6 +175,8 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   onOpenId,
   isSmallScreen,
   titlebarTarget,
+  useClassicDesktopHeader = false,
+  hideInternalTitle = false,
   selectMode: controlledSelectMode,
   onSelectModeChange,
   bilibiliRequestSeq = 0,
@@ -518,13 +526,13 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const importButton = (inTitlebar: boolean) => (
     <DsButton
-      variant={inTitlebar ? 'shell' : 'primary'}
+      variant={inTitlebar ? 'ghost' : 'primary'}
       size="sm"
       onClick={importer.pick}
       disabled={importer.importing}
       data-media-import=""
       className={inTitlebar
-        ? cn(TITLEBAR_CONTROL_CLASS, 'border-transparent bg-[color:var(--button-tonal-bg)]')
+        ? cn(TITLEBAR_CONTROL_CLASS, 'bg-[color:var(--button-tonal-bg)] text-foreground')
         : 'gap-1.5'}
     >
       {importer.importing
@@ -536,7 +544,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const bilibiliButton = (inTitlebar: boolean) => (
     <DsButton
-      variant={inTitlebar ? 'shell' : 'ghost'}
+      variant="ghost"
       size="sm"
       onClick={() => setBilibiliMode({ kind: 'create' })}
       data-media-bilibili=""
@@ -549,7 +557,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const selectToggle = (variant: 'titlebar' | 'page' | 'phone') => (
     <DsButton
-      variant={variant === 'titlebar' ? 'shell' : 'ghost'}
+      variant="ghost"
       size={variant === 'phone' ? 'md' : 'sm'}
       iconOnly={variant === 'phone'}
       onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
@@ -567,35 +575,66 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
     </DsButton>
   );
 
-  const headerRow = (inTitlebar: boolean) => (
-    <div className={cn('flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5', inTitlebar && 'pointer-events-auto h-full flex-1 flex-nowrap')}>
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'truncate text-base font-semibold text-foreground', 'shrink-0')}>
-          {t('mediaStudio:title')}
-        </span>
-        {loaded && items.length > 0 ? (
-          <>
-            <span className="text-muted-foreground/40">/</span>
-            <span className={inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground'}>
-              {t('mediaStudio:count', { count: items.length })}
-            </span>
-          </>
-        ) : null}
-      </div>
-      {!isSmallScreen ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          {items.length > 0 ? selectToggle(inTitlebar ? 'titlebar' : 'page') : null}
-          {/* 库为空时空态里已经有这两个按钮（更醒目），标题行不再重复；加载失败时空态不出现，仍放在这里 */}
-          {items.length > 0 || error ? (
+  useDesktopHeader(
+    'media',
+    {
+      breadcrumbs: [{ id: 'media-root', label: t('mediaStudio:title') }],
+      meta: loaded && items.length > 0 ? t('mediaStudio:count', { count: items.length }) : undefined,
+      actions: items.length > 0 || error ? (
+        <>
+          {items.length > 0 ? (
             <>
-              {bilibiliButton(inTitlebar)}
-              {importButton(inTitlebar)}
+              <DesktopHeaderSearch
+                value={query}
+                onChange={setQuery}
+                placeholder={t('mediaStudio:searchPlaceholder')}
+              />
+              {selectToggle('titlebar')}
+            </>
+          ) : null}
+          {bilibiliButton(true)}
+          {importButton(true)}
+        </>
+      ) : undefined,
+    },
+    [t, loaded, items.length, error, query, selectMode, importer.importing],
+    useClassicDesktopHeader && !isSmallScreen,
+  );
+
+  const headerRow = (inTitlebar: boolean) => {
+    const showTitle = inTitlebar || !hideInternalTitle;
+    return (
+      <div className={cn('flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5', inTitlebar && 'pointer-events-auto h-full flex-1 flex-nowrap')}>
+        <div className="flex min-w-0 items-center gap-2">
+          {showTitle ? (
+            <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'truncate text-base font-semibold text-foreground', 'shrink-0')}>
+              {t('mediaStudio:title')}
+            </span>
+          ) : null}
+          {loaded && items.length > 0 ? (
+            <>
+              {showTitle ? <span className="text-muted-foreground/40">/</span> : null}
+              <span className={inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground'}>
+                {t('mediaStudio:count', { count: items.length })}
+              </span>
             </>
           ) : null}
         </div>
-      ) : null}
-    </div>
-  );
+        {!isSmallScreen ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {items.length > 0 ? selectToggle(inTitlebar ? 'titlebar' : 'page') : null}
+            {/* 库为空时空态里已经有这两个按钮（更醒目），标题行不再重复；加载失败时空态不出现，仍放在这里 */}
+            {items.length > 0 || error ? (
+              <>
+                {bilibiliButton(inTitlebar)}
+                {importButton(inTitlebar)}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const filterOptions = MEDIA_LIBRARY_FILTERS.map((value) => ({
     value,
@@ -856,7 +895,8 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const hasItems = items.length > 0;
   const showEmpty = loaded && !error && !hasItems;
-  const showToolbar = (!titlebarTarget && !isSmallScreen) || hasItems;
+  const showInlineHeaderRow = !titlebarTarget && !useClassicDesktopHeader && !isSmallScreen && (!hideInternalTitle || hasItems || Boolean(error));
+  const showToolbar = showInlineHeaderRow || hasItems;
   const compactMobileImportMenu = (
     <AppMenu>
       <AppMenuTrigger asChild>
@@ -928,34 +968,36 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
             data-media-library-toolbar=""
             className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-2.5 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-2.5')}
           >
-            {!titlebarTarget && !isSmallScreen ? headerRow(false) : null}
+            {showInlineHeaderRow ? headerRow(false) : null}
             {hasItems ? (
               <div
                 data-media-library-controls=""
                 className={cn('flex flex-wrap items-center gap-2.5 sm:gap-3', isSmallScreen && 'flex-col flex-nowrap items-stretch gap-2')}
               >
-                <div
-                  data-media-library-search-wrap=""
-                  className={cn('flex min-w-0 flex-1 items-center gap-1.5', !isSmallScreen && 'min-w-[160px] max-w-xs')}
-                >
-                  <div className="relative min-w-0 flex-1">
-                    <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
-                    <Input
-                      type="search"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={t('mediaStudio:searchPlaceholder')}
-                      aria-label={t('mediaStudio:searchPlaceholder')}
-                      className={cn(
-                        'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                        isSmallScreen ? 'h-11 text-base' : 'h-8 text-xs',
-                      )}
-                    />
+                {!useClassicDesktopHeader ? (
+                  <div
+                    data-media-library-search-wrap=""
+                    className={cn('flex min-w-0 flex-1 items-center gap-1.5', !isSmallScreen && 'min-w-[160px] max-w-xs')}
+                  >
+                    <div className="relative min-w-0 flex-1">
+                      <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
+                      <Input
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder={t('mediaStudio:searchPlaceholder')}
+                        aria-label={t('mediaStudio:searchPlaceholder')}
+                        className={cn(
+                          'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
+                          isSmallScreen ? 'h-11 text-base' : 'h-8 text-xs',
+                        )}
+                      />
+                    </div>
+                    {isSmallScreen ? viewToggle : null}
+                    {isSmallScreen && !mobileHeaderActionsActive ? selectToggle('phone') : null}
+                    {isSmallScreen && !mobileHeaderActionsActive && !selectMode ? compactMobileImportMenu : null}
                   </div>
-                  {isSmallScreen ? viewToggle : null}
-                  {isSmallScreen && !mobileHeaderActionsActive ? selectToggle('phone') : null}
-                  {isSmallScreen && !mobileHeaderActionsActive && !selectMode ? compactMobileImportMenu : null}
-                </div>
+                ) : null}
                 <SegmentedControl<MediaLibraryFilter>
                   ariaLabel={t('mediaStudio:filter.aria')}
                   value={filter}

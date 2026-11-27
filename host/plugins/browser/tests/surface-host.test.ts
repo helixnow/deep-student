@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { ShellBridge, WindowRef } from '../../../kernel/api.ts';
+import { ShellError, type ShellBridge, type WindowRef } from '../../../kernel/api.ts';
 import { createTestHost } from '../../../kernel/testing.ts';
-import { NAVIGATION_BLOCKED_EVENT, PAGE_FINISHED_EVENT, ShellBrowserSurface, TITLE_CHANGED_EVENT } from '../src/surface-host.ts';
+import {
+  DOWNLOAD_STARTED_EVENT, NAVIGATION_BLOCKED_EVENT, PAGE_FINISHED_EVENT,
+  ShellBrowserSurface, TITLE_CHANGED_EVENT,
+} from '../src/surface-host.ts';
 
 function shell(answer: (op: string, args: unknown) => unknown) {
   const requests: Array<{ op: string; args: unknown }> = [];
@@ -128,5 +131,91 @@ describe('ShellBrowserSurface agent network guard plumbing', () => {
     } finally {
       await host.dispose();
     }
+  });
+
+  it('translates ShellError with structured data into BridgeError and Timeout errors', async () => {
+    const { bridge } = shell(op => {
+      if (op === 'browser.typeText') {
+        throw new ShellError(op, 'blocked', {
+          code: 'BLOCKED',
+          message: 'password fields cannot be typed',
+          details: { reason: 'password_field', ref: 'e3' },
+        });
+      }
+      if (op === 'browser.click') {
+        throw new ShellError(op, 'stale', {
+          code: 'STALE_REF',
+          message: 'ref e9 is stale',
+        });
+      }
+      if (op === 'browser.waitFor') {
+        throw new ShellError(op, 'bridge call timed out after 500ms');
+      }
+      return { ok: true };
+    });
+    const surface = new ShellBrowserSurface(bridge, 'darwin');
+    await expect(surface.typeText('e3', 'secret')).rejects.toEqual({
+      kind: 'Bridge',
+      code: 'BLOCKED',
+      message: 'password fields cannot be typed',
+      details: { reason: 'password_field', ref: 'e3' },
+    });
+    await expect(surface.click('e9')).rejects.toEqual({
+      kind: 'Bridge',
+      code: 'STALE_REF',
+      message: 'ref e9 is stale',
+      details: null,
+    });
+    await expect(surface.waitFor({ text: 'never', timeoutMs: 500 })).rejects.toEqual({
+      kind: 'Timeout',
+      milliseconds: 500,
+    });
+  });
+
+  it('syncs dynamic hostMode, passes explicit clear/submit on typeText, forwards remoteInput metadata and downloadPolicy/savePath', async () => {
+    const listeners = new Map<string, (payload: unknown, source: WindowRef) => void>();
+    const { bridge, requests } = shell(op => {
+      if (op === 'browser.hostMode') return 'remote';
+      return { ok: true };
+    });
+    const surface = new ShellBrowserSurface(bridge, 'linux', {
+      listen: (event, handler) => { listeners.set(event, handler); },
+    });
+    expect(surface.hostMode()).toBe('detached');
+    expect(await surface.syncHostMode()).toBe('remote');
+    expect(surface.hostMode()).toBe('remote');
+
+    await surface.typeText('e1', 'hello');
+    expect(requests.at(-1)).toEqual({
+      op: 'browser.typeText',
+      args: { ref: 'e1', text: 'hello', clear: false, submit: false },
+    });
+
+    await surface.remoteInput({ kind: 'key', action: 'down', key: 'Enter', code: 'Enter', text: '\r', modifiers: 8 });
+    expect(requests.at(-1)).toEqual({
+      op: 'browser.remoteInput',
+      args: { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', modifiers: ['Shift'] },
+    });
+
+    await surface.setDownloadPolicy({ agentOwned: true, artifactDir: '/tmp/artifacts/browser-downloads' });
+    expect(requests.at(-1)).toEqual({
+      op: 'browser.setDownloadPolicy',
+      args: { agentOwned: true, artifactDir: '/tmp/artifacts/browser-downloads' },
+    });
+
+    const started: Array<[string, string, string | null | undefined]> = [];
+    surface.subscribe({
+      pageFinished: () => undefined,
+      titleChanged: () => undefined,
+      navigationBlocked: () => undefined,
+      downloadStarted: (url, filename, savePath) => { started.push([url, filename, savePath]); },
+    });
+    const content: WindowRef = { window: 'main', webview: 'browser-content', native: true };
+    listeners.get(DOWNLOAD_STARTED_EVENT)?.({
+      url: 'https://example.com/a.pdf',
+      filename: 'a.pdf',
+      savePath: '/tmp/artifacts/browser-downloads/a.pdf',
+    }, content);
+    expect(started).toEqual([['https://example.com/a.pdf', 'a.pdf', '/tmp/artifacts/browser-downloads/a.pdf']]);
   });
 });

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
 import { useDesktopWindowMaximizeToggle } from './app/hooks/useDesktopWindowMaximizeToggle';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
+import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -390,7 +390,7 @@ function App() {
             className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
           >
             <span className="flex w-4 shrink-0 items-center justify-center">
-              <CaretLeft size={18} className="h-[18px] w-[18px]" />
+              <ArrowLeft size={18} className="h-[18px] w-[18px]" />
             </span>
             <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
               {t('common:actions.backToHome')}

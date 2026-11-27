@@ -38,6 +38,7 @@ import {
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useMindMapStore } from '../../store';
@@ -106,23 +107,27 @@ const ColorPalettePopover: React.FC<{
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <DsButton
-          variant="ghost"
-          className={cn(formatBtnClass(Boolean(activeColor)), 'relative')}
-          aria-label={label}
-          title={label}
-          aria-expanded={open}
-          data-testid={testId}
-        >
-          {icon}
-          <span
-            aria-hidden="true"
-            className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full border border-[var(--mm-bg-elevated)]"
-            style={{ backgroundColor: activeColor || 'var(--mm-border-strong)' }}
-          />
-        </DsButton>
-      </PopoverTrigger>
+      <Tooltip disabled={open}>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <DsButton
+              variant="ghost"
+              className={cn(formatBtnClass(Boolean(activeColor)), 'relative')}
+              aria-label={label}
+              aria-expanded={open}
+              data-testid={testId}
+            >
+              {icon}
+              <span
+                aria-hidden="true"
+                className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full border border-[var(--mm-bg-elevated)]"
+                style={{ backgroundColor: activeColor || 'var(--mm-border-strong)' }}
+              />
+            </DsButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="center"
         sideOffset={8}
@@ -152,7 +157,6 @@ const ColorPalettePopover: React.FC<{
               }}
               aria-pressed={activeColor === color}
               aria-label={selectLabel(color)}
-              title={selectLabel(color)}
             />
           ))}
           <button
@@ -163,7 +167,6 @@ const ColorPalettePopover: React.FC<{
               setOpen(false);
             }}
             aria-label={clearLabel}
-            title={clearLabel}
           >
             <X size={11} />
           </button>
@@ -389,18 +392,22 @@ export const MindMapFormatBar: React.FC = () => {
         {toggles.map(({ key, icon: Icon, prop, val }) => {
           const active = style?.[prop] === val;
           const nextValue = active ? undefined : val;
+          const label = t(`contextMenu.${key}`);
           return (
-            <DsButton
-              variant="ghost"
-              key={key}
-              className={formatBtnClass(active)}
-              onClick={() => applyStylePatch((s) => ({ ...s, [prop]: nextValue }))}
-              aria-pressed={active}
-              title={t(`contextMenu.${key}`)}
-              aria-label={t(`contextMenu.${key}`)}
-            >
-              <Icon className="w-4 h-4" />
-            </DsButton>
+            <Tooltip key={key}>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className={formatBtnClass(active)}
+                  onClick={() => applyStylePatch((s) => ({ ...s, [prop]: nextValue }))}
+                  aria-pressed={active}
+                  aria-label={label}
+                >
+                  <Icon className="w-4 h-4" />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{label}</TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
@@ -412,35 +419,43 @@ export const MindMapFormatBar: React.FC = () => {
         {headings.map(([level, Icon, labelKey]) => {
           const active = style?.headingLevel === level;
           const nextHeading = active ? undefined : level;
+          const label = t(`contextMenu.${labelKey}`);
           return (
-            <DsButton
-              variant="ghost"
-              key={level}
-              className={formatBtnClass(active)}
-              onClick={() =>
-                applyStylePatch((s) => ({
-                  ...s,
-                  headingLevel: nextHeading,
-                }))
-              }
-              aria-pressed={active}
-              title={t(`contextMenu.${labelKey}`)}
-              aria-label={t(`contextMenu.${labelKey}`)}
-            >
-              <Icon className="w-4 h-4" />
-            </DsButton>
+            <Tooltip key={level}>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className={formatBtnClass(active)}
+                  onClick={() =>
+                    applyStylePatch((s) => ({
+                      ...s,
+                      headingLevel: nextHeading,
+                    }))
+                  }
+                  aria-pressed={active}
+                  aria-label={label}
+                >
+                  <Icon className="w-4 h-4" />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{label}</TooltipContent>
+            </Tooltip>
           );
         })}
-        <DsButton
-          variant="ghost"
-          className={formatBtnClass(!style?.headingLevel)}
-          onClick={() => applyStylePatch((s) => ({ ...s, headingLevel: undefined }))}
-          aria-pressed={!style?.headingLevel}
-          title={t('contextMenu.normalText')}
-          aria-label={t('contextMenu.normalText')}
-        >
-          <TextT className="w-4 h-4" />
-        </DsButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DsButton
+              variant="ghost"
+              className={formatBtnClass(!style?.headingLevel)}
+              onClick={() => applyStylePatch((s) => ({ ...s, headingLevel: undefined }))}
+              aria-pressed={!style?.headingLevel}
+              aria-label={t('contextMenu.normalText')}
+            >
+              <TextT className="w-4 h-4" />
+            </DsButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('contextMenu.normalText')}</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="w-px h-4 bg-[var(--mm-border)] shrink-0" />
@@ -474,18 +489,24 @@ export const MindMapFormatBar: React.FC = () => {
       {/* W08 快捷入口：优先级 / 进度 / 超链接 + 待办勾选框 */}
       <div className="flex items-center gap-0.5 shrink-0" role="group" aria-label={t('style.nodeAttributes', { defaultValue: '节点属性' })}>
         <Popover open={w08Open} onOpenChange={setW08Open}>
-          <PopoverTrigger asChild>
-            <DsButton
-              variant="ghost"
-              className={formatBtnClass(hasW08Decoration)}
-              aria-label={t('style.nodeAttributes', { defaultValue: '优先级、进度与超链接' })}
-              title={t('style.nodeAttributes', { defaultValue: '优先级、进度与超链接' })}
-              aria-expanded={w08Open}
-              data-testid="mm-format-w08-trigger"
-            >
-              <Flag className="w-4 h-4" />
-            </DsButton>
-          </PopoverTrigger>
+          <Tooltip disabled={w08Open}>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className={formatBtnClass(hasW08Decoration)}
+                  aria-label={t('style.nodeAttributes', { defaultValue: '优先级、进度与超链接' })}
+                  aria-expanded={w08Open}
+                  data-testid="mm-format-w08-trigger"
+                >
+                  <Flag className="w-4 h-4" />
+                </DsButton>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t('style.nodeAttributes', { defaultValue: '优先级、进度与超链接' })}
+            </TooltipContent>
+          </Tooltip>
           <PopoverContent
             align="center"
             sideOffset={8}
@@ -624,66 +645,86 @@ export const MindMapFormatBar: React.FC = () => {
           </PopoverContent>
         </Popover>
 
-        <DsButton
-          variant="ghost"
-          className={formatBtnClass(Boolean(style?.showCheckbox))}
-          onClick={() => {
-            const nextShowCheckbox = style?.showCheckbox ? undefined : true;
-            applyStylePatch((s) => ({
-              ...s,
-              showCheckbox: nextShowCheckbox,
-            }));
-          }}
-          aria-pressed={Boolean(style?.showCheckbox)}
-          title={t('style.showCheckbox', { defaultValue: '待办勾选框' })}
-          aria-label={t('style.showCheckbox', { defaultValue: '待办勾选框' })}
-          data-testid="mm-format-checkbox-toggle"
-        >
-          <CheckSquare className="w-4 h-4" />
-        </DsButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DsButton
+              variant="ghost"
+              className={formatBtnClass(Boolean(style?.showCheckbox))}
+              onClick={() => {
+                const nextShowCheckbox = style?.showCheckbox ? undefined : true;
+                applyStylePatch((s) => ({
+                  ...s,
+                  showCheckbox: nextShowCheckbox,
+                }));
+              }}
+              aria-pressed={Boolean(style?.showCheckbox)}
+              aria-label={t('style.showCheckbox', { defaultValue: '待办勾选框' })}
+              data-testid="mm-format-checkbox-toggle"
+            >
+              <CheckSquare className="w-4 h-4" />
+            </DsButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t('style.showCheckbox', { defaultValue: '待办勾选框' })}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="w-px h-4 bg-[var(--mm-border)] shrink-0" />
 
       {/* 学习动作：归纳总结 } / 投影闪卡 / 导出讲义 */}
       {siblingSummaryRange && (
-        <DsButton
-          variant="ghost"
-          className={formatPillBtnClass(false)}
-          onClick={() => addSummaryBrace(targetIds)}
-          title={t('mn5.addSummaryBraceHint')}
-          aria-label={t('mn5.addSummaryBrace')}
-          data-testid="mm-format-add-summary-brace"
-        >
-          <BracketsCurly className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
-          <span>{t('mn5.addSummaryBrace')}</span>
-        </DsButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DsButton
+              variant="ghost"
+              className={formatPillBtnClass(false)}
+              onClick={() => addSummaryBrace(targetIds)}
+              aria-label={t('mn5.addSummaryBrace')}
+              data-testid="mm-format-add-summary-brace"
+            >
+              <BracketsCurly className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
+              <span>{t('mn5.addSummaryBrace')}</span>
+            </DsButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('mn5.addSummaryBraceHint')}</TooltipContent>
+        </Tooltip>
       )}
 
-      <DsButton
-        variant="ghost"
-        className={formatPillBtnClass(allFlashcards)}
-        onClick={handleToggleFlashcard}
-        aria-pressed={allFlashcards}
-        title={t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
-        aria-label={t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
-        data-testid="mm-format-flashcard-toggle"
-      >
-        <Cards className="w-3.5 h-3.5" />
-        <span className="hidden xl:inline">{t('mn5.projectAsFlashcard')}</span>
-      </DsButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DsButton
+            variant="ghost"
+            className={formatPillBtnClass(allFlashcards)}
+            onClick={handleToggleFlashcard}
+            aria-pressed={allFlashcards}
+            aria-label={t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
+            data-testid="mm-format-flashcard-toggle"
+          >
+            <Cards className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">{t('mn5.projectAsFlashcard')}</span>
+          </DsButton>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
+        </TooltipContent>
+      </Tooltip>
 
-      <DsButton
-        variant="ghost"
-        className={formatPillBtnClass(false)}
-        onClick={handleExportHandout}
-        title={t('mn5.exportHandoutHint')}
-        aria-label={t('mn5.exportHandout')}
-        data-testid="mm-format-export-handout"
-      >
-        <Article className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
-        <span className="hidden xl:inline">{t('mn5.exportHandout')}</span>
-      </DsButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DsButton
+            variant="ghost"
+            className={formatPillBtnClass(false)}
+            onClick={handleExportHandout}
+            aria-label={t('mn5.exportHandout')}
+            data-testid="mm-format-export-handout"
+          >
+            <Article className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
+            <span className="hidden xl:inline">{t('mn5.exportHandout')}</span>
+          </DsButton>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('mn5.exportHandoutHint')}</TooltipContent>
+      </Tooltip>
       </div>
 
       {/* AI 扩写 / 总结 + 引用到聊天：固定在滚动区外侧，1440×900 开侧边栏也不被裁剪 */}
@@ -693,19 +734,25 @@ export const MindMapFormatBar: React.FC = () => {
           data-testid="mm-format-ai-pinned"
         >
           <Popover open={aiOpen} onOpenChange={setAiOpen}>
-            <PopoverTrigger asChild>
-              <DsButton
-                variant="ghost"
-                className={formatPillBtnClass(aiOpen)}
-                aria-label={t('ai.quickActions', { defaultValue: 'AI 扩写/总结' })}
-                title={t('ai.quickActions', { defaultValue: 'AI 扩写/总结' })}
-                aria-expanded={aiOpen}
-                data-testid="mm-format-ai-trigger"
-              >
-                <Sparkle className="w-3.5 h-3.5 text-[var(--mm-primary)]" />
-                <span className="hidden xl:inline">{t('ai.label', { defaultValue: 'AI' })}</span>
-              </DsButton>
-            </PopoverTrigger>
+            <Tooltip disabled={aiOpen}>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <DsButton
+                    variant="ghost"
+                    className={formatPillBtnClass(aiOpen)}
+                    aria-label={t('ai.quickActions', { defaultValue: 'AI 扩写/总结' })}
+                    aria-expanded={aiOpen}
+                    data-testid="mm-format-ai-trigger"
+                  >
+                    <Sparkle className="w-3.5 h-3.5 text-[var(--mm-primary)]" />
+                    <span className="hidden xl:inline">{t('ai.label', { defaultValue: 'AI' })}</span>
+                  </DsButton>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t('ai.quickActions', { defaultValue: 'AI 扩写/总结' })}
+              </TooltipContent>
+            </Tooltip>
             <PopoverContent
               align="end"
               sideOffset={8}
@@ -732,15 +779,21 @@ export const MindMapFormatBar: React.FC = () => {
             </PopoverContent>
           </Popover>
 
-          <DsButton
-            variant="ghost"
-            className={formatBtnClass(false)}
-            onClick={handleAddAsContext}
-            title={t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
-            aria-label={t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
-          >
-            <Quotes className="w-4 h-4" />
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                className={formatBtnClass(false)}
+                onClick={handleAddAsContext}
+                aria-label={t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
+              >
+                <Quotes className="w-4 h-4" />
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
     </div>

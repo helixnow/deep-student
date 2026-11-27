@@ -316,8 +316,12 @@ describe('3. UnifiedMobileHeader 4 层渐进模糊与横屏 40px 紧凑高度', 
       expect(header?.className).toContain('h-10');
       expect(header?.style.height).toBe('40px');
       expect(header?.style.minHeight).toBe('40px');
-      expect(header?.style.paddingLeft).toBe('max(12px, env(safe-area-inset-left))');
-      expect(header?.style.paddingRight).toBe('max(12px, env(safe-area-inset-right))');
+      expect(header?.style.paddingLeft).toBe(
+        'max(12px, var(--mobile-safe-area-left, env(safe-area-inset-left, 0px)))',
+      );
+      expect(header?.style.paddingRight).toBe(
+        'max(12px, var(--mobile-safe-area-right, env(safe-area-inset-right, 0px)))',
+      );
     } finally {
       media.restore();
     }

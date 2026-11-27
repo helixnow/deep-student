@@ -367,8 +367,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
         </DsButton>
       </header>
       <div className="wb-ai-dashboard-body">
-        <WbSysFade>
-
+        <WbSysFade className="wb-ai-dashboard-content">
           <div
             className="wb-ai-dashboard-insights"
             data-testid="wb-ai-dashboard-insights"
@@ -379,44 +378,50 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
               data-testid="wb-ai-dashboard-study-card"
               data-study-mode={studyInsights.displayMode}
             >
-              <span className="wb-ai-dashboard-insight-label">
-                {studyInsights.cardLabel}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {studyInsights.cardLabel}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {studyInsights.subValue}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {studyInsights.primaryValue}
               </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {studyInsights.subValue}
-              </span>
             </div>
 
             <div className="wb-ai-dashboard-insight-card">
-              <span className="wb-ai-dashboard-insight-label">
-                {t('generativeUi:workbench.dashboard.todo_completion_label')}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.todo_completion_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.todo_completion_sub', {
+                    completed: todoCompletion.completed,
+                    total: todoCompletion.total,
+                  })}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {todoCompletion.rate}
               </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {t('generativeUi:workbench.dashboard.todo_completion_sub', {
-                  completed: todoCompletion.completed,
-                  total: todoCompletion.total,
-                })}
-              </span>
             </div>
 
             <div className="wb-ai-dashboard-insight-card">
-              <span className="wb-ai-dashboard-insight-label">
-                {t('generativeUi:workbench.dashboard.ai_usage_label')}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.ai_usage_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.ai_usage_sub', {
+                    requests: usageSummary?.totalRequests ?? 0,
+                    tokens: formatCompactTokens(usageSummary?.totalTokens ?? 0),
+                  })}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {formatCompactTokens(usageSummary?.totalTokens ?? 0)}
-              </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {t('generativeUi:workbench.dashboard.ai_usage_sub', {
-                  requests: usageSummary?.totalRequests ?? 0,
-                  tokens: formatCompactTokens(usageSummary?.totalTokens ?? 0),
-                })}
               </span>
             </div>
           </div>

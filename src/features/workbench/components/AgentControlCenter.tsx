@@ -513,6 +513,7 @@ export function AgentControlDockEntry({
               sideOffset={32}
               collisionPadding={12}
               aria-label={t('agentControlCenter.title')}
+              style={{ zIndex: 'var(--wb-z-dock-flyout, 9200)' as unknown as number }}
               className="wb-agent-control-popover wb-glass wb-glass-highlight wb-glass-lens"
             >
               <WallpaperReplica hostRef={popoverRef} enabled={open} />

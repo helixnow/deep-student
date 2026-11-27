@@ -174,13 +174,12 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
           't-dropdown',
           presence.exiting && 'is-closing',
           presence.shown && 'is-open',
-          'absolute w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+          'absolute w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-popover text-popover-foreground shadow-lg ring-1 ring-border/40',
           'bottom-full mb-3 left-0',
           className,
         )}
         style={{ zIndex: Z_INDEX.inputBarPopover }}
         data-origin="bottom-left"
-        data-wb-blur-surface
         role="listbox"
         aria-label={t('chatV2:modelMention.suggestions')}
       >
@@ -213,13 +212,12 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
         hasAgentsSection
           ? 'absolute w-[min(22rem,calc(100vw-2rem))]'
           : 'absolute w-[min(18rem,calc(100vw-2rem))]',
-        'rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+        'rounded-2xl border border-border/80 bg-popover text-popover-foreground shadow-lg ring-1 ring-border/40',
         'bottom-full mb-3 left-0',
         className,
       )}
       style={{ zIndex: Z_INDEX.inputBarPopover }}
       data-origin="bottom-left"
-      data-wb-blur-surface
       role="listbox"
       aria-label={t('chatV2:modelMention.suggestions')}
       aria-activedescendant={activeDescendantId}

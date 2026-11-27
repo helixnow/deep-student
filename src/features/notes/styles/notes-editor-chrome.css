@@ -375,6 +375,9 @@
    桌面窗口里的窄分栏、右侧栏同样生效。 */
 .notes-crepe-shell {
   container: notes-shell / inline-size;
+
+  /* 随编辑器容器宽度自适应块手柄留白：中窄窗收紧释放正文宽，宽窗保持充足拖块空间 */
+  --notes-gutter: clamp(24px, 6cqi, 56px);
 }
 
 .notes-tabbar-host,
@@ -403,6 +406,60 @@
 
 .notes-chrome-compact-icon {
   display: none;
+}
+
+/* ── 标签栏 / 伴读侧板操作位：把顶栏绝大部分空间让给标签页与文档标题 ──
+   页面动作统一收成紧凑图标（悬停 title / aria-label 完整）；
+   保存状态在平稳「已保存」时退隐，字数/阅读时长转入「页面」菜单底部（Notion 同款）；
+   未保存/保存中/刚自动保存只留极简图标，失败/冲突保留完整告警与重试按钮。 */
+.notes-titlebar-actions {
+  margin-left: 4px;
+}
+
+.notes-tab-actions-slot .notes-chrome-text-button {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+.notes-tab-actions-slot .notes-chrome-text-button[aria-pressed='true'] {
+  background: hsl(var(--primary) / 12%);
+  color: hsl(var(--primary));
+}
+
+.notes-tab-actions-slot .notes-chrome-text-button[aria-pressed='true']:hover {
+  background: hsl(var(--primary) / 18%);
+  color: hsl(var(--primary));
+}
+
+.notes-tab-actions-slot .notes-chrome-text-button > span,
+.notes-tab-actions-slot .notes-chrome-caret {
+  display: none;
+}
+
+.notes-tab-actions-slot .notes-chrome-compact-icon {
+  display: inline-block;
+}
+
+.notes-tab-actions-slot .notes-save-indicator[data-status='saved']:not([data-just-saved='true']),
+.notes-tab-actions-slot .notes-save-indicator-meta {
+  display: none;
+}
+
+.notes-tab-actions-slot .notes-save-indicator:not([data-status='failed'], [data-status='conflict']) {
+  padding-inline: 4px;
+}
+
+.notes-tab-actions-slot .notes-save-indicator:not([data-status='failed'], [data-status='conflict']) > span:not(.notes-save-indicator-dot) {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .notes-tab-actions-slot .notes-chrome-text-button {
+    width: auto;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 @container notes-tabbar (max-width: 560px) {

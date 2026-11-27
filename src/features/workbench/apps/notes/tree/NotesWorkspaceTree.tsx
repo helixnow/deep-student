@@ -804,10 +804,15 @@ export function NotesWorkspaceTree({
             'aria-busy': ariaBusy,
             'aria-multiselectable': true,
             onKeyDown: handleTreeKeyDown,
+            onClick: (event) => {
+              if (event.target === event.currentTarget) {
+                handleRootSelect();
+              }
+            },
           }}
-          trackOffsetTop={1}
+          trackOffsetTop={2}
           trackOffsetBottom={8}
-          trackOffsetRight={3}
+          trackOffsetRight={1}
         >
           <div ref={dropIndicatorRef} className="nwt-drop-indicator" style={{ display: 'none' }} />
 
@@ -911,6 +916,10 @@ export function NotesWorkspaceTree({
               </div>
             );
           })}
+
+          {!showRoot && activeDragId !== null ? (
+            <RootEmptyDropZone dropInside={rootDropInside} label={resolvedRootLabel} />
+          ) : null}
         </CustomScrollArea>
       </SortableContext>
 
@@ -992,6 +1001,30 @@ function RootDropRow({
       <FolderSimple size={14} weight="fill" aria-hidden />
       <span>{label}</span>
     </button>
+  );
+}
+
+function RootEmptyDropZone({
+  dropInside,
+  label,
+}: {
+  dropInside: boolean;
+  label: string;
+}) {
+  const { setNodeRef } = useDroppable({
+    id: NOTES_WORKSPACE_TREE_ROOT_ID,
+    data: { isRoot: true },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="nwt-root-drop-zone"
+      data-nwt-root-drop-zone
+      data-drop-inside={dropInside ? 'true' : 'false'}
+    >
+      <span>{label}</span>
+    </div>
   );
 }
 

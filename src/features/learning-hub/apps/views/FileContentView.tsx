@@ -15,7 +15,7 @@
  * - 使用 UnifiedPreviewToolbar 显示控制项
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch } from '@phosphor-icons/react';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -32,7 +32,12 @@ import {
 } from '@/utils/base64FileUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
+import {
+  archiveManifestDisplayText,
+  buildZipManifestFromBytes,
+  isArchiveManifestText,
+} from './archiveManifest';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { canOpenFilesExternally, openFileExternally } from '@/utils/systemFileOpener';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -47,6 +52,13 @@ import { isMobilePlatform, isWebUiShell, supportsStreamProtocol } from '@/utils/
 const MOBILE_RICH_PREVIEW_MAX_BYTES = 30 * 1024 * 1024;
 const getRichPreviewMaxBytes = (): number =>
   (isMobilePlatform() ? MOBILE_RICH_PREVIEW_MAX_BYTES : LARGE_FILE_THRESHOLD);
+
+// 懒加载图片、XMind 与划词学习操作条，避免影响主路径首屏包体积
+const LazyImageContentView = lazy(() => import('./ImageContentView'));
+const LazyXmindPreview = lazy(() => import('./XmindPreview'));
+const LazyPdfSelectionActions = lazy(() =>
+  import('@/features/pdf/components/PdfSelectionActions').then((m) => ({ default: m.PdfSelectionActions })),
+);
 
 // PDF 预览组件
 import {
@@ -161,9 +173,12 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   isActive = true,
   focusScopeId,
   pdfToolbarVariant,
+  hostWindowId,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'pdf']);
+  const isMobileViewport = useIsMobile();
+  const textPreviewContainerRef = useRef<HTMLDivElement>(null);
   
   // 从 PreviewContext 获取状态和方法
   const {
@@ -207,13 +222,15 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const isExcel = previewMode === 'xlsx';
   const isPptx = previewMode === 'pptx';
   const isEpub = previewMode === 'epub';
+  const isImage = previewMode === 'image';
+  const isXmind = previewMode === 'xmind';
   const isPdf = previewMode === 'pdf';
   const isAudio = previewMode === 'audio';
   const isVideo = previewMode === 'video';
   // B 站链接条目：内容是描述 JSON，没有本地音视频，走内嵌播放器
   const isBilibiliLink = (isAudio || isVideo) && isBilibiliLinkItem(mimeType, node.name);
   const needsRichPreview = isDocx || isExcel || isPptx;
-  const needsBinaryPreview = (needsRichPreview || isEpub || isAudio || isVideo) && !isBilibiliLink;
+  const needsBinaryPreview = (needsRichPreview || isEpub || isXmind || isAudio || isVideo) && !isBilibiliLink;
   const canPreviewText = previewMode === 'text';
   // ★ 2026-07-20：压缩包兜底预览——zip 导入时后端已生成条目清单（extracted_text），
   // 预览页尝试加载清单只读展示；rar/7z 无解析依赖，仅展示说明文案
@@ -658,7 +675,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       setMediaRenderFailed(false);
       setMediaSource(null);
 
-      // ★ 压缩包：尝试加载后端生成的条目清单（zip 导入时写入 extracted_text）
+      // ★ 压缩包：优先加载后端生成的条目清单（zip 导入时写入 extracted_text），
+      //   历史/直导 .zip 若未命中清单则前端按需用 JSZip 读取只读目录兜底（上限 50MB）
       if (isArchive) {
         setIsLoading(true);
         try {
@@ -671,6 +689,25 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           // 仅当返回的是清单文本时展示（识别走机器标记，含 legacy 中文前缀兼容）
           if (manifest && isArchiveManifestText(manifest)) {
             setTextContent(archiveManifestDisplayText(manifest));
+            return;
+          }
+          if (/\.zip$/i.test(node.name)) {
+            const maxZipInspectBytes = 50 * 1024 * 1024;
+            const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
+            if (!isMounted) return;
+            if (blobPath) {
+              const zipSize = await invoke<number>('get_file_size', { path: blobPath });
+              if (!isMounted) return;
+              if (zipSize > 0 && zipSize <= maxZipInspectBytes) {
+                const zipBuffer = await invoke<ArrayBuffer>('read_file_bytes', { path: blobPath });
+                if (!isMounted) return;
+                const clientManifest = await buildZipManifestFromBytes(zipBuffer, node.name);
+                if (!isMounted) return;
+                if (clientManifest) {
+                  setTextContent(clientManifest);
+                }
+              }
+            }
           }
         } catch (archiveErr: unknown) {
           console.warn('[FileContentView] load archive manifest failed:', archiveErr);
@@ -928,6 +965,43 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isPptx && base64Content) {
       return <div className="h-full ui-rise-in">{renderRichDocumentPreview('pptx', base64Content)}</div>;
     }
+    // 图片 / SVG 预览（委托 ImageContentView：浏览器 <img> 沙箱天然隔离 SVG 脚本并支持缩放/旋转/棋盘格）
+    if (isImage) {
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center">
+              <CircleNotch className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          }
+        >
+          <LazyImageContentView
+            node={node}
+            isActive={isActive}
+            focusScopeId={focusScopeId}
+            hostWindowId={hostWindowId}
+          />
+        </Suspense>
+      );
+    }
+
+    // XMind 多画布只读大纲预览
+    if (isXmind && base64Content) {
+      return (
+        <div className="h-full ui-rise-in">
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center">
+                <CircleNotch className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            }
+          >
+            <LazyXmindPreview base64Content={base64Content} fileName={node.name} />
+          </Suspense>
+        </div>
+      );
+    }
+
     if (isEpub && base64Content) {
       return (
         <div className="h-full ui-rise-in">
@@ -938,6 +1012,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             metadataProgress={readingProgress}
             onProgressChange={handleProgressChange}
             isActive={isActive}
+            hideTitle={Boolean(hostWindowId)}
           />
         </div>
       );
@@ -1016,26 +1091,40 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       );
     }
 
-    // 文本预览（md 富渲染 / csv 表格化 / 纯文本，带滚动容器）
+    // 文本预览（md 富渲染 / csv 表格化 / 纯文本，带滚动容器与划词学习工具条）
     // ★ 空字符串也进入此分支：TextFilePreview 会渲染"文件内容为空"空状态
     if (textContent !== null) {
       return (
-        <CustomScrollArea className="h-full min-h-0" orientation="both">
-          <TextFilePreview
-            content={textContent}
-            fileName={node.name}
-            onConvertToNote={
-              /\.(md|markdown)$/i.test(node.name)
-                ? () =>
-                    window.dispatchEvent(
-                      new CustomEvent(CONVERT_MARKDOWN_TO_NOTE_EVENT, {
-                        detail: { resourceId: node.id, name: node.name, content: textContent },
-                      }),
-                    )
-                : undefined
-            }
-          />
-        </CustomScrollArea>
+        <div ref={textPreviewContainerRef} className="relative h-full min-h-0 overflow-hidden">
+          <CustomScrollArea className="h-full min-h-0" orientation="both">
+            <TextFilePreview
+              content={textContent}
+              fileName={node.name}
+              onConvertToNote={
+                /\.(md|markdown)$/i.test(node.name)
+                  ? () =>
+                      window.dispatchEvent(
+                        new CustomEvent(CONVERT_MARKDOWN_TO_NOTE_EVENT, {
+                          detail: { resourceId: node.id, name: node.name, content: textContent },
+                        }),
+                      )
+                  : undefined
+              }
+            />
+          </CustomScrollArea>
+          {Boolean(node.id) && (
+            <Suspense fallback={null}>
+              <LazyPdfSelectionActions
+                containerRef={textPreviewContainerRef}
+                enabled
+                isMobileLike={isMobileViewport}
+                documentTitle={node.name}
+                selectionSourceId={node.id}
+                selectionKind="document"
+              />
+            </Suspense>
+          )}
+        </div>
       );
     }
 

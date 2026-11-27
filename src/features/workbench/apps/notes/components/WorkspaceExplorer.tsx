@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -6,9 +6,11 @@ import {
   FileArchive,
   FileText,
   FolderPlus,
+  Lightbulb,
   LinkSimple,
   MagnifyingGlass,
   Notebook,
+  Tag,
   Trash,
   TreeStructure,
   X,
@@ -16,8 +18,6 @@ import {
 import type { DstuNode } from '@/dstu';
 import { DsButton } from '@/components/ui/DsButton';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
-import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
-import type { NoteLearningView } from '@/features/notes/noteLearningProps';
 import {
   NOTE_TITLE_MAX_CHARS,
   NOTE_TITLE_COUNT_WARN_THRESHOLD,
@@ -68,8 +68,6 @@ export interface WorkspaceExplorerProps {
   onQueryChange: (query: string) => void;
   selectedTags: string[];
   onSelectedTagsChange: (tags: string[]) => void;
-  learningView: NoteLearningView | 'tree';
-  onLearningViewChange: (view: NoteLearningView | 'tree') => void;
   loading: boolean;
   loadError: string | null;
   resourcesCount: number;
@@ -118,8 +116,6 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   onQueryChange,
   selectedTags,
   onSelectedTagsChange,
-  learningView,
-  onLearningViewChange,
   loading,
   loadError,
   resourcesCount,
@@ -162,7 +158,10 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   const explorerRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const createFolderComposingRef = useRef(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  const [insightCreateNonce, setInsightCreateNonce] = useState(0);
   const hasTreeItems = treeItems.length > 0;
+  const showTagFilter = tagFilterOpen || selectedTags.length > 0;
 
   // 行内输入行 / 确认条（非模态）：打开时把焦点送进面板，关闭后归还给触发
   // 元素；触发行已被删除时回落到树内相邻可聚焦行。
@@ -287,6 +286,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   ];
   const explorerTailActions: ExplorerOverflowAction[] = [
     { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: onOpenFullTextSearch },
+    { key: 'new-insight', label: t('notes:insights.add_placeholder', '记录一条灵感…'), icon: <Lightbulb size={15} />, onSelect: () => setInsightCreateNonce((n) => n + 1) },
     { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: onToggleBacklinks },
     { key: 'trash', label: t('notesWorkspace.ribbon.trash', 'Trash'), icon: <Trash size={15} />, onSelect: onOpenTrash },
     { key: 'library', label: t('notesWorkspace.library.manage', 'Import or export library'), icon: <FileArchive size={15} />, onSelect: onOpenLibrary },
@@ -344,7 +344,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
               return;
             }
             if (event.key === 'ArrowDown') {
-              if (learningView === 'tree' && treeItems.length > 0) {
+              if (treeItems.length > 0) {
                 event.preventDefault();
                 const firstId = treeItems[0].id;
                 onSelectTreeItem(firstId);
@@ -397,13 +397,35 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
             <X size={12} />
           </DsButton>
         )}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="notes-search-tag-btn"
+          data-active={showTagFilter ? 'true' : undefined}
+          aria-pressed={showTagFilter}
+          aria-expanded={showTagFilter}
+          aria-label={t('notesWorkspace.tagFilter.label')}
+          title={t('notesWorkspace.tagFilter.label')}
+          onClick={() => setTagFilterOpen((open) => !open)}
+        >
+          <Tag size={13} aria-hidden />
+          {selectedTags.length > 0 && (
+            <span className="notes-search-tag-count">{selectedTags.length}</span>
+          )}
+        </DsButton>
       </div>
-      <TagFilter
-        selectedTags={selectedTags}
-        onChange={onSelectedTagsChange}
-        className="notes-explorer-tag-filter"
-      />
-      {/* Notion 式：收藏区只在有收藏时出现，不用一句空态说明占掉页面树的位置 */}
+      {showTagFilter && (
+        <TagFilter
+          selectedTags={selectedTags}
+          onChange={onSelectedTagsChange}
+          open={showTagFilter}
+          onOpenChange={(next) => {
+            if (!next && selectedTags.length === 0) setTagFilterOpen(false);
+          }}
+          className="notes-explorer-tag-filter"
+        />
+      )}
+      {/* Notion 式：收藏区与灵感区只在有内容时出现，不白占页面树的纵向空间 */}
       {favorites.items.length > 0 && (
         <FavoritesSection
           items={favorites.items}
@@ -417,7 +439,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           }}
         />
       )}
-      <InsightsSection />
+      <InsightsSection createRequestNonce={insightCreateNonce} />
       {resourceDialog?.mode === 'create-folder' && (
         <div className="notes-inline-create ui-rise-in" data-notes-inline-create>
           <div className="notes-inline-create-row">
@@ -531,64 +553,8 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           </div>
         </div>
       )}
-      {/* 视图切换：紧凑分段按钮，替代浏览器原生下拉 */}
-      <div className="notes-view-switch" role="radiogroup" aria-label={t('notes:learning.view_selector')}>
-        {(['tree', 'list', 'status', 'review'] as const).map((view) => (
-          <button
-            key={view}
-            type="button"
-            role="radio"
-            aria-checked={learningView === view}
-            title={t(`notes:learning.views.${view}`)}
-            className="notes-view-switch-option"
-            onClick={() => onLearningViewChange(view)}
-          >
-            {t(`notes:learning.views.${view}`)}
-          </button>
-        ))}
-      </div>
       <div className="notes-tree-host" aria-live="polite">
-        {learningView !== 'tree' ? (
-          loading && resourcesCount === 0 ? <p className="p-3 text-xs">{t('notes:editor.windowing.loading_note')}</p>
-            : loadError && resourcesCount === 0 ? (
-              <div className="p-3 text-xs" role="alert">
-                {loadError}
-                <DsButton variant="ghost" size="sm" onClick={onRetryLoad}>{t('common:retry')}</DsButton>
-              </div>
-            )
-              : filteredResources.length === 0 && (query.trim() || selectedTags.length > 0) ? (
-                <div className="nes-tree-empty notes-tree-message" data-state="empty">
-                  <p className="nes-tree-empty__message">
-                    {t('notesWorkspace.tree.noMatches', {
-                      defaultValue: 'No files match "{{query}}"',
-                      query: query || selectedTags.join(', '),
-                    })}
-                  </p>
-                  <DsButton
-                    variant="outline"
-                    size="sm"
-                    className="nes-action"
-                    onClick={() => {
-                      onQueryChange('');
-                      onSelectedTagsChange([]);
-                      searchInputRef.current?.focus();
-                    }}
-                  >
-                    {t('notesWorkspace.tree.showAll', 'Show all files')}
-                  </DsButton>
-                </div>
-              )
-                : (
-                  <NoteLearningViews
-                    notes={[...filteredResources]}
-                    view={learningView}
-                    activeId={activeTabId ?? undefined}
-                    onOpen={onOpenSearchResult}
-                  />
-                )
-        ) : (
-          <>
-            {loading && !hasTreeItems ? (
+        {loading && !hasTreeItems ? (
               <div
                 className="notes-tree"
                 role="tree"
@@ -693,6 +659,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
                 expandedIds={expandedIds}
                 selectedId={selectedTreeId ?? selectedFolderId}
                 activeId={activeTabId}
+                showRoot={false}
                 aria-busy={loading}
                 rootLabel={t('notesWorkspace.tree.root')}
                 onToggleExpand={onToggleTreeExpand}
@@ -706,8 +673,6 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
                 getMenuItems={getTreeMenuItems}
               />
             )}
-          </>
-        )}
       </div>
     </WorkbenchSidebarSurface>
   );

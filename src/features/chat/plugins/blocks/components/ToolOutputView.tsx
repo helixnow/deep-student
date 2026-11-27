@@ -8,7 +8,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
+import { CheckCircle, FileJs, FileText, Globe, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -393,6 +393,123 @@ const LoadSkillsSummary: React.FC<{ data: LoadSkillsSummaryData }> = ({ data }) 
   );
 };
 
+interface BrowserScreenshotSummaryData {
+  available: boolean;
+  width?: number;
+  height?: number;
+  annotated: boolean;
+  url?: string;
+  urlHost?: string;
+  locator?: string;
+  artifactPath?: string;
+  reason?: string;
+}
+
+function extractUrlHost(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).host || rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function extractBrowserScreenshotSummary(output: unknown): BrowserScreenshotSummaryData | null {
+  const data = unwrapLoadSkillsPayload(output);
+  if (!data) return null;
+
+  const action = typeof data.action === 'string' ? data.action : '';
+  if (action !== 'screenshot' && action !== 'screenshot_capability') {
+    return null;
+  }
+
+  const available = data.available !== false;
+  const width = typeof data.width === 'number' && Number.isFinite(data.width) && data.width > 0
+    ? data.width
+    : undefined;
+  const height = typeof data.height === 'number' && Number.isFinite(data.height) && data.height > 0
+    ? data.height
+    : undefined;
+  const annotated = data.annotated === true;
+  const url = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : undefined;
+  const urlHost = url ? extractUrlHost(url) : undefined;
+  const locator = typeof data.locator === 'string' && data.locator.trim() ? data.locator.trim() : undefined;
+  const artifactPath = typeof data.artifact_path === 'string' && data.artifact_path.trim()
+    ? data.artifact_path.trim()
+    : undefined;
+  const reason = typeof data.reason === 'string' && data.reason.trim() ? data.reason.trim() : undefined;
+
+  if (available && width === undefined && height === undefined && !urlHost && !locator && !artifactPath) {
+    return null;
+  }
+
+  return {
+    available,
+    width,
+    height,
+    annotated,
+    url,
+    urlHost,
+    locator,
+    artifactPath,
+    reason,
+  };
+}
+
+const BrowserScreenshotSummary: React.FC<{ data: BrowserScreenshotSummaryData }> = ({ data }) => {
+  const { t } = useTranslation('chatV2');
+  const artifactRef = data.locator ?? data.artifactPath;
+  const hasResolution = data.width !== undefined && data.height !== undefined;
+
+  return (
+    <div
+      data-testid="browser-screenshot-summary"
+      className="mb-2 rounded border border-border/40 bg-background/60 px-2.5 py-2 text-xs space-y-1.5"
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {hasResolution && (
+          <span className="inline-flex items-center gap-1 font-medium text-foreground tabular-nums">
+            <ImageIcon size={12} className="shrink-0 text-muted-foreground" />
+            <span>{`${data.width} × ${data.height}`}</span>
+          </span>
+        )}
+        {data.annotated && (
+          <span className="inline-flex items-center rounded border border-border/50 bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-foreground/80">
+            {t('blocks.mcpTool.browserScreenshot.annotated')}
+          </span>
+        )}
+        {data.urlHost && (
+          <span
+            className="inline-flex min-w-0 max-w-[220px] items-center gap-1 text-muted-foreground"
+            title={data.url ?? data.urlHost}
+          >
+            <Globe size={12} className="shrink-0" />
+            <span className="min-w-0 truncate font-mono">{data.urlHost}</span>
+          </span>
+        )}
+        {!data.available && (
+          <span className="text-warning">
+            {data.reason
+              ? `${t('blocks.mcpTool.browserScreenshot.unavailable')} (${data.reason})`
+              : t('blocks.mcpTool.browserScreenshot.unavailable')}
+          </span>
+        )}
+      </div>
+
+      {artifactRef && (
+        <div className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
+          <span className="shrink-0">{t('blocks.mcpTool.browserScreenshot.artifact')}</span>
+          <span
+            className="min-w-0 truncate font-mono text-foreground/80"
+            title={data.artifactPath ?? data.locator}
+          >
+            {artifactRef}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============================================================================
 // 主组件
 // ============================================================================
@@ -407,6 +524,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
   const { t } = useTranslation('chatV2');
   const outputType = useMemo(() => detectOutputType(output), [output]);
   const loadSkillsSummary = useMemo(() => extractLoadSkillsSummary(output), [output]);
+  const browserScreenshotSummary = useMemo(() => extractBrowserScreenshotSummary(output), [output]);
   const [copied, setCopied] = useState(false);
 
   // 内联复制输出（文本原样，其余序列化为 JSON）
@@ -486,6 +604,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
         )}
       >
         {loadSkillsSummary && <LoadSkillsSummary data={loadSkillsSummary} />}
+        {browserScreenshotSummary && <BrowserScreenshotSummary data={browserScreenshotSummary} />}
         {outputType === 'json' && <JsonOutput data={output} />}
         {outputType === 'text' && <TextOutput text={String(output)} />}
         {outputType === 'table' && (

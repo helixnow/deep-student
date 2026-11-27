@@ -5,13 +5,19 @@
  */
 
 .wb-at-root {
+  --at-surface: var(--shell-workspace-surface, hsl(var(--background)));
+
   height: 100%;
   width: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--wb-window-bg, hsl(var(--card)));
+  background: var(--at-surface);
+}
+
+[data-wb-window-body] .wb-at-root {
+  --at-surface: var(--wb-window-bg, hsl(var(--card)));
 }
 
 .wb-at-screen {

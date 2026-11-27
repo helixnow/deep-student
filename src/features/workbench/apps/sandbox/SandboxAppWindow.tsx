@@ -55,6 +55,8 @@ const SandboxAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, requestClos
             className="h-full"
             onClose={requestClose}
             ownerKey={LEGACY_SANDBOX_OWNER_KEY}
+            hideToolbar
+            hideTitle
           />
         </WbSysFade>
       </Suspense>

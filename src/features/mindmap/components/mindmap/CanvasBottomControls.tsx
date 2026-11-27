@@ -19,6 +19,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { UiPresence } from '@/components/ui/UiPresence';
 import { cn } from '@/utils/cn';
 import { isMacOS } from '@/utils/platform';
@@ -31,7 +32,6 @@ import type { MindMapStoreApi } from '../../store';
 import type { DropPreviewRect } from '../../utils/dragLayoutPreview';
 import type { ExcerptCanvasDropTarget } from './hooks/useCanvasExcerptDrop';
 import { CanvasZoomIndicator } from './CanvasZoomIndicator';
-import { CanvasShortcutHintPill } from './CanvasShortcutHintPill';
 import { MobileNodeToolbar, type MobileToolbarPanel } from './MobileNodeToolbar';
 import { SummaryBraceOverlay } from './SummaryBraceOverlay';
 
@@ -724,14 +724,19 @@ export const CanvasTopBanners: React.FC<CanvasTopBannersProps> = ({
     <>
       {breadcrumbPath.length > 1 && (
         <div className="mm-canvas-breadcrumb">
-          <DsButton
-            variant="ghost"
-            onClick={() => onSetViewRootId(null)}
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-            title={t('outline.exitFocusMode')}
-          >
-            <House size={14} />
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                onClick={() => onSetViewRootId(null)}
+                className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                aria-label={t('outline.exitFocusMode')}
+              >
+                <House size={14} />
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('outline.exitFocusMode')}</TooltipContent>
+          </Tooltip>
           {breadcrumbPath.map((node, index) => (
             <React.Fragment key={node.id}>
               <span className="text-[var(--mm-text-muted)]">/</span>
@@ -904,13 +909,12 @@ export interface CanvasBottomControlsProps {
   setWheelMode: (mode: CanvasWheelMode) => void;
   onFitView: () => void;
   onAddTopic: () => void;
-  onToggleShortcutHelp?: () => void;
 }
 
 /**
  * 画布内底部控制区（须渲染在 `<ReactFlow>` 子树内）：
  * - `<Controls>`（隐藏重复的 FitView，统一收敛到右侧控制胶囊）
- * - 触屏快捷栏 / 桌面端右下角模式切换 + 缩放指示 + 适应视图 / 左下角快捷键提示胶囊
+ * - 触屏快捷栏 / 桌面端右下角模式切换 + 缩放指示 + 适应视图
  */
 export const CanvasBottomControls: React.FC<CanvasBottomControlsProps> = ({
   isCoarsePointer,
@@ -923,7 +927,6 @@ export const CanvasBottomControls: React.FC<CanvasBottomControlsProps> = ({
   setWheelMode,
   onFitView,
   onAddTopic,
-  onToggleShortcutHelp,
 }) => {
   const { t } = useTranslation('mindmap');
   const fitShortcut = isMacOS() ? '⌘0' : 'Ctrl+0';
@@ -946,7 +949,6 @@ export const CanvasBottomControls: React.FC<CanvasBottomControlsProps> = ({
             size="sm"
             className="mm-canvas-touch-button"
             onClick={onFitView}
-            title={t('contextMenu.fitView', { defaultValue: '适应视图' })}
           >
             <CornersOut size={15} />
             <span>{t('contextMenu.fitView', { defaultValue: '适应视图' })}</span>
@@ -956,7 +958,6 @@ export const CanvasBottomControls: React.FC<CanvasBottomControlsProps> = ({
             size="sm"
             className="mm-canvas-touch-button"
             onClick={onAddTopic}
-            title={t('contextMenu.addTopic', { defaultValue: '新建主题' })}
           >
             <Plus size={15} />
             <span>{t('contextMenu.addTopic', { defaultValue: '新建主题' })}</span>
@@ -971,75 +972,91 @@ export const CanvasBottomControls: React.FC<CanvasBottomControlsProps> = ({
           role="group"
           aria-label={t('canvas.dragModeGroup', { defaultValue: '画布拖拽模式' })}
         >
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn('mm-canvas-mode-button', dragMode === 'select' && 'is-active')}
-            onClick={() => setDragMode('select')}
-            title={t('canvas.dragModeSelect', {
-              defaultValue: '框选模式：拖拽空白框选（Space/中键/右键拖拽平移）',
-            })}
-            aria-pressed={dragMode === 'select'}
-          >
-            <Selection size={15} weight={dragMode === 'select' ? 'bold' : 'regular'} />
-            <span>{t('canvas.selectMode', { defaultValue: '框选' })}</span>
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn('mm-canvas-mode-button', dragMode === 'pan' && 'is-active')}
-            onClick={() => setDragMode('pan')}
-            title={t('canvas.dragModePan', {
-              defaultValue: '拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）',
-            })}
-            aria-pressed={dragMode === 'pan'}
-          >
-            <Hand size={15} weight={dragMode === 'pan' ? 'fill' : 'regular'} />
-            <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className={cn('mm-canvas-mode-button', dragMode === 'select' && 'is-active')}
+                onClick={() => setDragMode('select')}
+                aria-pressed={dragMode === 'select'}
+              >
+                <Selection size={15} weight={dragMode === 'select' ? 'bold' : 'regular'} />
+                <span>{t('canvas.selectMode', { defaultValue: '框选' })}</span>
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t('canvas.dragModeSelect', {
+                defaultValue: '框选模式：拖拽空白框选（Space/中键/右键拖拽平移）',
+              })}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className={cn('mm-canvas-mode-button', dragMode === 'pan' && 'is-active')}
+                onClick={() => setDragMode('pan')}
+                aria-pressed={dragMode === 'pan'}
+              >
+                <Hand size={15} weight={dragMode === 'pan' ? 'fill' : 'regular'} />
+                <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t('canvas.dragModePan', {
+                defaultValue: '拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）',
+              })}
+            </TooltipContent>
+          </Tooltip>
           <span className="mm-canvas-mode-divider" aria-hidden="true" />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'mm-canvas-mode-button mm-canvas-wheel-toggle',
-              wheelMode === 'zoom' && 'is-active',
-            )}
-            onClick={() => setWheelMode(wheelMode === 'zoom' ? 'pan' : 'zoom')}
-            title={
-              wheelMode === 'zoom'
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'mm-canvas-mode-button mm-canvas-wheel-toggle',
+                  wheelMode === 'zoom' && 'is-active',
+                )}
+                onClick={() => setWheelMode(wheelMode === 'zoom' ? 'pan' : 'zoom')}
+                aria-pressed={wheelMode === 'zoom'}
+              >
+                <MouseScroll size={15} weight={wheelMode === 'zoom' ? 'fill' : 'regular'} />
+                <span>{t('canvas.wheelZoom', { defaultValue: '滚轮缩放' })}</span>
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {wheelMode === 'zoom'
                 ? t('canvas.wheelModeZoom', {
                     defaultValue: '滚轮缩放（默认）：滚轮/双指滑动直接缩放；点击切换为双指平移',
                   })
                 : t('canvas.wheelModePan', {
                     defaultValue:
                       '双指平移（已开启）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放',
-                  })
-            }
-            aria-pressed={wheelMode === 'zoom'}
-          >
-            <MouseScroll size={15} weight={wheelMode === 'zoom' ? 'fill' : 'regular'} />
-            <span>{t('canvas.wheelZoom', { defaultValue: '滚轮缩放' })}</span>
-          </DsButton>
+                  })}
+            </TooltipContent>
+          </Tooltip>
           <span className="mm-canvas-mode-divider" aria-hidden="true" />
           <CanvasZoomIndicator />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className="mm-canvas-mode-button !min-w-0 !px-1.5"
-            onClick={onFitView}
-            title={`${t('contextMenu.fitView', { defaultValue: '适应视图' })} (${fitShortcut})`}
-            aria-label={t('contextMenu.fitView', { defaultValue: '适应视图' })}
-          >
-            <CornersOut size={14} />
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="mm-canvas-mode-button !min-w-0 !px-1.5"
+                onClick={onFitView}
+                aria-label={t('contextMenu.fitView', { defaultValue: '适应视图' })}
+              >
+                <CornersOut size={14} />
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="top" shortcut={fitShortcut}>
+              {t('contextMenu.fitView', { defaultValue: '适应视图' })}
+            </TooltipContent>
+          </Tooltip>
         </div>
-      )}
-      {!presentationMode && !isCoarsePointer && (
-        <CanvasShortcutHintPill
-          reciteMode={reciteMode}
-          onOpenShortcuts={onToggleShortcutHelp}
-        />
       )}
     </>
   );

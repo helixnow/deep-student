@@ -42,11 +42,11 @@ describe('workspace_list_agent_profiles', () => {
     expect(result.agentsDir).toBe(directory);
     expect(existsSync(directory)).toBe(true);
     expect(result.customFiles).toEqual([]);
-    expect(result.builtin.map(profile => profile.id)).toEqual(['default', 'worker', 'explorer']);
+    expect(result.builtin.map(profile => profile.id)).toEqual(['default', 'worker', 'explorer', 'browser']);
     for (const profile of result.builtin) {
       expect(profile.description).toEqual(expect.any(String));
       expect(profile.model).toBeNull();
-      if (profile.id === 'explorer') {
+      if (profile.id === 'explorer' || profile.id === 'browser') {
         expect(profile.toolCount).toBeGreaterThan(0);
       } else {
         expect(profile.toolCount).toBe(0);
@@ -76,7 +76,7 @@ describe('workspace_list_agent_profiles', () => {
       if (message.type === 'warn') warnings.push(String(message.args[0]));
     } });
     const result = await host.invoke<ListAgentProfilesResponse>('workspace_list_agent_profiles');
-    expect(result.builtin).toHaveLength(3);
+    expect(result.builtin).toHaveLength(4);
     expect(result.customFiles).toEqual([]);
     expect(warnings.some(message => message.startsWith(`[Workspace::handlers] Failed to ensure custom agents dir ${directory}: `))).toBe(true);
   });

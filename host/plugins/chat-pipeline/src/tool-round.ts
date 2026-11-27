@@ -72,6 +72,8 @@ export interface ToolExecutionPorts extends ChatToolRuntime {
   onTaskFinalized(ctx: PipelineContext): void;
   saveIntermediateResultsWithRetry(ctx: PipelineContext, stage: string): Promise<boolean>;
   buildRetrievalPageImageInjection(results: readonly ToolResultInfo[], budget: RetrievalPageImageBudget): LegacyChatMessage | null;
+  buildBrowserScreenshotImageInjection?(results: readonly ToolResultInfo[],
+    budget: { imageBudget: number; imagesInRequest: number }): Promise<LegacyChatMessage | null>;
   resolveActiveApiConfig(ctx: PipelineContext): Promise<ApiConfig | null>;
   log: Log;
 }
@@ -247,17 +249,30 @@ export class ToolRounds implements ToolRoundRunner {
     if (snapshot !== null && snapshot.resolvedModelIsMultimodal) {
       const lastId = withReasoning.at(-1)?.toolCallId;
       if (lastId != null && lastId !== '') {
+        let baseImages = countRequestImages(ctx.chatHistory);
+        if (ctx.options.isContinue !== true && ctx.compiledCurrentUserMessage !== null) {
+          baseImages += countRequestImages([ctx.compiledCurrentUserMessage]);
+        }
         if (state.retrievalPageImageBudget === null) {
-          let images = countRequestImages(ctx.chatHistory);
-          if (ctx.options.isContinue !== true && ctx.compiledCurrentUserMessage !== null) {
-            images += countRequestImages([ctx.compiledCurrentUserMessage]);
-          }
-          state.retrievalPageImageBudget = new RetrievalPageImageBudget(snapshot.generationPlan.imageBudget, images,
+          state.retrievalPageImageBudget = new RetrievalPageImageBudget(snapshot.generationPlan.imageBudget, baseImages,
             canonicalImageBlobHashes(ctx.canonicalContent));
         }
         const page = this.ports.buildRetrievalPageImageInjection(withReasoning,
           state.retrievalPageImageBudget as RetrievalPageImageBudget);
         if (page !== null) state.retrievalPageImageBatches.push([lastId, page]);
+
+        if (typeof this.ports.buildBrowserScreenshotImageInjection === 'function') {
+          const retrievalImages = state.retrievalPageImageBatches.reduce(
+            (sum, [, message]) => sum + countRequestImages([message]), 0,
+          );
+          const screenshot = await this.ports.buildBrowserScreenshotImageInjection(withReasoning, {
+            imageBudget: snapshot.generationPlan.imageBudget,
+            imagesInRequest: baseImages + retrievalImages,
+          });
+          if (screenshot !== null) {
+            state.browserScreenshotBatch = [lastId, screenshot];
+          }
+        }
       }
     }
     ctx.addToolResults(withReasoning);

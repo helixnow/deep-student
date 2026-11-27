@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { SidebarSimple } from '@phosphor-icons/react';
 
 import { useMobileHeader } from '@/components/layout';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_ICON_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
@@ -49,6 +51,28 @@ export function SandboxWorkbenchPage() {
       </>
     ) : undefined,
   }, [t, hasSession, inspectorOpen, setInspectorOpen]);
+
+  useDesktopHeader(
+    'sandbox-workbench',
+    {
+      breadcrumbs: [{ id: 'sandbox-root', label: t('sandbox.title') }],
+      actions: hasSession ? (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className={TITLEBAR_ICON_CONTROL_CLASS}
+          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
+        >
+          <SidebarSimple size={15} />
+        </DsButton>
+      ) : undefined,
+    },
+    [t, hasSession, inspectorOpen, setInspectorOpen],
+    !isSmallScreen,
+  );
 
   return (
     <SandboxWorkbenchSurface

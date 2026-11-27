@@ -119,6 +119,25 @@ describe('TodoQuickAdd & TodoItemRow polish', () => {
     expect(screen.queryByTestId('todo-quickadd-streak')).toBeNull();
   });
 
+  it('auto-collapses options row on blur when empty, and stays expanded when draft text exists', () => {
+    render(<TodoQuickAdd />);
+    const input = document.querySelector('[data-todo-quick-add]') as HTMLInputElement;
+
+    // Focus opens options row
+    fireEvent.focus(input);
+    expect(screen.getByText('todo:quickAdd.continuousHint')).toBeInTheDocument();
+
+    // Blur while empty collapses options row automatically
+    fireEvent.blur(input, { relatedTarget: document.body });
+    expect(screen.queryByText('todo:quickAdd.continuousHint')).toBeNull();
+
+    // Focus + enter text + blur keeps options row open so in-progress draft isn't lost
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '未提交草稿' } });
+    fireEvent.blur(input, { relatedTarget: document.body });
+    expect(screen.getByText('todo:quickAdd.continuousHint')).toBeInTheDocument();
+  });
+
   it('applies progressive strikethrough sweep during completion before committing toggle', () => {
     vi.useFakeTimers();
     const onToggle = vi.fn();

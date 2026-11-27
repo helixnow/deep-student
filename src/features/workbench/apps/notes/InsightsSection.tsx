@@ -17,17 +17,30 @@ import './FavoritesSection.css';
 
 export interface InsightsSectionProps {
   className?: string;
+  /** Incrementing this counter opens the create-insight dialog even when the empty section is hidden. */
+  createRequestNonce?: number;
 }
 
-export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) => {
+export const InsightsSection: React.FC<InsightsSectionProps> = ({
+  className,
+  createRequestNonce = 0,
+}) => {
   const listId = useId();
-  // 默认收起：侧栏以页面树为主体，灵感区只露标题与数量
+  // 默认收起：侧栏以页面树为主体，灵感区有内容时才露标题与数量
   const [expanded, setExpanded] = useState(false);
   const { t } = useTranslation('notes');
   const [items, setItems] = useState<InsightCard[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<InsightCard | null>(null);
+  const lastHandledNonceRef = React.useRef(createRequestNonce);
+
+  useEffect(() => {
+    if (createRequestNonce <= 0 || createRequestNonce === lastHandledNonceRef.current) return;
+    lastHandledNonceRef.current = createRequestNonce;
+    setEditing(null);
+    setDialogOpen(true);
+  }, [createRequestNonce]);
 
   const refresh = useCallback(async () => {
     try {
@@ -75,48 +88,58 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
     void insightRunJobs(5).catch(() => {});
   };
 
-  return (
-    <section className={cn('nfs-section', className)} data-expanded={expanded ? 'true' : 'false'}>
-      <button
-        type="button"
-        className="nfs-header"
-        aria-expanded={expanded}
-        aria-controls={listId}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span className={cn('nfs-caret', !expanded && 'is-collapsed')} aria-hidden>
-          <CaretDown size={12} />
-        </span>
-        <span className="nfs-header-label">{t('insights.section_title', '灵感')}</span>
-        <span className="nfs-header-count" aria-hidden>{items.length}</span>
-      </button>
+  const showSection = items.length > 0 || loadFailed;
 
-      <div className="nfs-list-wrap">
-        <div id={listId} className="nfs-list" role="list" aria-hidden={!expanded}>
-          <button type="button" className="nfs-item-main" onClick={openNew} style={{ minHeight: 28 }}>
-            <span className="nfs-item-icon"><Plus size={14} /></span>
-            <span className="nfs-item-name" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('insights.add_placeholder', '记录一条灵感…')}</span>
+  if (!showSection && !dialogOpen) {
+    return null;
+  }
+
+  return (
+    <>
+      {showSection && (
+        <section className={cn('nfs-section', className)} data-expanded={expanded ? 'true' : 'false'}>
+          <button
+            type="button"
+            className="nfs-header"
+            aria-expanded={expanded}
+            aria-controls={listId}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <span className={cn('nfs-caret', !expanded && 'is-collapsed')} aria-hidden>
+              <CaretDown size={12} />
+            </span>
+            <span className="nfs-header-label">{t('insights.section_title', '灵感')}</span>
+            <span className="nfs-header-count" aria-hidden>{items.length}</span>
           </button>
-          {loadFailed && (
-            <button type="button" className="nfs-item-main" onClick={() => { void refresh(); }} style={{ minHeight: 28 }}>
-              <span className="nfs-item-name" style={{ color: 'hsl(var(--destructive))' }}>{t('insights.load_failed', '灵感加载失败 · 点击重试')}</span>
-            </button>
-          )}
-          {items.map((card) => (
-            <div key={card.id} className="nfs-item" role="listitem">
-              <button
-                type="button"
-                className="nfs-item-main"
-                onClick={() => openCard(card)}
-                title={card.current_revision?.rule ?? card.title}
-              >
-                <span className="nfs-item-icon"><Lightbulb size={14} /></span>
-                <span className="nfs-item-name">{card.title}</span>
+
+          <div className="nfs-list-wrap">
+            <div id={listId} className="nfs-list" role="list" aria-hidden={!expanded}>
+              <button type="button" className="nfs-item-main" onClick={openNew} style={{ minHeight: 28 }}>
+                <span className="nfs-item-icon"><Plus size={14} /></span>
+                <span className="nfs-item-name" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('insights.add_placeholder', '记录一条灵感…')}</span>
               </button>
+              {loadFailed && (
+                <button type="button" className="nfs-item-main" onClick={() => { void refresh(); }} style={{ minHeight: 28 }}>
+                  <span className="nfs-item-name" style={{ color: 'hsl(var(--destructive))' }}>{t('insights.load_failed', '灵感加载失败 · 点击重试')}</span>
+                </button>
+              )}
+              {items.map((card) => (
+                <div key={card.id} className="nfs-item" role="listitem">
+                  <button
+                    type="button"
+                    className="nfs-item-main"
+                    onClick={() => openCard(card)}
+                    title={card.current_revision?.rule ?? card.title}
+                  >
+                    <span className="nfs-item-icon"><Lightbulb size={14} /></span>
+                    <span className="nfs-item-name">{card.title}</span>
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+        </section>
+      )}
 
       {dialogOpen && (
         <InsightConfirmDialog
@@ -136,7 +159,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
           submitLabel={editing ? t('insights.save_edit', '保存修改') : t('insights.confirm_save', '确认入库')}
         />
       )}
-    </section>
+    </>
   );
 };
 

@@ -26,7 +26,6 @@ import {
   waitForNextFrame,
   clampNumber,
 } from './previewUtils';
-
 /**
  * 使用 DOMPurify 消毒生成的 HTML
  * 仅允许表格相关的安全标签和属性，移除 javascript: 链接等 XSS 向量
@@ -183,73 +182,9 @@ const MAX_RENDER_ROWS = 1000;
 /** 渲染列数上限（异常宽表可能声明数千列，同样需要截断） */
 const MAX_RENDER_COLS = 256;
 
-const ZIP_EOCD_MIN_BYTES = 22;
-const ZIP_MAX_COMMENT_BYTES = 65_535;
+import { inspectOfficeZipContainer } from './officeZipContainer';
 const CORRUPT_XLSX_ERROR_RE =
   /end of central directory|corrupted zip|invalid zip|unexpected end|bad archive|invalid signature|not a valid|malformed|truncated|xml|invalid (?:block|stored|distance|code|bit|literal)|incorrect (?:header|data) check|unknown compression|uncompressed data size mismatch|data size mismatch|crc|deflate|inflate/i;
-
-/**
- * 校验 ZIP 容器是否存在完整的 End-of-Central-Directory（EOCD，0x06054b50）
- * 及合法的中央目录范围，在交给 ExcelJS 解析前提前拦截截断/损坏的 .xlsx 文件。
- */
-function hasCompleteZipContainer(bytes: Uint8Array): boolean {
-  if (bytes.length < ZIP_EOCD_MIN_BYTES) return false;
-  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
-    return false;
-  }
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const minOffset = Math.max(0, bytes.length - (ZIP_EOCD_MIN_BYTES + ZIP_MAX_COMMENT_BYTES));
-
-  for (let offset = bytes.length - ZIP_EOCD_MIN_BYTES; offset >= minOffset; offset -= 1) {
-    if (
-      bytes[offset] === 0x50 &&
-      bytes[offset + 1] === 0x4b &&
-      bytes[offset + 2] === 0x05 &&
-      bytes[offset + 3] === 0x06
-    ) {
-      const commentLength = view.getUint16(offset + 20, true);
-      if (offset + ZIP_EOCD_MIN_BYTES + commentLength !== bytes.length) {
-        continue;
-      }
-      const cdSize = view.getUint32(offset + 12, true);
-      const cdOffset = view.getUint32(offset + 16, true);
-      if (cdSize === 0xffffffff || cdOffset === 0xffffffff) {
-        return true;
-      }
-      if (cdOffset + cdSize > offset) {
-        return false;
-      }
-      if (
-        cdSize > 0 &&
-        (bytes[cdOffset] !== 0x50 ||
-          bytes[cdOffset + 1] !== 0x4b ||
-          bytes[cdOffset + 2] !== 0x01 ||
-          bytes[cdOffset + 3] !== 0x02)
-      ) {
-        return false;
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * 检查解码后的二进制是否为合法且完整的 OOXML（ZIP）容器。
- * OLE 复合文档头（D0 CF 11 E0）意味着文件被密码保护（加密 OOXML 的外层包装）
- * 或是旧版二进制格式（.xls），两者都无法用当前解析器预览。
- */
-function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'truncated' | 'invalid' | null {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
-    return 'encrypted-or-legacy';
-  }
-  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) {
-    return hasCompleteZipContainer(bytes) ? null : 'truncated';
-  }
-  return 'invalid';
-}
 
 interface CachedWorkbook {
   workbook: ExcelJS.Workbook;
@@ -750,8 +685,8 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
         // 解码 Base64 为 ArrayBuffer
         const arrayBuffer = decodeBase64ToArrayBuffer(normalizedBase64);
 
-        // 提前识别加密/旧版二进制/截断或非 Office 文件，给出可操作的提示
-        const containerIssue = detectContainerIssue(arrayBuffer);
+        // 提前识别加密/旧版二进制/截断或非 Office 文件，并裁剪合法 EOCD 后的尾部冗余字节
+        const { issue: containerIssue, normalizedBuffer } = inspectOfficeZipContainer(arrayBuffer);
         if (containerIssue) {
           if (isMounted) {
             setError(t(
@@ -768,7 +703,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
 
         // 使用 ExcelJS 解析 XLSX
         const wb = new ExcelJS.Workbook();
-        await wb.xlsx.load(arrayBuffer);
+        await wb.xlsx.load(normalizedBuffer);
 
         const entry: CachedWorkbook = { workbook: wb, sheets: new Map() };
         setCachedWorkbook(cacheKey, entry);

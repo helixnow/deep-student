@@ -580,8 +580,69 @@ export class ApprovalManager implements ApprovalManagerContract {
       case 'browser_click':
       case 'builtin-browser_click': {
         const element = field('element') ?? '页面元素';
+        const ref = field('ref');
+        if (ref !== null) {
+          return `将点击网页元素: ${element} (ref=${ref})`;
+        }
+        const x = object?.['x'];
+        const y = object?.['y'];
+        if (typeof x === 'number' && Number.isFinite(x) && typeof y === 'number' && Number.isFinite(y)) {
+          return `将点击网页坐标: ${element} (${x}, ${y})`;
+        }
+        return `将点击网页元素: ${element} (ref=?)`;
+      }
+      case 'browser_hover':
+      case 'builtin-browser_hover': {
+        const element = field('element') ?? '页面元素';
+        const ref = field('ref');
+        if (ref !== null) {
+          return `将悬停网页元素: ${element} (ref=${ref})`;
+        }
+        const x = object?.['x'];
+        const y = object?.['y'];
+        if (typeof x === 'number' && Number.isFinite(x) && typeof y === 'number' && Number.isFinite(y)) {
+          return `将悬停网页坐标: ${element} (${x}, ${y})`;
+        }
+        return `将悬停网页元素: ${element}`;
+      }
+      case 'browser_press_key':
+      case 'builtin-browser_press_key': {
+        const key = field('key') ?? '未知按键';
+        const rawModifiers = object?.['modifiers'];
+        const modifiers = Array.isArray(rawModifiers)
+          ? rawModifiers.filter((m): m is string => typeof m === 'string' && m.length > 0)
+          : [];
+        const combo = modifiers.length > 0 ? `${modifiers.join('+')}+${key}` : key;
+        return `将向网页发送按键: ${combo}`;
+      }
+      case 'browser_select_option':
+      case 'builtin-browser_select_option': {
+        const element = field('element') ?? '下拉选项';
         const ref = field('ref') ?? '?';
-        return `将点击网页元素: ${element} (ref=${ref})`;
+        const rawValues = object?.['values'];
+        const values = Array.isArray(rawValues)
+          ? rawValues.filter((v): v is string => typeof v === 'string' && v.length > 0)
+          : [];
+        return values.length > 0
+          ? `将在网页下拉框中选择选项: ${element} (ref=${ref}, values=${values.join(', ')})`
+          : `将在网页下拉框中选择选项: ${element} (ref=${ref})`;
+      }
+      case 'browser_tabs':
+      case 'builtin-browser_tabs': {
+        const action = field('action') ?? 'list';
+        if (action === 'new') {
+          const url = field('url');
+          return url !== null ? `将在浏览器中新建标签页: ${url}` : '将在浏览器中新建标签页';
+        }
+        if (action === 'switch') {
+          const tabId = pickString(['tab_id', 'tabId'], '?');
+          return `将切换浏览器标签页 (tab_id=${tabId})`;
+        }
+        if (action === 'close') {
+          const tabId = pickString(['tab_id', 'tabId'], '?');
+          return `将关闭浏览器标签页 (tab_id=${tabId})`;
+        }
+        return '将查看浏览器标签页列表';
       }
       case 'browser_file_upload':
       case 'builtin-browser_file_upload': {

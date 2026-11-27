@@ -30,7 +30,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
+import { useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
 import { BACK_PRIORITY, registerVisibilityGuardedBackHandler } from '@/app/navigation/androidBackCoordinator';
 import type { MediaLibraryItem } from './api';
 import { isWatching, sortByRecent } from './libraryModel';
@@ -74,8 +74,9 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
   const activeResourceId = useMediaStudioNavStore((s) => s.activeResourceId);
   const openStudy = useMediaStudioNavStore((s) => s.openStudy);
   const closeStudy = useMediaStudioNavStore((s) => s.closeStudy);
-  const classicTitlebar = useDesktopShellHeaderPortal(MEDIA_STUDIO_VIEW);
-  const titlebarTarget = embedded || isSmallScreen ? null : classicTitlebar;
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !embedded && !isSmallScreen && hasDesktopHeaderHost;
+  const titlebarTarget: HTMLElement | null = null;
 
   const library = useMediaLibrary(true);
   const importer = useMediaImport({ onImported: () => void library.refresh() });
@@ -191,6 +192,8 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
     [library.items],
   );
 
+  const hideInternalTitle = embedded && !isSmallScreen;
+
   const content = inStudy && activeResourceId ? (
     <MediaStudyPage
       key={activeResourceId}
@@ -198,6 +201,8 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
       isActive={isActive}
       isSmallScreen={isSmallScreen}
       titlebarTarget={titlebarTarget}
+      useClassicDesktopHeader={useClassicDesktopHeader}
+      hideInternalTitle={hideInternalTitle}
       onBack={handleBack}
       onTitleChange={setStudyTitle}
     />
@@ -209,6 +214,8 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
       onOpenId={openStudy}
       isSmallScreen={isSmallScreen}
       titlebarTarget={titlebarTarget}
+      useClassicDesktopHeader={useClassicDesktopHeader}
+      hideInternalTitle={hideInternalTitle}
       selectMode={librarySelectMode}
       onSelectModeChange={setLibrarySelectMode}
       bilibiliRequestSeq={bilibiliRequestSeq}

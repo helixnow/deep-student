@@ -1116,7 +1116,7 @@
   },
   "subagentProfiles": {
     "title": "子代理档案",
-    "description": "管理可用的子代理档案：内建三型开箱即用，自定义档案可直接在此新建和编辑，保存后立即生效。",
+    "description": "管理可用的子代理档案：内建四型开箱即用，自定义档案可直接在此新建和编辑，保存后立即生效。",
     "loading": "正在加载子代理档案",
     "loading_file": "正在读取档案内容…",
     "builtin_badge": "内建",
@@ -1130,7 +1130,11 @@
     "builtin_names": {
       "default": "通用",
       "worker": "执行者",
-      "explorer": "调研者"
+      "explorer": "调研者",
+      "browser": "浏览器专员"
+    },
+    "builtin_descriptions": {
+      "browser": "最小权限沙箱浏览器子代理，仅启用网页浏览、交互、阅读与内容提取工具。"
     },
     "actions": {
       "refresh": "刷新档案列表",
@@ -1183,7 +1187,7 @@
       "reveal_failed": "无法打开档案目录，请检查目录是否存在。",
       "name_required": "请填写档案名称",
       "name_invalid": "名称仅允许小写字母、数字和连字符（不超过 64 个字符）",
-      "name_builtin_conflict": "名称不能与内建档案（default / worker / explorer）相同",
+      "name_builtin_conflict": "名称不能与内建档案（default / worker / explorer / browser）相同",
       "content_required": "文件内容不能为空",
       "file_exists": "同名档案文件已存在，请换一个名称",
       "not_found": "档案文件不存在，可能已被删除，请刷新列表",
@@ -1200,7 +1204,7 @@
     "clear_search": "清空搜索",
     "expand": "展开",
     "collapse": "收起",
-    "back_to_home": "返回首页",
+    "back_to_home": "返回主页",
     "navigation_label": "设置导航"
   },
   "language": {
@@ -3573,5 +3577,15 @@
       "import_success_desc": "已同步 {{vendorCount}} 个服务商，新增启用 {{modelCount}} 个模型，自动补齐 {{slotCount}} 个功能槽位。",
       "import_warning_title": "部分供应商需手动拉取模型"
     }
+  },
+  "workbenchBrowserCdpUrl": {
+    "title": "远程 CDP 端点",
+    "desc": "用于自托管 WebUI 或外部 Chromium 的 Chrome DevTools Protocol 地址（支持 http(s):// 与 ws(s)://）。环境变量 DS_BROWSER_CDP_URL 优先级更高。",
+    "placeholder": "http://127.0.0.1:9222",
+    "save": "保存",
+    "clear": "清除",
+    "saved": "远程 CDP 端点已保存",
+    "cleared": "远程 CDP 端点已清除",
+    "invalidUrl": "请输入以 http://、https://、ws:// 或 wss:// 开头的有效地址"
   }
 }

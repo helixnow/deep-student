@@ -19,52 +19,32 @@
   background: transparent;
 }
 
-.wb-resource-workspace-sidebar-title {
+.wb-resource-workspace-sidebar-top {
   display: flex;
-  height: 40px;
-  padding: 0 7px 0 10px;
+  padding: 8px 8px 6px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 
-.wb-resource-workspace-sidebar-title strong {
-  overflow: hidden;
-  flex: 1;
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-resource-workspace-sidebar-title button {
-  width: 25px;
-  height: 25px;
-  min-height: 25px;
+.wb-resource-workspace-create-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  flex: 0 0 30px;
   border-radius: 5px;
-}
-
-.wb-resource-workspace-app-icon {
-  display: grid;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  place-items: center;
-  border: 1px solid hsl(var(--border) / 0.35);
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--background) / 72%);
 }
 
 .wb-resource-workspace-search {
   display: flex;
   height: 30px;
-  margin: 0 8px 6px;
+  min-width: 0;
   padding: 0 7px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   align-items: center;
   gap: 6px;
-  border: 1px solid hsl(var(--border) / 0.35);
+  border: 1px solid hsl(var(--border) / 35%);
   border-radius: 5px;
   color: hsl(var(--muted-foreground));
 
@@ -73,7 +53,7 @@
 }
 
 .wb-resource-workspace-search:focus-within {
-  border-color: hsl(var(--border) / 0.65);
+  border-color: hsl(var(--border) / 65%);
   box-shadow: none;
 }
 
@@ -98,19 +78,19 @@
   display: grid;
   padding: 1px 6px 5px;
   gap: 2px;
-  border-bottom: 1px solid hsl(var(--border) / 0.35);
+  border-bottom: 1px solid hsl(var(--border) / 35%);
 }
 
 .wb-resource-workspace-list-scroll {
   flex: 1;
   min-height: 0;
+  padding: 5px 12px 10px 6px;
 }
 
 .wb-resource-workspace-list {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 5px 6px 10px;
   outline: none;
 }
 
@@ -229,7 +209,7 @@
   display: grid;
   padding: 5px 6px;
   flex: 0 0 auto;
-  border-top: 1px solid hsl(var(--border) / 0.35);
+  border-top: 1px solid hsl(var(--border) / 35%);
 }
 
 /* 「设置」禁用原因的内联提示（title 在触屏不可见） */
@@ -247,7 +227,7 @@
   flex: 0 0 24px;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid hsl(var(--border) / 0.35);
+  border-top: 1px solid hsl(var(--border) / 35%);
   color: hsl(var(--muted-foreground));
   background: transparent;
   font-size: 10px;
@@ -342,16 +322,12 @@
    standard 44px hit targets for every resource-list action. */
 @media (pointer: coarse) {
   /* 抽屉把手的 44px 触控基线已上移到 SystemWindowShared.css（.wb-sys-drawer-handle） */
-  .wb-resource-workspace-sidebar-title {
-    height: auto;
-    min-height: 52px;
-  }
-
-  .wb-resource-workspace-sidebar-title button,
+  .wb-resource-workspace-create-btn,
   .wb-resource-workspace-search button,
   .wb-resource-workspace-sidebar-footer button {
     width: 44px;
     height: 44px;
+    min-width: 44px;
     min-height: 44px;
     flex: 0 0 44px;
   }
@@ -391,8 +367,9 @@
   .wb-resource-workspace-sidebar-footer {
     height: auto;
     min-height: 52px;
-    padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0));
     flex: 0 0 auto;
+
     /* 10px 底栏字号在触屏上过小，提到 12px */
     font-size: 12px;
   }

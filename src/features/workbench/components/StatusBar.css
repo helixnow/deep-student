@@ -11,7 +11,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: var(--wb-menubar-height, 40px);
+  height: var(--wb-menubar-height, 34px);
   z-index: var(--wb-z-menubar, 9050);
   display: flex;
   align-items: center;
@@ -37,28 +37,21 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-color: var(--wb-menubar-bg, transparent);
-  background-image:
-    linear-gradient(
-      180deg,
-      color-mix(in hsl, hsl(var(--background)) 10%, transparent 90%) 0%,
-      transparent 100%
-    ),
-    var(--wb-menubar-sheen, none);
-  -webkit-backdrop-filter: var(--wb-menubar-blur, none);
-  backdrop-filter: var(--wb-menubar-blur, none);
+  background-color: var(--wb-menubar-liquid-bg, var(--wb-menubar-bg, transparent));
+  background-image: var(--wb-menubar-sheen, none);
+  backdrop-filter: var(--wb-menubar-liquid-blur, var(--wb-menubar-blur, none));
 }
 
-/* 底缘极柔 specular 微光：弱化分界线感，壁纸在顶栏背后自然延展 */
+/* 底缘极细 specular 折射微光：弱化分界线感，壁纸在顶栏背后自然延展 */
 .wb-menubar::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
-  height: 1px;
+  bottom: -0.5px;
+  height: 0.5px;
   pointer-events: none;
-  opacity: 0.42;
+  opacity: 0.32;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -84,8 +77,8 @@
 
 /* macOS：状态栏与系统标题栏共面，左侧只给原生红黄绿按钮留位。 */
 .wb-menubar[data-macos-chrome='integrated'] {
-  min-height: 40px;
-  height: var(--wb-menubar-height, 40px);
+  min-height: 34px;
+  height: var(--wb-menubar-height, 34px);
   /* fallback 与 token（workbench.tokens.css 72px）保持同值，避免双源漂移 */
   padding-left: var(--wb-macos-traffic-lights-inset, 72px);
   cursor: default;
@@ -505,7 +498,8 @@
   pointer-events: auto;
 }
 
-.wb-menubar-flyout {
+.wb-menubar-flyout,
+.wb-menubar-flyout.wb-glass {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;

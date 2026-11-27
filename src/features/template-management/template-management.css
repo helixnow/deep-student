@@ -9,13 +9,19 @@
  */
 
 .wb-tm-root {
+  --tm-surface: var(--shell-workspace-surface, hsl(var(--background)));
+
   height: 100%;
   width: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--wb-window-bg, hsl(var(--card)));
+  background: var(--tm-surface);
+}
+
+[data-wb-window-body] .wb-tm-root {
+  --tm-surface: var(--wb-window-bg, hsl(var(--card)));
 }
 
 /* 桌面壳侧栏已改用 WorkbenchSidebarSurface / WorkbenchSidebarRow 共享原语，
@@ -30,6 +36,10 @@
   gap: 2px;
   padding: 6px 10px 0;
   border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: transparent;
+}
+
+[data-wb-window-body] .wb-tm-nav {
   background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
 }
 

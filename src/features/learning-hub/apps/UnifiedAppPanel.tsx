@@ -135,15 +135,15 @@ const SUPPORTED_TYPES: readonly ResourceType[] = [
 /** files 表资源（含 PDF/图片附件 att_*、file_*）在不同入口可能以 file/image/textbook 互转。 */
 const FILE_COMPATIBLE_TYPES: ReadonlySet<ResourceType> = new Set(['file', 'image', 'textbook']);
 
-/** 资源类型 → 内容视图；mindmap 需要额外 props，单独渲染。 */
-const CONTENT_VIEWS: Partial<Record<ResourceType, React.ComponentType<ContentViewProps>>> = {
-  note: NoteContentView,
-  textbook: TextbookContentView,
-  exam: ExamContentView,
-  translation: TranslationContentView,
-  essay: EssayContentView,
-  image: ImageContentView,
-  file: FileContentView,
+/** 资源类型 → 内容视图；以 thunk 延迟读取组件绑定，避免模块环/HMR 下顶层访问 NoteContentView 触发 TDZ；mindmap 需要额外 props，单独渲染。 */
+const CONTENT_VIEWS: Partial<Record<ResourceType, () => React.ComponentType<ContentViewProps>>> = {
+  note: () => NoteContentView,
+  textbook: () => TextbookContentView,
+  exam: () => ExamContentView,
+  translation: () => TranslationContentView,
+  essay: () => EssayContentView,
+  image: () => ImageContentView,
+  file: () => FileContentView,
 };
 
 /**
@@ -365,7 +365,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
         />
       );
     }
-    const ContentView = Object.hasOwn(CONTENT_VIEWS, resolvedType) ? CONTENT_VIEWS[resolvedType] : undefined;
+    const ContentView = Object.hasOwn(CONTENT_VIEWS, resolvedType) ? CONTENT_VIEWS[resolvedType]?.() : undefined;
     if (!ContentView) {
       return (
         <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">

@@ -118,6 +118,42 @@
       "frontend": "none"
     },
     {
+      "name": "browser_close_tab",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_close_tab"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "tabId",
+          "rustName": "tabId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
       "name": "browser_content_user_input",
       "lane": "L19-mcp-browser",
       "rust": {
@@ -163,6 +199,72 @@
       ],
       "result": {
         "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_extract_content",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_extract_content"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "maxChars",
+          "rustName": "maxChars",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "startIndex",
+          "rustName": "startIndex",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
       },
       "error": {
         "type": "string"
@@ -237,6 +339,42 @@
       ],
       "result": {
         "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_get_host_facts",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_get_host_facts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/BrowserHostFacts"
       },
       "error": {
         "type": "string"
@@ -340,6 +478,37 @@
         "type": "array",
         "items": {
           "$ref": "#/$defs/BrowserDownloadObservation"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_list_tabs",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_list_tabs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/BrowserTabInfo"
         }
       },
       "error": {
@@ -457,6 +626,58 @@
       "frontend": "none"
     },
     {
+      "name": "browser_new_tab",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_new_tab"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "fromAgent",
+          "rustName": "fromAgent",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/BrowserTabInfo"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
       "name": "browser_open_session",
       "lane": "L19-mcp-browser",
       "rust": {
@@ -554,6 +775,34 @@
       "frontend": "none"
     },
     {
+      "name": "browser_promote_to_interactive",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_promote_to_interactive"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
       "name": "browser_release_surface_focus",
       "lane": "L19-mcp-browser",
       "rust": {
@@ -629,6 +878,140 @@
       ],
       "result": {
         "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_remote_input",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_remote_input"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "event",
+          "rustName": "event",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_screenshot",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_screenshot"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "fullPage",
+          "rustName": "fullPage",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "annotate",
+          "rustName": "annotate",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "maxWidth",
+          "rustName": "maxWidth",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "quality",
+          "rustName": "quality",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
       },
       "error": {
         "type": "string"
@@ -1006,6 +1389,42 @@
       ],
       "result": {
         "$ref": "#/$defs/BrowserSnapshotResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_switch_tab",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "host/plugins/browser/index.ts",
+        "line": 1,
+        "fn": "browser_switch_tab"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "tabId",
+          "rustName": "tabId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/BrowserTabInfo"
       },
       "error": {
         "type": "string"
@@ -4214,6 +4633,151 @@
       "additionalProperties": false,
       "x-rust": "dstu_browser::browser::events::BrowserNavigationBlockedPayload"
     },
+    "BrowserHostFacts": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "interactive",
+            "headless",
+            "remote"
+          ]
+        },
+        "visitedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blockedNavigations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BrowserHostFactsBlockedNavigation"
+          }
+        },
+        "latestScreenshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserHostFactsScreenshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "downloadsCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0
+        },
+        "userTakeoverCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0
+        },
+        "actionCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0
+        },
+        "finalUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "sessionId",
+        "mode",
+        "visitedOrigins",
+        "blockedNavigations",
+        "latestScreenshot",
+        "downloadsCount",
+        "userTakeoverCount",
+        "actionCount",
+        "finalUrl"
+      ],
+      "additionalProperties": false
+    },
+    "BrowserHostFactsBlockedNavigation": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "reason",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "BrowserHostFactsScreenshot": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "width": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0
+        },
+        "height": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0
+        },
+        "capturedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "locator",
+        "width",
+        "height",
+        "capturedAt"
+      ],
+      "additionalProperties": false
+    },
     "BrowserSnapshotResult": {
       "type": "object",
       "properties": {
@@ -4228,6 +4792,17 @@
         },
         "snapshot": {
           "type": "string"
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
         }
       },
       "required": [
@@ -4238,6 +4813,33 @@
       ],
       "additionalProperties": false,
       "x-rust": "dstu_browser::cmd::browser::BrowserSnapshotResult"
+    },
+    "BrowserTabInfo": {
+      "type": "object",
+      "properties": {
+        "tabId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "isLoading": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tabId",
+        "url",
+        "title",
+        "active"
+      ],
+      "additionalProperties": false
     },
     "BrowserStateResult": {
       "type": "object",

@@ -5,11 +5,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { CheckCircle, GearSix } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, CheckCircle, GearSix } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/shad/Select';
+import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { requestFlashcardsDueRefresh } from '../events';
 import {
@@ -31,8 +32,15 @@ const LIMIT_MAX = 9999;
 const RETENTION_MIN = 0.5;
 const RETENTION_MAX = 0.99;
 
-const INPUT_CLASS = 'h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]';
-const LABEL_CLASS = 'flex flex-col gap-1 text-xs font-medium text-muted-foreground';
+const INPUT_CLASS = 'h-8 w-full text-sm';
+const LABEL_CLASS = 'flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground';
+
+export interface SchedulerSettingsSectionProps {
+  /** 独立页面作为首块渲染时去掉顶部分隔线，避免与上方导航底线形成双线 */
+  flushTop?: boolean;
+  /** 打开后自动聚焦的目标字段（如从「调整每日新卡上限」进入） */
+  initialFocusField?: 'newPerDay';
+}
 
 function parseIntegerInput(value: string, max: number, min = 0): number | null {
   const trimmed = value.trim();
@@ -84,7 +92,10 @@ function draftsFrom(config: SchedulerConfig): Drafts {
   };
 }
 
-export const SchedulerSettingsSection: React.FC = () => {
+export const SchedulerSettingsSection: React.FC<SchedulerSettingsSectionProps> = ({
+  flushTop = false,
+  initialFocusField,
+}) => {
   const { t } = useTranslation('flashcards');
   const [config, setConfig] = useState<SchedulerConfig | null>(null);
   const [unavailable, setUnavailable] = useState(false);
@@ -92,12 +103,30 @@ export const SchedulerSettingsSection: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<'saved' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const mountedRef = useRef(true);
+  const newPerDayInputRef = useRef<HTMLInputElement | null>(null);
+  const hasAutoFocusedRef = useRef(false);
 
   const applyConfig = useCallback((next: SchedulerConfig) => {
     setConfig(next);
     setDrafts(draftsFrom(next));
   }, []);
+
+  useEffect(() => {
+    hasAutoFocusedRef.current = false;
+  }, [initialFocusField]);
+
+  useEffect(() => {
+    if (initialFocusField !== 'newPerDay' || !drafts || hasAutoFocusedRef.current) return;
+    const el = newPerDayInputRef.current;
+    if (!el) return;
+    hasAutoFocusedRef.current = true;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.select();
+    });
+  }, [initialFocusField, drafts]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -196,13 +225,13 @@ export const SchedulerSettingsSection: React.FC = () => {
   }, [dirty, JSON.stringify(update), applyConfig, t]);
 
   const checkboxField = (key: 'enableFuzz' | 'buryNewSiblings' | 'buryReviewSiblings', label: string) => (
-    <label className="flex min-h-8 items-center gap-2 text-xs font-medium text-muted-foreground [@media(pointer:coarse)]:min-h-11">
+    <label className="flex min-h-8 items-center gap-2 text-xs font-medium text-muted-foreground">
       <Checkbox
         checked={drafts?.[key] ?? false}
         disabled={saving}
         onCheckedChange={(checked) => setDraft(key, checked === true)}
       />
-      {label}
+      <span className="min-w-0 leading-snug">{label}</span>
     </label>
   );
 
@@ -219,7 +248,7 @@ export const SchedulerSettingsSection: React.FC = () => {
         disabled={saving}
         onValueChange={(value) => setDraft(key, value as Drafts[K])}
       >
-        <SelectTrigger className="h-8 w-40 text-sm" aria-label={label}>
+        <SelectTrigger className="h-8 w-full text-sm" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -236,10 +265,12 @@ export const SchedulerSettingsSection: React.FC = () => {
     label: string,
     inputMode: 'numeric' | 'decimal' | 'text' = 'numeric',
     className = INPUT_CLASS,
+    inputRef?: React.RefObject<HTMLInputElement | null>,
   ) => (
     <label className={LABEL_CLASS}>
       {label}
       <Input
+        ref={inputRef}
         inputMode={inputMode}
         value={String(drafts?.[key] ?? '')}
         disabled={saving}
@@ -249,73 +280,62 @@ export const SchedulerSettingsSection: React.FC = () => {
     </label>
   );
 
-  return (
-    <section className="wb-fcx-panel" data-testid="fsrs-scheduler-settings">
-      <div className="wb-fcx-panel-head">
-        <h3 className="wb-fcx-panel-title">
-          <GearSix size={14} weight="duotone" />
-          {t('settings.scheduler.title')}
-        </h3>
-        <p className="wb-fcx-panel-sub">{t('settings.scheduler.subtitle')}</p>
+  const hasAdvancedError = learnAheadInvalid || stepsInvalid || rolloverInvalid || maxIntervalInvalid || maxAnswerInvalid;
+  const showAdvanced = advancedOpen || hasAdvancedError;
+
+  const content = unavailable ? (
+    <p className="wb-fcx-note">{t('settings.scheduler.unavailable')}</p>
+  ) : !config || !drafts ? (
+    <p className="wb-fcx-note">{t('settings.scheduler.loading')}</p>
+  ) : (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-semibold text-foreground">
+          {t('settings.scheduler.basicGroup')}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {textField('newPerDay', t('settings.scheduler.newPerDay'), 'numeric', INPUT_CLASS, newPerDayInputRef)}
+          {textField('reviewsPerDay', t('settings.scheduler.reviewsPerDay'))}
+          {textField('retention', t('settings.scheduler.desiredRetention'), 'decimal')}
+        </div>
+        <p className="wb-fcx-footnote">{t('settings.scheduler.retentionHint')}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="fsrs-scheduler-order">
+          {selectField('reviewOrder', t('settings.scheduler.reviewOrder'), REVIEW_ORDERS,
+            (value) => t(`settings.scheduler.reviewOrders.${value}`))}
+          {selectField('newReviewOrder', t('settings.scheduler.newReviewOrder'), NEW_REVIEW_ORDERS,
+            (value) => t(`settings.scheduler.newReviewOrders.${value}`))}
+        </div>
       </div>
-      <div className="wb-fcx-panel-body">
-        {unavailable ? (
-          <p className="wb-fcx-note">{t('settings.scheduler.unavailable')}</p>
-        ) : !config || !drafts ? (
-          <p className="wb-fcx-note">{t('settings.scheduler.loading')}</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-end gap-3">
-              {textField('newPerDay', t('settings.scheduler.newPerDay'))}
-              {textField('reviewsPerDay', t('settings.scheduler.reviewsPerDay'))}
-              {textField('retention', t('settings.scheduler.desiredRetention'), 'decimal')}
+
+      <div className="border-t border-border/60 pt-3">
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={showAdvanced}
+          onClick={() => setAdvancedOpen((prev) => !prev)}
+          data-testid="fsrs-scheduler-advanced-toggle"
+          className="h-7 -ml-1.5 px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          {showAdvanced ? <CaretUp size={13} aria-hidden="true" /> : <CaretDown size={13} aria-hidden="true" />}
+          <span>{showAdvanced ? t('settings.scheduler.collapseAdvanced') : t('settings.scheduler.expandAdvanced')}</span>
+        </DsButton>
+
+        {showAdvanced ? (
+          <div className="mt-3 flex flex-col gap-3" data-testid="fsrs-scheduler-advanced">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="fsrs-scheduler-steps">
+              {textField('learningSteps', t('settings.scheduler.learningSteps'), 'text')}
+              {textField('relearningSteps', t('settings.scheduler.relearningSteps'), 'text')}
               {textField('learnAhead', t('settings.scheduler.learnAheadMinutes'))}
-            </div>
-            <div className="flex flex-wrap items-end gap-3" data-testid="fsrs-scheduler-steps">
-              {textField(
-                'learningSteps',
-                t('settings.scheduler.learningSteps'),
-                'text',
-                `${INPUT_CLASS} !w-36`,
-              )}
-              {textField(
-                'relearningSteps',
-                t('settings.scheduler.relearningSteps'),
-                'text',
-                `${INPUT_CLASS} !w-36`,
-              )}
               {textField('rollover', t('settings.scheduler.dayRolloverHour'))}
               {textField('maximumInterval', t('settings.scheduler.maximumInterval'))}
-              {checkboxField('enableFuzz', t('settings.scheduler.enableFuzz'))}
-            </div>
-            <div className="flex flex-wrap items-end gap-3" data-testid="fsrs-scheduler-order">
-              {selectField('reviewOrder', t('settings.scheduler.reviewOrder'), REVIEW_ORDERS,
-                (value) => t(`settings.scheduler.reviewOrders.${value}`))}
-              {selectField('newReviewOrder', t('settings.scheduler.newReviewOrder'), NEW_REVIEW_ORDERS,
-                (value) => t(`settings.scheduler.newReviewOrders.${value}`))}
               {textField('maxAnswerSeconds', t('settings.scheduler.maxAnswerSeconds'))}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {checkboxField('enableFuzz', t('settings.scheduler.enableFuzz'))}
               {checkboxField('buryNewSiblings', t('settings.scheduler.buryNewSiblings'))}
               {checkboxField('buryReviewSiblings', t('settings.scheduler.buryReviewSiblings'))}
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <DsButton
-                type="button"
-                variant="primary"
-                size="sm"
-                disabled={saving || !dirty}
-                onClick={() => void handleSave()}
-                className="rounded-xl border-primary/40 bg-primary/15 px-4 text-xs font-medium text-primary hover:bg-primary/25 disabled:border-border/50 disabled:bg-muted/40 disabled:text-muted-foreground"
-              >
-                {t('settings.scheduler.save')}
-              </DsButton>
-              {notice === 'saved' ? (
-                <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <CheckCircle size={13} aria-hidden="true" />
-                  {t('settings.scheduler.saved')}
-                </span>
-              ) : null}
-            </div>
-            <p className="wb-fcx-footnote">{t('settings.scheduler.retentionHint')}</p>
             <p className="wb-fcx-footnote">{t('settings.scheduler.stepsHint')}</p>
             <p className="wb-fcx-footnote">{t('settings.scheduler.rolloverHint')}</p>
             <p className="wb-fcx-footnote">{t('settings.scheduler.orderHint')}</p>
@@ -325,57 +345,98 @@ export const SchedulerSettingsSection: React.FC = () => {
                   {t('settings.scheduler.longStepWarning')}
                 </p>
               ) : null}
-            {learnAheadInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidLearnAhead')}
-              </p>
-            ) : null}
-            {limitsInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidLimit', { max: LIMIT_MAX })}
-              </p>
-            ) : null}
-            {!limitsInvalid && retentionInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidRetention', {
-                  min: RETENTION_MIN,
-                  max: RETENTION_MAX,
-                })}
-              </p>
-            ) : null}
-            {stepsInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidSteps')}
-              </p>
-            ) : null}
-            {rolloverInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidRollover')}
-              </p>
-            ) : null}
-            {maxAnswerInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidMaxAnswerSeconds')}
-              </p>
-            ) : null}
-            {maxIntervalInvalid ? (
-              <p role="status" className="text-xs text-destructive">
-                {t('settings.scheduler.invalidMaximumInterval', { max: MAX_INTERVAL_DAYS })}
-              </p>
-            ) : null}
-            {error ? (
-              <p role="status" className="text-xs text-destructive">{error}</p>
-            ) : null}
-            {config.model !== 'fsrs-7' && <FsrsOptimizerPanel
-              fsrsParams={config.fsrsParams}
-              optimizedAtMs={config.fsrsOptimizedAtMs}
-              optimizedReviewCount={config.fsrsOptimizedReviewCount}
-              onConfigChanged={applyConfig}
-              disabled={saving}
-            />}
+            {config.model !== 'fsrs-7' && (
+              <FsrsOptimizerPanel
+                fsrsParams={config.fsrsParams}
+                optimizedAtMs={config.fsrsOptimizedAtMs}
+                optimizedReviewCount={config.fsrsOptimizedReviewCount}
+                onConfigChanged={applyConfig}
+                disabled={saving}
+              />
+            )}
           </div>
-        )}
+        ) : null}
       </div>
+
+      {learnAheadInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidLearnAhead')}
+        </p>
+      ) : null}
+      {limitsInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidLimit', { max: LIMIT_MAX })}
+        </p>
+      ) : null}
+      {!limitsInvalid && retentionInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidRetention', {
+            min: RETENTION_MIN,
+            max: RETENTION_MAX,
+          })}
+        </p>
+      ) : null}
+      {stepsInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidSteps')}
+        </p>
+      ) : null}
+      {rolloverInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidRollover')}
+        </p>
+      ) : null}
+      {maxAnswerInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidMaxAnswerSeconds')}
+        </p>
+      ) : null}
+      {maxIntervalInvalid ? (
+        <p role="status" className="text-xs text-destructive">
+          {t('settings.scheduler.invalidMaximumInterval', { max: MAX_INTERVAL_DAYS })}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="status" className="text-xs text-destructive">{error}</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-border/60 pt-3">
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={saving || !dirty}
+          onClick={() => void handleSave()}
+          className={cn(
+            'rounded-xl border border-primary/40 bg-primary/15 px-4 text-xs font-medium text-primary hover:bg-primary/25',
+            'disabled:border-border/50 disabled:bg-muted/40 disabled:text-muted-foreground',
+          )}
+        >
+          {t('settings.scheduler.save')}
+        </DsButton>
+        {notice === 'saved' ? (
+          <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
+            <CheckCircle size={13} aria-hidden="true" />
+            {t('settings.scheduler.saved')}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  return (
+    <section
+      className={cn('wb-fcx-panel', flushTop && 'border-t-0 pt-0')}
+      data-testid="fsrs-scheduler-settings"
+    >
+      <div className="wb-fcx-panel-head">
+        <h3 className="wb-fcx-panel-title">
+          <GearSix size={14} weight="duotone" />
+          {t('settings.scheduler.title')}
+        </h3>
+        <p className="wb-fcx-panel-sub">{t('settings.scheduler.subtitle')}</p>
+      </div>
+      <div className="wb-fcx-panel-body">{content}</div>
     </section>
   );
 };

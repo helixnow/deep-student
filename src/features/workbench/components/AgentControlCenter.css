@@ -6,7 +6,6 @@
 }
 
 .wb-agent-control-popover {
-  position: relative;
   display: flex;
   flex-direction: column;
   width: min(340px, calc(100vw - 24px));
@@ -24,13 +23,18 @@
 }
 
 /* PopoverContent ships an opaque bg-popover utility; adapt it back to the
- * workbench glass contract at a higher specificity. */
+ * unified Liquid Glass contract at a higher specificity. */
 .wb-agent-control-popover.wb-glass {
-  border-color: var(--wb-glass-border);
-  background-color: var(--wb-glass-bg-strong);
+  position: fixed;
+  border-color: transparent;
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   background-image: var(--wb-glass-sheen);
-  -webkit-backdrop-filter: var(--wb-glass-blur-strong);
-  backdrop-filter: var(--wb-glass-blur-strong);
+  backdrop-filter: var(--wb-glass-liquid-blur-strong, var(--wb-glass-blur-strong));
+}
+
+:root[data-wb-material='reduced'] .wb-agent-control-popover.wb-glass,
+:root[data-wb-material='minimal'] .wb-agent-control-popover.wb-glass {
+  border-color: var(--wb-glass-border);
 }
 
 .wb-agent-control-popover.wb-glass-lens {
@@ -48,7 +52,7 @@
   border-right: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
   border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
   border-radius: 2px;
-  background-color: var(--wb-glass-bg-strong);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   background-image: var(--wb-glass-sheen);
   pointer-events: none;
 }

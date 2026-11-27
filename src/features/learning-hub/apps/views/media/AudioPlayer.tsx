@@ -172,7 +172,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
           )}
         >
-          <audio ref={mediaRef} src={src} preload="metadata" />
+          <audio ref={mediaRef} src={src} data-ds-managed-media="true" preload="metadata" />
 
           <div className={cn('flex flex-col items-center', compact ? 'gap-3' : 'gap-5')}>
           {/* 封面占位（紧凑布局缩小，给字幕面板让出高度） */}

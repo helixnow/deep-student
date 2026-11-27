@@ -19,10 +19,16 @@ import {
 } from './contentWindow';
 import type {
   BrowserControlMode,
+  BrowserExtractContentOptions,
+  BrowserExtractedContent,
   BrowserHistoryEntry,
   BrowserLaunchPayload,
+  BrowserRemoteInputEvent,
+  BrowserScreencastFrame,
   BrowserSessionSnapshot,
   BrowserSessionState,
+  BrowserSurfaceHostMode,
+  BrowserTabInfo,
 } from './types';
 
 export interface BrowserSessionStore extends BrowserSessionState {
@@ -52,6 +58,14 @@ export interface BrowserSessionStore extends BrowserSessionState {
   setControlMode: (mode: BrowserControlMode) => void;
   setAddressDraft: (draft: string) => void;
   setLoading: (loading: boolean) => void;
+  refreshTabs: () => Promise<void>;
+  createTab: (url?: string) => Promise<void>;
+  switchTab: (tabId: string) => Promise<void>;
+  closeTab: (tabId: string) => Promise<void>;
+  sendRemoteInput: (event: BrowserRemoteInputEvent) => Promise<void>;
+  extractCurrentPage: (options?: BrowserExtractContentOptions) => Promise<BrowserExtractedContent>;
+  promoteToInteractive: () => Promise<BrowserSurfaceHostMode | null>;
+  setScreencastFrame: (frame: BrowserScreencastFrame | null) => void;
   showContent: () => Promise<boolean>;
   hideContent: () => Promise<void>;
   ensureContent: () => Promise<boolean>;
@@ -60,6 +74,7 @@ export interface BrowserSessionStore extends BrowserSessionState {
 }
 
 const EMPTY_HISTORY: BrowserHistoryEntry[] = [];
+const EMPTY_TABS: BrowserTabInfo[] = [];
 
 interface PendingNavigation {
   key: string;
@@ -115,6 +130,9 @@ export const INITIAL_BROWSER_SESSION_STATE: BrowserSessionState = {
   contentVisible: false,
   addressDraft: '',
   lastError: null,
+  tabs: EMPTY_TABS,
+  activeTabId: null,
+  screencastFrame: null,
 };
 
 function parseLaunchPayload(payload: unknown): BrowserLaunchPayload | null {
@@ -438,6 +456,168 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
   setAddressDraft: (draft) => set({ addressDraft: draft }),
 
   setLoading: (loading) => set({ loading }),
+
+  refreshTabs: async () => {
+    const sessionId = get().sessionId;
+    if (!sessionId) {
+      set({ tabs: EMPTY_TABS, activeTabId: null });
+      return;
+    }
+    try {
+      const tabs = await browserApi.listTabs(sessionId);
+      if (get().sessionId !== sessionId) return;
+      const active = tabs.find((tab) => tab.active) ?? tabs[0] ?? null;
+      set({ tabs, activeTabId: active ? active.tabId : null });
+    } catch {
+      // Multi-tab API may be unsupported on legacy/single-view backends.
+    }
+  },
+
+  createTab: async (url = 'about:blank') => {
+    const sessionId = get().sessionId;
+    if (!sessionId) {
+      await get().openSession(url === 'about:blank' ? undefined : url);
+      return;
+    }
+    try {
+      const created = await browserApi.newTab(sessionId, url);
+      if (get().sessionId !== sessionId) return;
+      set({
+        activeTabId: created.tabId,
+        currentUrl: created.url,
+        title: created.title,
+        addressDraft: created.url === 'about:blank' ? '' : created.url,
+        lastError: null,
+        error: null,
+      });
+      await get().refreshTabs();
+    } catch (err) {
+      const message = errorMessage(err);
+      set({ lastError: message, error: message });
+      throw err;
+    }
+  },
+
+  switchTab: async (tabId) => {
+    const sessionId = get().sessionId;
+    if (!sessionId || !tabId) return;
+    try {
+      const active = await browserApi.switchTab(sessionId, tabId);
+      if (get().sessionId !== sessionId) return;
+      const nextUrl = active.url ?? '';
+      set({
+        activeTabId: active.tabId,
+        currentUrl: nextUrl,
+        title: active.title ?? '',
+        addressDraft: nextUrl === 'about:blank' ? '' : nextUrl,
+        lastError: null,
+        error: null,
+      });
+      await get().refreshTabs();
+    } catch (err) {
+      const message = errorMessage(err);
+      set({ lastError: message, error: message });
+      throw err;
+    }
+  },
+
+  closeTab: async (tabId) => {
+    const sessionId = get().sessionId;
+    if (!sessionId || !tabId) return;
+    try {
+      const result = await browserApi.closeTab(sessionId, tabId);
+      if (get().sessionId !== sessionId) return;
+      const resultObj =
+        result && typeof result === 'object' ? (result as Record<string, unknown>) : null;
+      const remainingCount =
+        typeof resultObj?.remainingCount === 'number'
+          ? resultObj.remainingCount
+          : typeof resultObj?.remaining_count === 'number'
+            ? resultObj.remaining_count
+            : undefined;
+      const closed = resultObj?.closed === true;
+      if (remainingCount === 0) {
+        snapshotGeneration += 1;
+        pendingNavigation = null;
+        set({
+          ...INITIAL_BROWSER_SESSION_STATE,
+          sessionId: null,
+          tabs: EMPTY_TABS,
+          activeTabId: null,
+          currentUrl: '',
+          title: '',
+          addressDraft: '',
+        });
+        return;
+      }
+      await get().refreshTabs();
+      if (get().sessionId !== sessionId) return;
+      const tabs = get().tabs;
+      if (closed && tabs.length === 0) {
+        snapshotGeneration += 1;
+        pendingNavigation = null;
+        set({
+          ...INITIAL_BROWSER_SESSION_STATE,
+          sessionId: null,
+          tabs: EMPTY_TABS,
+          activeTabId: null,
+          currentUrl: '',
+          title: '',
+          addressDraft: '',
+        });
+        return;
+      }
+      const nextActive = tabs.find((tab) => tab.active) ?? tabs[0];
+      if (nextActive) {
+        const nextUrl = nextActive.url ?? '';
+        set({
+          activeTabId: nextActive.tabId,
+          currentUrl: nextUrl,
+          title: nextActive.title ?? '',
+          addressDraft: nextUrl === 'about:blank' ? '' : nextUrl,
+        });
+      }
+    } catch (err) {
+      const message = errorMessage(err);
+      set({ lastError: message, error: message });
+      throw err;
+    }
+  },
+
+  sendRemoteInput: async (event) => {
+    const sessionId = get().sessionId;
+    if (!sessionId) return;
+    await browserApi.remoteInput(sessionId, event);
+  },
+
+  extractCurrentPage: async (options) => {
+    const sessionId = get().sessionId;
+    if (!sessionId) {
+      throw new BrowserApiError(
+        'browser_extract_content',
+        browserMessages.operationFailed(),
+        'BROWSER_NO_SESSION',
+      );
+    }
+    return browserApi.extractContent(sessionId, options);
+  },
+
+  promoteToInteractive: async () => {
+    const sessionId = get().sessionId;
+    if (!sessionId) return null;
+    try {
+      const mode = await browserApi.promoteToInteractive(sessionId);
+      if (get().sessionId !== sessionId) return mode;
+      set({ contentVisible: true, lastError: null, error: null });
+      return mode;
+    } catch (err) {
+      const message = errorMessage(err);
+      set({ lastError: message, error: message });
+      throw err;
+    }
+  },
+
+  setScreencastFrame: (frame) => set({ screencastFrame: frame }),
 
   showContent: async () => {
     const ok = await showBrowserContentWindow(get().sessionId);

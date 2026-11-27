@@ -28,14 +28,15 @@ import {
   Trash,
   Warning,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
 import {
   TITLEBAR_CONTROL_CLASS,
   TITLEBAR_ICON_CONTROL_CLASS,
   TITLEBAR_TITLE_CLASS,
-} from '@/app/shell/titlebarUiTokens';
+} from '@/components/layout/desktopTitlebarTokens';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
@@ -220,7 +221,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   workbenchWindowId,
   windowSizeClass: _windowSizeClass,
 }) => {
-  const { t } = useTranslation(['skills', 'common']);
+  const { t } = useTranslation(['skills', 'common', 'sidebar']);
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
@@ -249,10 +250,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     }
     return () => observer?.disconnect();
   }, [workbenchWindowId]);
-  // legacy 壳标题栏槽位；与 workbench 窗口槽位互斥
-  const shellHeaderTarget = useDesktopShellHeaderPortal('skills-management');
-  const toolbarPortalTarget = windowTitlebarSlot ?? shellHeaderTarget;
-  const inTitlebar = Boolean(toolbarPortalTarget);
+  // Workbench 窗口标题栏走 portal；经典壳桌面端走统一 useDesktopHeader（面包屑范式）
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const toolbarPortalTarget = windowTitlebarSlot ?? null;
+  const useClassicDesktopHeader = !isSmallScreen && !workbenchWindowId && !toolbarPortalTarget && hasDesktopHeaderHost;
+  const inTitlebar = Boolean(toolbarPortalTarget) || useClassicDesktopHeader;
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -1237,6 +1239,67 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     listViewportRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
   }, [anyInlinePanelOpen]);
 
+  const skillsOverflowMenu = (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className={cn(
+            'text-muted-foreground',
+            inTitlebar
+              ? TITLEBAR_ICON_CONTROL_CLASS
+              : isSmallScreen
+                ? '!h-11 !w-11 !rounded-xl border border-border/60 bg-[color:var(--surface-muted)] text-foreground'
+                : '!h-7 !w-7',
+          )}
+          aria-label={t('common:more')}
+          title={t('common:more')}
+        >
+          <DotsThree size={18} weight="bold" />
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" width={224}>
+        <AppMenuItem
+          icon={<Storefront size={16} />}
+          onClick={() => setTapBrowserOpen((v) => !v)}
+        >
+          {t('skills:tap.entry')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={updateChecking
+            ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
+            : <CloudArrowDown size={16} />}
+          disabled={updateChecking}
+          onClick={() => void handleCheckUpdates()}
+        >
+          {t('skills:management.check_updates')}
+        </AppMenuItem>
+        <AppMenuItem icon={<Package size={16} />} onClick={handleImportZipClick}>
+          {t('skills:management.import_zip')}
+        </AppMenuItem>
+        <AppMenuItem icon={<Upload size={16} />} onClick={handleImportClick}>
+          {t('skills:management.import')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<Download size={16} />}
+          disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
+          onClick={handleExportAll}
+        >
+          {t('skills:management.export_all_short')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<UploadSimple size={16} />}
+          disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
+          onClick={() => void handleExportTap()}
+        >
+          {t('skills:management.export_tap')}
+        </AppMenuItem>
+      </AppMenuContent>
+    </AppMenu>
+  );
+
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
     if (isSmallScreen && !(screenPosition === 'right' && (editorOpen || rightPanelOpen))) {
@@ -1354,6 +1417,80 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     });
   }, [allSkills, locationFilter, searchQuery, t]);
 
+  // ========== 桌面端统一顶栏（经典壳面包屑范式） ==========
+  useDesktopHeader(
+    'skills-management',
+    {
+      breadcrumbs: editorOpen
+        ? [
+            {
+              id: 'skills-root',
+              label: t('sidebar:navigation.skills_management', { defaultValue: t('skills:management.title') }),
+              onClick: () => setEditorOpen(false),
+            },
+            {
+              id: 'skills-editor',
+              label: editingSkill?.name || t('skills:management.create'),
+            },
+          ]
+        : tapBrowserOpen
+          ? [
+              {
+                id: 'skills-root',
+                label: t('sidebar:navigation.skills_management', { defaultValue: t('skills:management.title') }),
+                onClick: () => setTapBrowserOpen(false),
+              },
+              {
+                id: 'skills-tap',
+                label: t('skills:tap.entry'),
+              },
+            ]
+          : [
+              {
+                id: 'skills-root',
+                label: t('sidebar:navigation.skills_management', { defaultValue: t('skills:management.title') }),
+              },
+            ],
+      meta: !editorOpen && !tapBrowserOpen
+        ? (isLoading && allSkills.length === 0
+            ? t('skills:selector.loading')
+            : t('skills:management.skills_count', { count: filteredSkills.length }))
+        : undefined,
+      actions: !editorOpen ? (
+        <>
+          <DesktopHeaderSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t('skills:selector.searchPlaceholder')}
+            inputDataAttrs={{ 'data-skills-search': '' }}
+          />
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCreate}
+            className={cn(TITLEBAR_CONTROL_CLASS, 'bg-[color:var(--button-tonal-bg)] text-foreground')}
+          >
+            <Plus size={14} />
+            {t('skills:management.create')}
+          </DsButton>
+          {skillsOverflowMenu}
+        </>
+      ) : undefined,
+    },
+    [
+      t,
+      editorOpen,
+      editingSkill?.name,
+      tapBrowserOpen,
+      isLoading,
+      allSkills.length,
+      filteredSkills.length,
+      searchQuery,
+      updateChecking,
+    ],
+    useClassicDesktopHeader,
+  );
+
   // ========== ACR skills agent 观察/操作面（ACR 4.0 A3） ==========
   // 快照走 ref：注册 effect 只依赖 windowId，避免每次渲染反复挂/卸。
   // enabled 在 snapshot() 时经 isSkillDisabled 现算——启停写在 localStorage，
@@ -1430,66 +1567,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   // ========== 渲染主内容 ==========
   const renderMainContent = () => {
-    const mobileOverflowMenu = (
-      <AppMenu>
-        <AppMenuTrigger asChild>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className={cn(
-              'text-muted-foreground',
-              inTitlebar
-                ? TITLEBAR_ICON_CONTROL_CLASS
-                : isSmallScreen
-                  ? '!h-11 !w-11 !rounded-xl border border-border/60 bg-[color:var(--surface-muted)] text-foreground'
-                  : '!h-7 !w-7',
-            )}
-            aria-label={t('common:more')}
-            title={t('common:more')}
-          >
-            <DotsThree size={20} weight="bold" />
-          </DsButton>
-        </AppMenuTrigger>
-        <AppMenuContent align="end" width={224}>
-          <AppMenuItem
-            icon={<Storefront size={16} />}
-            onClick={() => setTapBrowserOpen((v) => !v)}
-          >
-            {t('skills:tap.entry')}
-          </AppMenuItem>
-          <AppMenuItem
-            icon={updateChecking
-              ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
-              : <CloudArrowDown size={16} />}
-            disabled={updateChecking}
-            onClick={() => void handleCheckUpdates()}
-          >
-            {t('skills:management.check_updates')}
-          </AppMenuItem>
-          <AppMenuItem icon={<Package size={16} />} onClick={handleImportZipClick}>
-            {t('skills:management.import_zip')}
-          </AppMenuItem>
-          <AppMenuItem icon={<Upload size={16} />} onClick={handleImportClick}>
-            {t('skills:management.import')}
-          </AppMenuItem>
-          <AppMenuItem
-            icon={<Download size={16} />}
-            disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-            onClick={handleExportAll}
-          >
-            {t('skills:management.export_all_short')}
-          </AppMenuItem>
-          <AppMenuItem
-            icon={<UploadSimple size={16} />}
-            disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-            onClick={() => void handleExportTap()}
-          >
-            {t('skills:management.export_tap')}
-          </AppMenuItem>
-        </AppMenuContent>
-      </AppMenu>
-    );
+    const mobileOverflowMenu = skillsOverflowMenu;
 
     const hiddenFileInput = (
       <input
@@ -1572,7 +1650,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
     // 桌面端顶栏 portal 内容（标题/计数 + 新建 + 「更多」溢出菜单；次级操作统一收进 AppMenu）
     const toolbarPrimaryRow = (
-      <div className={cn("flex items-center gap-3 justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
+      <div className={cn("flex items-center gap-3 justify-between", toolbarPortalTarget && 'min-w-0 flex-1')}>
         <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
           {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
           <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
@@ -1584,8 +1662,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           </span>
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {!isSmallScreen && hiddenFileInput}
+        <div className={cn("flex items-center gap-1 flex-shrink-0", toolbarPortalTarget && 'pointer-events-auto')}>
           {!isSmallScreen && (
             <DsButton
               variant="shell"
@@ -1606,12 +1683,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
     return (
     <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      {!isSmallScreen && hiddenFileInput}
       {toolbarPortalTarget
         ? createPortal(
             <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{toolbarPrimaryRow}</div>,
             toolbarPortalTarget,
           )
         : null}
+      {useClassicDesktopHeader ? (
+        locationFilterControl ? (
+          <div className="study-shell-toolbar study-shell-toolbar--seamless flex-shrink-0 px-5 pt-2.5 sm:px-8 lg:px-10">
+            <div className="flex items-center gap-3">
+              {locationFilterControl}
+            </div>
+          </div>
+        ) : null
+      ) : (
       <div className={cn(
         'study-shell-toolbar flex-shrink-0',
         isSmallScreen
@@ -1639,7 +1726,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         ) : (
           /* 未 portal 桌面端：合并为单行工具栏，次级操作统一收进「更多」AppMenu */
           <div className="flex items-center gap-3 min-w-0">
-            {hiddenFileInput}
             <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground shrink-0">
               <span className="font-medium text-foreground shrink-0">{t('skills:management.all_skills')}</span>
               <span className="text-muted-foreground/40">/</span>
@@ -1668,6 +1754,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           </div>
         )}
       </div>
+      )}
 
       <CustomScrollArea
         className="flex-1 min-h-0"

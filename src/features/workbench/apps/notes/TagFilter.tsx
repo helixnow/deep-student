@@ -58,6 +58,9 @@ export interface TagFilterProps {
   loading?: boolean;
   error?: string | null;
   onRefresh?: () => void;
+  /** Optional controlled expanded state (e.g. triggered from search bar filter icon). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
 }
 
@@ -82,6 +85,8 @@ export const TagFilter: React.FC<TagFilterProps> = ({
   loading: loadingProp,
   error: errorProp,
   onRefresh,
+  open: openProp,
+  onOpenChange,
   className,
 }) => {
   const { t } = useTranslation();
@@ -94,8 +99,15 @@ export const TagFilter: React.FC<TagFilterProps> = ({
   const selected = normalizeSelected(selectedTags);
   const selectedKeys = new Set(selected.map((tag) => tag.toLocaleLowerCase()));
   // 侧栏以页面树为主体：标签筛选默认收起成一行，有选中标签时自动展开
-  const [expanded, setExpanded] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const isControlled = openProp !== undefined;
+  const expanded = isControlled ? openProp : uncontrolledExpanded;
   const open = expanded || selected.length > 0;
+  const toggleExpanded = () => {
+    const next = !open;
+    if (!isControlled) setUncontrolledExpanded(next);
+    onOpenChange?.(next);
+  };
 
   const toggleTag = useCallback((tag: string) => {
     const key = tag.trim().toLocaleLowerCase();
@@ -141,7 +153,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
           type="button"
           className="notes-tag-filter-label"
           aria-expanded={open}
-          onClick={() => setExpanded((value) => !value)}
+          onClick={toggleExpanded}
         >
           <CaretRight size={10} aria-hidden className="notes-tag-filter-caret" data-open={open || undefined} />
           {t('workbench:notesWorkspace.tagFilter.label')}
@@ -149,14 +161,15 @@ export const TagFilter: React.FC<TagFilterProps> = ({
             <span className="notes-tag-filter-selected-count">{selected.length}</span>
           )}
         </button>
-        <button
-          type="button"
-          className="notes-tag-filter-clear"
-          disabled={selected.length === 0}
-          onClick={clearAll}
-        >
-          {t('workbench:notesWorkspace.tagFilter.clear')}
-        </button>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            className="notes-tag-filter-clear"
+            onClick={clearAll}
+          >
+            {t('workbench:notesWorkspace.tagFilter.clear')}
+          </button>
+        )}
       </div>
 
       {open && selected.length > 1 && (

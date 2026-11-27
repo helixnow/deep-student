@@ -136,6 +136,8 @@ export interface PdfSelectionActionsProps {
   interopAliasResourceId?: string;
   /** 「划选即入图」开关：选区稳定后自动送入当前导图 / 笔记 */
   autoExcerptActive?: boolean;
+  /** 可选顶部扩展槽位（桌面端合并高亮色板/批注/引文到同一气泡，避免三气泡重叠） */
+  headerSlot?: React.ReactNode;
 }
 
 interface SelectionExcerptSnapshot {
@@ -166,9 +168,6 @@ interface AppendFeedbackState {
 
 const APPEND_FEEDBACK_DURATION_MS = 8000;
 
-/** 拖拽胶囊宽度估计（夹在容器内） */
-const DRAG_CHIP_WIDTH_PX = 96;
-
 export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   containerRef,
   enabled,
@@ -183,6 +182,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   interopResourceId,
   interopAliasResourceId,
   autoExcerptActive = false,
+  headerSlot,
 }) => {
   const { t } = useTranslation(['pdf', 'chatV2', 'common']);
   const pageSelection = useTextSelection(containerRef);
@@ -590,7 +590,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   // dragstart 只读快照，不依赖实时选区；也从不拦截文本层的 mousedown，原生划词不受影响。
   const interopEnabled = enabled && selectionKind === 'pdf' && Boolean(interopResourceId) && !selectionOverride;
   const snapshotRef = useRef<SelectionExcerptSnapshot | null>(null);
-  const [dragChipPos, setDragChipPos] = useState<{ top: number; left: number } | null>(null);
+  const [hasDragSnapshot, setHasDragSnapshot] = useState(false);
 
   const captureSelectionSnapshot = useCallback((): SelectionExcerptSnapshot | null => {
     const container = containerRef.current;
@@ -628,44 +628,18 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     if (!interopEnabled || !selection.isVisible || !selection.selectedText) {
       // 拖拽进行中保留快照：dragstart 之后选区折叠也不能丢载荷
       if (!sharedPdfExcerptGuard.isDragging()) snapshotRef.current = null;
-      setDragChipPos(null);
+      setHasDragSnapshot(false);
       return;
     }
     const snapshot = captureSelectionSnapshot();
     snapshotRef.current = snapshot;
-    const container = containerRef.current;
-    const rect = selection.selectionRect;
-    if (!snapshot || !container || !rect) {
-      setDragChipPos(null);
-      return;
-    }
-    // 胶囊贴在选区右侧（放不下翻到左侧，都放不下才落到右上角）：
-    // 上方是高亮选色菜单，下方是共享划词工具条，两侧不与任何一个重叠
-    const outer = container.getBoundingClientRect();
-    const rightSide = rect.left + rect.width - outer.left + 6;
-    const leftSide = rect.left - outer.left - DRAG_CHIP_WIDTH_PX - 6;
-    const top = Math.max(4, rect.top - outer.top);
-    if (rightSide + DRAG_CHIP_WIDTH_PX <= outer.width - 4) {
-      setDragChipPos({ top, left: rightSide });
-    } else if (leftSide >= 4) {
-      setDragChipPos({ top, left: leftSide });
-    } else {
-      setDragChipPos({
-        top: Math.max(4, rect.top - outer.top - 30),
-        left: Math.max(4, outer.width - DRAG_CHIP_WIDTH_PX - 4),
-      });
-    }
-
+    setHasDragSnapshot(Boolean(snapshot));
   }, [
     interopEnabled,
     selection.isVisible,
     selection.selectedText,
     selection.selectionRect,
     captureSelectionSnapshot,
-    containerRef,
-    autoExcerptActive,
-    interopResourceId,
-    buildSnapshotPayload,
   ]);
 
   // 仅完成一次真实的页面划词手势才发送；开关、滚动、清选区与工具条重渲染均不发送旧选区。
@@ -816,6 +790,34 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         .join(' · ')
     : '';
 
+  const showInlineDragChip = interopEnabled && hasDragSnapshot;
+  const unifiedHeaderSlot =
+    headerSlot || showInlineDragChip ? (
+      <div className="flex w-full flex-wrap items-center justify-between gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">{headerSlot}</div>
+        {showInlineDragChip && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            draggable
+            onDragStart={handleExcerptDragStart}
+            onDragEnd={handleExcerptDragEnd}
+            data-testid="pdf-excerpt-drag-chip"
+            title={t('pdf:interop.drag_excerpt')}
+            aria-label={t('pdf:interop.drag_excerpt')}
+            className={cn(
+              'select-none gap-1 border border-border/40 bg-muted/50 px-2',
+              'text-xs text-muted-foreground',
+              'cursor-grab hover:bg-muted hover:text-foreground active:cursor-grabbing',
+            )}
+          >
+            <DotsSixVertical size={13} aria-hidden="true" />
+            <span>{t('pdf:interop.drag_excerpt')}</span>
+          </DsButton>
+        )}
+      </div>
+    ) : undefined;
+
   return (
     <>
       <SelectionToolbar
@@ -831,6 +833,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         onAddToChat={handleAddToChat}
         onAddAsContext={undefined}
         extraActions={allExtraActions}
+        headerSlot={unifiedHeaderSlot}
         hideUnavailableActions
         placement="below"
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}
@@ -838,33 +841,6 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         ariaLabel={t('chatV2:selectionToolbar.ariaLabel')}
         className="z-30"
       />
-
-      {interopEnabled && toolbarVisible && dragChipPos && (
-        <div
-          // 与共享工具条同一标记：按下胶囊不被 useTextSelection 视为「点空白清选区」
-          data-selection-toolbar=""
-          className="absolute z-30"
-          style={{ top: dragChipPos.top, left: dragChipPos.left }}
-        >
-          <button
-            type="button"
-            draggable
-            onDragStart={handleExcerptDragStart}
-            onDragEnd={handleExcerptDragEnd}
-            data-testid="pdf-excerpt-drag-chip"
-            title={t('pdf:interop.drag_excerpt')}
-            aria-label={t('pdf:interop.drag_excerpt')}
-            className={cn(
-              'inline-flex h-6 select-none items-center gap-1 rounded-full border border-border/35 bg-card/95 px-2',
-              'text-[11px] text-muted-foreground shadow-sm backdrop-blur-sm transition-colors',
-              'cursor-grab hover:text-foreground active:cursor-grabbing',
-            )}
-          >
-            <DotsSixVertical size={14} aria-hidden="true" />
-            <span>{t('pdf:interop.drag_excerpt')}</span>
-          </button>
-        </div>
-      )}
 
       {panelOpen && (
         <div

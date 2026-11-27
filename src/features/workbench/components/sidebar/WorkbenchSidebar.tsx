@@ -55,7 +55,7 @@ export function WorkbenchSidebarScroll({
         scrollAutoHideSuspend={false}
         trackOffsetTop={2}
         trackOffsetBottom={8}
-        trackOffsetRight={3}
+        trackOffsetRight={1}
         viewportClassName="h-full w-full"
         viewportProps={{
           'data-workbench-sidebar-scroll': true,

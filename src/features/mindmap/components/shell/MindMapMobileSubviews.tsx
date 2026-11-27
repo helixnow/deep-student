@@ -101,6 +101,7 @@ const MobileMenuGroup: React.FC<{ title: string; children: React.ReactNode }> = 
 /** 仅在移动端「更多」子屏打开时挂载，零常态 store 订阅 */
 const MobileMorePanel: React.FC<{
   resourceId?: string;
+  currentView: 'outline' | 'mindmap';
   showMasteryOverlay: boolean;
   onClose: () => void;
   onOpenMobileStructure: () => void;
@@ -114,6 +115,7 @@ const MobileMorePanel: React.FC<{
   onExport: (format: string) => void;
 }> = ({
   resourceId,
+  currentView,
   showMasteryOverlay,
   onClose,
   onOpenMobileStructure,
@@ -127,6 +129,7 @@ const MobileMorePanel: React.FC<{
   onExport,
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
+  const isMindMapView = currentView !== 'outline';
   const storeApi = useMindMapStoreApi();
   const isDirty = useMindMapStore((state) => state.isDirty);
   const isSaving = useMindMapStore((state) => state.isSaving);
@@ -212,26 +215,32 @@ const MobileMorePanel: React.FC<{
         viewportClassName="mm-mobile-subview-scroll px-1 py-1"
       >
         <MobileMenuGroup title={t('mindmap:menu.groupView', { defaultValue: '视图' })}>
-          <MobileMenuRow
-            icon={<GitBranch size={18} />}
-            label={t('mindmap:toolbar.structure')}
-            onClick={onOpenMobileStructure}
-          />
-          <MobileMenuRow
-            icon={<Palette size={18} />}
-            label={t('mindmap:toolbar.style')}
-            onClick={onOpenMobileStyle}
-          />
+          {isMindMapView && (
+            <>
+              <MobileMenuRow
+                icon={<GitBranch size={18} />}
+                label={t('mindmap:toolbar.structure')}
+                onClick={onOpenMobileStructure}
+              />
+              <MobileMenuRow
+                icon={<Palette size={18} />}
+                label={t('mindmap:toolbar.style')}
+                onClick={onOpenMobileStyle}
+              />
+            </>
+          )}
           <MobileMenuRow
             icon={<MagnifyingGlass size={18} />}
             label={t('mindmap:toolbar.search')}
             onClick={closeThen(onOpenSearch)}
           />
-          <MobileMenuRow
-            icon={<Presentation size={18} />}
-            label={t('mindmap:presentation.enter')}
-            onClick={closeThen(onEnterPresentation)}
-          />
+          {isMindMapView && (
+            <MobileMenuRow
+              icon={<Presentation size={18} />}
+              label={t('mindmap:presentation.enter')}
+              onClick={closeThen(onEnterPresentation)}
+            />
+          )}
           <MobileMenuRow
             icon={<ArrowsOutLineVertical size={18} />}
             label={t('mindmap:toolbar.expandAll')}
@@ -279,24 +288,28 @@ const MobileMorePanel: React.FC<{
             checked={reciteMode}
             onClick={closeThen(() => setReciteMode(!reciteMode))}
           />
-          <MobileMenuRow
-            icon={<Heartbeat size={18} />}
-            label={t('mindmap:toolbar.masteryOverlay', { defaultValue: '掌握度' })}
-            checked={showMasteryOverlay}
-            testId="mm-mobile-more-mastery"
-            onClick={closeThen(onToggleMasteryOverlay)}
-          />
+          {isMindMapView && (
+            <MobileMenuRow
+              icon={<Heartbeat size={18} />}
+              label={t('mindmap:toolbar.masteryOverlay', { defaultValue: '掌握度' })}
+              checked={showMasteryOverlay}
+              testId="mm-mobile-more-mastery"
+              onClick={closeThen(onToggleMasteryOverlay)}
+            />
+          )}
           <MobileMenuRow
             icon={<EyeSlash size={18} />}
             label={t('mindmap:toolbar.hideCompleted')}
             checked={hideCompleted}
             onClick={() => setHideCompleted(!hideCompleted)}
           />
-          <MobileMenuRow
-            icon={<ShareNetwork size={18} />}
-            label={t('mindmap:association.add')}
-            onClick={closeThen(onStartAssociation)}
-          />
+          {isMindMapView && (
+            <MobileMenuRow
+              icon={<ShareNetwork size={18} />}
+              label={t('mindmap:association.add')}
+              onClick={closeThen(onStartAssociation)}
+            />
+          )}
           <MobileMenuRow
             icon={<Article size={18} />}
             label={t('mindmap:mn5.exportHandout', { defaultValue: '导出讲义笔记' })}
@@ -411,7 +424,7 @@ export const MindMapMobileSubviews: React.FC<MindMapMobileSubviewsProps> = React
           </div>
         )}
 
-        {overlayPanel === 'structure' && (
+        {currentView !== 'outline' && overlayPanel === 'structure' && (
           <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden flex flex-col bg-[var(--mm-bg)]">
             <div className="mm-mobile-subview-header">
               <DsButton
@@ -435,7 +448,7 @@ export const MindMapMobileSubviews: React.FC<MindMapMobileSubviewsProps> = React
           </div>
         )}
 
-        {overlayPanel === 'style' && (
+        {currentView !== 'outline' && overlayPanel === 'style' && (
           <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden flex flex-col bg-[var(--mm-bg)]">
             <div className="mm-mobile-subview-header">
               <DsButton
@@ -462,6 +475,7 @@ export const MindMapMobileSubviews: React.FC<MindMapMobileSubviewsProps> = React
         {overlayPanel === 'more' && (
           <MobileMorePanel
             resourceId={resourceId}
+            currentView={currentView}
             showMasteryOverlay={showMasteryOverlay}
             onClose={close}
             onOpenMobileStructure={() => onOverlayPanelChange('structure')}

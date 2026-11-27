@@ -135,6 +135,7 @@ export interface WorkspaceAgentCompletionEvent {
   completed_at?: string;
   /** C8：camelCase TokenUsage 对象（promptTokens/completionTokens/totalTokens/...），可能为 null */
   token_usage?: TokenUsage | null;
+  host_facts?: Record<string, unknown> | null;
 }
 
 /** 🆕 主代理唤醒事件 payload */
@@ -854,6 +855,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         error: payload.error,
         completedAt: payload.completed_at,
         tokenUsage: payload.token_usage ?? undefined,
+        ...(payload.host_facts != null ? { hostFacts: payload.host_facts } : {}),
       };
       processedWorkerReadyEvents.delete(payload.agent_session_id);
       releaseWorkerAdapterLease(payload.agent_session_id, listenerGeneration, payload.workspace_id);

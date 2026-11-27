@@ -5,11 +5,18 @@
 
 .wb-fc-host,
 .wb-fc-root {
+  --fc-surface: var(--shell-workspace-surface, hsl(var(--background)));
+
   height: 100%;
   width: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--wb-window-bg, hsl(var(--card)));
+  background: var(--fc-surface);
+}
+
+.wb-fc-host,
+[data-wb-window-body] .wb-fc-root {
+  --fc-surface: var(--wb-window-bg, hsl(var(--card)));
 }
 
 .wb-fc-nav {
@@ -18,6 +25,11 @@
   gap: 2px;
   padding: 6px 10px 0;
   border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: transparent;
+}
+
+.wb-fc-host .wb-fc-nav,
+[data-wb-window-body] .wb-fc-nav {
   background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
 }
 
@@ -597,7 +609,7 @@
 .wb-fc-edit-panel {
   border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
   border-radius: 12px;
-  background: var(--wb-window-bg, hsl(var(--card)));
+  background: var(--fc-surface, hsl(var(--card)));
   box-shadow: var(--wb-shadow-idle, 0 1px 2px hsl(var(--foreground) / 0.05));
   animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }

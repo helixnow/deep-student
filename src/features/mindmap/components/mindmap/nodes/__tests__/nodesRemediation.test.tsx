@@ -447,4 +447,91 @@ describe('Nodes, Lightbox, Embed Theme Sync & Selection Bubble Remediation', () 
     expect(store.getState().editingNodeId).toBeNull();
     expect(screen.getByText('初始内容')).toBeInTheDocument();
   });
+
+  it('uses an invisible mirror sizer and absolute overlay textarea in NodeContent so cols=20 never distorts node width', () => {
+    render(<NodeContent nodeId="n-short" text="行列式" isEditing />);
+
+    const mirror = screen.getByTestId('mm-title-editor-mirror');
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    expect(mirror.textContent).toBe('行列式');
+    expect(mirror.className).toContain('invisible');
+    expect(mirror.className).toContain('whitespace-pre-wrap');
+    expect(textarea.className).toContain('absolute');
+    expect(textarea.className).toContain('inset-0');
+
+    // Mirror stays synchronized while typing and reserves height for trailing newlines / empty text
+    fireEvent.change(textarea, { target: { value: '行列式与矩阵' } });
+    expect(mirror.textContent).toBe('行列式与矩阵');
+
+    fireEvent.change(textarea, { target: { value: '第一行\n' } });
+    expect(mirror.textContent).toBe('第一行\n\u200b');
+
+    fireEvent.change(textarea, { target: { value: '' } });
+    expect(mirror.textContent).toBe('行列式');
+  });
+
+  it('locks observed pre-edit width into --mm-edit-min-width on entering edit mode and clears it on exit', () => {
+    const store = createMindMapStore();
+    let roCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        roCallback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    const { container } = render(
+      <MindMapStoreContext.Provider value={store}>
+        <BranchNode {...makeBranchProps({ nodeId: 'b-width', label: '行列式', level: 1 })} />
+      </MindMapStoreContext.Provider>,
+    );
+
+    const branchEl = container.querySelector('.mm-branch-node') as HTMLElement;
+    expect(branchEl.style.getPropertyValue('--mm-edit-min-width')).toBe('');
+
+    // Simulate non-editing display width observation (89px for short node)
+    act(() => {
+      roCallback?.(
+        [
+          {
+            target: branchEl,
+            borderBoxSize: [{ inlineSize: 89, blockSize: 38 }] as unknown as ResizeObserverSize[],
+            contentRect: { width: 89, height: 38 } as DOMRectReadOnly,
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      );
+    });
+
+    // Enter edit mode -> locks pre-edit display width into --mm-edit-min-width
+    act(() => {
+      store.setState({ editingNodeId: 'b-width' });
+    });
+    expect(branchEl.style.getPropertyValue('--mm-edit-min-width')).toBe('89px');
+
+    // Resizes while editing must NOT overwrite the locked pre-edit baseline
+    act(() => {
+      roCallback?.(
+        [
+          {
+            target: branchEl,
+            borderBoxSize: [{ inlineSize: 210, blockSize: 38 }] as unknown as ResizeObserverSize[],
+            contentRect: { width: 210, height: 38 } as DOMRectReadOnly,
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      );
+    });
+    expect(branchEl.style.getPropertyValue('--mm-edit-min-width')).toBe('89px');
+
+    // Exit edit mode -> clears CSS custom property
+    act(() => {
+      store.setState({ editingNodeId: null });
+    });
+    expect(branchEl.style.getPropertyValue('--mm-edit-min-width')).toBe('');
+  });
 });

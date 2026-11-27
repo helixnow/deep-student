@@ -472,6 +472,8 @@ describe('dock 60fps 波浪放大、光学扫光与 0ms Tooltip 会话', () => {
     const dock = screen.getByTestId('wb-dock');
     expect(dock).toHaveClass('wb-glass-rim');
     expect(dock).not.toHaveClass('mb-2');
+    // Dock 走真实 backdrop-filter 液态玻璃，不再挂载会遮挡底层的 .wb-glass-replica
+    expect(dock.querySelector('.wb-glass-replica')).toBeNull();
     expect(screen.getByTestId('wb-dock-apps-button').querySelector('.wb-dock-utility-tile')).toBeInTheDocument();
     expect(
       screen.getByTestId('wb-dock-agent-control-button').querySelector('.wb-dock-utility-tile'),
@@ -1217,5 +1219,34 @@ describe('S1-14 / S3-02: Dock 图标点击通用可靠性（打开 / 聚焦 / �
     expect(windowsOf('notes')).toHaveLength(1);
     const state = useWindowStore.getState();
     expect(state.focusStack[state.focusStack.length - 1]).toBe(windowsOf('notes')[0].id);
+  });
+
+  it('autohide 模式下点击 AI 桌面操控弹层内控件不收起 Dock，按 Escape 优先关闭弹层', async () => {
+    appRegistry.register(makeApp('notes', { instanceMode: 'single' }));
+    setDockPinned(['notes']);
+    render(<Dock autohide />);
+
+    // 先通过底缘热区呼出 Dock
+    fireEvent.click(screen.getByTestId('wb-dock-hotzone'));
+    const dock = screen.getByTestId('wb-dock');
+    expect(dock).not.toHaveAttribute('data-hidden', 'true');
+
+    // 点击「AI 桌面操控」打开 Portal 弹层
+    const agentBtn = screen.getByTestId('wb-dock-agent-control-button');
+    fireEvent.click(agentBtn);
+    const dialog = await screen.findByRole('dialog', { name: 'AI 桌面操控' });
+    expect(dialog).toBeInTheDocument();
+
+    // 指针移出 Dock 移入弹层并点击弹层内按钮：Dock 必须保持展开不被误收起
+    fireEvent.pointerLeave(dock);
+    const expandBtn = screen.getByRole('button', { name: '全部能力' });
+    fireEvent.pointerDown(expandBtn);
+    fireEvent.click(expandBtn);
+    expect(dock).not.toHaveAttribute('data-hidden', 'true');
+    expect(screen.getByRole('button', { name: '收起' })).toBeInTheDocument();
+
+    // 按 Escape 优先关闭弹层，而非吞掉事件只收起 Dock
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(dock).not.toHaveAttribute('data-hidden', 'true');
   });
 });

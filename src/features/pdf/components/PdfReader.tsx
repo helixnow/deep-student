@@ -6,6 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -48,6 +51,33 @@ export const PdfReader: React.FC = () => {
   const [externalUrl, setExternalUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('document.pdf');
   const [numPages, setNumPages] = useState<number | null>(null);
+  const { isSmallScreen } = useBreakpoint();
+
+  const hasDocument = Boolean(file || externalUrl);
+  useDesktopHeader(
+    'pdf-reader',
+    {
+      breadcrumbs: hasDocument
+        ? [
+            { id: 'pdf-root', label: t('common:navigation.pdf_reader') },
+            { id: 'pdf-file', label: fileName },
+          ]
+        : [{ id: 'pdf-root', label: t('common:navigation.pdf_reader') }],
+      actions: (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => handleSelectFileRef.current()}
+          className={TITLEBAR_CONTROL_CLASS}
+        >
+          <UploadSimple size={14} />
+          <span>{t('pdf:empty.select_button')}</span>
+        </DsButton>
+      ),
+    },
+    [t, hasDocument, fileName],
+    !isSmallScreen,
+  );
   const [pageNumber, setPageNumber] = useState<number>(1);
   // 加载阶段：parsing=pdf.js 解析中；idle=就绪
   const [loadingStage, setLoadingStage] = useState<'idle' | 'parsing'>('idle');

@@ -21,7 +21,8 @@ import type { BackendSendRequest } from '../src/send-message.ts';
 import {
   agentCompletionEnvelope, resolveProfileSkillSnapshot, workerRuntimeSurfaces,
 } from '../src/workspace-run-agent.ts';
-import { AgentProfileResolver, EXPLORER_PROFILE_ID } from '../../agent-workspace/api.ts';
+import { AgentProfileResolver, BROWSER_PROFILE_ID, EXPLORER_PROFILE_ID } from '../../agent-workspace/api.ts';
+import { BROWSER_WORKER_TOOL_NAMES } from '../../browser/api.ts';
 
 const stand = vi.hoisted(() => ({
   headless: [
@@ -93,6 +94,8 @@ describe('worker runtime commands (production entry)', () => {
   let requests: BackendSendRequest[];
   let behavior: (request: BackendSendRequest, signal: AbortSignal) => Promise<string>;
   let grantDuringRun: { live: boolean } | null;
+  let browserHostFacts: Record<string, unknown> | null;
+  let browserHostFactsByChatSessionCalls: string[];
 
   beforeAll(async () => {
     helperFixture = databaseFixture();
@@ -103,11 +106,18 @@ describe('worker runtime commands (production entry)', () => {
   afterAll(async () => { await helpers.dispose(); helperFixture.dispose(); });
   beforeEach(async () => {
     f = databaseFixture();
-    requests = []; grantDuringRun = null;
+    requests = []; grantDuringRun = null; browserHostFacts = null; browserHostFactsByChatSessionCalls = [];
     behavior = async request => request.assistantMessageId!;
     const real = helpers.ctx.chatPipeline;
     host = await createTestHost({ plugins: [workspace, plugin], provide: {
       storage: f.storage, vfs: vfsStub, settings: {}, secrets: {},
+      browser: {
+        getHostFactsForChatSession: (chatSessionId: string) => {
+          browserHostFactsByChatSessionCalls.push(chatSessionId);
+          return browserHostFacts;
+        },
+        getHostFacts: () => browserHostFacts,
+      },
       chatPipeline: {
         async execute(_window: unknown, request: BackendSendRequest, signal: AbortSignal) {
           requests.push(request);
@@ -323,5 +333,52 @@ describe('worker runtime commands (production entry)', () => {
     expect(events('workspace_worker_ready')).toEqual([{ workspace_id: ws, agent_session_id: 'worker_r', skill_id: null,
       restored: true, reminder: null, runtime_managed: true }]);
     await expect(host.invoke('workspace_restore_executions', { sessionId: 'outsider', workspaceId: ws })).rejects.toEqual(expect.any(String));
+  });
+
+  it('workspace_run_agent: browser profile receives all 18 browser tool schemas and attaches host_facts on completion', async () => {
+    browserHostFacts = {
+      sessionId: 'bs-worker-1',
+      mode: 'interactive',
+      visitedOrigins: ['https://example.edu'],
+      blockedNavigations: [],
+      latestScreenshot: null,
+      downloadsCount: 1,
+      userTakeoverCount: 0,
+      actionCount: 4,
+      finalUrl: 'https://example.edu/syllabus',
+    };
+    const ws = await newWorkspace('BrowserTeam');
+    const profile = AgentProfileResolver.builtIn(BROWSER_PROFILE_ID)!;
+    const metadata = AgentProfileResolver.persistIntoMetadata(undefined, profile);
+    const session = newSession('worker_browser', 'agent');
+    session.metadata = { parent_session_id: 'owner' };
+    host.ctx.chatSession.createSession(session);
+    host.ctx.agentWorkspace.registerAgent(ws, 'worker_browser', 'worker', null, metadata);
+    host.ctx.agentWorkspace.sendMessage(ws, 'owner', 'worker_browser', 'task', 'browse syllabus');
+
+    const response = await host.invoke<{ status: string }>('workspace_run_agent', {
+      request: { workspace_id: ws, agent_session_id: 'worker_browser', requester_session_id: 'owner' },
+    });
+    expect(response.status).toBe('running');
+    await waitFor(() => host.ctx.agentWorkspace.getAgent(ws, 'worker_browser')?.status === 'completed');
+
+    const options = requests[0]!.options as Record<string, unknown>;
+    const schemaNames = (options.mcpToolSchemas as { name: string }[]).map(schema => schema.name);
+    for (const browserTool of BROWSER_WORKER_TOOL_NAMES) {
+      expect(schemaNames).toContain(browserTool);
+    }
+    expect(schemaNames).toContain('builtin-web_search');
+    expect(schemaNames).not.toContain('builtin-note_append');
+
+    const inbox = host.ctx.agentWorkspace.drainInbox(ws, 'owner', 10);
+    expect(inbox).toHaveLength(1);
+    const envelope = JSON.parse(inbox[0]!.content) as Record<string, unknown>;
+    expect(browserHostFactsByChatSessionCalls).toEqual(['worker_browser']);
+    expect(envelope.host_facts).toMatchObject({
+      verified_by: 'host',
+      sessionId: 'bs-worker-1',
+      visitedOrigins: ['https://example.edu'],
+      finalUrl: 'https://example.edu/syllabus',
+    });
   });
 });

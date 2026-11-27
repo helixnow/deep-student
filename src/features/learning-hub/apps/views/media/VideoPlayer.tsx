@@ -612,6 +612,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={mediaRef}
         src={src}
+        data-ds-managed-media="true"
         crossOrigin={crossOrigin}
         playsInline
         preload="metadata"

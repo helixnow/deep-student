@@ -49,4 +49,42 @@ describe('buildAiDashboardIntent — unified today learning', () => {
     expect(statTitles(intent)).toEqual(['Cards due', 'Tasks', 'Progress']);
     expect(intent.blocks.some((b) => b.type === 'alert')).toBe(true);
   });
+
+  it('declares multi-column grid layout with stable dashboard block ids and spans', () => {
+    const intent = buildAiDashboardIntent(
+      {
+        dueFlashcards: 12,
+        dueMistakes: 4,
+        dueNotes: 2,
+        pendingTodos: 3,
+        activeAnkiTasks: 1,
+        reviewDays: [{ date: '2026-11-27', dueCount: 12 }],
+      },
+      LABELS,
+    );
+    expect(intent.layout).toEqual({ mode: 'grid', columns: 3 });
+    expect(intent.blocks.filter((b) => b.type === 'stat-card').map((b) => b.id)).toEqual([
+      'dashboard-due-flashcards',
+      'dashboard-due-mistakes',
+      'dashboard-due-notes',
+      'dashboard-anki-tasks',
+      'dashboard-todos',
+    ]);
+    expect(intent.blocks.find((b) => b.type === 'chart')).toMatchObject({
+      id: 'dashboard-workload-chart',
+      span: 2,
+    });
+    expect(intent.blocks.find((b) => b.type === 'table')).toMatchObject({
+      id: 'dashboard-workload-table',
+      span: 3,
+    });
+    expect(intent.blocks.find((b) => b.type === 'review-calendar')).toMatchObject({
+      id: 'dashboard-review-calendar',
+      span: 1,
+    });
+    expect(intent.blocks.find((b) => b.type === 'action-bar')).toMatchObject({
+      id: 'dashboard-actions',
+      span: 3,
+    });
+  });
 });

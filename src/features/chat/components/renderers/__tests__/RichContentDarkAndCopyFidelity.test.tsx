@@ -275,7 +275,7 @@ describe('U04 Heavy Mixed Rich Content — Containment, Dark-Mode Readability & 
       );
 
       const runBtn = Array.from(container.querySelectorAll('button')).find((btn) =>
-        btn.textContent?.startsWith('▶'),
+        btn.textContent?.includes('运行') && !btn.textContent?.includes('运行中'),
       ) as HTMLButtonElement;
       expect(runBtn).toBeDefined();
 

@@ -40,7 +40,11 @@ import {
   getTilingRatioForWindow,
   zoneToDisplayMode,
 } from '../core/tiling';
-import { prefersReducedMotion } from '../core/pointerEngine';
+import {
+  MOVE_KEEP_VISIBLE_X,
+  MOVE_KEEP_VISIBLE_Y,
+  prefersReducedMotion,
+} from '../core/pointerEngine';
 import { notifyWorkbenchGestureFrame } from '../core/workbenchGestureFollowers';
 import {
   beginInteraction,
@@ -139,6 +143,8 @@ export interface WindowShellPointerArgs {
    * 传入武装瞬间的视口指针坐标；拖拽 tear-out 路径不播 restore settle。
    */
   onMoveArmed?: (point: { x: number; y: number }) => void;
+  /** tear-out 被 Esc / blur 取消时恢复受管态外观 */
+  onMoveCancelled?: () => void;
 }
 
 export interface WindowShellPointerResult {
@@ -526,6 +532,12 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       releaseLock?.();
       releaseLock = null;
     };
+    // 若窗口仍在入场/恢复 CSS 生命周期动画中，立即摘掉相位属性归还 transform 控制权，
+    // 防止 keyframes transform 盖住拖拽直写的 translate3d 导致起拖不动。
+    const lifecPhase = el.getAttribute('data-wb-lifec');
+    if (lifecPhase === 'opening' || lifecPhase === 'restoring') {
+      el.removeAttribute('data-wb-lifec');
+    }
     gestureRef.current = { kind, releaseCursor };
     // ANTI-REGRESSION：手势期间只关内容命中。禁止动态切 contain /
     // content-visibility（即使延到 rAF）——会在首个 transform 前强制整棵
@@ -792,12 +804,10 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       if (prefersReducedMotion()) return;
       const from = { ...frameRef.current };
       const to = cur.frame;
-      // 等 React 提交新布局后再 FLIP（与 SnapPreview 进入方向对称）
+      // 单 rAF 在 React 提交布局后、浏览器绘制前同步插入 FLIP，消除 1 帧闪跳抽搐
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (gestureRef.current || !rootRef.current) return;
-          runRestoreSettle(from, to);
-        });
+        if (gestureRef.current || !rootRef.current) return;
+        runRestoreSettle(from, to);
       });
     });
   }, [windowId, runRestoreSettle]);
@@ -847,6 +857,9 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         w: def?.defaultFrame.w ?? 720,
         h: def?.defaultFrame.h ?? 520,
       };
+      const desktop = store.desktopSize;
+      const w = desktop.w > 0 ? Math.min(size.w, Math.max(minSize.w, desktop.w)) : size.w;
+      const h = desktop.h > 0 ? Math.min(size.h, Math.max(minSize.h, desktop.h)) : size.h;
       const parentRect = rootRef.current?.parentElement?.getBoundingClientRect();
       const pointerDesktopX = clientX - (parentRect?.left ?? 0);
       const pointerDesktopY = clientY - (parentRect?.top ?? 0);
@@ -855,17 +868,45 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         currentFrame.w > 0
           ? Math.min(Math.max((pointerDesktopX - currentFrame.x) / currentFrame.w, 0), 1)
           : 0.5;
+      // 保留光标在标题栏内的真实纵向抓点，不再硬跳到标题栏中线
+      const grabOffsetY = Math.min(
+        Math.max(pointerDesktopY - currentFrame.y, 4),
+        TITLEBAR_HEIGHT - 4,
+      );
+      const rawX = Math.round(pointerDesktopX - proportion * w);
+      const rawY = Math.round(pointerDesktopY - grabOffsetY);
+      const minX = MOVE_KEEP_VISIBLE_X - w;
+      const maxX = desktop.w > 0 ? desktop.w - MOVE_KEEP_VISIBLE_X : rawX;
+      const maxY = desktop.h > 0 ? Math.max(0, desktop.h - MOVE_KEEP_VISIBLE_Y) : rawY;
       const newFrame: Frame = {
-        x: Math.round(pointerDesktopX - proportion * size.w),
-        y: Math.max(0, Math.round(pointerDesktopY - TITLEBAR_HEIGHT / 2)),
-        w: size.w,
-        h: size.h,
+        x: Math.min(maxX, Math.max(minX, rawX)),
+        y: Math.min(maxY, Math.max(0, rawY)),
+        w,
+        h,
       };
+      // 拖拽 tear-out 当帧即恢复浮动圆角与 display-mode 属性，不必等松手才跳变
+      if (rootRef.current) {
+        rootRef.current.classList.remove('wb-window-maximized', 'wb-window-tiled');
+        rootRef.current.setAttribute('data-display-mode', 'floating');
+      }
       // 仅 DOM：引擎会立刻以新 frame 为原点继续跟手
       settleShellFrame(newFrame);
     },
-    [windowId, def, cancelRestoreSettle, settleShellFrame],
+    [windowId, def, minSize.w, minSize.h, cancelRestoreSettle, settleShellFrame],
   );
+
+  const handleMoveCancelled = useCallback(() => {
+    tearOutActiveRef.current = false;
+    const store = useWindowStore.getState();
+    const current = store.windows[windowId];
+    const el = rootRef.current;
+    if (el && current) {
+      el.classList.toggle('wb-window-maximized', current.displayMode === 'maximized');
+      el.classList.toggle('wb-window-tiled', current.displayMode.startsWith('tiled-'));
+      el.setAttribute('data-display-mode', current.displayMode);
+    }
+    onSnapZoneChange?.(windowId, null);
+  }, [windowId, onSnapZoneChange]);
 
   const handleDragStateChange = useCallback(
     (dragging: boolean) => {
@@ -948,7 +989,30 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       settleShellFrame(final);
       const zoneMode = zoneToDisplayMode(zone);
       if (zoneMode) {
-        store.setDisplayMode(windowId, zoneMode);
+        const curWin = store.windows[windowId];
+        if (curWin.displayMode === zoneMode) {
+          // tear-out 后又放回原吸附区：store.setDisplayMode 会因同模式短路，
+          // 必须手动把 DOM 与圆角类还原到受管目标位，避免窗口卡在撕出的浮动尺寸上。
+          const el = rootRef.current;
+          if (el) {
+            el.classList.toggle('wb-window-maximized', zoneMode === 'maximized');
+            el.classList.toggle('wb-window-tiled', zoneMode.startsWith('tiled-'));
+            el.setAttribute('data-display-mode', zoneMode);
+          }
+          const tiledTarget = computeTiledFrame(zoneMode, {
+            desktopSize: store.desktopSize,
+            margin: zoneMode === 'maximized' ? 0 : tileMargin,
+            ratio:
+              zoneMode === 'tiled-left' || zoneMode === 'tiled-right'
+                ? getTilingRatioForWindow(store.windows, store.tilingRatios, windowId)
+                : undefined,
+          });
+          if (tiledTarget) {
+            runRestoreSettle(final, tiledTarget);
+          }
+        } else {
+          store.setDisplayMode(windowId, zoneMode);
+        }
       } else if (typeof store.commitFloatingFrame === 'function') {
         // tear-out / 从平铺拖走：松手才写 floating + frame（合并单次 set，
         // 避免全部 selector 在 commit 瞬间跑两遍）
@@ -966,7 +1030,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         recomputeLifecycles();
       });
     },
-    [windowId, onSnapZoneChange, settleShellFrame],
+    [windowId, tileMargin, onSnapZoneChange, settleShellFrame, runRestoreSettle],
   );
 
   const callbacks: WindowPointerCallbacks = {
@@ -988,6 +1052,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     callbacks,
     onDragStateChange: handleDragStateChange,
     onMoveArmed: handleMoveArmed,
+    onMoveCancelled: handleMoveCancelled,
   });
 
   // ---- 交互 handlers ----
@@ -1056,14 +1121,16 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
 
   const handleMovePointerDown = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
+      cancelRestoreSettle();
       // 适配器已在 pointerdown 抬升壳层；引擎过阈值后才 tear-out / commit
       pointer.onMovePointerDown(e);
     },
-    [pointer],
+    [pointer, cancelRestoreSettle],
   );
 
   const handleResizePointerDown = useCallback(
     (dir: ResizeDirection, e: React.PointerEvent<HTMLElement>) => {
+      if (gestureRef.current || (e.button != null && e.button > 0)) return;
       cancelRestoreSettle();
       beginShellGesture('resize', cursorForResizeEdge(dir));
       pointer.onResizePointerDown(dir, e);
@@ -1207,9 +1274,10 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     roleDescription: t('a11y.windowRole'),
   });
 
-  // 手势中可能因 focus/store 触发重渲染：读 gestureRef 保持瞬态定位不被 React style 冲掉
+  // 手势中可能因 focus/store 触发重渲染：读 gestureRef / tearOutActiveRef 保持瞬态外观与定位不被 React 冲掉
   const activeGesture = gestureRef.current;
   const liveFrame = frameRef.current;
+  const visualDisplayMode = tearOutActiveRef.current ? 'floating' : win.displayMode;
 
   return (
     <section
@@ -1218,8 +1286,8 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         'wb-window',
         // O9 编排（wb-lifec-*）为唯一开窗/最小化动画源；停用旧 wb-anim-open / wb-anim-minimize 挂载
         focused ? 'wb-window-focused' : 'wb-window-idle',
-        win.displayMode === 'maximized' ? 'wb-window-maximized' : '',
-        win.displayMode.startsWith('tiled-') ? 'wb-window-tiled' : '',
+        visualDisplayMode === 'maximized' ? 'wb-window-maximized' : '',
+        visualDisplayMode.startsWith('tiled-') ? 'wb-window-tiled' : '',
         win.minimized ? 'wb-window-minimized' : '',
         // 手势类以 DOM classList 为主；重渲染时从 gestureRef 回填，避免被冲掉
         activeGesture?.kind === 'move' ? 'wb-shell-dragging' : '',
@@ -1252,7 +1320,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       data-wb-window
       data-wb-window-id={windowId}
       data-window-id={windowId}
-      data-display-mode={win.displayMode}
+      data-display-mode={visualDisplayMode}
       data-focused={focused || undefined}
       data-minimized={win.minimized ? 'true' : undefined}
       data-occluded={occluded ? 'true' : undefined}

@@ -16,7 +16,10 @@ import { compareUtf8 } from '../../../platform/util/portable.ts';
 import { VARIANT_OWNER_METHODS, type VariantDependencies, type VariantExecutionManager } from './variant-run.ts';
 import { resolveActiveApiConfig } from './tool-loop.ts';
 import { finalizeTaskCompletion } from './completion-finalizer.ts';
-import { buildRetrievalPageImageInjection } from './retrieval-images.ts';
+import {
+  buildBrowserScreenshotImageInjection, buildRetrievalPageImageInjection, MAX_BROWSER_SCREENSHOT_IMAGE_BYTES,
+} from './retrieval-images.ts';
+import { readAllBytes } from './local-fs.ts';
 import type { ApiConfig } from '../../llm/api.ts';
 import type { WindowRef } from '../../../kernel/api.ts';
 import type { PipelineFinalStore, PipelinePostCommitEffects } from './persistence-port.ts';
@@ -236,6 +239,35 @@ async function resolveToolAuthoringConfig(llm: import('../../llm/api.ts').LLMMan
 }
 const rustTrimId = (value: string) => { const trimmed = value.trim(); return trimmed === '' ? null : trimmed; };
 
+function createBrowserScreenshotInjector(ctx: Context, log: Context['logger']) {
+  return (
+    results: readonly import('../../chat/api.ts').ToolResultInfo[],
+    budget: { imageBudget: number; imagesInRequest: number },
+  ) => buildBrowserScreenshotImageInjection(results, {
+    imageBudget: budget.imageBudget,
+    imagesInRequest: budget.imagesInRequest,
+    readArtifactBytes: async (artifactPath: string): Promise<Uint8Array | null> => {
+      const files = ctx.reflect.get('files', false) as Pick<FilesService, 'readBytes'> | undefined;
+      if (files !== undefined) {
+        try {
+          return await files.readBytes(artifactPath, { maxBytes: MAX_BROWSER_SCREENSHOT_IMAGE_BYTES });
+        } catch (error) {
+          const kind = error !== null && typeof error === 'object' && 'kind' in error
+            ? (error as { kind?: unknown }).kind : null;
+          if (kind === 'TooLarge' || kind === 'NotFound') return null;
+        }
+      }
+      try {
+        return readAllBytes(artifactPath);
+      } catch {
+        // boundary-allow empty-catch: localFs unavailable on mobile or missing artifact
+        return null;
+      }
+    },
+    logger: log,
+  });
+}
+
 /** Resolve the shared runtime, or bind L04/L05/L06 owners in this production composition root. */
 function composeToolRounds(ctx: Context, missing: MissingCapabilityLog, persistence: PipelinePersistence,
   chatDb: () => import('../../../platform/storage/api.ts').DatabaseHandle): ToolRounds | null {
@@ -261,6 +293,7 @@ function composeToolRounds(ctx: Context, missing: MissingCapabilityLog, persiste
     saveIntermediateResultsWithRetry: (execution, stage) => persistence.saveIntermediateResultsWithRetry(execution, stage),
     buildRetrievalPageImageInjection: (results, budget) => buildRetrievalPageImageInjection(results, budget,
       ctx.get('vfs')?.database ?? null, ctx.get('vfsRepo')?.blobs ?? null, log),
+    buildBrowserScreenshotImageInjection: createBrowserScreenshotInjector(ctx, log),
     resolveActiveApiConfig: execution => resolveActiveApiConfig(llm, execution),
   });
 }
@@ -644,7 +677,9 @@ export function composeVariants(ctx: Context, owner: ExecutionOwnerStore, execut
     throw new ChatV2Error('Other', `multi-variant execution requires the L04 chatSession owner API: missing ${VARIANT_OWNER_METHODS.join(', ')}`);
   }
   const log = ctx.logger;
-  return {
+  const variantDeps: VariantDependencies & {
+    buildBrowserScreenshotImageInjection: ReturnType<typeof createBrowserScreenshotInjector>;
+  } = {
     llm: execution.llm, ocr: execution.ocr, streamEvents: execution.streamEvents, model2: execution.model2, log,
     readSetting: execution.readSetting, owner,
     createManager: controller => (create as (c: AbortController) => VariantExecutionManager).call(ctx.chatSession, controller),
@@ -657,6 +692,7 @@ export function composeVariants(ctx: Context, owner: ExecutionOwnerStore, execut
     compactForRequest,
     buildRetrievalPageImageInjection: (results, budget) => buildRetrievalPageImageInjection(results, budget,
       ctx.get('vfs')?.database ?? null, ctx.get('vfsRepo')?.blobs ?? null, log),
+    buildBrowserScreenshotImageInjection: createBrowserScreenshotInjector(ctx, log),
     incrementResourceRefsWithinSave: ids => {
       const vfs = ctx.get('vfs'), repo = ctx.get('vfsRepo');
       if (!vfs || !repo) { log.warn('[ChatV2::pipeline] Multi-variant: vfs_db not available, skipping increment refs'); return; }
@@ -688,4 +724,5 @@ export function composeVariants(ctx: Context, owner: ExecutionOwnerStore, execut
     },
     missing: (capability, consequence) => missing.note(capability, consequence),
   };
+  return variantDeps;
 }

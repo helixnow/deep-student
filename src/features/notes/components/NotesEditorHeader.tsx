@@ -621,123 +621,12 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     return (
         <header
-            className={cn(
-                'notes-document-header group relative min-w-0 pb-2',
-                showBreadcrumbs ? 'pt-6' : 'pt-8',
-            )}
+            className="notes-document-header group relative min-w-0 pt-5 pb-2"
             data-notes-preset={appearance.value.preset}
             data-notes-small-text={appearance.value.smallText ? 'true' : undefined}
             data-notes-full-width={appearance.value.fullWidth ? 'true' : undefined}
             data-notes-font={appearance.value.font}
         >
-            {showBreadcrumbs && (
-                <div className="notes-document-breadcrumbs-row mb-2.5 flex min-h-5 flex-wrap items-center">
-                    <nav
-                        aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })}
-                        className="notes-document-breadcrumbs mr-auto"
-                    >
-                        {shouldCollapseBreadcrumbs ? (
-                            <>
-                                {renderBreadcrumbNode(breadcrumbs[0], false)}
-                                <CaretRight
-                                    className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                    aria-hidden="true"
-                                />
-                                {canNavigateBreadcrumbs ? (
-                                    <Popover open={collapsedBreadcrumbsOpen} onOpenChange={setCollapsedBreadcrumbsOpen}>
-                                        <PopoverTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="notes-breadcrumb-item notes-breadcrumb-ellipsis"
-                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
-                                                    defaultValue: isZh ? '展开中间路径' : 'Show intermediate path',
-                                                })}
-                                                aria-haspopup="menu"
-                                                title={collapsedPathLabel}
-                                            >
-                                                <span aria-hidden="true">…</span>
-                                            </button>
-                                        </PopoverTrigger>
-                                        <PopoverContent
-                                            align="start"
-                                            sideOffset={4}
-                                            className="notes-breadcrumb-popover w-auto min-w-[160px] max-w-[min(260px,calc(100vw-16px))] p-1"
-                                        >
-                                            <div
-                                                role="menu"
-                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
-                                                    defaultValue: isZh ? '中间路径' : 'Intermediate path',
-                                                })}
-                                                className="flex flex-col gap-0.5"
-                                            >
-                                                {collapsedBreadcrumbs.map((ancestor) => (
-                                                    <button
-                                                        key={`${ancestor.type}:${ancestor.id}`}
-                                                        type="button"
-                                                        role="menuitem"
-                                                        className="notes-breadcrumb-popover-item"
-                                                        title={ancestor.title}
-                                                        onClick={() => {
-                                                            setCollapsedBreadcrumbsOpen(false);
-                                                            handleBreadcrumbClick(ancestor);
-                                                        }}
-                                                    >
-                                                        {ancestor.type === 'folder' ? (
-                                                            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-                                                        ) : (
-                                                            <NoteGlyph
-                                                                noteId={ancestor.id}
-                                                                size={14}
-                                                                fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
-                                                            />
-                                                        )}
-                                                        <span className="min-w-0 truncate">{ancestor.title}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </PopoverContent>
-                                    </Popover>
-                                ) : (
-                                    <span
-                                        className="notes-breadcrumb-static notes-breadcrumb-ellipsis"
-                                        title={collapsedPathLabel}
-                                    >
-                                        …
-                                    </span>
-                                )}
-                                {breadcrumbs.slice(-2).map((item, tailIndex, tail) => {
-                                    const isCurrent = tailIndex === tail.length - 1 && item.type === 'note';
-                                    return (
-                                        <React.Fragment key={`${item.type}:${item.id}`}>
-                                            <CaretRight
-                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                                aria-hidden="true"
-                                            />
-                                            {renderBreadcrumbNode(item, isCurrent)}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </>
-                        ) : (
-                            breadcrumbs.map((item, index) => {
-                                const isCurrent = index === breadcrumbs.length - 1 && item.type === 'note';
-                                return (
-                                    <React.Fragment key={`${item.type}:${item.id}`}>
-                                        {index > 0 && (
-                                            <CaretRight
-                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                                aria-hidden="true"
-                                            />
-                                        )}
-                                        {renderBreadcrumbNode(item, isCurrent)}
-                                    </React.Fragment>
-                                );
-                            })
-                        )}
-                    </nav>
-                </div>
-            )}
-
             {/* Notion：图标在操作行之上，点击图标即可更换 */}
             {hasIcon && <button type="button" className="notes-document-icon text-foreground/85"
                 data-note-icon={appearance.value.icon}
@@ -1003,6 +892,114 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {tagError}
                         </span>
                     )}
+                </div>
+            )}
+
+            {showBreadcrumbs && (
+                <div className="notes-document-breadcrumbs-row mt-2 flex min-h-5 flex-wrap items-center">
+                    <nav
+                        aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })}
+                        className="notes-document-breadcrumbs mr-auto"
+                    >
+                        {shouldCollapseBreadcrumbs ? (
+                            <>
+                                {renderBreadcrumbNode(breadcrumbs[0], false)}
+                                <CaretRight
+                                    className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                {canNavigateBreadcrumbs ? (
+                                    <Popover open={collapsedBreadcrumbsOpen} onOpenChange={setCollapsedBreadcrumbsOpen}>
+                                        <PopoverTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="notes-breadcrumb-item notes-breadcrumb-ellipsis"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '展开中间路径' : 'Show intermediate path',
+                                                })}
+                                                aria-haspopup="menu"
+                                                title={collapsedPathLabel}
+                                            >
+                                                <span aria-hidden="true">…</span>
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                            align="start"
+                                            sideOffset={4}
+                                            className="notes-breadcrumb-popover w-auto min-w-[160px] max-w-[min(260px,calc(100vw-16px))] p-1"
+                                        >
+                                            <div
+                                                role="menu"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '中间路径' : 'Intermediate path',
+                                                })}
+                                                className="flex flex-col gap-0.5"
+                                            >
+                                                {collapsedBreadcrumbs.map((ancestor) => (
+                                                    <button
+                                                        key={`${ancestor.type}:${ancestor.id}`}
+                                                        type="button"
+                                                        role="menuitem"
+                                                        className="notes-breadcrumb-popover-item"
+                                                        title={ancestor.title}
+                                                        onClick={() => {
+                                                            setCollapsedBreadcrumbsOpen(false);
+                                                            handleBreadcrumbClick(ancestor);
+                                                        }}
+                                                    >
+                                                        {ancestor.type === 'folder' ? (
+                                                            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                                                        ) : (
+                                                            <NoteGlyph
+                                                                noteId={ancestor.id}
+                                                                size={14}
+                                                                fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
+                                                            />
+                                                        )}
+                                                        <span className="min-w-0 truncate">{ancestor.title}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                ) : (
+                                    <span
+                                        className="notes-breadcrumb-static notes-breadcrumb-ellipsis"
+                                        title={collapsedPathLabel}
+                                    >
+                                        …
+                                    </span>
+                                )}
+                                {breadcrumbs.slice(-2).map((item, tailIndex, tail) => {
+                                    const isCurrent = tailIndex === tail.length - 1 && item.type === 'note';
+                                    return (
+                                        <React.Fragment key={`${item.type}:${item.id}`}>
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                            {renderBreadcrumbNode(item, isCurrent)}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            breadcrumbs.map((item, index) => {
+                                const isCurrent = index === breadcrumbs.length - 1 && item.type === 'note';
+                                return (
+                                    <React.Fragment key={`${item.type}:${item.id}`}>
+                                        {index > 0 && (
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                        {renderBreadcrumbNode(item, isCurrent)}
+                                    </React.Fragment>
+                                );
+                            })
+                        )}
+                    </nav>
                 </div>
             )}
 

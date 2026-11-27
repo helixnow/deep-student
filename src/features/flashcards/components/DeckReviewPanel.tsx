@@ -137,7 +137,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   size="sm"
                   disabled={busyPath !== null}
                   onClick={() => void startDeck(node, node.due > 0 ? 'due' : 'new')}
-                  className="wb-fcx-deck-main !h-auto min-h-[36px] flex-col items-start justify-center rounded-md border-0 !px-1 !py-1 text-left font-normal"
+                  className="wb-fcx-deck-main !h-auto min-h-[36px] flex-col !items-start !justify-center rounded-md border-0 !px-1 !py-1 text-left font-normal"
                 >
                   <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
                   <span className="wb-fcx-deck-counts font-mono tabular-nums">

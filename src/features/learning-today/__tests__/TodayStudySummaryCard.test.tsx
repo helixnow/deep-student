@@ -88,5 +88,8 @@ describe('TodayStudySummaryCard', () => {
     render(<TodayStudySummaryCard inTodayTodoView={false} inEmptyListView todoDueCount={3} />);
     expect(screen.getByTestId('today-summary-todos')).toHaveTextContent('全局今日待办');
     expect(screen.getByTestId('today-summary-todos')).toHaveTextContent('3');
+    // Zero-count categories are omitted to avoid visual clutter
+    expect(screen.queryByTestId('today-summary-mistakes')).toBeNull();
+    expect(screen.queryByTestId('today-summary-notes')).toBeNull();
   });
 });

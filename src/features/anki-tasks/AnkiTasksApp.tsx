@@ -19,6 +19,12 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
+import { CardsHubDesktopNav } from '@/components/layout/CardsHubDesktopNav';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import {
   ArrowsClockwise, ArrowCounterClockwise, Warning, CheckCircle,
   CircleNotch, FileText, Hash, TrendUp, ChartBar,
@@ -467,9 +473,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     return map[sortKey];
   }, [sortKey, t]);
 
-  // 经典壳中本页是「闪卡」页面的「制卡」分区：页面标题由壳层承担（桌面标题栏「闪卡」+
-  // 分区条；移动顶栏「闪卡」+ 下方分区条），页内不再重复「Anki制卡」。
-  // Workbench 窗口保持应用自身名称（窗口标题栏 workbench:apps.taskDashboard 与页内标题）。
+  // 经典壳中本页是「闪卡」页面的「制卡」分区，学习桌面中外部窗口标题栏已承载应用名；
+  // 两种桌面宿主下均不再在页内重复渲染可见主标题，保留 sr-only 标题供读屏导航。
   const isCardsHubSection = !workbenchWindowId;
 
   useMobileHeader('task-dashboard', {
@@ -506,35 +511,100 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     );
   };
 
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !isSmallScreen && !workbenchWindowId && hasDesktopHeaderHost;
+
+  useDesktopHeader(
+    'task-dashboard',
+    {
+      breadcrumbs: [
+        {
+          id: 'fc-root',
+          label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+          onClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' }),
+        },
+        {
+          id: 'fc-generate',
+          label: t('sidebar:navigation.cards_hub.generate', { defaultValue: '制卡' }),
+        },
+      ],
+      actions: (
+        <>
+          <DesktopHeaderSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t('taskDashboard.searchPlaceholder')}
+          />
+          <DsButton size="sm" variant="ghost" onClick={cycleSort} className={TITLEBAR_CONTROL_CLASS}>
+            <ArrowsDownUp size={14} />
+            <span>{sortLabel}</span>
+          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                size="sm"
+                variant="ghost"
+                onClick={handleRecover}
+                disabled={recovering}
+                className={TITLEBAR_CONTROL_CLASS}
+                aria-label={t('taskDashboard.recoverStuck')}
+              >
+                {recovering
+                  ? <CircleNotch size={14} className="animate-spin" />
+                  : <ArrowCounterClockwise size={14} />}
+                <span className="hidden md:inline">{t('taskDashboard.recoverStuck')}</span>
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('taskDashboard.recoverStuckHint')}</TooltipContent>
+          </Tooltip>
+        </>
+      ),
+    },
+    [t, search, sortLabel, cycleSort, handleRecover, recovering],
+    useClassicDesktopHeader,
+  );
+
   // ======== 渲染 ========
 
   if (loading) {
     return renderMobileShell(
-      <div className="wb-at-loading h-full">
-        <CircleNotch size={20} className="animate-spin" />
-        <span>{t('taskDashboard.loading')}</span>
+      <div className="flex h-full min-h-0 flex-col">
+        {useClassicDesktopHeader ? <CardsHubDesktopNav activeSection="generate" /> : null}
+        <div className="wb-at-loading flex-1">
+          <CircleNotch size={20} className="animate-spin" />
+          <span>{t('taskDashboard.loading')}</span>
+        </div>
       </div>,
     );
   }
 
   const body = (
-    <CustomScrollArea className="h-full" viewportRef={setListScrollElement}>
+    <div className="flex h-full min-h-0 flex-col">
+      {useClassicDesktopHeader ? <CardsHubDesktopNav activeSection="generate" /> : null}
+      <CustomScrollArea className="min-h-0 flex-1" viewportRef={setListScrollElement}>
       <div
         className={`wb-at-screen max-w-[960px] mx-auto w-full${
           // 移动端：列表底部预留手势导航安全区
           isSmallScreen ? ' pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]' : ''
         }`}
       >
-        {/* ======== 头部（移动端顶栏已展示标题） ======== */}
-        {!isSmallScreen && (
+        {/* 经典壳桌面端保留 sr-only 标题供读屏导航 */}
+        {useClassicDesktopHeader && (
+          <h2 className="sr-only">
+            {isCardsHubSection
+              ? t('sidebar:navigation.cards_hub.generate', { defaultValue: '制卡' })
+              : t('taskDashboard.title')}
+          </h2>
+        )}
+        {/* ======== 头部（经典壳桌面端操作已上收进统一顶栏，仅 Workbench 窗口保留页头操作） ======== */}
+        {!isSmallScreen && !useClassicDesktopHeader && (
           <header className="wb-at-header">
             <div className="min-w-0">
-              {isCardsHubSection ? (
-                // 分区名已由标题栏分区条显示；保留供读屏导航的标题，视觉上只留说明行
-                <h2 className="sr-only">{t('sidebar:navigation.cards_hub.generate', '制卡')}</h2>
-              ) : (
-                <h2 className="wb-at-title">{t('taskDashboard.title')}</h2>
-              )}
+              <h2 className="sr-only">
+                {isCardsHubSection
+                  ? t('sidebar:navigation.cards_hub.generate', { defaultValue: '制卡' })
+                  : t('taskDashboard.title')}
+              </h2>
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
@@ -770,26 +840,28 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
 
             <div className="wb-at-list-toolbar-spacer flex-1" />
 
-            {/* 搜索框 */}
-            <div className="wb-at-list-search relative max-w-[200px] flex-shrink-0">
-              <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-              <Input
-                type="search"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={t('taskDashboard.searchPlaceholder')}
-                className={`h-7 pl-7 pr-7 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)] ${
-                  isSmallScreen
-                    ? 'h-9 w-full rounded-lg border border-border/60 bg-muted/25 pl-8'
-                    : 'border-transparent bg-transparent'
-                }`}
-              />
-              {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
-                  <X size={12} />
-                </DsButton>
-              )}
-            </div>
+            {/* 搜索框（经典壳桌面端已上收进统一顶栏） */}
+            {!useClassicDesktopHeader ? (
+              <div className="wb-at-list-search relative max-w-[200px] flex-shrink-0">
+                <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={t('taskDashboard.searchPlaceholder')}
+                  className={`h-7 pl-7 pr-7 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)] ${
+                    isSmallScreen
+                      ? 'h-9 w-full rounded-lg border border-border/60 bg-muted/25 pl-8'
+                      : 'border-transparent bg-transparent'
+                  }`}
+                />
+                {search && (
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
+                    <X size={12} />
+                  </DsButton>
+                )}
+              </div>
+            ) : null}
 
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
@@ -928,6 +1000,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
         </div>
       </div>
     </CustomScrollArea>
+    </div>
   );
 
   return renderMobileShell(body);

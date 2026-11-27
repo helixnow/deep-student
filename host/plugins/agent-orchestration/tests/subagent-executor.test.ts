@@ -216,4 +216,68 @@ describe('SubagentExecutor / SuperSessionExecutor executor contract', () => {
     expect(await executor.execute({ id: 'c2', name: 'subagent_call', arguments: { task: 'x', resume_agent_session_id: 'a' } }, ctx))
       .toMatchObject({ success: false, error: 'resume_agent_session_id requires workspace_id (it is included in the original subagent_call return value)' });
   });
+
+  it('attaches host-verified browser host_facts receipt for browser profile and omits it for non-browser workers', async () => {
+    const tasks = new Map<string, SubagentTaskData>();
+    const coordinator = fakeCoordinator(tasks);
+    coordinator.drainInbox = vi.fn(() => []);
+    const createTask = coordinator.getTaskManager(workspace.id).createTask;
+    coordinator.getTaskManager = () => ({
+      createTask: (task: SubagentTaskData) => createTask({ ...task, status: 'completed', resultSummary: 'visited page' }),
+      getTask: (id: string) => tasks.get(id) ?? null,
+    }) as ReturnType<WorkspaceCoordinator['getTaskManager']>;
+
+    const facts = {
+      sessionId: 'bs-99',
+      mode: 'interactive' as const,
+      visitedOrigins: ['https://example.com'],
+      blockedNavigations: [],
+      latestScreenshot: {
+        path: '/artifacts/shot.png',
+        locator: 'runtime://artifacts/shot.png',
+        width: 1280,
+        height: 720,
+        capturedAt: '2026-11-27T00:00:00.000Z',
+      },
+      downloadsCount: 0,
+      userTakeoverCount: 0,
+      actionCount: 3,
+      finalUrl: 'https://example.com/done',
+    };
+    const getBrowserHostFacts = vi.fn(() => facts);
+    const executor = new SubagentExecutor({
+      coordinator,
+      workerRuntime: () => runtime([]),
+      chatSession: () => undefined,
+      getBrowserHostFacts,
+      log,
+    });
+
+    const browserResult = await executor.execute(
+      { id: 'c_browser', name: 'subagent_call', arguments: { task: 'check page', profile: 'browser' } },
+      context(new AbortController().signal),
+    );
+    expect(browserResult.success).toBe(true);
+    expect(getBrowserHostFacts).toHaveBeenCalledTimes(1);
+    expect(browserResult.output).toMatchObject({
+      status: 'completed',
+      profile_id: 'browser',
+      output: 'visited page',
+      host_facts: {
+        verified_by: 'host',
+        sessionId: 'bs-99',
+        visitedOrigins: ['https://example.com'],
+        finalUrl: 'https://example.com/done',
+      },
+    });
+
+    getBrowserHostFacts.mockClear();
+    const workerResult = await executor.execute(
+      { id: 'c_worker', name: 'subagent_call', arguments: { task: 'normal work', profile: 'worker' } },
+      context(new AbortController().signal),
+    );
+    expect(workerResult.success).toBe(true);
+    expect(getBrowserHostFacts).not.toHaveBeenCalled();
+    expect(workerResult.output).not.toHaveProperty('host_facts');
+  });
 });

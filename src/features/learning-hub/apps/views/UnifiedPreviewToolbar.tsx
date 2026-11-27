@@ -16,7 +16,7 @@
 import React from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowCounterClockwise, Minus, Plus, TextT, CaretLeft, CaretRight, CaretUp } from '@phosphor-icons/react';
+import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowCounterClockwise, Minus, Plus, TextT, CaretLeft, CaretRight, CaretUp, SidebarSimple } from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -49,6 +49,8 @@ export interface SlideNavInfo {
   current: number;
   total: number;
   navigateTo: (index: number) => void;
+  thumbnailsOpen?: boolean;
+  onToggleThumbnails?: () => void;
 }
 
 /** 工具栏 Props 类型 */
@@ -226,6 +228,20 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           <div className="modern-viewer-divider" />
 
           <div className="modern-viewer-toolbar-group" role="group" aria-label={t('learningHub:previewToolbar.slideNavGroup')}>
+            {slideNav.onToggleThumbnails && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className={`modern-viewer-icon-button ${slideNav.thumbnailsOpen ? 'bg-accent text-accent-foreground' : ''}`}
+                onClick={slideNav.onToggleThumbnails}
+                aria-expanded={Boolean(slideNav.thumbnailsOpen)}
+                title={t('learningHub:previewToolbar.toggleThumbnails')}
+                aria-label={t('learningHub:previewToolbar.toggleThumbnails')}
+              >
+                <SidebarSimple size={16} />
+              </DsButton>
+            )}
             <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide')} aria-label={t('learningHub:previewToolbar.prevSlide')}>
               <CaretLeft size={16} />
             </DsButton>

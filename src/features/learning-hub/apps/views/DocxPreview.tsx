@@ -18,27 +18,18 @@ import { FileX } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
   waitForNextFrame,
 } from './previewUtils';
+import { inspectOfficeZipContainer } from './officeZipContainer';
 import { sanitizeRenderedDom } from './sanitizeRenderedDom';
 import { sanitizeDocxGeneratedStyles } from './sanitizeGeneratedStyles';
 
-/**
- * 检查解码后的二进制是否为合法的 OOXML（ZIP）容器。
- * OLE 复合文档头（D0 CF 11 E0）意味着文件被密码保护（加密 OOXML 的外层包装）
- * 或是旧版二进制格式（.doc），两者都无法用当前渲染器预览。
- */
-function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'invalid' | null {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return null;
-  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
-    return 'encrypted-or-legacy';
-  }
-  return 'invalid';
-}
+const CORRUPT_ARCHIVE_ERROR_RE =
+  /end of central directory|corrupted zip|corrupt|invalid signature|bad compressed|unexpected eof|invalid stored block|invalid distance|invalid literal|unknown compression/i;
 
 /** 字号缩放变量名：生成样式与内联样式统一改写为 calc(原值 × var(FONT_SCALE_VAR)) */
 const FONT_SCALE_VAR = '--docx-font-scale';
@@ -173,15 +164,17 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         // 解码 Base64 为 ArrayBuffer
         const arrayBuffer = decodeBase64ToArrayBuffer(normalizedBase64);
 
-        // 提前识别加密/旧版二进制/非 Office 文件，给出可操作的提示
-        const containerIssue = detectContainerIssue(arrayBuffer);
+        // 提前识别加密/旧版二进制/截断损坏/非 Office 文件，并裁切 ZIP 尾随良性填充字节
+        const { issue: containerIssue, normalizedBuffer } = inspectOfficeZipContainer(arrayBuffer);
         if (containerIssue) {
           if (isMounted && renderToken === renderTokenRef.current) {
-            setError(t(
+            const key =
               containerIssue === 'encrypted-or-legacy'
                 ? 'learningHub:officePreview.encryptedOrLegacy'
-                : 'learningHub:officePreview.invalidFormat'
-            ));
+                : containerIssue === 'truncated'
+                  ? 'learningHub:officePreview.corruptedOrTruncated'
+                  : 'learningHub:officePreview.invalidFormat';
+            setError(t(key));
             setIsLoading(false);
           }
           return;
@@ -200,7 +193,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         //   晚到覆盖页面（消毒步骤因 token 过期被跳过的竞态由此根除）
         const detachedContent = document.createElement('div');
         const detachedStyleContainer = document.createElement('div');
-        await renderAsync(arrayBuffer, detachedContent, detachedStyleContainer, {
+        await renderAsync(normalizedBuffer, detachedContent, detachedStyleContainer, {
           className: 'docx-preview',
           inWrapper: true,
           ignoreWidth: false,
@@ -235,11 +228,18 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           setIsLoading(false);
         }
       } catch (err: unknown) {
-        console.error('Failed to render DOCX:', err);
+        const rawMessage = err instanceof Error ? err.message : '';
+        if (CORRUPT_ARCHIVE_ERROR_RE.test(rawMessage)) {
+          debugLog.warn('DOCX container unreadable:', rawMessage);
+        } else {
+          console.error('Failed to render DOCX:', err);
+        }
         if (isMounted && renderToken === renderTokenRef.current) {
           // 清除可能残留的部分渲染内容
           container.innerHTML = '';
-          const message = err instanceof Error ? err.message : t('learningHub:docPreview.renderDocxFailed');
+          const message = CORRUPT_ARCHIVE_ERROR_RE.test(rawMessage)
+            ? t('learningHub:officePreview.corruptedOrTruncated')
+            : (rawMessage || t('learningHub:docPreview.renderDocxFailed'));
           setError(message);
           setIsLoading(false);
         }

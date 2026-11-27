@@ -52,12 +52,13 @@ export default definePlugin({
       'get_cn_whitelist_config', 'get_provider_strategies_config', 'save_provider_strategies_config',
       'get_feature_flags', 'update_feature_flag', 'is_feature_enabled',
       'test_search_engine', 'test_web_search_connectivity', 'test_all_search_engines', 'network_probe',
-      'browser_open_session', 'browser_navigate', 'browser_back', 'browser_forward', 'browser_reload',
+      'browser_open_session', 'browser_promote_to_interactive', 'browser_navigate', 'browser_back', 'browser_forward', 'browser_reload',
       'browser_get_state', 'browser_close', 'browser_focus', 'browser_release_surface_focus',
       'browser_set_surface_bounds', 'browser_set_surface_visibility', 'browser_get_surface_host_mode',
       'browser_content_user_input', 'browser_take_over', 'browser_snapshot', 'browser_click',
       'browser_type', 'browser_set_input_files', 'browser_list_downloads', 'browser_list_task_downloads',
-      'browser_scroll'],
+      'browser_scroll', 'browser_screenshot', 'browser_list_tabs', 'browser_new_tab', 'browser_switch_tab',
+      'browser_close_tab', 'browser_extract_content', 'browser_remote_input', 'browser_get_host_facts'],
   },
   inject: ['settings', 'storage', 'log', 'featureFlags'],
   apply(ctx) {
@@ -160,6 +161,7 @@ export default definePlugin({
         log: (level, message) => { ctx.log?.logger?.('dstu_browser_search_config')?.[level]?.(message); },
       },
       runtimeRoots: () => ctx.get('runtimeRoots') ?? null,
+      artifactRoot: chatSessionId => artifactRoot(ctx.app.dataDir, chatSessionId, true).path,
       log: (level, message) => { ctx.log?.logger?.('dstu_browser_agent')?.[level]?.(message); },
     });
     const vfsDatabase = (): VfsDatabase | undefined =>
@@ -206,7 +208,9 @@ export default definePlugin({
     const browserState = async (sessionId: string) => {
       const state = browserService.getState(sessionId);
       if (state === null) throw new CommandError(`NOT_FOUND: session ${sessionId}`);
-      return stateResult(state, browserService.getHistoryEntries(sessionId), platform);
+      return stateResult(
+        state, browserService.getHistoryEntries(sessionId), platform, browserService.agentAutomationSupported(),
+      );
     };
     ctx.commands.register<{ url: string; displayName?: string | null; chatSessionId?: string | null; reuseExisting?: boolean | null; fromAgent?: boolean | null }>(
       'browser_open_session', async args => {
@@ -216,34 +220,50 @@ export default definePlugin({
             chatSessionId: args.chatSessionId ?? null,
             reuseExisting: args.reuseExisting ?? true, fromAgent: args.fromAgent ?? false,
           });
-          return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+          return stateResult(
+            state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+          );
         } catch (error) { return browserFail(error); }
       });
+    ctx.commands.register<{ sessionId: string }>('browser_promote_to_interactive', async ({ sessionId }) => {
+      try {
+        await browserService.promoteToInteractive(sessionId);
+        return await browserState(sessionId);
+      } catch (error) { return browserFail(error); }
+    });
     ctx.commands.register<{ sessionId: string; url: string; replace?: boolean | null; fromAgent?: boolean | null }>(
       'browser_navigate', async args => {
         try {
           const state = await browserService.navigate(
             args.sessionId, args.url, args.replace ?? false, args.fromAgent ?? false,
           );
-          return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+          return stateResult(
+            state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+          );
         } catch (error) { return browserFail(error); }
       });
     ctx.commands.register<{ sessionId: string }>('browser_back', async ({ sessionId }) => {
       try {
         const state = await browserService.back(sessionId);
-        return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+        return stateResult(
+          state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+        );
       } catch (error) { return browserFail(error); }
     });
     ctx.commands.register<{ sessionId: string }>('browser_forward', async ({ sessionId }) => {
       try {
         const state = await browserService.forward(sessionId);
-        return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+        return stateResult(
+          state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+        );
       } catch (error) { return browserFail(error); }
     });
     ctx.commands.register<{ sessionId: string; hard?: boolean | null }>('browser_reload', async ({ sessionId }) => {
       try {
         const state = await browserService.reload(sessionId);
-        return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+        return stateResult(
+          state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+        );
       } catch (error) { return browserFail(error); }
     });
     ctx.commands.register<{ sessionId?: string | null }>('browser_get_state', async ({ sessionId }) => {
@@ -251,7 +271,9 @@ export default definePlugin({
         await browserService.assertGatesOpen();
         if (sessionId !== undefined && sessionId !== null) return await browserState(sessionId);
         const state = browserService.getActiveState();
-        return state === null ? null : stateResult(state, browserService.getHistoryEntries(state.id), platform);
+        return state === null ? null : stateResult(
+          state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+        );
       } catch (error) { return browserFail(error); }
     });
     ctx.commands.register<{ sessionId?: string | null }>('browser_close', async ({ sessionId }) => {
@@ -309,7 +331,7 @@ export default definePlugin({
           );
         } catch (error) { return browserFail(error); }
       });
-    ctx.commands.register('browser_get_surface_host_mode', () => browserService.surfaceHostMode());
+    ctx.commands.register('browser_get_surface_host_mode', () => browserService.getSurfaceHostMode());
     ctx.commands.register<{ sessionId: string; nonce: string; kind: string }>(
       'browser_content_user_input', (args, call) => {
         try {
@@ -324,7 +346,9 @@ export default definePlugin({
       try {
         await browserService.assertGatesOpen();
         const state = browserService.takeOver();
-        return stateResult(state, browserService.getHistoryEntries(state.id), platform);
+        return stateResult(
+          state, browserService.getHistoryEntries(state.id), platform, browserService.agentAutomationSupported(),
+        );
       } catch (error) { return browserFail(error); }
     });
     ctx.commands.register<{ sessionId: string; maxChars?: number | null }>('browser_snapshot', async args => {
@@ -367,6 +391,58 @@ export default definePlugin({
           );
         } catch (error) { return browserFail(error); }
       });
+    ctx.commands.register<{
+      sessionId: string; fullPage?: boolean | null; annotate?: boolean | null;
+      maxWidth?: number | null; quality?: number | null;
+    }>('browser_screenshot', async args => {
+      try {
+        return await browserService.screenshot(args.sessionId, {
+          ...(args.fullPage != null ? { fullPage: args.fullPage } : {}),
+          ...(args.annotate != null ? { annotate: args.annotate } : {}),
+          ...(args.maxWidth != null ? { maxWidth: args.maxWidth } : {}),
+          ...(args.quality != null ? { quality: args.quality } : {}),
+        });
+      } catch (error) { return browserFail(error); }
+    });
+    ctx.commands.register<{ sessionId: string }>('browser_list_tabs', async ({ sessionId }) => {
+      try { return await browserService.listTabs(sessionId); }
+      catch (error) { return browserFail(error); }
+    });
+    ctx.commands.register<{ sessionId: string; url: string; fromAgent?: boolean | null }>(
+      'browser_new_tab', async args => {
+        try { return await browserService.newTab(args.sessionId, args.url, args.fromAgent ?? false); }
+        catch (error) { return browserFail(error); }
+      });
+    ctx.commands.register<{ sessionId: string; tabId: string }>('browser_switch_tab', async args => {
+      try { return await browserService.switchTab(args.sessionId, args.tabId); }
+      catch (error) { return browserFail(error); }
+    });
+    ctx.commands.register<{ sessionId: string; tabId: string }>('browser_close_tab', async args => {
+      try { return await browserService.closeTab(args.sessionId, args.tabId); }
+      catch (error) { return browserFail(error); }
+    });
+    ctx.commands.register<{ sessionId: string; maxChars?: number | null; startIndex?: number | null }>(
+      'browser_extract_content', async args => {
+        try {
+          return await browserService.extractContent(args.sessionId, {
+            ...(args.maxChars != null ? { maxChars: args.maxChars } : {}),
+            ...(args.startIndex != null ? { startIndex: args.startIndex } : {}),
+          });
+        } catch (error) { return browserFail(error); }
+      });
+    ctx.commands.register<{ sessionId: string; event: import('./api.ts').BrowserRemoteInputEvent }>(
+      'browser_remote_input', async args => {
+        try {
+          await browserService.remoteInput(args.sessionId, args.event);
+          return null;
+        } catch (error) { return browserFail(error); }
+      });
+    ctx.commands.register<{ sessionId?: string | null }>('browser_get_host_facts', async ({ sessionId }) => {
+      try {
+        await browserService.assertGatesOpen();
+        return browserService.getHostFacts(sessionId ?? null);
+      } catch (error) { return browserFail(error); }
+    });
     ctx.commands.register<{ key: string; value: string }>('save_setting', async ({ key, value }) => {
       ensurePublicSettingKey(key);
       try { await ctx.settings.saveSecret(key, value); }

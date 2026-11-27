@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import katex from 'katex';
 import { containsLatex, renderLatexToHtml } from '../renderLatex';
 
 describe('containsLatex · 公式与货币', () => {
@@ -28,5 +29,24 @@ describe('containsLatex · 公式与货币', () => {
     expect(html).toContain('katex');
     expect(html.startsWith('齐次 ')).toBe(true);
     expect(html.endsWith(' &lt;b&gt;')).toBe(true);
+  });
+
+  it('LRU 缓存命中时不重复调用 katex.renderToString，且无 $ 文本走快路径', () => {
+    const spy = vi.spyOn(katex, 'renderToString');
+    const expr = '矩阵乘法 $AB \\ne BA$（缓存测试）';
+
+    const first = renderLatexToHtml(expr);
+    const callsAfterFirst = spy.mock.calls.length;
+    expect(first).toContain('katex');
+    expect(callsAfterFirst).toBe(1);
+
+    const second = renderLatexToHtml(expr);
+    expect(second).toBe(first);
+    expect(spy.mock.calls.length).toBe(callsAfterFirst);
+
+    expect(renderLatexToHtml('纯文本无公式')).toBeNull();
+    expect(containsLatex('纯文本无公式')).toBe(false);
+    expect(spy.mock.calls.length).toBe(callsAfterFirst);
+    spy.mockRestore();
   });
 });

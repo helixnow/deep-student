@@ -81,7 +81,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 ## 工具选择指南
 
 ### 子代理编排（Task 模式）
-- **builtin-subagent_call**: Task 式子代理委托工具：即时创建并派发一个子代理，默认阻塞直到完成并在返回值 \`output\` 中直接携带最终输出。不传 \`workspace_id\` 时后端会自动创建内部跟踪工作区（返回值 \`auto_created_workspace: true\`）。profile 选择指南：\`worker\`（默认）适合纯执行任务；\`explorer\` 拥有只读检索工具面，适合需要检索或阅读资料的调研任务。若使用 legacy 的 \`skill_id\`，必须是真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`）。子代理完成后的结果交付由运行时负责。
+- **builtin-subagent_call**: Task 式子代理委托工具：即时创建并派发一个子代理，默认阻塞直到完成并在返回值 \`output\` 中直接携带最终输出。不传 \`workspace_id\` 时后端会自动创建内部跟踪工作区（返回值 \`auto_created_workspace: true\`）。profile 选择指南：\`worker\`（默认）适合纯执行任务；\`explorer\` 拥有只读检索工具面，适合需要检索或阅读资料的调研任务；\`browser\` 是最小权限沙箱浏览器专职子代理（仅暴露 18 个 \`builtin-browser_*\` 工具 + \`web_search\` + \`webpage_save\`，拥有独立上下文并自动折叠历史页面快照，完成时附带宿主验证的 \`host_facts\` 凭证；推荐用于多步骤网页浏览、需登录态阅读、表单交互与文件下载）。若使用 legacy 的 \`skill_id\`，必须是真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`）。子代理完成后的结果交付由运行时负责。
 
 ### 等待子代理
 - **builtin-coordinator_sleep**（决策树第 2 条）：并行 fan-out 且**本回合要汇总结果**时使用——全部以 wait=false 派发完成后调用**一次**，睡眠期间 pipeline 挂起，子代理完成后自动唤醒继续汇总。默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要 sleep
@@ -192,7 +192,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           profile: {
             type: 'string',
             description:
-              '可选。内建：worker=纯执行（默认）、explorer=只读检索工具面（调研/读资料）、default=完整默认工具面；也可填用户自定义 profile 的 name（定义方式见技能说明「自定义 profile」）。未知 profile 报错并列出可用项',
+              '可选。内建：worker=纯执行（默认）、explorer=只读检索工具面（调研/读资料）、browser=最小权限沙箱浏览器专职子代理（18 个 builtin-browser_* + web_search + webpage_save，独立上下文折叠历史快照，返回宿主验证 host_facts；适合多步浏览/登录态阅读/表单交互/文件下载）、default=完整默认工具面；也可填用户自定义 profile 的 name（定义方式见技能说明「自定义 profile」）。未知 profile 报错并列出可用项',
           },
           resume_agent_session_id: {
             type: 'string',

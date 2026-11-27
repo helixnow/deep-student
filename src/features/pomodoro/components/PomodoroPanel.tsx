@@ -1331,16 +1331,32 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           )}
         </div>
       ) : (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
-        {/* 模式 + 任务 */}
-        <div className="flex min-w-0 flex-shrink-0 items-center gap-2">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 sm:px-6',
+          mode === 'idle' ? 'py-2' : 'py-2.5',
+        )}
+      >
+        {/* 计时与状态：空闲态单行极简（无重复 44px 空环），运行态展示进度环与大号计时 */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+          {mode !== 'idle' && (
+            <HeroRing
+              progress={progress}
+              accent={modeAccent}
+              paused={!isRunning}
+              idle={false}
+              arcKey={`${mode}-${isCountUpWork ? 'up' : 'down'}`}
+            >
+              {modeInfo.icon}
+            </HeroRing>
+          )}
           <span
             className={cn(
-              'inline-flex items-center gap-1.5 text-xs font-medium transition-colors duration-150 ease-standard',
+              'inline-flex flex-shrink-0 items-center gap-1.5 text-xs font-medium transition-colors duration-150 ease-standard',
               modeInfo.colorClass,
             )}
           >
-            {modeInfo.icon}
+            {mode === 'idle' && modeInfo.icon}
             {modeInfo.label}
           </span>
           {currentTaskTitle && mode !== 'idle' && (
@@ -1351,19 +1367,6 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               {currentTaskTitle}
             </span>
           )}
-        </div>
-
-        {/* 计时：紧凑 hero 环（进度收敛进环）+ 等宽时间 */}
-        <div className="flex min-w-[200px] flex-1 items-center gap-3">
-          <HeroRing
-            progress={progress}
-            accent={modeAccent}
-            paused={mode !== 'idle' && !isRunning}
-            idle={mode === 'idle'}
-            arcKey={`${mode}-${isCountUpWork ? 'up' : 'down'}`}
-          >
-            {modeInfo.icon}
-          </HeroRing>
           <div className="flex items-baseline gap-2">
             {/* 逐位滚动：每秒仅变化的数字位做 transform 过渡 */}
             <RollingTime
@@ -1371,7 +1374,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               className={cn(
                 'font-mono font-semibold tabular-nums transition-[color,opacity] duration-150 ease-standard',
                 mode === 'idle'
-                  ? 'text-base text-muted-foreground'
+                  ? 'text-sm text-foreground'
                   : 'text-lg text-foreground',
                 mode !== 'idle' && !isRunning && 'opacity-60',
               )}
@@ -1389,10 +1392,90 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             {/* 空闲态时长快捷预设 */}
             {renderDurationPresets(false)}
           </div>
+
+          {/* 桌面空闲态：今日番茄计数并入单行，省去底部整条空状态行 */}
+          {mode === 'idle' && (
+            <span className="hidden items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground md:inline-flex">
+              <span aria-hidden="true" className="text-muted-foreground/35">·</span>
+              <span
+                data-testid="pomodoro-today-badge"
+                className={cn(
+                  'inline-flex items-center transition-colors duration-200 motion-reduce:transition-none',
+                  goalReached
+                    ? 'font-medium text-[color:hsl(var(--success))]'
+                    : todayCount > 0
+                      ? 'text-foreground/85'
+                      : 'text-muted-foreground/75',
+                )}
+                title={
+                  settings.dailyGoal > 0
+                    ? goalReached
+                      ? t('pomodoro.stats.goalReached')
+                      : t('pomodoro.stats.goalProgress', {
+                          done: todayCount,
+                          goal: settings.dailyGoal,
+                        })
+                    : undefined
+                }
+              >
+                <span>
+                  {t('pomodoro.stats.todayLabel')}{' '}
+                  <strong className="font-semibold text-current">
+                    <span key={todayCount} className="pomodoro-num-roll">
+                      {todayCount}
+                    </span>
+                    {settings.dailyGoal > 0 && (
+                      <span className="font-normal opacity-75">/{settings.dailyGoal}</span>
+                    )}
+                  </strong>{' '}
+                  {t('pomodoro.stats.pomodoroUnit')}
+                </span>
+              </span>
+              {goalReached && (
+                <>
+                  <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+                  <span className="font-medium text-[color:hsl(var(--success))]">
+                    {t('pomodoro.stats.goalReached')}
+                  </span>
+                </>
+              )}
+              {streakDays >= 2 && (
+                <>
+                  <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+                  <span className="inline-flex items-center gap-1 font-medium text-foreground/85">
+                    <Fire size={12} weight="fill" aria-hidden="true" className="text-[color:hsl(var(--warning))]" />
+                    {t('pomodoro.stats.streak', { count: streakDays })}
+                  </span>
+                </>
+              )}
+              {todayStats && todayStats.totalFocusSeconds > 0 && (
+                <>
+                  <span aria-hidden="true" className="text-muted-foreground/45">·</span>
+                  <span
+                    title={formatFocusTooltip(todayStats.totalFocusSeconds, t, 'pomodoro.stats')}
+                    data-focus-seconds={todayStats.totalFocusSeconds}
+                  >
+                    {t('pomodoro.stats.focusLabel')}{' '}
+                    <strong className="font-medium text-foreground">
+                      {formatMinutes(todayStats.totalFocusSeconds)}
+                    </strong>
+                  </span>
+                </>
+              )}
+            </span>
+          )}
         </div>
 
         {/* 控制按钮组 */}
-        <div className="flex flex-wrap flex-shrink-0 items-center gap-1.5">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-1">
+          {mode === 'idle' && !pauseLocked && (
+            <span
+              data-testid="pomodoro-space-hint"
+              className="mr-1.5 hidden font-mono text-2xs text-muted-foreground/50 lg:inline"
+            >
+              {t('pomodoro.controls.spaceShortcutHint')}
+            </span>
+          )}
           {renderStopControl(false)}
 
           {/* 专注中：支持提前完成并记录（倒计时/正计时通用）与跳过阶段 */}
@@ -1528,7 +1611,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         </div>
       )}
 
-      {/* 今日已完成番茄计数徽标 + 每日目标 + 连续达标：行内状态条 */}
+      {/* 今日已完成番茄计数徽标 + 每日目标 + 连续达标：桌面空闲态已合并入主单行，运行中/移动端展示独立状态条 */}
+      {(isMobile || mode !== 'idle') && (
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2.5 font-mono text-xs tabular-nums text-muted-foreground sm:px-6">
         <span
           data-testid="pomodoro-today-badge"
@@ -1613,6 +1697,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           </span>
         )}
       </div>
+      )}
     </div>
   );
 };

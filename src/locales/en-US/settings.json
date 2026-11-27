@@ -1116,7 +1116,7 @@
   },
   "subagentProfiles": {
     "title": "Subagent Profiles",
-    "description": "Manage available subagent profiles: the three built-in profiles work out of the box, and custom profiles can be created and edited right here — changes take effect immediately.",
+    "description": "Manage available subagent profiles: the four built-in profiles work out of the box, and custom profiles can be created and edited right here — changes take effect immediately.",
     "loading": "Loading subagent profiles",
     "loading_file": "Loading profile content…",
     "builtin_badge": "Built-in",
@@ -1130,7 +1130,11 @@
     "builtin_names": {
       "default": "Default",
       "worker": "Worker",
-      "explorer": "Explorer"
+      "explorer": "Explorer",
+      "browser": "Browser Specialist"
+    },
+    "builtin_descriptions": {
+      "browser": "Least-privilege sandboxed browser subagent for isolated web browsing, reading, interaction, and content extraction."
     },
     "actions": {
       "refresh": "Refresh profiles",
@@ -1183,7 +1187,7 @@
       "reveal_failed": "Could not open the profiles directory. Check that it exists.",
       "name_required": "Please enter a profile name",
       "name_invalid": "Name may only contain lowercase letters, digits and hyphens (max 64 characters)",
-      "name_builtin_conflict": "Name must not match a built-in profile (default / worker / explorer)",
+      "name_builtin_conflict": "Name must not match a built-in profile (default / worker / explorer / browser)",
       "content_required": "File content must not be empty",
       "file_exists": "A profile file with this name already exists. Choose a different name.",
       "not_found": "Profile file not found — it may have been deleted. Refresh the list.",
@@ -3573,5 +3577,15 @@
       "import_success_desc": "Synced {{vendorCount}} provider(s), enabled {{modelCount}} model(s), and filled {{slotCount}} feature slot(s).",
       "import_warning_title": "Some providers require manual model fetch"
     }
+  },
+  "workbenchBrowserCdpUrl": {
+    "title": "Remote CDP Endpoint",
+    "desc": "Chrome DevTools Protocol endpoint for WebUI mode or an external Chromium instance (supports http(s):// and ws(s)://). The DS_BROWSER_CDP_URL environment variable takes precedence.",
+    "placeholder": "http://127.0.0.1:9222",
+    "save": "Save",
+    "clear": "Clear",
+    "saved": "Remote CDP endpoint saved",
+    "cleared": "Remote CDP endpoint cleared",
+    "invalidUrl": "Enter a valid URL starting with http://, https://, ws://, or wss://"
   }
 }

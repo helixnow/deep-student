@@ -19,7 +19,8 @@ export function createBrowserAgentManifest(
 ): AppAgentManifest {
   return {
     version: 2,
-    description: '观察和导航内置浏览器会话。网页元素交互由受限 Browser 工具负责，不开放坐标点击。',
+    description:
+      '观察和操控内置浏览器会话，支持网址导航、多标签页管理与网页正文提取；网页元素交互由受限 Browser 工具结合 AXTree 语义快照与视觉/坐标兜底完成。',
     capabilities: [
       {
         name: 'navigate', description: '导航到公开的 HTTP(S) URL；私网策略仍由浏览器后端强制执行。',
@@ -33,20 +34,71 @@ export function createBrowserAgentManifest(
       { name: 'takeOver', description: '把页面控制权立即交还用户。', inputSchema: NO_ARGS_SCHEMA, risk: 'medium', mutates: true, reversible: false, idempotent: true },
       { name: 'showContent', description: '显示浏览器内容窗口。', inputSchema: NO_ARGS_SCHEMA, risk: 'low', mutates: true, reversible: true, idempotent: true },
       { name: 'hideContent', description: '隐藏浏览器内容窗口。', inputSchema: NO_ARGS_SCHEMA, risk: 'low', mutates: true, reversible: true, idempotent: true },
+      {
+        name: 'newTab',
+        description: '在当前浏览器会话中打开新标签页，可选指定初始 URL。',
+        inputSchema: objectSchema({ url: { type: 'string', minLength: 1, maxLength: 8192 } }),
+        risk: 'medium', mutates: true, reversible: false, idempotent: false,
+      },
+      {
+        name: 'switchTab',
+        description: '切换到指定标签页。',
+        inputSchema: objectSchema({ tabId: { type: 'string', minLength: 1, maxLength: 256 } }, ['tabId']),
+        risk: 'low', mutates: true, reversible: true, idempotent: true,
+      },
+      {
+        name: 'closeTab',
+        description: '关闭指定标签页。',
+        inputSchema: objectSchema({ tabId: { type: 'string', minLength: 1, maxLength: 256 } }, ['tabId']),
+        risk: 'medium', mutates: true, reversible: false, idempotent: false,
+      },
+      {
+        name: 'extractContent',
+        description: '提取当前网页的正文 Markdown 内容。',
+        inputSchema: objectSchema({
+          maxChars: { type: 'integer', minimum: 500, maximum: 40000 },
+          startIndex: { type: 'integer', minimum: 0 },
+        }),
+        risk: 'read', mutates: true, reversible: false, idempotent: true,
+      },
     ],
     observe() {
       const state = getBrowserSessionState();
       const history = state.history.slice(-30);
+      const hasSession = Boolean(state.sessionId);
+      const hasMultipleTabs = state.tabs.length > 1;
       const currentRef = state.currentUrl
         ? stableAgentRef('browser', 'page', state.currentUrl)
         : stableAgentRef('browser', 'session', state.sessionId ?? 'empty');
       return {
-        revision: stableRevision(state.sessionId, state.currentUrl, state.title, state.historyIndex, state.controlMode, state.loading, state.contentVisible, state.error),
+        revision: stableRevision(
+          state.sessionId,
+          state.currentUrl,
+          state.title,
+          state.historyIndex,
+          state.controlMode,
+          state.loading,
+          state.contentVisible,
+          state.error,
+          state.activeTabId,
+          state.tabs.length,
+        ),
         route: state.currentUrl || 'browser/empty',
         mode: state.controlMode,
         busy: state.loading,
         selection: state.currentUrl ? [currentRef] : [],
-        availableActions: ['navigate', ...(state.canGoBack ? ['goBack'] : []), ...(state.canGoForward ? ['goForward'] : []), ...(state.currentUrl ? ['reload'] : []), 'focusAddress', 'takeOver', state.contentVisible ? 'hideContent' : 'showContent'],
+        availableActions: [
+          'navigate',
+          ...(state.canGoBack ? ['goBack'] : []),
+          ...(state.canGoForward ? ['goForward'] : []),
+          ...(state.currentUrl ? ['reload'] : []),
+          'focusAddress',
+          'takeOver',
+          state.contentVisible ? 'hideContent' : 'showContent',
+          'newTab',
+          ...(hasMultipleTabs ? ['switchTab', 'closeTab'] : []),
+          ...(hasSession ? ['extractContent'] : []),
+        ],
         entities: history.map((entry, index) => ({
           ref: stableAgentRef('browser', 'history', entry.seq ?? index, entry.url),
           kind: 'browser-history-entry',
@@ -60,7 +112,13 @@ export function createBrowserAgentManifest(
           kind: 'browser-page',
           label: shortLabel(state.title) ?? state.currentUrl,
           description: state.currentUrl,
-          actions: ['navigate', 'reload', state.contentVisible ? 'hideContent' : 'showContent', 'takeOver'],
+          actions: [
+            'navigate',
+            'reload',
+            state.contentVisible ? 'hideContent' : 'showContent',
+            'takeOver',
+            ...(hasSession ? ['extractContent'] : []),
+          ],
           selected: true,
           value: { url: state.currentUrl },
         }] : [],
@@ -75,6 +133,14 @@ export function createBrowserAgentManifest(
           controlMode: state.controlMode,
           contentVisible: state.contentVisible,
           agentAutomationSupported: state.agentAutomationSupported,
+          tabs: state.tabs.map((tab) => ({
+            tabId: tab.tabId,
+            url: tab.url,
+            title: tab.title,
+            active: tab.active,
+          })),
+          activeTabId: state.activeTabId,
+          tabCount: state.tabs.length,
           error: state.error,
         },
       };
@@ -87,6 +153,8 @@ export function createBrowserAgentManifest(
         historyIndex: before.historyIndex,
         controlMode: before.controlMode,
         contentVisible: before.contentVisible,
+        activeTabId: before.activeTabId,
+        tabCount: before.tabs.length,
       };
       const result = await executeActivation(activation, ctx, action);
       if (!result.handled) return result;
@@ -97,6 +165,8 @@ export function createBrowserAgentManifest(
         historyIndex: after.historyIndex,
         controlMode: after.controlMode,
         contentVisible: after.contentVisible,
+        activeTabId: after.activeTabId,
+        tabCount: after.tabs.length,
       });
       if (!result.changed) {
         return {
@@ -111,6 +181,8 @@ export function createBrowserAgentManifest(
         result.entityRefs = [stableAgentRef('browser', 'page', args.url)];
       } else if (action.name === 'takeOver') {
         result.postconditions = [{ kind: 'state_equals', path: 'controlMode', value: 'user' }];
+      } else if (action.name === 'switchTab' && typeof args.tabId === 'string') {
+        result.postconditions = [{ kind: 'state_equals', path: 'activeTabId', value: args.tabId }];
       } else if (action.name === 'showContent' || action.name === 'hideContent') {
         const visible = action.name === 'showContent';
         result.postconditions = [{ kind: 'state_equals', path: 'contentVisible', value: visible }];

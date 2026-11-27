@@ -243,7 +243,11 @@ import { DS_MINDMAP_FLASHCARD_PROJECTED_EVENT } from '../interop/mindmapCardProj
 import { createMindMapStore, MindMapStoreContext } from '../store';
 import { MindMapContentView } from '../MindMapContentView';
 import { MindMapToolbar } from '../components/shell/MindMapToolbar';
-import { MindMapSearchBanner } from '../components/shell/MindMapStatusBanners';
+import {
+  MindMapFormatDock,
+  MindMapSearchBanner,
+} from '../components/shell/MindMapStatusBanners';
+import { MindMapMobileSubviews } from '../components/shell/MindMapMobileSubviews';
 import { MindMapPresentationBar } from '../components/shell/MindMapPresentationBar';
 import {
   dispatchMindMapAiAction,
@@ -455,14 +459,14 @@ describe('MindMapContentView shell modules', () => {
   });
 
   describe('MindMapToolbar', () => {
-    it('reflects mastery aria-pressed, single hide-completed button, and mobile staging badge', () => {
+    it('keeps low-frequency switches in the 2-level More menu while exposing high-frequency toolbar controls', () => {
       const store = createMindMapStore();
       store.setState({ document: createSampleDocument() });
 
       const onToggleMasteryOverlay = vi.fn();
       const baseProps = {
         currentView: 'mindmap' as const,
-        activePanel: null,
+        activePanel: null as 'more' | null,
         onActivePanelChange: vi.fn(),
         showSearch: false,
         onToggleSearch: vi.fn(),
@@ -484,39 +488,54 @@ describe('MindMapContentView shell modules', () => {
         </MindMapStoreContext.Provider>,
       );
 
-      const masteryBtn = screen.getByTestId('mm-mastery-toggle');
-      expect(masteryBtn).toHaveAttribute('aria-pressed', 'false');
-      fireEvent.click(masteryBtn);
-      expect(onToggleMasteryOverlay).toHaveBeenCalledTimes(1);
-
-      rerender(
-        <MindMapStoreContext.Provider value={store}>
-          <MindMapToolbar {...baseProps} showMasteryOverlay />
-        </MindMapStoreContext.Provider>,
-      );
-      expect(screen.getByTestId('mm-mastery-toggle')).toHaveAttribute('aria-pressed', 'true');
-
-      // 隐藏已完成在工具栏仅出现一次
-      const hideCompletedButtons = screen.getAllByRole('button', {
-        name: 'mindmap:toolbar.hideCompleted',
-      });
-      expect(hideCompletedButtons).toHaveLength(1);
-      fireEvent.click(hideCompletedButtons[0]);
-      expect(store.getState().hideCompleted).toBe(true);
+      // 收纳进更多菜单的低频按钮不再占满顶部工具栏
+      expect(screen.queryByTestId('mm-mastery-toggle')).toBeNull();
+      expect(screen.queryByTestId('mm-presentation-toggle')).toBeNull();
+      expect(screen.queryByTestId('mm-auto-excerpt-toggle')).toBeNull();
+      expect(screen.queryByTestId('mm-hide-completed-toggle')).toBeNull();
+      expect(screen.queryByTestId('mm-import-toggle')).toBeNull();
 
       // 移动端暂存盘入口带未处理数量 badge，点击切换 stagingTrayOpen
       expect(screen.getByTestId('mm-mobile-staging-badge').textContent).toBe('2');
       fireEvent.click(screen.getByTestId('mm-mobile-staging-tray-toggle'));
       expect(store.getState().stagingTrayOpen).toBe(true);
 
-      // 桌面端「导入思维导图」统一收纳在更多菜单（与导出并列，消除重复按钮）
-      expect(screen.queryByTestId('mm-import-toggle')).toBeNull();
-      const [moreBtn] = screen.getAllByLabelText('mindmap:toolbar.moreActions');
+      const moreBtn = screen.getByTestId('mm-more-menu-trigger');
       fireEvent.click(moreBtn);
       expect(baseProps.onActivePanelChange).toHaveBeenCalledWith('more');
+
+      // 打开更多菜单并展开「显示与学习」二级子菜单
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapToolbar {...baseProps} activePanel="more" />
+        </MindMapStoreContext.Provider>,
+      );
+
+      expect(screen.getByTestId('mm-more-sub-fold')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-more-sub-display')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-more-sub-io')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-more-sub-prefs')).toBeInTheDocument();
+
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-display'));
+      const masteryItem = screen.getByTestId('mm-mastery-toggle');
+      expect(masteryItem).toHaveAttribute('aria-checked', 'false');
+      fireEvent.click(masteryItem);
+      expect(onToggleMasteryOverlay).toHaveBeenCalledTimes(1);
+
+      const hideCompletedItem = screen.getByTestId('mm-hide-completed-toggle');
+      fireEvent.click(hideCompletedItem);
+      expect(store.getState().hideCompleted).toBe(true);
+
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapToolbar {...baseProps} activePanel="more" showMasteryOverlay />
+        </MindMapStoreContext.Provider>,
+      );
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-display'));
+      expect(screen.getByTestId('mm-mastery-toggle')).toHaveAttribute('aria-checked', 'true');
     });
 
-    it('invokes onImport from the More menu when open', () => {
+    it('invokes onImport from the Import & export submenu when open', () => {
       const store = createMindMapStore();
       store.setState({ document: createSampleDocument() });
       const onImport = vi.fn();
@@ -524,22 +543,181 @@ describe('MindMapContentView shell modules', () => {
       render(
         <MindMapStoreContext.Provider value={store}>
           <MindMapToolbar
-            view="canvas"
-            onViewChange={vi.fn()}
+            currentView="mindmap"
             activePanel="more"
             onActivePanelChange={vi.fn()}
-            onOpenSearch={vi.fn()}
+            showSearch={false}
+            onToggleSearch={vi.fn()}
+            showMasteryOverlay={false}
+            onToggleMasteryOverlay={vi.fn()}
+            onSwitchView={vi.fn()}
+            onEnterPresentation={vi.fn()}
             onStartAssociation={vi.fn()}
             onOpenVersionHistory={vi.fn()}
-            onEnterPresentation={vi.fn()}
             onImport={onImport}
             onExport={vi.fn()}
+            onOpenShortcutHelp={vi.fn()}
+            onOpenMobileMore={vi.fn()}
           />
         </MindMapStoreContext.Provider>,
       );
 
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-io'));
       fireEvent.click(screen.getByTestId('mm-import-toggle'));
       expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides canvas-only controls in outline mode and scopes view-specific preferences', () => {
+      const store = createMindMapStore();
+      store.setState({ document: createSampleDocument() });
+
+      const sharedProps = {
+        activePanel: 'more' as const,
+        onActivePanelChange: vi.fn(),
+        showSearch: false,
+        onToggleSearch: vi.fn(),
+        showMasteryOverlay: false,
+        onToggleMasteryOverlay: vi.fn(),
+        onSwitchView: vi.fn(),
+        onEnterPresentation: vi.fn(),
+        onStartAssociation: vi.fn(),
+        onOpenVersionHistory: vi.fn(),
+        onImport: vi.fn(),
+        onExport: vi.fn(),
+        onOpenShortcutHelp: vi.fn(),
+        onOpenMobileMore: vi.fn(),
+      };
+
+      const { rerender } = render(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapToolbar {...sharedProps} currentView="outline" />
+        </MindMapStoreContext.Provider>,
+      );
+
+      // 大纲模式下不展示导图画布专用控件
+      expect(screen.queryByTestId('mock-structure-selector')).toBeNull();
+      expect(screen.queryByTestId('mock-style-settings')).toBeNull();
+      expect(screen.queryByTestId('mm-presentation-toggle')).toBeNull();
+      expect(screen.queryByText('mindmap:association.add')).toBeNull();
+
+      // 大纲模式保留通用学习/检索入口与子菜单中的大纲专属偏好
+      expect(screen.getByTestId('mm-staging-tray-toggle')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'mindmap:toolbar.search' })).toBeInTheDocument();
+
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-display'));
+      expect(screen.queryByTestId('mm-mastery-toggle')).toBeNull();
+      expect(screen.getByTestId('mm-auto-excerpt-toggle')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-hide-completed-toggle')).toBeInTheDocument();
+
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-prefs'));
+      expect(screen.queryByText('mindmap:preferences.spatialNavigation')).toBeNull();
+      expect(screen.getByText('mindmap:preferences.descriptionFirstLine')).toBeInTheDocument();
+
+      // 切回导图模式后恢复画布控件，隐藏大纲专属备注首行预览项
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapToolbar {...sharedProps} currentView="mindmap" />
+        </MindMapStoreContext.Provider>,
+      );
+
+      expect(screen.getByTestId('mock-structure-selector')).toBeInTheDocument();
+      expect(screen.getByTestId('mock-style-settings')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-presentation-toggle')).toBeInTheDocument();
+      expect(screen.getByText('mindmap:association.add')).toBeInTheDocument();
+
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-display'));
+      expect(screen.getByTestId('mm-mastery-toggle')).toBeInTheDocument();
+
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-prefs'));
+      expect(screen.getByText('mindmap:preferences.spatialNavigation')).toBeInTheDocument();
+      expect(screen.queryByText('mindmap:preferences.descriptionFirstLine')).toBeNull();
+
+      // 顶栏所有按钮统一使用 @/components/ui/shad/Tooltip，不允许混用原生 HTML title 提示框
+      expect(document.querySelectorAll('.mm-toolbar button[title]')).toHaveLength(0);
+    });
+  });
+
+  describe('MindMapFormatDock & MindMapMobileSubviews view scoping', () => {
+    it('renders MindMapFormatDock only in mindmap mode, never overlaying outline mode', () => {
+      const store = createMindMapStore();
+      store.setState({ document: createSampleDocument(), focusedNodeId: 'b1' });
+
+      const { rerender } = render(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapFormatDock
+            currentView="outline"
+            isCoarsePointer={false}
+            reciteMode={false}
+            presentationMode={false}
+          />
+        </MindMapStoreContext.Provider>,
+      );
+
+      expect(screen.queryByTestId('mock-format-bar')).toBeNull();
+
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapFormatDock
+            currentView="mindmap"
+            isCoarsePointer={false}
+            reciteMode={false}
+            presentationMode={false}
+          />
+        </MindMapStoreContext.Provider>,
+      );
+
+      expect(screen.getByTestId('mock-format-bar')).toBeInTheDocument();
+    });
+
+    it('hides canvas-only rows and panels in MindMapMobileSubviews during outline mode', () => {
+      const store = createMindMapStore();
+      store.setState({ document: createSampleDocument() });
+
+      const baseProps = {
+        resourceId: 'mm-mobile-1',
+        keymap: 'deep-student' as const,
+        onOverlayPanelChange: vi.fn(),
+        showMasteryOverlay: false,
+        onOpenSearch: vi.fn(),
+        onEnterPresentation: vi.fn(),
+        onToggleMasteryOverlay: vi.fn(),
+        onStartAssociation: vi.fn(),
+        onImport: vi.fn(),
+        onExport: vi.fn(),
+      };
+
+      const { rerender } = render(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapMobileSubviews {...baseProps} currentView="outline" overlayPanel="more" />
+        </MindMapStoreContext.Provider>,
+      );
+
+      expect(screen.queryByText('mindmap:toolbar.structure')).toBeNull();
+      expect(screen.queryByText('mindmap:toolbar.style')).toBeNull();
+      expect(screen.queryByText('mindmap:presentation.enter')).toBeNull();
+      expect(screen.queryByTestId('mm-mobile-more-mastery')).toBeNull();
+      expect(screen.queryByText('mindmap:association.add')).toBeNull();
+      expect(screen.getByText('mindmap:toolbar.search')).toBeInTheDocument();
+
+      // 大纲模式下即使 overlayPanel 为 structure/style 也不挂载画布子屏
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapMobileSubviews {...baseProps} currentView="outline" overlayPanel="style" />
+        </MindMapStoreContext.Provider>,
+      );
+      expect(screen.queryByTestId('mock-style-settings')).toBeNull();
+
+      // 导图模式下完整恢复
+      rerender(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapMobileSubviews {...baseProps} currentView="mindmap" overlayPanel="more" />
+        </MindMapStoreContext.Provider>,
+      );
+      expect(screen.getByText('mindmap:toolbar.structure')).toBeInTheDocument();
+      expect(screen.getByText('mindmap:toolbar.style')).toBeInTheDocument();
+      expect(screen.getByText('mindmap:presentation.enter')).toBeInTheDocument();
+      expect(screen.getByTestId('mm-mobile-more-mastery')).toBeInTheDocument();
+      expect(screen.getByText('mindmap:association.add')).toBeInTheDocument();
     });
   });
 
@@ -611,11 +789,22 @@ describe('MindMapContentView shell modules', () => {
   });
 
   describe('MindMapContentView shell integration', () => {
+    const enterPresentationViaMoreMenu = () => {
+      fireEvent.click(screen.getByTestId('mm-more-menu-trigger'));
+      fireEvent.click(screen.getByTestId('mm-presentation-toggle'));
+    };
+
+    const toggleMasteryViaMoreMenu = () => {
+      fireEvent.click(screen.getByTestId('mm-more-menu-trigger'));
+      fireEvent.mouseEnter(screen.getByTestId('mm-more-sub-display'));
+      fireEvent.click(screen.getByTestId('mm-mastery-toggle'));
+    };
+
     it('yields Escape to inline node editor while in presentation mode, then exits when not editing', () => {
       render(<MindMapContentView isActive />);
 
-      // 点击演示按钮进入演示模式
-      fireEvent.click(screen.getByTestId('mm-presentation-toggle'));
+      // 通过更多菜单进入演示模式
+      enterPresentationViaMoreMenu();
       expect(screen.getByTestId('mm-presentation-bar')).toBeInTheDocument();
       expect(screen.getByTestId('mock-mindmap-view')).toHaveAttribute(
         'data-presentation',
@@ -644,7 +833,7 @@ describe('MindMapContentView shell modules', () => {
         expect(screen.getByTestId('mock-mindmap-view')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId('mm-presentation-toggle'));
+      enterPresentationViaMoreMenu();
       expect(screen.getByTestId('mock-mindmap-view')).toHaveAttribute('data-presentation', 'true');
       expect(screen.getByTestId('mock-mindmap-view')).toHaveAttribute('data-presentation-branch', '');
 
@@ -709,7 +898,7 @@ describe('MindMapContentView shell modules', () => {
       expect(container.querySelector('.mm-search-popover')).toBeNull();
 
       // 演示态下打开搜索条：第一次 Escape 先关搜索，第二次 Escape 再退演示
-      fireEvent.click(screen.getByTestId('mm-presentation-toggle'));
+      enterPresentationViaMoreMenu();
       fireEvent.keyDown(window, { key: 'f', metaKey: true });
       expect(container.querySelector('.mm-search-popover')).not.toBeNull();
       expect(screen.getByTestId('mm-presentation-bar')).toBeInTheDocument();
@@ -767,7 +956,7 @@ describe('MindMapContentView shell modules', () => {
       });
       expect(loadMasteryMock).not.toHaveBeenCalled();
 
-      fireEvent.click(screen.getByTestId('mm-mastery-toggle'));
+      toggleMasteryViaMoreMenu();
       await waitFor(() => {
         expect(loadMasteryMock).toHaveBeenCalledWith('mm-mastery-1');
         expect(lastMindMapViewProps.current?.showMasteryOverlay).toBe(true);
@@ -885,7 +1074,7 @@ describe('MindMapContentView shell modules', () => {
         expect(onReady).toHaveBeenCalledTimes(1);
       });
 
-      fireEvent.click(screen.getByTestId('mm-mastery-toggle'));
+      toggleMasteryViaMoreMenu();
       await waitFor(() => {
         expect(loadMasteryMock).toHaveBeenCalledTimes(1);
       });
@@ -968,6 +1157,36 @@ describe('MindMapContentView shell modules', () => {
       await waitFor(() => {
         expect(notifyMock).toHaveBeenCalledWith('error', expect.any(String));
       });
+    });
+
+    it('hides floating format dock and closes canvas-only panels when switching to outline mode', async () => {
+      const onReady = vi.fn();
+      render(<MindMapContentView resourceId="mm-view-switch-1" isActive onReady={onReady} />);
+
+      await waitFor(() => {
+        expect(onReady).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('mock-mindmap-view')).toBeInTheDocument();
+      });
+
+      // 文档加载后默认聚焦 root，导图模式展示悬浮格式条与样式面板入口
+      expect(screen.getByTestId('mock-format-bar')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'mindmap:toolbar.styleSettings' }));
+      expect(screen.getByTestId('mock-style-settings')).toHaveAttribute('data-open', 'true');
+
+      // 切换至大纲模式：悬浮格式条消失、画布样式面板自动收起、导图专用顶栏按钮隐藏
+      fireEvent.click(screen.getByRole('radio', { name: 'mindmap:toolbar.outline' }));
+      expect(screen.getByTestId('mock-outline-view')).toBeInTheDocument();
+      expect(screen.queryByTestId('mock-format-bar')).toBeNull();
+      expect(screen.queryByTestId('mock-style-settings')).toBeNull();
+      expect(screen.queryByTestId('mock-structure-selector')).toBeNull();
+      expect(screen.queryByTestId('mm-mastery-toggle')).toBeNull();
+      expect(screen.queryByTestId('mm-presentation-toggle')).toBeNull();
+
+      // 切回导图模式：格式条恢复，先前打开的样式面板保持关闭态
+      fireEvent.click(screen.getByRole('radio', { name: 'mindmap:toolbar.mindmap' }));
+      expect(screen.getByTestId('mock-mindmap-view')).toBeInTheDocument();
+      expect(screen.getByTestId('mock-format-bar')).toBeInTheDocument();
+      expect(screen.getByTestId('mock-style-settings')).toHaveAttribute('data-open', 'false');
     });
   });
 });

@@ -265,10 +265,21 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
     ));
   }, [ctx?.containerRef, align, side, sideOffset, collisionPadding]);
 
+  const presence = useMotionPresence(!!ctx?.open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
+
+  // 退场动画完全卸载后再清空缓存位置，避免关闭首帧回退到估算高度产生可见跳动。
+  React.useEffect(() => {
+    if (!presence.mounted) {
+      setPosition(null);
+    }
+  }, [presence.mounted]);
+
   // 初始定位 + 滚动/resize 跟随
   React.useLayoutEffect(() => {
     if (!ctx?.open || !portal || typeof window === 'undefined') {
-      setPosition(null);
       return;
     }
 
@@ -277,6 +288,9 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
     const handleResize = () => updatePosition();
     const scrollParents: EventTarget[] = [];
     let resizeObserver: ResizeObserver | null = null;
+
+    // 若 Portal DOM 已同步就绪，在首帧绘制前立即计算精确坐标，避免首帧猜测高度导致的跳动。
+    updatePosition();
 
     // Portal 子树的 ref 可能晚于父层 layout effect 就绪，因此在下一帧统一
     // 连接定位、滚动祖先和尺寸监听。
@@ -316,11 +330,6 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
     };
   }, [ctx?.open, ctx?.containerRef, portal, updatePosition]);
 
-  const presence = useMotionPresence(!!ctx?.open, {
-    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
-    enter: 'animation',
-  });
-
   if (!ctx || !presence.mounted) return null;
 
   // 当通过 portal/fixed 定位渲染时
@@ -351,10 +360,11 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
           )}
         data-state={presence.exiting ? 'closed' : 'open'}
         style={{
+          position: 'fixed',
           zIndex: Math.max(Z_INDEX.popover, parentZIndex + 1),
           left: finalLeft,
           top: finalTop,
-          transform: `translateX(${finalTranslateX}%)`,
+          ...(finalTranslateX !== 0 ? { transform: `translateX(${finalTranslateX}%)` } : {}),
           ...style,
         }}
         {...rest}

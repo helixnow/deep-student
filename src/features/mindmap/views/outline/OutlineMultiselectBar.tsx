@@ -17,6 +17,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 
 const DELETE_CONFIRM_AUTO_DISMISS_MS = 6000;
@@ -129,70 +130,106 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             <span className="outline-multiselect-count">
               {t('outline.selectedCount', { count })}
             </span>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn"
-              onClick={onComplete}
-              title={t('outline.batchComplete')}
-            >
-              <CheckCircle size={16} />
-              <span>{t('outline.batchComplete')}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn"
-              onClick={onIndent}
-              title={`${t('mindmap:outline.batchIndent', { defaultValue: '缩进' })} (Tab)`}
-            >
-              <TextIndent size={16} />
-              <span>{t('mindmap:outline.batchIndent', { defaultValue: '缩进' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn"
-              onClick={onOutdent}
-              title={`${t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })} (Shift+Tab)`}
-            >
-              <TextOutdent size={16} />
-              <span>{t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn"
-              onClick={onCopy}
-              title={t('mindmap:outline.batchCopy', { defaultValue: '复制' })}
-            >
-              <Copy size={16} />
-              <span>{t('mindmap:outline.batchCopy', { defaultValue: '复制' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn"
-              onClick={onCollapse}
-              title={t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}
-            >
-              <ArrowsInLineVertical size={16} />
-              <span>{t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="outline-multiselect-btn destructive"
-              onClick={() => setConfirmingDelete(true)}
-              title={t('actions.delete')}
-            >
-              <Trash size={16} />
-              <span>{t('actions.delete')}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              className="outline-multiselect-btn"
-              onClick={onClear}
-              title={t('outline.clearSelection')}
-              aria-label={t('outline.clearSelection')}
-            >
-              <X size={16} />
-            </DsButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn"
+                  onClick={onComplete}
+                >
+                  <CheckCircle size={16} />
+                  <span>{t('outline.batchComplete')}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('outline.batchComplete')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn"
+                  onClick={onIndent}
+                >
+                  <TextIndent size={16} />
+                  <span>{t('mindmap:outline.batchIndent', { defaultValue: '缩进' })}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top" shortcut="Tab">
+                {t('mindmap:outline.batchIndent', { defaultValue: '缩进' })}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn"
+                  onClick={onOutdent}
+                >
+                  <TextOutdent size={16} />
+                  <span>{t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top" shortcut="⇧Tab">
+                {t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn"
+                  onClick={onCopy}
+                >
+                  <Copy size={16} />
+                  <span>{t('mindmap:outline.batchCopy', { defaultValue: '复制' })}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t('mindmap:outline.batchCopy', { defaultValue: '复制' })}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn"
+                  onClick={onCollapse}
+                >
+                  <ArrowsInLineVertical size={16} />
+                  <span>{t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="outline-multiselect-btn destructive"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  <Trash size={16} />
+                  <span>{t('actions.delete')}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('actions.delete')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  className="outline-multiselect-btn"
+                  onClick={onClear}
+                  aria-label={t('outline.clearSelection')}
+                >
+                  <X size={16} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('outline.clearSelection')}</TooltipContent>
+            </Tooltip>
           </motion.div>
         )}
       </AnimatePresence>

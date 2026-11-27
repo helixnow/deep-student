@@ -15,7 +15,7 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { inputShellClass } from '@/components/ui/shad/inputShell';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { canRevealInFolder } from '@/utils/systemFileOpener';
@@ -54,7 +54,7 @@ const isTauri =
   typeof window !== 'undefined' &&
   Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
-const BUILTIN_PROFILE_IDS = ['default', 'worker', 'explorer'] as const;
+const BUILTIN_PROFILE_IDS = ['default', 'worker', 'explorer', 'browser'] as const;
 
 type BuiltinProfileId = (typeof BUILTIN_PROFILE_IDS)[number];
 
@@ -572,6 +572,11 @@ export const SubagentProfilesSection: React.FC = () => {
   const builtinDisplayName = (id: string): string =>
     isBuiltinProfileId(id) ? t(`settings:subagentProfiles.builtin_names.${id}`) : id;
 
+  const builtinDescription = (profile: BuiltinProfileSummary): string | null =>
+    profile.id === 'browser'
+      ? t('settings:subagentProfiles.builtin_descriptions.browser')
+      : profile.description;
+
   const formatModified = (value: string | null): string | null => {
     if (!value) return null;
     const date = new Date(value);
@@ -580,35 +585,38 @@ export const SubagentProfilesSection: React.FC = () => {
     return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   };
 
-  const renderBuiltinRow = (profile: BuiltinProfileSummary) => (
-    <div
-      key={profile.id}
-      className="flex items-start justify-between gap-3 rounded-[var(--radius-shell-row,0.5rem)] px-3 py-2.5"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            {builtinDisplayName(profile.id)}
-          </span>
-          <code className="text-xs text-muted-foreground/70">{profile.id}</code>
-          <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
-            {t('settings:subagentProfiles.builtin_badge')}
-          </span>
-        </div>
-        {profile.description && (
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/80">
-            {profile.description}
-          </p>
-        )}
-        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground/70">
-          {profile.model && (
-            <span>{t('settings:subagentProfiles.model', { model: profile.model })}</span>
+  const renderBuiltinRow = (profile: BuiltinProfileSummary) => {
+    const description = builtinDescription(profile);
+    return (
+      <div
+        key={profile.id}
+        className="flex items-start justify-between gap-3 rounded-[var(--radius-shell-row,0.5rem)] px-3 py-2.5"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-foreground">
+              {builtinDisplayName(profile.id)}
+            </span>
+            <code className="text-xs text-muted-foreground/70">{profile.id}</code>
+            <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
+              {t('settings:subagentProfiles.builtin_badge')}
+            </span>
+          </div>
+          {description && (
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/80">
+              {description}
+            </p>
           )}
-          <span>{t('settings:subagentProfiles.tool_count', { count: profile.toolCount })}</span>
-        </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground/70">
+            {profile.model && (
+              <span>{t('settings:subagentProfiles.model', { model: profile.model })}</span>
+            )}
+            <span>{t('settings:subagentProfiles.tool_count', { count: profile.toolCount })}</span>
+          </p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderCustomRow = (file: CustomAgentFileSummary) => {
     const expanded = expandedId === file.fileName;
@@ -808,7 +816,7 @@ export const SubagentProfilesSection: React.FC = () => {
         </div>
       ) : loading && builtin.length === 0 ? (
         <div aria-label={t('settings:subagentProfiles.loading')} className="space-y-1">
-          {[0, 1, 2].map((index) => (
+          {[0, 1, 2, 3].map((index) => (
             <div
               key={index}
               className="flex min-h-14 animate-pulse motion-reduce:animate-none items-center gap-4 rounded-[var(--radius-shell-row,0.5rem)] px-3 py-3"

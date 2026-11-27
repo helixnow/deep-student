@@ -60,6 +60,14 @@
         "undoCreate": "Delete the just-created template",
         "undoRename": "Restore template name",
         "undoUpdateContent": "Restore template content"
+      },
+      "browser": {
+        "actions": {
+          "newTab": "New tab",
+          "switchTab": "Switch tab",
+          "closeTab": "Close tab",
+          "extractContent": "Extract page text"
+        }
       }
     },
     "drivers": {
@@ -182,7 +190,7 @@
       },
       "browser": {
         "name": "Browser",
-        "actions": "Navigate, go back or forward, reload, focus the address field, and show the page window"
+        "actions": "Navigate, manage tabs, extract page text, go back or forward, reload, focus the address field, and show the page window"
       }
     },
     "killSwitch": {
@@ -927,7 +935,21 @@
     "approveClick": "Allow the assistant to click a page element",
     "approveType": "Allow the assistant to type on the page",
     "nav": "Navigation",
-    "gatedHint": "The page window stays closed while this feature is disabled. Enable the built-in browser in Settings if your build supports it."
+    "gatedHint": "The page window stays closed while this feature is disabled. Enable the built-in browser in Settings if your build supports it.",
+    "newTab": "New tab",
+    "closeTab": "Close tab",
+    "extractContent": "Extract page text",
+    "extractSuccess": "Page text extracted and copied to clipboard",
+    "extractFailed": "Failed to extract page text: {{error}}",
+    "headlessHint": "This browser session is running in background headless mode",
+    "promoteForeground": "Show in foreground",
+    "unsupportedHint": "The local embedded browser is unavailable in this runtime. Use Remote CDP or desktop mode instead.",
+    "remoteConnecting": "Connecting to remote browser stream...",
+    "remoteViewportHint": "Interactive remote browser view (click, scroll, and type directly)",
+    "tabs": {
+      "list": "Tab list",
+      "untitled": "New tab"
+    }
   },
   "devPanel": {
     "title": "Desktop Diagnostics",

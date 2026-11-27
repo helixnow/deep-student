@@ -47,8 +47,16 @@ import {
 
 export type LegacyFallbackHandler = (req: LaunchRequest | ActivateRequest, kind: 'launch' | 'activate') => void;
 
-let enabled = false;
-let legacyFallback: LegacyFallbackHandler | null = null;
+let enabled = Boolean(import.meta.hot?.data?.enabled);
+let legacyFallback: LegacyFallbackHandler | null =
+  (import.meta.hot?.data?.legacyFallback as LegacyFallbackHandler | null) ?? null;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose((data) => {
+    data.enabled = enabled;
+    data.legacyFallback = legacyFallback;
+  });
+}
 
 /** 最近一次 activate 的 onActivation 结构化回执（供 StageManager app_command） */
 let lastActivationResult: ActivationResult | null = null;

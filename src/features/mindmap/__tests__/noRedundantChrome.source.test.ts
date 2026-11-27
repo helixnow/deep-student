@@ -14,13 +14,13 @@ import { describe, expect, it } from 'vitest';
 const read = (p: string) => readFileSync(path.join(process.cwd(), p), 'utf8');
 
 describe('mind map chrome has no duplicated entries or restated text', () => {
-  it('exposes hide-completed once (toolbar learning group, not the more menu)', () => {
+  it('exposes hide-completed once (inside the More menu display submenu, never duplicated on the toolbar)', () => {
     const contentViewSource = read('src/features/mindmap/MindMapContentView.tsx');
     const toolbarSource = read('src/features/mindmap/components/shell/MindMapToolbar.tsx');
 
-    const matches = toolbarSource.match(/onClick=\{\(\) => setHideCompleted\(!hideCompleted\)\}/g) ?? [];
+    const matches = toolbarSource.match(/onCheckedChange=\{setHideCompleted\}/g) ?? [];
     expect(matches).toHaveLength(1);
-    expect(toolbarSource).not.toContain('onCheckedChange={setHideCompleted}');
+    expect(toolbarSource).not.toContain('onClick={() => setHideCompleted(!hideCompleted)}');
     expect(contentViewSource).not.toContain('onCheckedChange={setHideCompleted}');
     expect(contentViewSource).not.toContain('onClick={() => setHideCompleted(!hideCompleted)}');
   });

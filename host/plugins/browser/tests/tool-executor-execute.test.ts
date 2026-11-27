@@ -425,9 +425,16 @@ describe('browser_file_upload against the published L05 runtimeRoots service', (
 
       expect(surface.uploads).toHaveLength(1);
       expect(surface.uploads[0]!.ref).toBe('e5');
+      const root = roots.rootById('artifacts', { session_id: 'session-1' });
+      const rootCanonical = fs.realpathSync(root.path);
       expect(surface.uploads[0]!.files).toEqual([
-        { name: 'hello.txt', mimeType: 'text/plain', base64: 'aGVsbG8=' },
-        { name: 'alias.md', mimeType: 'text/plain', base64: Buffer.from('# alias').toString('base64') },
+        { name: 'hello.txt', mimeType: 'text/plain', base64: 'aGVsbG8=', path: join(rootCanonical, 'hello.txt') },
+        {
+          name: 'alias.md',
+          mimeType: 'text/plain',
+          base64: Buffer.from('# alias').toString('base64'),
+          path: join(rootCanonical, 'alias.md'),
+        },
       ]);
     } finally {
       digest.mockRestore();
@@ -609,6 +616,285 @@ describe('browser_file_upload against the published L05 runtimeRoots service', (
       expect(result.success).toBe(false);
       expect(String(result.error)).toContain('BROWSER_FILE_UNAUTHORIZED');
       expect(surface.uploads).toHaveLength(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
+class ExtendedTestSurface extends FakeSurface {
+  readonly calls: Array<{ method: string; args: unknown[] }> = [];
+  createdOptions: BrowserSurfaceCreateOptions | null = null;
+  snapshotCalls: Array<{ interactiveOnly: boolean; maxChars?: number; diff?: boolean; selector?: string }> = [];
+  tabs = [
+    { tabId: 'tab-1', url: 'https://1.1.1.1/', title: 'One', active: true },
+  ];
+
+  override async createContentWindow(options: BrowserSurfaceCreateOptions): Promise<void> {
+    this.createdOptions = options;
+    await super.createContentWindow(options);
+  }
+
+  override async snapshot(options?: {
+    interactiveOnly: boolean; maxChars?: number; diff?: boolean; selector?: string;
+  }): Promise<JsonValue> {
+    const resolved = options ?? { interactiveOnly: true };
+    this.snapshotCalls.push(resolved);
+    return { text: resolved.diff ? '+ button "Go" [ref=e1]' : 'button "Go" [ref=e1]', epoch: 9 };
+  }
+
+  override async click(
+    ref: string,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue> {
+    this.calls.push({ method: 'click', args: [ref, options] });
+    return super.click(ref);
+  }
+
+  async clickAt(
+    x: number,
+    y: number,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue> {
+    this.calls.push({ method: 'clickAt', args: [x, y, options] });
+    return { ok: true, x, y };
+  }
+
+  override async typeText(
+    ref: string,
+    text: string,
+    options?: { clear?: boolean; submit?: boolean },
+  ): Promise<JsonValue> {
+    this.calls.push({ method: 'typeText', args: [ref, text, options] });
+    return { ok: true, ref, text, ...(options ?? {}) };
+  }
+
+  async screenshot(options?: { fullPage?: boolean; annotate?: boolean; maxWidth?: number; quality?: number }) {
+    this.calls.push({ method: 'screenshot', args: [options] });
+    return {
+      available: true as const,
+      capability: 'browser_visible_webview_screenshot' as const,
+      mimeType: 'image/png' as const,
+      dataBase64: Buffer.from('fake-png-bytes').toString('base64'),
+      width: 1024,
+      height: 768,
+      annotated: options?.annotate === true,
+    };
+  }
+
+  async hover(target: { ref: string } | { x: number; y: number }): Promise<JsonValue> {
+    this.calls.push({ method: 'hover', args: [target] });
+    return { ok: true, target: target as unknown as JsonValue };
+  }
+
+  async pressKey(key: string, modifiers?: string[]): Promise<JsonValue> {
+    this.calls.push({ method: 'pressKey', args: [key, modifiers] });
+    return { ok: true, key, modifiers: modifiers ?? [] };
+  }
+
+  async selectOption(ref: string, values: string[]): Promise<JsonValue> {
+    this.calls.push({ method: 'selectOption', args: [ref, values] });
+    return { ok: true, ref, values };
+  }
+
+  async waitFor(options: { text?: string; selector?: string; loadState?: string; timeoutMs?: number }): Promise<JsonValue> {
+    this.calls.push({ method: 'waitFor', args: [options] });
+    return { ok: true, matched: true, elapsedMs: 12 };
+  }
+
+  async extractContent(options?: { maxChars?: number; startIndex?: number }): Promise<JsonValue> {
+    this.calls.push({ method: 'extractContent', args: [options] });
+    return {
+      url: 'https://1.1.1.1/article',
+      title: 'Guide',
+      markdown: '# Guide\n\nBody paragraph.',
+      totalChars: 24,
+      truncated: false,
+    };
+  }
+
+  async listTabs() {
+    this.calls.push({ method: 'listTabs', args: [] });
+    return this.tabs.map(t => ({ ...t }));
+  }
+
+  async newTab(url: string) {
+    this.calls.push({ method: 'newTab', args: [url] });
+    const tab = { tabId: `tab-${this.tabs.length + 1}`, url, title: 'New', active: true };
+    this.tabs.forEach(t => { t.active = false; });
+    this.tabs.push(tab);
+    return tab;
+  }
+
+  async switchTab(tabId: string) {
+    this.calls.push({ method: 'switchTab', args: [tabId] });
+    for (const tab of this.tabs) tab.active = tab.tabId === tabId;
+    return this.tabs.find(t => t.tabId === tabId)!;
+  }
+
+  async closeTab(tabId: string): Promise<JsonValue> {
+    this.calls.push({ method: 'closeTab', args: [tabId] });
+    this.tabs = this.tabs.filter(t => t.tabId !== tabId);
+    return { closed: true, tabId };
+  }
+
+  async consoleLogs(options?: { level?: string; limit?: number }): Promise<JsonValue> {
+    this.calls.push({ method: 'consoleLogs', args: [options] });
+    return [{ level: 'error', text: 'Failed to load', timestamp: '2026-11-27T00:00:00.000Z' }];
+  }
+
+  async networkLogs(options?: { statusMin?: number; limit?: number }): Promise<JsonValue> {
+    this.calls.push({ method: 'networkLogs', args: [options] });
+    return [{ requestId: 'r1', url: 'https://1.1.1.1/api', method: 'GET', status: 500, failed: false }];
+  }
+}
+
+describe('BrowserToolExecutor extended 18-tool surface', () => {
+  it('supports headless open, diff snapshot, coordinate click, clear+submit type, real screenshot artifacts, and all 7 new tools', async () => {
+    const { roots, dispose } = await createRootsHost();
+    try {
+      const settings = settingsForAgent(true);
+      const surface = new ExtendedTestSurface();
+      const events: Array<[string, unknown]> = [];
+      const featureFlagEnabled = (name: string): boolean => loadF3Flags(settings).isFeatureEnabled(name);
+      const service = new BrowserRuntimeService({
+        db: fakeDatabase(),
+        settings: settings as unknown as SettingsStore,
+        surface,
+        platform: 'darwin',
+        featureFlags: { isEnabled: featureFlagEnabled },
+        emit: (event, payload) => { events.push([event, payload]); },
+        now: () => new Date('2026-11-27T00:00:00.000Z'),
+      });
+      const executor = new BrowserToolExecutor({
+        service: () => service,
+        settings: settings as unknown as SettingsStore,
+        featureFlagEnabled,
+        runtimeRoots: () => roots,
+      });
+      const ctx = context(events);
+
+      // 1. Headless open
+      const opened = await executor.execute(
+        call('builtin-browser_open', { url: 'https://1.1.1.1/', headless: true }), ctx,
+      );
+      expect(opened.success, String(opened.error)).toBe(true);
+      expect(surface.createdOptions?.headless).toBe(true);
+      expect(surface.createdOptions?.focused).toBe(false);
+      expect(service.getHostFacts().mode).toBe('headless');
+
+      // 2. Snapshot with diff and selector
+      const diffSnap = await executor.execute(
+        call('builtin-browser_snapshot', { diff: true, selector: '#main' }), ctx,
+      );
+      expect(diffSnap.success, String(diffSnap.error)).toBe(true);
+      expect(surface.snapshotCalls.at(-1)).toMatchObject({ diff: true, selector: '#main' });
+      expect(String((diffSnap.output as Record<string, unknown>).snapshot)).toContain('+ button "Go"');
+
+      // 3. Coordinate click with double_click & button + diff_snapshot
+      const coordClick = await executor.execute(
+        call('builtin-browser_click', { x: 42, y: 84, double_click: true, button: 'right', diff_snapshot: true }), ctx,
+      );
+      expect(coordClick.success, String(coordClick.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'clickAt')?.args).toEqual([42, 84, { doubleClick: true, button: 'right' }]);
+
+      // 4. Type with clear + submit
+      const typed = await executor.execute(
+        call('builtin-browser_type', { ref: 'e1', text: 'calculus', clear: true, submit: true, include_snapshot: false }), ctx,
+      );
+      expect(typed.success, String(typed.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'typeText')?.args).toEqual(['e1', 'calculus', { clear: true, submit: true }]);
+
+      // 5. Real screenshot writes artifact file, returns lean metadata without raw base64, and records HostFacts
+      const shot = await executor.execute(
+        call('builtin-browser_screenshot', { full_page: true, annotate: true }), ctx,
+      );
+      expect(shot.success, String(shot.error)).toBe(true);
+      const shotOut = shot.output as Record<string, unknown>;
+      expect(shotOut.action).toBe('screenshot');
+      expect(shotOut.available).toBe(true);
+      expect(shotOut.width).toBe(1024);
+      expect(shotOut.height).toBe(768);
+      expect(shotOut.annotated).toBe(true);
+      expect(shotOut.dataBase64).toBeUndefined();
+      expect(typeof shotOut.artifact_path).toBe('string');
+      expect(fs.existsSync(String(shotOut.artifact_path))).toBe(true);
+      expect(fs.readFileSync(String(shotOut.artifact_path)).toString()).toBe('fake-png-bytes');
+      expect(String(shotOut.locator)).toMatch(/^runtime:\/\/artifacts\/browser-screenshots\/.+\.png$/);
+      expect((shotOut.object_handle as Record<string, unknown>).kind).toBe('file');
+      expect(service.getHostFacts().latestScreenshot?.path).toBe(shotOut.artifact_path);
+
+      // 6. Hover
+      const hovered = await executor.execute(call('builtin-browser_hover', { ref: 'e1' }), ctx);
+      expect(hovered.success, String(hovered.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'hover')?.args).toEqual([{ ref: 'e1' }]);
+
+      // 7. Press key
+      const pressed = await executor.execute(
+        call('builtin-browser_press_key', { key: 'Enter', modifiers: ['Control'] }), ctx,
+      );
+      expect(pressed.success, String(pressed.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'pressKey')?.args).toEqual(['Enter', ['Control']]);
+
+      // 8. Select option
+      const selected = await executor.execute(
+        call('builtin-browser_select_option', { ref: 'e1', values: ['zh-CN'], include_snapshot: false }), ctx,
+      );
+      expect(selected.success, String(selected.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'selectOption')?.args).toEqual(['e1', ['zh-CN']]);
+
+      // 9. Wait for
+      const waited = await executor.execute(
+        call('builtin-browser_wait_for', { selector: '#ready', text: 'Done', load_state: 'networkidle', timeout_ms: 2000 }), ctx,
+      );
+      expect(waited.success, String(waited.error)).toBe(true);
+      expect(surface.calls.find(c => c.method === 'waitFor')?.args).toEqual([
+        { selector: '#ready', text: 'Done', loadState: 'networkidle', timeoutMs: 2000 },
+      ]);
+
+      // 10. Extract content wrapped in untrusted_web_content kind="browser_extract"
+      const extracted = await executor.execute(
+        call('builtin-browser_extract_content', { max_chars: 1000, start_index: 0 }), ctx,
+      );
+      expect(extracted.success, String(extracted.error)).toBe(true);
+      const extractOut = extracted.output as Record<string, unknown>;
+      expect(String(extractOut.content)).toContain('kind="browser_extract"');
+      expect(String(extractOut.content)).toContain('# Guide');
+
+      // 11. Tabs (list, new with SSRF rejection, new valid, switch, close)
+      const blockedTab = await executor.execute(
+        call('builtin-browser_tabs', { action: 'new', url: 'http://127.0.0.1/' }), ctx,
+      );
+      expect(blockedTab.success).toBe(false);
+      expect(String(blockedTab.error)).toContain('BROWSER_SSRF_BLOCKED');
+
+      const newTab = await executor.execute(
+        call('builtin-browser_tabs', { action: 'new', url: 'https://1.0.0.1/' }), ctx,
+      );
+      expect(newTab.success, String(newTab.error)).toBe(true);
+      const listedTabs = await executor.execute(call('builtin-browser_tabs', { action: 'list' }), ctx);
+      expect(listedTabs.success, String(listedTabs.error)).toBe(true);
+      expect(((listedTabs.output as Record<string, unknown>).tabs as unknown[]).length).toBe(2);
+
+      const switched = await executor.execute(
+        call('builtin-browser_tabs', { action: 'switch', tab_id: 'tab-1' }), ctx,
+      );
+      expect(switched.success, String(switched.error)).toBe(true);
+
+      const closedTab = await executor.execute(
+        call('builtin-browser_tabs', { action: 'close', tab_id: 'tab-2' }), ctx,
+      );
+      expect(closedTab.success, String(closedTab.error)).toBe(true);
+
+      // 12. Observe wrapped in untrusted_web_content kind="browser_observe"
+      const observed = await executor.execute(
+        call('builtin-browser_observe', { kind: 'both', level: 'error', status_min: 500, limit: 20 }), ctx,
+      );
+      expect(observed.success, String(observed.error)).toBe(true);
+      const observeOut = observed.output as Record<string, unknown>;
+      expect(String(observeOut.observations)).toContain('kind="browser_observe"');
+      expect(String(observeOut.observations)).toContain('Failed to load');
+      expect(String(observeOut.observations)).toContain('"status": 500');
     } finally {
       await dispose();
     }

@@ -24,12 +24,14 @@ import {
   __applyControlModePayloadForTest,
   __applyNavigatedPayloadForTest,
   __applyNavigationBlockedPayloadForTest,
+  __applyScreencastFramePayloadForTest,
   __applyTitlePayloadForTest,
   __applyClosedPayloadForTest,
   __resetControlModeSyncForTest,
   BROWSER_CLOSED_EVENT,
   BROWSER_NAVIGATED_EVENT,
   BROWSER_NAVIGATION_BLOCKED_EVENT,
+  BROWSER_SCREENCAST_FRAME_EVENT,
   BROWSER_TITLE_CHANGED_EVENT,
   ensureBrowserControlModeSync,
 } from '../controlModeSync';
@@ -68,7 +70,7 @@ describe('browser controlModeSync R2-10', () => {
     });
   });
 
-  it('经 eventHub 单入口订阅 control/navigation/title/closed 权威事件', () => {
+  it('经 eventHub 单入口订阅 control/navigation/title/closed/screencast 权威事件', () => {
     const dispose = ensureBrowserControlModeSync();
     expect(hubListenMock.mock.calls.map(([event]) => event)).toEqual([
       'browser:control-mode-changed',
@@ -76,8 +78,26 @@ describe('browser controlModeSync R2-10', () => {
       BROWSER_NAVIGATION_BLOCKED_EVENT,
       BROWSER_TITLE_CHANGED_EVENT,
       BROWSER_CLOSED_EVENT,
+      BROWSER_SCREENCAST_FRAME_EVENT,
     ]);
     dispose();
+  });
+
+  it('screencast-frame 事件更新最新远程画面帧', () => {
+    __applyScreencastFramePayloadForTest({
+      data: '/9j/4AAQSkZJRg==',
+      mimeType: 'image/jpeg',
+      width: 1280,
+      height: 720,
+      timestamp: 1700000123,
+    });
+    expect(useBrowserSessionStore.getState().screencastFrame).toEqual({
+      data: '/9j/4AAQSkZJRg==',
+      mimeType: 'image/jpeg',
+      width: 1280,
+      height: 720,
+      timestamp: 1700000123,
+    });
   });
 
   it('权威事件 user_takeover → 镜像 controlMode=user', () => {

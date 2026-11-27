@@ -85,6 +85,8 @@ describe('SandboxAppWindow owner isolation', () => {
     await waitFor(() => expect(mocks.latestSurfaceProps).not.toBeNull());
 
     expect(mocks.latestSurfaceProps?.ownerKey).toBe(LEGACY_SANDBOX_OWNER_KEY);
+    expect(mocks.latestSurfaceProps?.hideToolbar).toBe(true);
+    expect(mocks.latestSurfaceProps?.hideTitle).toBe(true);
     expect(onTitleChange).toHaveBeenLastCalledWith('Standalone');
 
     act(() => {
@@ -95,6 +97,8 @@ describe('SandboxAppWindow owner isolation', () => {
     });
 
     expect(mocks.latestSurfaceProps?.ownerKey).toBe(LEGACY_SANDBOX_OWNER_KEY);
+    expect(mocks.latestSurfaceProps?.hideToolbar).toBe(true);
+    expect(mocks.latestSurfaceProps?.hideTitle).toBe(true);
     expect(onTitleChange).toHaveBeenLastCalledWith('Standalone');
   });
 });

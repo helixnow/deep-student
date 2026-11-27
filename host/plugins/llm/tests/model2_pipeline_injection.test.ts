@@ -201,4 +201,86 @@ describe('llm_manager/model2_pipeline.rs', () => {
       { type: 'image_url', image_url: { url: 'c' } },
     ]);
   });
+
+  it('isolates multimodal browser_screenshot_image and retrieval_page_images from merge and injected_context', () => {
+    const screenshotHeader = '<untrusted_web_content source="https://untrusted.example" kind="browser_screenshot">\n'
+      + 'WARNING: untrusted image\n</untrusted_web_content>';
+    const retrievalHeader = '<retrieval_page_images>Original page images\n1. [1] Lecture</retrieval_page_images>';
+
+    const history: TransientChatMessageLike[] = [
+      { role: 'user', content: 'Inspect this page' },
+      {
+        role: 'user',
+        content: screenshotHeader,
+        metadata: { kind: 'browser_screenshot_image', hidden: true },
+      },
+      {
+        role: 'user',
+        content: retrievalHeader,
+        metadata: { kind: 'retrieval_page_images', hidden: true },
+      },
+    ];
+    expect(isTransientLlmOnlyMessage(history[1]!)).toBe(true);
+    expect(isTransientLlmOnlyMessage(history[2]!)).toBe(true);
+
+    const transients = transientUserContentsForMerge(history);
+    expect(transients.has(screenshotHeader)).toBe(true);
+    expect(transients.has(retrievalHeader)).toBe(true);
+
+    const screenshotMsg = {
+      role: 'user',
+      content: [
+        { type: 'text', text: screenshotHeader },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+      ],
+    };
+    const retrievalMsg = {
+      role: 'user',
+      content: [
+        { type: 'text', text: retrievalHeader },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,BBB' } },
+      ],
+    };
+
+    const messages: Array<Record<string, unknown>> = [
+      systemMessageFixture(),
+      { role: 'user', content: '真实用户提问' },
+      structuredClone(screenshotMsg),
+      { role: 'user', content: '补充说明' },
+      structuredClone(retrievalMsg),
+    ];
+
+    mergeConsecutiveUserMessagesRespectingTransients(messages, transients);
+    expect(messages).toHaveLength(5);
+    expect(messages[1]!.content).toBe('真实用户提问');
+    expect(messages[2]).toEqual(screenshotMsg);
+    expect(messages[3]!.content).toBe('补充说明');
+    expect(messages[4]).toEqual(retrievalMsg);
+
+    // Even when the tail is a multimodal browser screenshot, <injected_context> skips backwards to the real user message.
+    const injectMessages: Array<Record<string, unknown>> = [
+      systemMessageFixture(),
+      { role: 'user', content: '真实用户提问' },
+      { role: 'assistant', content: 'checking page' },
+      { role: 'tool', tool_call_id: 'tc_1', content: '{}' },
+      structuredClone(screenshotMsg),
+    ];
+    appendInjectionToCurrentUserMessage(injectMessages, '【个人图谱】\n可信上下文', transients);
+    expect(injectMessages[4]).toEqual(screenshotMsg);
+    expect(injectMessages[1]!.content as string).toContain('真实用户提问');
+    expect(injectMessages[1]!.content as string).toContain('<injected_context>');
+
+    // Defense-in-depth: even with an empty transientContents set, multimodal transient markers stay isolated.
+    const markerOnlyMessages: Array<Record<string, unknown>> = [
+      { role: 'user', content: 'Real question' },
+      structuredClone(screenshotMsg),
+    ];
+    mergeConsecutiveUserMessagesRespectingTransients(markerOnlyMessages, noTransients());
+    expect(markerOnlyMessages).toHaveLength(2);
+    expect(markerOnlyMessages[1]).toEqual(screenshotMsg);
+
+    appendInjectionToCurrentUserMessage(markerOnlyMessages, 'Trusted note', noTransients());
+    expect(markerOnlyMessages[1]).toEqual(screenshotMsg);
+    expect(markerOnlyMessages[0]!.content as string).toContain('<injected_context>');
+  });
 });

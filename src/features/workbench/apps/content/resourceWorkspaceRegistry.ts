@@ -1,5 +1,13 @@
 export type ResourceWorkspaceType = 'exam' | 'essay' | 'translation';
 
+export const WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT = 'workbench:hydrate-recent-resource';
+
+export interface WorkbenchHydrateRecentResourceDetail {
+  type: ResourceWorkspaceType;
+  resourceId?: string | null;
+  practiceMode?: 'review_first' | 'normal';
+}
+
 const activeResources = new Map<ResourceWorkspaceType, string | null>();
 const openHandlers = new Map<ResourceWorkspaceType, Set<(resourceId: string) => void>>();
 const pendingResources = new Map<ResourceWorkspaceType, string>();

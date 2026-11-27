@@ -23,6 +23,8 @@ import {
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { fileManager } from '../utils/fileManager';
@@ -115,6 +117,31 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   }, [data, t]);
   exportDataRef.current = exportData;
 
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !embedded && !isSmallScreen && hasDesktopHeaderHost;
+
+  useDesktopHeader(
+    'dashboard',
+    {
+      breadcrumbs: [{ id: 'dashboard-root', label: tCommon('navigation.dashboard', '总览') }],
+      meta: `${t('auto_refresh_label')} ${isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}`,
+      actions: (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => exportDataRef.current()}
+          disabled={!data}
+          className={TITLEBAR_CONTROL_CLASS}
+        >
+          <DownloadSimple size={14} />
+          <span>{t('export_stats_button')}</span>
+        </DsButton>
+      ),
+    },
+    [tCommon, t, isRefreshing, Boolean(data)],
+    useClassicDesktopHeader,
+  );
+
   const enhancedStats = data?.enhanced as DashboardStatistics | undefined;
   const onPlatform = (entry: { value: { platforms?: readonly string[] } }) =>
     !platform || !entry.value.platforms || entry.value.platforms.includes(platform);
@@ -142,8 +169,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
     return (
       <div className="sota-unified-content">
-        {/* 移动端：返回/导出统一走顶栏（useMobileHeader），页内不再渲染工具行 */}
-        {!isSmallScreen && (
+        {/* 独立桌面壳与移动端操作均已收口至全局统一顶栏；仅嵌入态或无壳宿主时保留局部操作行 */}
+        {!useClassicDesktopHeader && !isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
             <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">

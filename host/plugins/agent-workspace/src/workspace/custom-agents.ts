@@ -155,13 +155,15 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** tools 覆盖清洗：越界工具剔除并保留协作工具在列。 */
+/** tools 覆盖清洗：允许安全白名单 ∪ base.allowedTools 内的工具，越界工具剔除并保留协作工具在列。 */
 function sanitizeTools(
   tools: readonly string[],
+  baseAllowedTools: readonly string[],
   file: string,
   logger: WorkspaceLogger,
 ): string[] {
   const safe = safeToolSet();
+  for (const tool of baseAllowedTools) safe.add(tool);
   const result: string[] = [...COLLABORATION_TOOLS];
   for (const tool of tools) {
     if (!safe.has(tool)) {
@@ -173,31 +175,12 @@ function sanitizeTools(
   return result;
 }
 
-/** 解析单个定义文件为 profile；任何 fail-closed 校验失败返回 null（调用方跳过）。 */
-function profileFromFile(
+/** 解析单个定义文本为 profile；任何 fail-closed 校验失败返回 null（调用方跳过）。 */
+export function parseCustomAgentProfile(
+  content: string,
   file: string,
   logger: WorkspaceLogger = silentWorkspaceLogger,
 ): AgentProfile | null {
-  let size: number;
-  try {
-    size = fs.statSync(file).size;
-  } catch (error) {
-    logger.warn(`[CustomAgents] ${file}: failed to stat file, skipped: ${messageOf(error)}`);
-    return null;
-  }
-  if (size > MAX_FILE_BYTES) {
-    logger.warn(`[CustomAgents] ${file}: file exceeds ${MAX_FILE_BYTES / 1024} KiB limit, skipped`);
-    return null;
-  }
-
-  let content: string;
-  try {
-    content = fs.readFileSync(file, 'utf8');
-  } catch (error) {
-    logger.warn(`[CustomAgents] ${file}: failed to read file, skipped: ${messageOf(error)}`);
-    return null;
-  }
-
   const parsed = parseAgentFile(content);
   if (!parsed) {
     logger.warn(`[CustomAgents] ${file}: missing or unterminated frontmatter, skipped`);
@@ -235,9 +218,37 @@ function profileFromFile(
   if (body.length > 0) base.instructions = body;
   if (front.model !== null) base.model = front.model;
   if (front.reasoningEffort !== null) base.reasoningEffort = front.reasoningEffort;
-  if (front.tools !== null) base.allowedTools = sanitizeTools(front.tools, file, logger);
+  if (front.tools !== null) base.allowedTools = sanitizeTools(front.tools, base.allowedTools, file, logger);
   if (front.skills !== null) base.skills = [...front.skills];
   return base;
+}
+
+/** 解析单个定义文件为 profile；任何 fail-closed 校验失败返回 null（调用方跳过）。 */
+function profileFromFile(
+  file: string,
+  logger: WorkspaceLogger = silentWorkspaceLogger,
+): AgentProfile | null {
+  let size: number;
+  try {
+    size = fs.statSync(file).size;
+  } catch (error) {
+    logger.warn(`[CustomAgents] ${file}: failed to stat file, skipped: ${messageOf(error)}`);
+    return null;
+  }
+  if (size > MAX_FILE_BYTES) {
+    logger.warn(`[CustomAgents] ${file}: file exceeds ${MAX_FILE_BYTES / 1024} KiB limit, skipped`);
+    return null;
+  }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    logger.warn(`[CustomAgents] ${file}: failed to read file, skipped: ${messageOf(error)}`);
+    return null;
+  }
+
+  return parseCustomAgentProfile(content, file, logger);
 }
 
 function isFile(file: string): boolean {

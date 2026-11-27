@@ -554,6 +554,19 @@
     "sheetTruncatedHint": "Sheet is too large and will be truncated in preview",
     "dimensions": "{{rows}} rows × {{cols}} columns"
   },
+  "xmindPreview": {
+    "untitledTopic": "Untitled topic",
+    "sheetFallback": "Sheet",
+    "sheetTabs": "Sheet tabs",
+    "summaryStats": "{{sheets}} sheets · {{nodes}} topics",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "expandNode": "Expand branch",
+    "collapseNode": "Collapse branch",
+    "completed": "Done",
+    "invalidArchive": "Cannot preview XMind file: archive is invalid or corrupted",
+    "emptyWorkbook": "This XMind file contains no previewable sheets"
+  },
   "previewToolbar": {
     "zoomOut": "Zoom Out",
     "zoomIn": "Zoom In",
@@ -569,6 +582,7 @@
     "zoomTo": "Zoom to {{value}}",
     "resetDefault": "Reset to Default Zoom",
     "slideNavGroup": "Slide navigation",
+    "toggleThumbnails": "Toggle slide thumbnails",
     "fontGroup": "Font size"
   },
   "docPreview": {

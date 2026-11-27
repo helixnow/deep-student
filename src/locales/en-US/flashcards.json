@@ -442,6 +442,9 @@
     "scheduler": {
       "title": "Scheduling",
       "subtitle": "Daily limits, retention, learning steps and day boundary (default deck)",
+      "basicGroup": "Daily pacing",
+      "expandAdvanced": "Show advanced scheduling & optimizer",
+      "collapseAdvanced": "Hide advanced scheduling & optimizer",
       "loading": "Loading scheduler configuration…",
       "unavailable": "Scheduler configuration is unavailable",
       "newPerDay": "New cards per day",
@@ -684,11 +687,18 @@
       "stabilitySlow": "Long-term memory stability",
       "difficulty": "Item difficulty (1–10)",
       "hintV7": "Counts only each card's first formal review per study day (anything except Again counts as recalled). Mature cards had a scheduled interval ≥ 21 days. Trial uses default FSRS-7 parameters.",
-      "hint": "True retention counts only each card's first review per day (anything except Again counts as recalled). Mature cards have memory stability ≥ 21 days. If retention stays below target, optimize personalized parameters in Scheduling below.",
+      "hint": "True retention counts only each card's first review per day (anything except Again counts as recalled). Mature cards have memory stability ≥ 21 days. If retention stays below target, optimize personalized parameters in the Settings tab.",
+      "openScheduler": "Go to scheduling settings",
       "learningOnlyToday": "{{count}} new/learning reviews completed today. True retention only counts graduated Review cards.",
       "learningOnlyToday_one": "{{count}} new/learning review completed today. True retention only counts graduated Review cards.",
       "learningOnlyWindow": "{{count}} new/learning reviews recorded. True retention only counts graduated Review cards.",
       "learningOnlyWindow_one": "{{count}} new/learning review recorded. True retention only counts graduated Review cards."
+    },
+    "advanced": {
+      "title": "Advanced memory analytics",
+      "subtitle": "True retention, library stability & difficulty distributions, and card states",
+      "expand": "Expand",
+      "collapse": "Collapse"
     }
   },
   "occlusion": {

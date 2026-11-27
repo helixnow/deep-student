@@ -56,6 +56,9 @@ const TRIGGER_MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<Pr
   'opencode',
   'xai',
   'ollama',
+  'mimo',
+  'baai',
+  'pika',
   'flux',
   'ideogram',
   'midjourney',
@@ -758,7 +761,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                     type="button"
                     data-testid="thinking-runtime-menu-trigger"
                     className={cn(
-                      'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-muted/65 px-2.5 text-xs font-medium text-[color:var(--text-primary)] transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                      'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[var(--radius-shell-control)] bg-muted/65 px-2.5 text-xs font-medium text-[color:var(--text-primary)] transition-colors hover:bg-muted outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
                       coarseSolidTouchHeightClass
                     )}
                     title={thinkingRuntimeTitle}

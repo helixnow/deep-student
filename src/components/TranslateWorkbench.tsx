@@ -2006,9 +2006,59 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
   // 恢复默认 Prompt：跟随当前领域的默认/模板文案（命中已知默认集合，
   // 因此恢复后 isPromptCustomized=false，不会发送 prompt_override 覆盖领域预设）
+  const promptPersistTimerRef = useRef<number | null>(null);
+  const pendingPromptPersistRef = useRef<string | null>(null);
+
+  const persistPromptSetting = useCallback(
+    (promptValue: string) => {
+      const customized = isPromptCustomizedBy(promptValue, knownDefaultPrompts);
+      void TauriAPI.saveSetting('translation.prompt', customized ? promptValue : '').catch((err: unknown) => {
+        console.warn('[Translation] Failed to persist translation prompt:', err);
+      });
+    },
+    [knownDefaultPrompts],
+  );
+
+  useEffect(() => () => {
+    if (promptPersistTimerRef.current !== null) {
+      window.clearTimeout(promptPersistTimerRef.current);
+      promptPersistTimerRef.current = null;
+      if (pendingPromptPersistRef.current !== null) {
+        persistPromptSetting(pendingPromptPersistRef.current);
+        pendingPromptPersistRef.current = null;
+      }
+    }
+  }, [persistPromptSetting]);
+
+  const handleSetCustomPrompt = useCallback(
+    (nextPrompt: string) => {
+      setCustomPrompt(nextPrompt);
+      pendingPromptPersistRef.current = nextPrompt;
+      if (promptPersistTimerRef.current !== null) {
+        window.clearTimeout(promptPersistTimerRef.current);
+      }
+      promptPersistTimerRef.current = window.setTimeout(() => {
+        promptPersistTimerRef.current = null;
+        if (pendingPromptPersistRef.current !== null) {
+          persistPromptSetting(pendingPromptPersistRef.current);
+          pendingPromptPersistRef.current = null;
+        }
+      }, 350);
+      scheduleSessionPersist();
+    },
+    [persistPromptSetting, scheduleSessionPersist],
+  );
+
   const handleRestoreDefaultPrompt = useCallback(() => {
     setCustomPrompt(defaultPromptForDomain(domain));
-  }, [defaultPromptForDomain, domain]);
+    if (promptPersistTimerRef.current !== null) {
+      window.clearTimeout(promptPersistTimerRef.current);
+      promptPersistTimerRef.current = null;
+    }
+    pendingPromptPersistRef.current = null;
+    persistPromptSetting(defaultPromptForDomain(domain));
+    scheduleSessionPersist();
+  }, [defaultPromptForDomain, domain, persistPromptSetting, scheduleSessionPersist]);
 
   // 复制翻译结果
   const handleCopyResult = useCallback(async () => {
@@ -2828,7 +2878,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               translatedText={translatedText || syncedInitialTranslatedRef.current}
               isTranslating={isTranslating}
               customPrompt={customPrompt}
-              setCustomPrompt={setCustomPrompt}
+              setCustomPrompt={handleSetCustomPrompt}
               showPromptEditor={showPromptEditor}
               setShowPromptEditor={setShowPromptEditor}
               formality={formality}

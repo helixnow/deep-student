@@ -20,6 +20,7 @@ body {
   --shell-toolbar-radius: var(--radius-shell-toolbar);
   --shell-nav-row-radius: var(--radius-shell-row);
   --shell-control-size: var(--size-shell-control);
+  --shell-titlebar-control-height: 28px;
   --shell-window-control-size: var(--size-shell-window-control);
   --shell-window-control-gap: var(--space-shell-control-gap);
   --shell-window-control-radius: var(--radius-shell-window-control);
@@ -124,6 +125,12 @@ body {
   box-shadow: none;
   transition: padding-left var(--resize-dur) var(--resize-ease),
               background-color 400ms var(--ease-shell);
+}
+
+/* 非对话视图（携带独立 toolbarSlot，如 todo-toolbar）下，空的 chat-search 槽位不抢占 flex-1 */
+:where([data-shell-slot]:not([data-shell-slot="chat-search"])) ~ [data-shell-slot="chat-search"]:empty {
+  flex: 0 0 auto;
+  width: 0;
 }
 
 .desktop-shell-toolbar-group {
@@ -325,13 +332,59 @@ body {
 
 .desktop-shell-header-title {
   min-width: 0;
-  width: min(360px, 34vw);
   max-width: 100%;
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   line-height: 1.25;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-breadcrumb {
+  height: var(--shell-titlebar-control-height, 28px);
+}
+
+.desktop-shell-breadcrumb-button {
+  height: 26px;
+  min-height: 26px;
+  padding-inline: 6px;
+  padding-block: 0;
+  border-radius: 6px;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.desktop-shell-action-button {
+  height: var(--shell-titlebar-control-height, 28px);
+  min-height: var(--shell-titlebar-control-height, 28px);
+  padding-inline: 10px;
+  padding-block: 0;
+  border-radius: 7px;
+  font-size: var(--font-size-ui);
+}
+
+.desktop-shell-action-icon {
+  height: var(--shell-titlebar-control-height, 28px);
+  min-height: var(--shell-titlebar-control-height, 28px);
+  width: var(--shell-titlebar-control-height, 28px);
+  min-width: var(--shell-titlebar-control-height, 28px);
+  padding: 0;
+  border-radius: 7px;
+}
+
+.desktop-shell-header-search-input {
+  height: var(--shell-titlebar-control-height, 28px);
+  min-height: var(--shell-titlebar-control-height, 28px);
+}
+
+.desktop-shell-search-clear {
+  height: 20px;
+  min-height: 20px;
+  width: 20px;
+  min-width: 20px;
+  padding: 0;
+  border-radius: 5px;
 }
 
 .desktop-shell-header-title-input {

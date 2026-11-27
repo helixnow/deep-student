@@ -36,15 +36,26 @@
   min-width: 224px;
   padding: 5px;
   border-radius: var(--wb-menu-radius, 14px);
-  border: 1px solid var(--wb-glass-border);
-  background-color: var(--wb-glass-bg-strong);
-  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  border: 1px solid transparent;
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
+  background-image: var(--wb-glass-sheen);
+  backdrop-filter: var(--wb-glass-liquid-blur-strong, var(--wb-glass-blur-strong));
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover, var(--wb-dock-shadow));
   transform-origin: top left;
   animation: wb-desk-menu-in var(--wb-anim-open-duration, 160ms)
     var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
   /* 不设 overflow:hidden——子菜单以嵌套面板飞出，不能被裁剪 */
+}
+
+:root[data-wb-material='reduced'] .wb-desk-menu,
+:root[data-wb-material='minimal'] .wb-desk-menu {
+  border-color: var(--wb-glass-border);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .wb-desk-menu {
+    border-color: var(--wb-glass-border);
+  }
 }
 
 /* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由组件编排挂） */
@@ -54,14 +65,34 @@
     var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
 }
 
-/* 玻璃斜向光泽（折射感），叠在半透明底之上 */
+/* 单层 0.5px 菲涅尔折射细边（与 Dock / .wb-glass 同源） */
 .wb-desk-menu::before {
   content: '';
   position: absolute;
   inset: 0;
+  padding: 0.75px;
   border-radius: inherit;
-  background: var(--wb-glass-sheen);
+  background: var(--wb-glass-liquid-rim, var(--wb-dock-liquid-rim));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   pointer-events: none;
+}
+
+@media (resolution >= 2dppx) {
+  .wb-desk-menu::before {
+    padding: 0.5px;
+  }
+}
+
+:root[data-wb-material='reduced'] .wb-desk-menu::before,
+:root[data-wb-material='minimal'] .wb-desk-menu::before {
+  display: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .wb-desk-menu::before {
+    display: none;
+  }
 }
 
 @keyframes wb-desk-menu-in {

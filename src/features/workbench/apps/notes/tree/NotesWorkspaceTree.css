@@ -1,15 +1,40 @@
 /* Notes Workspace Tree — visual tokens aligned with NotesWorkspaceApp.css (.notes-tree-*) */
 
+/* OverlayScrollbars 会清零 viewport 上自定义类的 padding，仅搬运宿主（.nwt-scroll）的 padding；
+   右侧留 12px 避让滚动条车道，确保滚动时条体也不遮挡行末「更多」/拖拽按钮。 */
 .nwt-scroll {
   flex: 1;
   min-height: 0;
   min-width: 0;
+  padding: 2px 12px 12px 6px;
 }
 
 .nwt-tree {
   position: relative;
-  padding: 1px 6px 12px;
   outline: none;
+}
+
+.nwt-root-drop-zone {
+  margin-top: 6px;
+  min-height: 36px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed hsl(var(--border));
+  border-radius: var(--notes-radius-row, 6px);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  transition:
+    background-color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.nwt-root-drop-zone[data-drop-inside='true'] {
+  border-color: hsl(var(--primary) / 65%);
+  background: hsl(var(--primary) / 12%);
+  color: hsl(var(--primary));
 }
 
 .nwt-root {
@@ -51,6 +76,7 @@
   width: 100%;
   height: 30px;
   min-height: 30px;
+  padding-right: 4px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -443,6 +469,7 @@
   }
 
   .nwt-root,
+  .nwt-root-drop-zone,
   .nwt-row,
   .nwt-row[data-drop-inside='true'],
   .nwt-indent-guide,

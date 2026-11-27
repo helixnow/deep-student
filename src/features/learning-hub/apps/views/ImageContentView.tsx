@@ -136,6 +136,7 @@ const computeFitZoom = (
 const ImageContentView: React.FC<ContentViewProps> = ({
   node,
   isActive = true,
+  hostWindowId,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -186,9 +187,26 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     return () => clearInterval(id);
   }, [loadingStage]);
 
-  // 从 node 的 metadata 获取图片信息
+  // 从 node 的 metadata 获取图片信息（若 metadata 缺失或为 octet-stream，按扩展名推断准确 MIME，确保 SVG 正常渲染）
   const metadata = node.metadata as Record<string, unknown> | undefined;
-  const mimeType = (metadata?.mimeType as string) || 'image/png';
+  const rawMimeType = typeof metadata?.mimeType === 'string' ? metadata.mimeType.trim().toLowerCase() : '';
+  const mimeType = (() => {
+    if (rawMimeType.startsWith('image/')) return rawMimeType;
+    const ext = node.name.includes('.') ? (node.name.split('.').pop() || '').toLowerCase() : '';
+    switch (ext) {
+      case 'svg': return 'image/svg+xml';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'webp': return 'image/webp';
+      case 'gif': return 'image/gif';
+      case 'bmp': return 'image/bmp';
+      case 'avif': return 'image/avif';
+      case 'ico': return 'image/x-icon';
+      case 'heic': return 'image/heic';
+      case 'heif': return 'image/heif';
+      default: return 'image/png';
+    }
+  })();
   const isLikelyUnsupportedFormat = /heic|heif/i.test(mimeType) || /\.(heic|heif)$/i.test(node.name);
   // 可能带透明通道的格式：加棋盘格衬底
   const canBeTransparent = /png|webp|gif|svg|avif/i.test(mimeType);
@@ -1122,7 +1140,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               )}
             </div>
           )}
-          <span className="hidden md:inline truncate max-w-[180px] text-muted-foreground/70">{node.name}</span>
+          {!hostWindowId && (
+            <span className="hidden md:inline truncate max-w-[180px] text-muted-foreground/70">{node.name}</span>
+          )}
         </div>
       </div>
 

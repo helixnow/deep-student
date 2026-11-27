@@ -21,7 +21,9 @@
   transition: none;
 }
 
-/* 编辑态防挤压（单一数据源）：解除 ReactFlow 固定宽高与 z-index 锁死，长句自然横向撑开至 600px */
+/* 编辑态防挤压（单一数据源）：解除 ReactFlow 固定宽高与 z-index 锁死；
+   实际编辑宽度由内层镜像文本驱动并锚定编辑前宽度（--mm-edit-min-width），
+   在默认 nodeMaxWidth (300px) 处自然换行，杜绝短节点暴涨或长多行节点骤缩 */
 .mindmap-container .react-flow__node:has([data-node-editing='true']),
 .mindmap-container .react-flow__node:has(.editing) {
   /* stylelint-disable declaration-no-important */
@@ -29,14 +31,14 @@
   height: auto !important;
   z-index: 40 !important;
   /* stylelint-enable declaration-no-important */
-  min-width: 140px;
+  min-width: 60px;
   max-width: 600px;
 }
 
-.mindmap-container [data-node-editing='true'] {
-  width: auto;
-  min-width: 80px;
-  max-width: 600px;
+.mindmap-container .react-flow__node > [data-node-editing='true'] {
+  width: max-content;
+  min-width: var(--mm-edit-min-width, 60px);
+  max-width: max(300px, var(--mm-edit-min-width, 300px));
   height: auto;
   white-space: normal;
 }
@@ -156,6 +158,13 @@
   border-radius: 2px;
   padding: 0 1px;
   font-style: normal;
+}
+
+/* LaTeX 语法错误态静态样式（避免每个公式节点挂载后跑 querySelectorAll 写内联样式） */
+.mindmap-container .katex-error {
+  color: var(--mm-warning);
+  border-bottom: 1px dashed currentcolor;
+  cursor: help;
 }
 
 /* --- 折叠按钮与节点悬浮操作胶囊 --- */

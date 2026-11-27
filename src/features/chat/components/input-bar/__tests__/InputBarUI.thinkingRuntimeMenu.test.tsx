@@ -169,8 +169,8 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
     const selector = await screen.findByTestId('t3-model-selector');
     expect(selector).toBeInTheDocument();
     expect(screen.getByTestId('t3-rail-favorites')).toBeInTheDocument();
-    expect(screen.getByTestId('t3-rail-group-brand:anthropic')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('t3-rail-group-brand:openai')).toBeInTheDocument();
+    expect(screen.getByTestId('t3-rail-group-provider:anthropic')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('t3-rail-group-provider:openai')).toBeInTheDocument();
 
     // Shortcut badges ⌘1, ⌘2 on visible Anthropic rows
     expect(screen.getByTestId('t3-model-shortcut-1')).toHaveTextContent(/1$/);
@@ -417,7 +417,7 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
       expect(initialWidth).toBe('444px');
 
       // Switching between Anthropic, DeepSeek (long label), and empty Favorites keeps exact width & height
-      await user.click(screen.getByTestId('t3-rail-group-brand:deepseek'));
+      await user.click(screen.getByTestId('t3-rail-group-provider:deepseek'));
       expect(menuShell.style.width).toBe(initialWidth);
       expect(selector.style.height).toBe(initialHeight);
 
@@ -439,5 +439,85 @@ describe('InputBarUI T3 Code unified model / reasoning / permission selector', (
         value: prevInnerWidth,
       });
     }
+  });
+
+  it('groups models strictly by actual configured vendor, shows monogram for custom OpenAI-compatible relays, and keeps favorite toggle compact without w-full overflow', async () => {
+    const user = userEvent.setup();
+
+    renderInputBar({
+      enableThinking: false,
+      thinkingStateLabel: '推理: 关闭',
+      thinkingDepthOptions: [],
+      onToggleThinking: vi.fn(),
+      runtimeModelOptions: [
+        {
+          id: 'ds-official-flash',
+          label: 'deepseek-flash',
+          providerId: 'builtin-deepseek',
+          providerLabel: 'DeepSeek 官方',
+          providerType: 'deepseek',
+          iconId: 'deepseek-flash',
+        },
+        {
+          id: 'sf-ds-flash',
+          label: 'deepseek-flash',
+          providerId: 'builtin-siliconflow',
+          providerLabel: '硅基流动',
+          providerType: 'siliconflow',
+          iconId: 'deepseek-flash',
+        },
+        {
+          id: 'relay-ds-pro',
+          label: 'deepseek-v4-pro',
+          providerId: 'vendor-custom-relay',
+          providerLabel: '自建中转',
+          providerType: 'openai',
+          iconId: 'deepseek-v4-pro',
+        },
+      ],
+      runtimeModelLabel: 'deepseek-flash',
+      runtimeModelProviderLabel: 'DeepSeek 官方',
+      runtimeCurrentModelId: 'ds-official-flash',
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+    await screen.findByTestId('t3-model-selector');
+
+    // 三个实际供应商各自独立，不因模型都叫 deepseek-* 而混进同一个分组
+    const officialRail = screen.getByTestId('t3-rail-group-provider:builtin-deepseek');
+    const sfRail = screen.getByTestId('t3-rail-group-provider:builtin-siliconflow');
+    const relayRail = screen.getByTestId('t3-rail-group-provider:vendor-custom-relay');
+    expect(officialRail).toHaveAttribute('aria-pressed', 'true');
+    expect(sfRail).toBeInTheDocument();
+    expect(relayRail).toHaveTextContent('自');
+    expect(relayRail.querySelector('svg')).toBeNull();
+
+    // 当前 DeepSeek 官方分组只显示官方模型，顶部标题标明当前供应商
+    expect(screen.getByTestId('t3-active-group-heading')).toHaveTextContent('DeepSeek 官方');
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+
+    // 收藏按钮不使用 variant="nav" 的 w-full，固定位于快捷键右侧且撑满右侧完整矩形热区
+    const favoriteBtn = screen.getByTestId('t3-favorite-toggle-ds-official-flash');
+    const shortcutBadge = screen.getByTestId('t3-model-shortcut-1');
+    expect(favoriteBtn.className).not.toContain('w-full');
+    expect(favoriteBtn.className).toContain('self-stretch');
+    expect(favoriteBtn.className).toContain('!w-9');
+    expect(favoriteBtn.className).toContain('!h-auto');
+    expect(
+      shortcutBadge.compareDocumentPosition(favoriteBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // 切到硅基流动分组，只看到硅基流动的模型
+    await user.click(sfRail);
+    expect(screen.getByTestId('t3-active-group-heading')).toHaveTextContent('硅基流动');
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByTestId('t3-favorite-toggle-sf-ds-flash')).toBeInTheDocument();
+
+    // 跨供应商搜索同名模型时，每行标注来源供应商且清除按钮不带 w-full
+    const searchInput = screen.getByPlaceholderText('搜索模型...');
+    await user.type(searchInput, 'deepseek-flash');
+    expect(screen.getByTestId('t3-model-search-clear').className).not.toContain('w-full');
+    expect(screen.getByTestId('t3-model-vendor-tag-ds-official-flash')).toHaveTextContent('DeepSeek 官方');
+    expect(screen.getByTestId('t3-model-vendor-tag-sf-ds-flash')).toHaveTextContent('硅基流动');
   });
 });

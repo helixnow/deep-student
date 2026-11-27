@@ -89,7 +89,9 @@ it.each([false, true])('retains original CodeBlock dispatch and run timing (prov
         const view = renderBlock(<CodeBlock className={`language-${language}`} isStreaming={streaming} rendererCapabilities={capabilities}>{sourceFor(language)}</CodeBlock>);
         await act(async () => { await Promise.resolve(); });
         const before = summary(view.container);
-        const run = Array.from(view.container.querySelectorAll('button')).find(button => button.textContent?.startsWith('▶'));
+        const run = Array.from(view.container.querySelectorAll('button')).find(
+          button => button.textContent?.includes('运行') && !button.textContent?.includes('运行中'),
+        );
         const canRun = !!run && !run.disabled;
         if (canRun) await clickRunAndSettle(view.container, run);
         cases.push({ mode, language, streaming, before, ran: canRun, after: summary(view.container) });
@@ -106,7 +108,9 @@ it.each([false, true])('retains original CodeBlock dispatch and run timing (prov
       (window as any).__DS_DEMO_SHELL__ = demo;
       const view = renderBlock(<CodeBlock className="language-mermaid" rendererCapabilities={capsOn}>{sourceFor('mermaid')}</CodeBlock>);
       const before = summary(view.container);
-      const run = Array.from(view.container.querySelectorAll('button')).find(button => button.textContent?.startsWith('▶'))!;
+      const run = Array.from(view.container.querySelectorAll('button')).find(
+        button => button.textContent?.includes('运行') && !button.textContent?.includes('运行中'),
+      )!;
       await clickRunAndSettle(view.container, run);
       cases.push({ touch, dark, demo, before, after: summary(view.container) });
       view.unmount();

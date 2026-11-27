@@ -489,4 +489,28 @@ describe('academic paper reading upgrades (reflow, lenses, pin-to-annotation, sh
     const popover = await screen.findByTestId('translate-popover');
     expect(popover.textContent).toContain('Self-attention mechanism');
   });
+
+  it('merges highlight headerSlot and draggable excerpt chip into a single SelectionToolbar popover', () => {
+    selectionState = { ...selectionState, isVisible: false };
+    const view = renderActions({
+      interopResourceId: 'res_pdf_1',
+      headerSlot: <span data-testid="mock-highlight-strip">highlight-colors</span>,
+    });
+    selectTextInsidePage();
+    selectionState = { ...selectionState, isVisible: true };
+    view.rerender(<view.Host />);
+
+    const toolbars = view.container.querySelectorAll('[data-selection-toolbar]');
+    expect(toolbars).toHaveLength(1);
+    const singleToolbar = toolbars[0] as HTMLElement;
+    expect(singleToolbar.querySelector('[data-testid="mock-highlight-strip"]')).not.toBeNull();
+    const dragChip = singleToolbar.querySelector('[data-testid="pdf-excerpt-drag-chip"]') as HTMLElement | null;
+    expect(dragChip).not.toBeNull();
+    expect(dragChip?.getAttribute('draggable')).toBe('true');
+
+    // Drag handle mousedown must NOT be preventDefault()'d so HTML5 drag-to-mindmap still initiates
+    const mouseDownEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    dragChip!.dispatchEvent(mouseDownEvent);
+    expect(mouseDownEvent.defaultPrevented).toBe(false);
+  });
 });

@@ -1,5 +1,6 @@
 import JSZip, { type JSZipObject } from 'jszip';
 import { decodeBase64ToArrayBuffer, normalizeBase64 } from './previewUtils';
+import { inspectOfficeZipContainer } from './officeZipContainer';
 
 const MAX_ARCHIVE_ENTRIES = 10_000;
 const MAX_EXPANDED_BYTES = 128 * 1024 * 1024;
@@ -234,8 +235,15 @@ function tocFromNcx(
 
 export async function loadEpubBook(base64Content: string): Promise<EpubBookModel> {
   const buffer = decodeBase64ToArrayBuffer(normalizeBase64(base64Content));
-  const zip = await JSZip.loadAsync(buffer, { createFolders: false });
-  validateArchive(zip, buffer.byteLength);
+  const { issue, normalizedBuffer } = inspectOfficeZipContainer(buffer);
+  if (issue === 'truncated') {
+    throw new Error('EPUB archive appears truncated or corrupted');
+  }
+  if (issue) {
+    throw new Error('Invalid EPUB archive container');
+  }
+  const zip = await JSZip.loadAsync(normalizedBuffer, { createFolders: false });
+  validateArchive(zip, normalizedBuffer.byteLength);
 
   const container = parseXml(await readZipText(zip, 'META-INF/container.xml'), 'container');
   const opfPath = container.getElementsByTagNameNS('*', 'rootfile')[0]?.getAttribute('full-path');

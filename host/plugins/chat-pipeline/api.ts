@@ -19,6 +19,10 @@ export { ResponseTimeline, ArtifactReferenceDeduplicator, rejectTruncatedToolBat
 export {
   ExtractiveTurnCompactor, buildConversationTurnUnits, type ConversationTurnUnit, type ExtractiveCompactionPlan,
 } from './src/extractive-compaction.ts';
+export {
+  foldHistoricalBrowserSnapshots, DEFAULT_KEEP_RECENT_BROWSER_SNAPSHOTS,
+  type FoldBrowserSnapshotsOptions,
+} from './src/browser-snapshot-folding.ts';
 import type { PipelinePersistenceStore } from './src/persistence-port.ts';
 import type { PipelineFinalStore, PipelinePostCommitEffects } from './src/persistence-port.ts';
 import type { PipelineFinalPersistence, SaveResultsOptions } from './src/final-persistence.ts';

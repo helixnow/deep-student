@@ -104,6 +104,7 @@ describe('dstu.browser mobile plugin', () => {
     const { host } = await setupMobileBrowser();
     const sampleArgs: Record<string, Record<string, unknown>> = {
       browser_open_session: { url: 'https://example.com' },
+      browser_promote_to_interactive: { sessionId: 's1' },
       browser_navigate: { sessionId: 's1', url: 'https://example.com' },
       browser_back: { sessionId: 's1' },
       browser_forward: { sessionId: 's1' },
@@ -128,6 +129,14 @@ describe('dstu.browser mobile plugin', () => {
       browser_list_downloads: { sessionId: 's1' },
       browser_list_task_downloads: { chatSessionId: 'c1' },
       browser_scroll: { sessionId: 's1' },
+      browser_screenshot: { sessionId: 's1' },
+      browser_list_tabs: { sessionId: 's1' },
+      browser_new_tab: { sessionId: 's1', url: 'https://example.com' },
+      browser_switch_tab: { sessionId: 's1', tabId: 't1' },
+      browser_close_tab: { sessionId: 's1', tabId: 't1' },
+      browser_extract_content: { sessionId: 's1' },
+      browser_remote_input: { sessionId: 's1', event: { kind: 'key', action: 'press', key: 'Enter' } },
+      browser_get_host_facts: { sessionId: 's1' },
     };
     for (const cmd of mobileCompat.meta.commands!.filter(name => name.startsWith('browser_'))) {
       await expect(host.invoke(cmd, sampleArgs[cmd] ?? {})).rejects.toMatch(/^UNSUPPORTED_ON_PLATFORM:/);

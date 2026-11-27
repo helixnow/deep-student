@@ -80,8 +80,45 @@ export interface ProviderIconProps {
   onClick?: () => void;
   showTooltip?: boolean;
   variant?: 'mono' | 'color';
-  renderMode?: 'default' | 'glyph';
+  /**
+   * - `default`: 彩色模式下为需要底板的品牌（如 OpenAI/Kimi/智谱）自动包裹品牌色圆底
+   * - `glyph`: 无底板裸字形，面向当前亮/暗主题表面自适应对比度（不硬编码纯白/纯黑主体）
+   * - `plate-glyph`: 外部已使用 `getProviderBadgeChromeStyle` 铺设品牌底板时的内嵌字形
+   */
+  renderMode?: 'default' | 'glyph' | 'plate-glyph';
 }
+
+const KIMI_BRAND_DOT_HEX = '#1783FF';
+
+/**
+ * Kimi 无底板自适应双色字形：
+ * `@lobehub/icons` 的 `Kimi/Color` 为黑底硬编码了 `fill="#fff"`，在亮色背景上会隐形；
+ * 无底板场景保留品牌蓝点，字母 K 跟随 `currentColor` 适配亮暗色主题。
+ */
+const KimiAdaptiveGlyph: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size, style }) => (
+  <svg
+    aria-hidden="true"
+    height={size}
+    width={size}
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ flex: 'none', lineHeight: 1, ...style }}
+  >
+    <path
+      d="M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z"
+      fill={KIMI_BRAND_DOT_HEX}
+    />
+    <path
+      d="M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const GLYPH_COLOR_LOBE_COMPONENTS: Partial<Record<ProviderBrand, React.ComponentType<any>>> = {
+  moonshot: KimiAdaptiveGlyph,
+  zhipu: ZhipuColor,
+};
 
 export const isGenericProviderIconPath = (iconPath?: string | null): boolean =>
   Boolean(iconPath?.includes('/icons/providers/generic.svg'));
@@ -314,7 +351,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
 
   const iconElement = useMemo(() => {
     if (useColorIcon) {
-      if (renderMode === 'glyph') {
+      if (renderMode === 'plate-glyph') {
         const ColorComponent = COLOR_LOBE_COMPONENTS[providerInfo.brand];
         if (ColorComponent) {
           return <ColorComponent size={size} aria-hidden="true" />;
@@ -337,8 +374,24 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
                 color: avatarLikeStyle.color,
                 ...glyphStyle,
               }}
-/>
+            />
           );
+        }
+      }
+
+      if (renderMode === 'glyph') {
+        const ColorComponent = COLOR_LOBE_COMPONENTS[providerInfo.brand];
+        if (ColorComponent) {
+          return <ColorComponent size={size} aria-hidden="true" />;
+        }
+
+        const AdaptiveGlyphComponent = GLYPH_COLOR_LOBE_COMPONENTS[providerInfo.brand];
+        if (AdaptiveGlyphComponent) {
+          return <AdaptiveGlyphComponent size={size} aria-hidden="true" />;
+        }
+
+        if (AVATAR_LIKE_STYLES[providerInfo.brand]) {
+          return <LobeSvgIcon brand={providerInfo.brand} size={size} />;
         }
       }
 

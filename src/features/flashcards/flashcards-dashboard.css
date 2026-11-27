@@ -136,12 +136,15 @@
 }
 
 .wb-fcx-scroll {
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-bottom: 2px;
+  gap: 16px;
+  padding-bottom: 16px;
 }
 
 /* ==== 今日屏：驾驶舱 =================================================== */
@@ -150,8 +153,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px 22px;
-  padding: 16px;
+  gap: 16px 24px;
+  padding: 12px 4px 16px;
+  border-top: none;
 }
 
 .wb-fcx-hero-ring {
@@ -295,7 +299,10 @@ span.wb-fcx-deck-toggle {
   display: flex;
   flex: 1;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   min-width: 0;
+  text-align: left;
 }
 
 .wb-fcx-deck-name {
@@ -455,7 +462,7 @@ span.wb-fcx-deck-toggle {
 .wb-fcx-metric {
   min-width: 0;
   padding: 10px 12px;
-  background: var(--wb-window-bg, hsl(var(--card)));
+  background: var(--fc-surface, var(--shell-workspace-surface, hsl(var(--background))));
 }
 
 .wb-fcx-metric dt {
@@ -859,7 +866,7 @@ span.wb-fcx-deck-toggle {
 
 .wb-fcx-memory-mark {
   fill: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
-  stroke: var(--wb-window-bg, hsl(var(--card)));
+  stroke: var(--fc-surface, var(--shell-workspace-surface, hsl(var(--background))));
   stroke-width: 2;
   transition: opacity var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
 }
@@ -869,7 +876,7 @@ span.wb-fcx-deck-toggle {
 }
 
 .wb-fcx-memory-mark[data-kind='now'] {
-  fill: var(--wb-window-bg, hsl(var(--card)));
+  fill: var(--fc-surface, var(--shell-workspace-surface, hsl(var(--background))));
   stroke: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
   stroke-width: 1.75;
 }

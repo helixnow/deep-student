@@ -395,6 +395,21 @@ describe('AiDashboardAppWindow insights and navigation', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('wb-ai-dashboard-panel-skeleton')).not.toBeInTheDocument();
       });
+
+      const layoutGrid = document.querySelector('[data-layout-mode]');
+      expect(layoutGrid).toHaveAttribute('data-layout-mode', 'grid');
+      expect(layoutGrid).toHaveAttribute('data-layout-columns', '3');
+      expect(
+        Array.from(document.querySelectorAll('[data-block-type="stat-card"]')).map((el) =>
+          el.getAttribute('data-block-id'),
+        ),
+      ).toEqual([
+        'dashboard-due-flashcards',
+        'dashboard-due-mistakes',
+        'dashboard-due-notes',
+        'dashboard-anki-tasks',
+        'dashboard-todos',
+      ]);
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();

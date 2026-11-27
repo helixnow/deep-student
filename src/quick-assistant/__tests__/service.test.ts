@@ -4,6 +4,7 @@ import {
   isCaptureLikeText,
   looksLikeSecret,
   QUICK_RUN_STOPPED,
+  shouldAutoCaptureClipboard,
   startQuickLearningAction,
 } from '../service';
 
@@ -75,6 +76,25 @@ describe('looksLikeSecret', () => {
   it('keeps math expressions and urls', () => {
     expect(looksLikeSecret('x^2+y_1=Z9(a-b)/2!')).toBe(false);
     expect(looksLikeSecret('https://example.com/A9_b?x=1')).toBe(false);
+  });
+});
+
+describe('shouldAutoCaptureClipboard', () => {
+  it('skips file paths, urls, shell commands, secrets, and single identifiers', () => {
+    expect(shouldAutoCaptureClipboard('src/demo/')).toBe(false);
+    expect(shouldAutoCaptureClipboard('/Users/alice/notes.md')).toBe(false);
+    expect(shouldAutoCaptureClipboard('https://deepstudent.cn/en/')).toBe(false);
+    expect(shouldAutoCaptureClipboard('git status --short')).toBe(false);
+    expect(shouldAutoCaptureClipboard('QuickAssistantWindow')).toBe(false);
+    expect(shouldAutoCaptureClipboard('Xk9#mQ2$vLp7wRt!')).toBe(false);
+    expect(shouldAutoCaptureClipboard('abc')).toBe(false);
+  });
+
+  it('captures genuine study excerpts, sentences, math problems, and multiline text', () => {
+    expect(shouldAutoCaptureClipboard('Photosynthesis converts light energy into chemical energy.')).toBe(true);
+    expect(shouldAutoCaptureClipboard('已知 x + 2 = 8，求 x')).toBe(true);
+    expect(shouldAutoCaptureClipboard('拉格朗日中值定理')).toBe(true);
+    expect(shouldAutoCaptureClipboard('line 1\nline 2')).toBe(true);
   });
 });
 

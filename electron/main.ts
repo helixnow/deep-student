@@ -385,7 +385,7 @@ function createAgentGuard(runtime: ShellRuntime): AgentNavigationGuard {
 }
 
 function createBrowserSurface(runtime: ShellRuntime, preloadPath: string, agentGuard: AgentNavigationGuard): BrowserContentSurface {
-  return new BrowserContentSurface({
+  const surface = new BrowserContentSurface({
     agentGuard,
     platform,
     preloadPath,
@@ -395,20 +395,28 @@ function createBrowserSurface(runtime: ShellRuntime, preloadPath: string, agentG
       // Tauri 的 on_page_load 对 add_child/detached 的 browser-content webview 同样生效；注销后不再通知。
       contents.on('did-navigate', () => {
         if (runtime.browserWebviewOf(contents) === null) return;
+        if (!surface.isActiveWebContents(contents)) return;
         runtime.host.sendMessage({ kind: 'window', ref: { window: windowLabel, webview: label }, state: 'page-load-started' });
       });
       forwardBrowserContentEvents(contents, (event, payload) => {
         if (runtime.browserWebviewOf(contents) === null) return;
+        if (!surface.isActiveWebContents(contents)) return;
         sendBrowserContentEvent(runtime, windowLabel, event, payload);
       });
     },
     unregisterWebview: (contents, reason) => {
       runtime.unregisterBrowserWebview(contents);
-      runtime.webviewGone(BROWSER_CONTENT_LABEL, reason);
+      if (runtime.browserLabelInUse(BROWSER_CONTENT_LABEL) === null) {
+        runtime.webviewGone(BROWSER_CONTENT_LABEL, reason);
+      }
     },
     appWindowExists: (label) => runtime.windows.get(label) !== undefined,
+    emitNativeEvent: (windowLabel, event, payload) => {
+      sendBrowserContentEvent(runtime, windowLabel, event, payload);
+    },
     log,
   });
+  return surface;
 }
 
 /** 会话级装配：安全策略（权限、新窗口、导航、`<webview>`）与自定义协议。必须在创建任何窗口之前调用。 */
@@ -417,6 +425,7 @@ function installSessionHandlers(
   scopes: ShellScopes,
   windowOrigin: string,
   pluginUi: PluginUiRegistry,
+  browserSurface: BrowserContentSurface,
   openExternal: (url: string) => Promise<void>,
 ): void {
   installWebSecurity(app, session.defaultSession, {
@@ -427,6 +436,7 @@ function installSessionHandlers(
     },
     openerUrlAllow: scopes.derived.openerUrlAllow,
     openExternal,
+    onBrowserWindowOpen: (source, url) => browserSurface.handleWindowOpen(source, url),
     log,
   });
   installProtocols(session.defaultSession, {
@@ -555,7 +565,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
   if (windowIcon !== undefined) app.on('browser-window-created', (_event, window) => window.setIcon(windowIcon));
   runtime.windows = createWindowManager(runtime, appBase, preloadPath, lifecycle);
 
-  installSessionHandlers(runtime, scopes, windowOrigin, pluginUi, options.openExternal ?? ((url) => shell.openExternal(url)));
+  installSessionHandlers(runtime, scopes, windowOrigin, pluginUi, browserSurface, options.openExternal ?? ((url) => shell.openExternal(url)));
   wireRendererIpc({
     platform,
     ipc: ipcMain,

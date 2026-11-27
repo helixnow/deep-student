@@ -121,7 +121,7 @@ export interface AgentCardReadScopeService {
 
 // 自定义子代理 profile（Rust `workspace/custom_agents.rs`，消费方 L06 SubagentExecutor）。
 export {
-  AgentProfileResolver, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID,
+  AgentProfileResolver, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID, BROWSER_PROFILE_ID,
 } from './src/workspace/agent-profile.ts';
 /**
  * `(modelId: string, configs: readonly PersonaModelConfig[]) => void`.

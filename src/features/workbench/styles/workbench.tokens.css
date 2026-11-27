@@ -40,37 +40,21 @@
   /* 液态玻璃边缘高光 rim：随 clarity 动态增强，--wb-glass-highlight 与之同源 */
   --wb-glass-rim: rgba(255, 255, 255, calc(0.28 + var(--wb-glass-clarity-ratio) * 0.44));
   --wb-glass-highlight: var(--wb-glass-rim);
-  /* 微噪点 grain（去饱和 SVG turbulence，平铺），并入 sheen 栈；单独暴露供自定义组合 */
-  --wb-glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
-  /* 多层光学栈：斜向主光泽 + 底缘折射回光 + 左右缘立体光 + grain。
-   * 消费方式不变：background-image: var(--wb-glass-sheen) */
-  --wb-glass-sheen:
-    linear-gradient(
-      118deg,
-      rgba(255, 255, 255, 0.22) 0%,
-      rgba(255, 255, 255, 0.06) 34%,
-      rgba(255, 255, 255, 0) 58%
-    ),
-    radial-gradient(
-      130% 70% at 50% 102%,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0) 48%
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.11) 0%,
-      rgba(255, 255, 255, 0) 4%,
-      rgba(255, 255, 255, 0) 96%,
-      rgba(255, 255, 255, 0.11) 100%
-    ),
-    var(--wb-glass-grain);
+  /* 统一 Liquid Glass 表面光学令牌：与 Dock 保持完全一致的清透通透度，暗壁纸区域由自适应亮白字保可读 */
+  --wb-glass-liquid-bg: var(--wb-dock-liquid-bg);
+  --wb-glass-liquid-bg-strong: rgb(255 255 255 / calc(30% - var(--wb-glass-clarity-ratio, 0.55) * 14%));
+  --wb-glass-liquid-blur: var(--wb-dock-liquid-blur);
+  --wb-glass-liquid-blur-strong: blur(26px) saturate(1.75) brightness(1.06);
+  --wb-glass-liquid-rim: var(--wb-dock-liquid-rim);
+  --wb-widget-liquid-bg: rgb(255 255 255 / calc(13% - var(--wb-glass-clarity-ratio, 0.55) * 6%));
+  --wb-widget-liquid-blur: blur(22px) saturate(1.75) brightness(1.03);
+  --wb-glass-text-halo: none;
+  /* 曲液微光泽：与 Dock 完全同源，消除大卡片偏白发雾感 */
+  --wb-glass-grain: none;
+  --wb-glass-sheen: var(--wb-dock-liquid-sheen);
   --wb-glass-border: color-mix(in hsl, hsl(var(--border)) 52%, transparent 48%);
-  /* 内缘四边高光 inset 栈（薄玻璃靠 rim 立边，略强于旧档） */
-  --wb-glass-edge:
-    inset 0 1px 0 var(--wb-glass-highlight),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
-    inset 1px 0 0 rgba(255, 255, 255, 0.08),
-    inset -1px 0 0 rgba(255, 255, 255, 0.08);
+  /* 玻璃外轮廓发丝线（不再画双层白内边，由 .wb-glass-rim::before 独占 0.5px 菲涅尔细边） */
+  --wb-glass-edge: 0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 5%);
 
   /* ==== 圆角阶梯（统一档位；组件禁止再写字面量圆角） ================== */
   --wb-radius-xs: 6px;   /* menubar item / kbd 键帽 */
@@ -102,8 +86,8 @@
    * --shell-nav-row-radius）；本层只定义宽度与软分隔线。
    * 挂在 workbench.tokens.css：WorkbenchDesktop 必载，避免先开
    * 资源库/笔记时 SystemWindowShared 尚未挂载而丢 token。 */
-  --wb-sidebar-width: 272px;
-  --wb-sidebar-width-medium: 240px;
+  --wb-sidebar-width: 244px;
+  --wb-sidebar-width-medium: 216px;
   --wb-sidebar-seam: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 
   /* 焦点强度分档阴影（多层：0.5px 描边环 + 环境光 + 接触阴影）
@@ -173,6 +157,31 @@
     0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.08),
     0 18px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.20),
     0 4px 12px hsl(var(--shadow-base, 0 0% 0%) / 0.10);
+
+  /* Liquid Glass 光学材质层（对标 macOS Tahoe 原生 Dock：极薄清透底 + 低模糊高穿透 + 圆角聚焦菲涅尔高光） */
+  --wb-dock-liquid-bg: rgb(255 255 255 / calc(11% - var(--wb-glass-clarity-ratio, 0.55) * 8%));
+  --wb-dock-liquid-blur: blur(4px) saturate(1.6) brightness(1.06);
+  --wb-dock-liquid-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 7%) 0%,
+    rgb(255 255 255 / 0%) 32%,
+    rgb(255 255 255 / 0%) 72%,
+    rgb(255 255 255 / 4%) 100%
+  );
+  --wb-dock-liquid-rim: linear-gradient(
+    152deg,
+    rgb(255 255 255 / 54%) 0%,
+    rgb(255 255 255 / 20%) 16%,
+    rgb(255 255 255 / 8%) 50%,
+    rgb(255 255 255 / 16%) 84%,
+    rgb(255 255 255 / 38%) 100%
+  );
+  --wb-dock-liquid-shadow:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 5%),
+    0 10px 28px -6px hsl(var(--shadow-base, 0 0% 0%) / 24%),
+    0 2px 6px hsl(var(--shadow-base, 0 0% 0%) / 10%);
+  --wb-dock-liquid-divider: hsl(var(--shadow-base, 0 0% 0%) / 20%);
+  --wb-dock-liquid-divider-highlight: rgb(255 255 255 / 22%);
   --wb-dock-padding: 7px;
   --wb-dock-gap: 6px;
   --wb-dock-item-size: 44px;
@@ -226,11 +235,13 @@
   /* The outer app shell deliberately collapses its legacy titlebar to 0 in
    * Workbench mode. Keep this independent so the Workbench menu bar remains
    * the single 40px layout boundary for every window arrangement. */
-  --wb-menubar-height: 40px;
+  --wb-menubar-height: 34px;
 
   /* 对标 Tahoe / macOS 27 透明菜单栏：fill 随 clarity 动态调节，底缘边界极致柔化使壁纸自然延展至顶部；
    * reduced/minimal 档在下方降级块单独回填实底 */
   --wb-menubar-bg: hsl(var(--card) / calc(0.26 - var(--wb-glass-clarity-ratio) * 0.22));
+  --wb-menubar-liquid-bg: rgb(255 255 255 / calc(14% - var(--wb-glass-clarity-ratio, 0.55) * 10%));
+  --wb-menubar-liquid-blur: blur(8px) saturate(1.6) brightness(1.05);
   --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 12%, transparent 88%);
   --wb-menubar-sheen: var(--wb-glass-sheen);
   --wb-menubar-blur: var(--wb-glass-blur);
@@ -291,32 +302,17 @@
   --wb-glass-blur-strong: blur(24px) saturate(1.8) brightness(0.92);
   --wb-glass-rim: rgba(255, 255, 255, calc(0.14 + var(--wb-glass-clarity-ratio) * 0.22));
   --wb-glass-highlight: var(--wb-glass-rim);
-  --wb-glass-sheen:
-    linear-gradient(
-      118deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.035) 34%,
-      rgba(255, 255, 255, 0) 58%
-    ),
-    radial-gradient(
-      130% 70% at 50% 102%,
-      rgba(255, 255, 255, 0.07) 0%,
-      rgba(255, 255, 255, 0) 48%
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.07) 0%,
-      rgba(255, 255, 255, 0) 4%,
-      rgba(255, 255, 255, 0) 96%,
-      rgba(255, 255, 255, 0.07) 100%
-    ),
-    var(--wb-glass-grain);
+  --wb-glass-liquid-bg: var(--wb-dock-liquid-bg);
+  --wb-glass-liquid-bg-strong: hsl(var(--background) / calc(38% - var(--wb-glass-clarity-ratio, 0.55) * 16%));
+  --wb-glass-liquid-blur: var(--wb-dock-liquid-blur);
+  --wb-glass-liquid-blur-strong: blur(26px) saturate(1.75) brightness(0.95);
+  --wb-glass-liquid-rim: var(--wb-dock-liquid-rim);
+  --wb-widget-liquid-bg: hsl(var(--background) / calc(24% - var(--wb-glass-clarity-ratio, 0.55) * 10%));
+  --wb-widget-liquid-blur: blur(22px) saturate(1.75) brightness(0.95);
+  --wb-glass-text-halo: 0 1px 2px rgb(0 0 0 / 18%);
+  --wb-glass-sheen: var(--wb-dock-liquid-sheen);
   --wb-glass-border: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
-  --wb-glass-edge:
-    inset 0 1px 0 var(--wb-glass-highlight),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.07),
-    inset 1px 0 0 rgba(255, 255, 255, 0.05),
-    inset -1px 0 0 rgba(255, 255, 255, 0.05);
+  --wb-glass-edge: 0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 34%);
 
   --wb-window-border: color-mix(in hsl, hsl(var(--border)) 85%, transparent 15%);
   --wb-window-rim: rgba(255, 255, 255, 0.10);
@@ -353,6 +349,29 @@
     0 0 0 0.5px rgba(0, 0, 0, 0.40),
     0 20px 50px rgba(0, 0, 0, 0.50),
     0 5px 14px rgba(0, 0, 0, 0.32);
+  --wb-dock-liquid-bg: hsl(var(--background) / calc(22% - var(--wb-glass-clarity-ratio, 0.55) * 12%));
+  --wb-dock-liquid-blur: blur(5px) saturate(1.65) brightness(0.96);
+  --wb-dock-liquid-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 6%) 0%,
+    rgb(255 255 255 / 0%) 30%,
+    rgb(255 255 255 / 0%) 74%,
+    rgb(255 255 255 / 3%) 100%
+  );
+  --wb-dock-liquid-rim: linear-gradient(
+    152deg,
+    rgb(255 255 255 / 32%) 0%,
+    rgb(255 255 255 / 10%) 16%,
+    rgb(255 255 255 / 4%) 50%,
+    rgb(255 255 255 / 9%) 84%,
+    rgb(255 255 255 / 20%) 100%
+  );
+  --wb-dock-liquid-shadow:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 34%),
+    0 12px 30px -6px hsl(var(--shadow-base, 0 0% 0%) / 46%),
+    0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 26%);
+  --wb-dock-liquid-divider: rgb(255 255 255 / 18%);
+  --wb-dock-liquid-divider-highlight: transparent;
   --wb-dock-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
   --wb-dock-indicator: color-mix(in hsl, hsl(var(--foreground)) 72%, transparent 28%);
 
@@ -361,6 +380,8 @@
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
   /* 暗色透明菜单栏：fill 略高于亮色保对比，底缘柔化 */
   --wb-menubar-bg: hsl(var(--card) / calc(0.36 - var(--wb-glass-clarity-ratio) * 0.28));
+  --wb-menubar-liquid-bg: hsl(var(--background) / calc(24% - var(--wb-glass-clarity-ratio, 0.55) * 14%));
+  --wb-menubar-liquid-blur: blur(8px) saturate(1.6) brightness(0.96);
   --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 18%, transparent 82%);
 
   --wb-snap-stroke: color-mix(in hsl, hsl(var(--primary)) 80%, transparent 20%);
@@ -403,25 +424,45 @@
 :root[data-wb-material='minimal'] {
   --wb-glass-blur: none;
   --wb-glass-blur-strong: none;
+  --wb-glass-liquid-blur: none;
+  --wb-glass-liquid-blur-strong: none;
+  --wb-glass-liquid-rim: none;
+  --wb-widget-liquid-blur: none;
+  --wb-glass-text-halo: none;
   --wb-dock-blur: none;
+  --wb-dock-liquid-blur: none;
+  --wb-dock-liquid-sheen: none;
+  --wb-dock-liquid-rim: none;
+  --wb-menubar-liquid-blur: none;
   --wb-expose-backdrop-blur: none;
 }
 
 :root[data-wb-material='reduced'] {
   --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
   --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+  --wb-glass-liquid-bg: var(--wb-glass-bg);
+  --wb-glass-liquid-bg-strong: var(--wb-glass-bg-strong);
+  --wb-widget-liquid-bg: var(--wb-glass-bg);
   --wb-dock-bg: var(--wb-glass-bg-strong);
+  --wb-dock-liquid-bg: var(--wb-dock-bg);
+  --wb-dock-liquid-shadow: var(--wb-dock-shadow);
   --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
   --wb-expose-backdrop-bg: hsl(var(--background) / 0.82);
   /* 透明菜单栏在无 blur 档不可读：回填实底 */
   --wb-menubar-bg: var(--wb-glass-bg);
+  --wb-menubar-liquid-bg: var(--wb-menubar-bg);
   --wb-menubar-border: var(--wb-glass-border);
 }
 
 :root[data-wb-material='minimal'] {
   --wb-glass-bg: hsl(var(--card));
   --wb-glass-bg-strong: hsl(var(--card));
+  --wb-glass-liquid-bg: hsl(var(--card));
+  --wb-glass-liquid-bg-strong: hsl(var(--card));
+  --wb-widget-liquid-bg: hsl(var(--card));
   --wb-dock-bg: hsl(var(--card));
+  --wb-dock-liquid-bg: hsl(var(--card));
+  --wb-dock-liquid-shadow: var(--wb-dock-shadow);
   --wb-glass-rim: transparent;
   --wb-glass-highlight: transparent;
   --wb-glass-sheen: none;
@@ -431,6 +472,7 @@
   --wb-expose-backdrop-bg: hsl(var(--background) / 0.92);
   --wb-wallpaper-scrim: none;
   --wb-menubar-bg: hsl(var(--card));
+  --wb-menubar-liquid-bg: hsl(var(--card));
   --wb-menubar-border: var(--wb-glass-border);
 
   /* 焦点环不降级（a11y）；motion.css 的 --wb-motion-* 已在其自身 minimal 块归零 */
@@ -469,12 +511,26 @@ html[data-wb-material-switching] .wb-menubar::before {
   :where(:root) {
     --wb-glass-blur: none;
     --wb-glass-blur-strong: none;
+    --wb-glass-liquid-blur: none;
+    --wb-glass-liquid-blur-strong: none;
+    --wb-widget-liquid-blur: none;
+    --wb-glass-liquid-rim: none;
     --wb-dock-blur: none;
+    --wb-dock-liquid-blur: none;
+    --wb-dock-liquid-sheen: none;
+    --wb-dock-liquid-rim: none;
+    --wb-menubar-liquid-blur: none;
     --wb-expose-backdrop-blur: none;
     --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
     --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+    --wb-glass-liquid-bg: var(--wb-glass-bg);
+    --wb-glass-liquid-bg-strong: var(--wb-glass-bg-strong);
+    --wb-widget-liquid-bg: var(--wb-glass-bg);
     --wb-dock-bg: var(--wb-glass-bg-strong);
+    --wb-dock-liquid-bg: var(--wb-dock-bg);
+    --wb-dock-liquid-shadow: var(--wb-dock-shadow);
     --wb-menubar-bg: var(--wb-glass-bg);
+    --wb-menubar-liquid-bg: var(--wb-menubar-bg);
     --wb-menubar-border: var(--wb-glass-border);
   }
 }

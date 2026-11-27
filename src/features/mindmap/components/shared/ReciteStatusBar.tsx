@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, CaretLeft, CaretRight, Cards, Eye, EyeSlash, Fire, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
@@ -136,17 +137,23 @@ export const ReciteStatusBar: React.FC = () => {
       ) : (
         // 还没有挖空：一键遮住要点（刚由笔记 / 大纲生成的导图直接能背），或退出手动挖空
         <>
-          <DsButton
-            variant="ghost"
-            className="mm-recite-status-action h-7 px-2 text-xs gap-1"
-            onClick={blankOutlineForRecite}
-            title={t('recite.blankOutlineHint', {
-              defaultValue: '保留中心主题和一级分支作提示，下面各层整段遮住；点一下揭示，可撤销',
-            })}
-          >
-            <EyeSlash size={14} />
-            {t('recite.blankOutline', { defaultValue: '一键遮住要点' })}
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+                onClick={blankOutlineForRecite}
+              >
+                <EyeSlash size={14} />
+                {t('recite.blankOutline', { defaultValue: '一键遮住要点' })}
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t('recite.blankOutlineHint', {
+                defaultValue: '保留中心主题和一级分支作提示，下面各层整段遮住；点一下揭示，可撤销',
+              })}
+            </TooltipContent>
+          </Tooltip>
           <DsButton
             variant="ghost"
             className="mm-recite-status-action h-7 px-2 text-xs"
@@ -197,32 +204,46 @@ export const ReciteStatusBar: React.FC = () => {
           </DsButton>
         </div>
       ) : (
-        <DsButton
-          variant="ghost"
-          onClick={handleStartReview}
-          className="mm-recite-status-action h-7 px-2 text-xs gap-1"
-          disabled={progress.total === 0}
-          title={t('recite.reviewStartHint', {
-            defaultValue: '按历史错误率从难到易逐节点复习（翻开=没背出来）',
-          })}
-        >
-          <Fire size={14} />
-          {t('recite.reviewStart', { defaultValue: '难点优先' })}
-        </DsButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <DsButton
+                variant="ghost"
+                onClick={handleStartReview}
+                className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+                disabled={progress.total === 0}
+              >
+                <Fire size={14} />
+                {t('recite.reviewStart', { defaultValue: '难点优先' })}
+              </DsButton>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t('recite.reviewStartHint', {
+              defaultValue: '按历史错误率从难到易逐节点复习（翻开=没背出来）',
+            })}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {missCards.length > 0 && (
-        <DsButton
-          variant="ghost"
-          onClick={() => void saveMissCards()}
-          disabled={savingCards}
-          className="mm-recite-status-action h-7 px-2 text-xs gap-1"
-          title={t('recite.missCardsHint')}
-          data-testid="mm-recite-miss-cards"
-        >
-          <Cards size={14} />
-          {t('recite.missCards', { count: missCards.length })}
-        </DsButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <DsButton
+                variant="ghost"
+                onClick={() => void saveMissCards()}
+                disabled={savingCards}
+                className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+                data-testid="mm-recite-miss-cards"
+              >
+                <Cards size={14} />
+                {t('recite.missCards', { count: missCards.length })}
+              </DsButton>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('recite.missCardsHint')}</TooltipContent>
+        </Tooltip>
       )}
 
       <div className="w-px h-4 bg-[var(--mm-border)]" />

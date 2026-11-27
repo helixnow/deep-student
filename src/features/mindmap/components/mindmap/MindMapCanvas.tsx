@@ -1,14 +1,7 @@
 import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import {
-  ReactFlow,
-  MiniMap,
-  Background,
-  BackgroundVariant,
-  useReactFlow,
-  ReactFlowProvider,
-  Node,
-  type NodeChange,
-  type Connection,
+  ReactFlow, MiniMap, Background, BackgroundVariant, useReactFlow, ReactFlowProvider,
+  type Edge, type Node, type NodeChange, type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useTranslation } from 'react-i18next';
@@ -90,14 +83,10 @@ import '../../styles/canvas-enhancements.css';
 import '../../styles/canvas-interactions.css';
 import '../../styles/mn5-excerpt.css';
 
-const EDGE_TYPE_MAP: Record<string, string> = {
-  bezier: 'curved',
-  curved: 'curved',
-  straight: 'straight',
-  orthogonal: 'orthogonal',
-  step: 'step',
-  smoothstep: 'smoothstep',
-};
+const EDGE_TYPE_MAP: Record<string, string> = { bezier: 'curved', curved: 'curved', straight: 'straight', orthogonal: 'orthogonal', step: 'step', smoothstep: 'smoothstep' };
+const RF_FIT_VIEW_OPTIONS = { padding: REACTFLOW_CONFIG.fitViewPadding };
+const RF_PRO_OPTIONS = { hideAttribution: true };
+const MINIMAP_STYLE = { width: 104, height: 68 };
 
 export interface MindMapCanvasHandle {
   getViewport: () => { x: number; y: number; zoom: number };
@@ -109,8 +98,6 @@ export interface MindMapCanvasProps {
   initialViewport?: { x: number; y: number; zoom: number } | null;
   /** Increment to start an association from the focused/selected node. */
   associationModeRequest?: number;
-  /** 打开/切换快捷键帮助面板 */
-  onToggleShortcutHelp?: () => void;
   /** 是否开启 FSRS 掌握度热力叠加层 */
   showMasteryOverlay?: boolean;
   /** 各节点的 FSRS 掌握度状态（nodeId -> status） */
@@ -128,7 +115,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     {
       initialViewport = null,
       associationModeRequest = 0,
-      onToggleShortcutHelp,
       showMasteryOverlay = false,
       masteryStatusByNodeId,
       onAiNodeAction,
@@ -289,6 +275,15 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     const leafBaseHeight = calculateBaseNodeHeight(activeTheme?.node?.leaf, 14, '4px 8px');
     const unnamedNodeLabel = t('node.unnamed');
 
+    // 大图渐进挂载期间暂冻结实测高度输入，避免每批 35 节点触发 10+ 轮全图重排风暴；挂载完成后统一 flush 一次
+    const progressiveStagingRef = useRef(false);
+    const stableMeasuredHeightsRef = useRef(measuredNodeHeights);
+    const [, setMeasuredFlushNonce] = useState(0);
+    if (!progressiveStagingRef.current) {
+      stableMeasuredHeightsRef.current = measuredNodeHeights;
+    }
+    const effectiveMeasuredHeights = stableMeasuredHeightsRef.current;
+
     const { nodes: layoutNodes, edges } = useMemo(
       () =>
         computeCanvasLayout({
@@ -300,12 +295,12 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           layoutEngine,
           branchBaseHeight,
           leafBaseHeight,
-          measuredNodeHeights,
+          measuredNodeHeights: effectiveMeasuredHeights,
           unnamedNodeLabel,
         }),
       [
         document?.root, hideCompleted, viewRootId, layoutId, layoutDirection,
-        layoutEngine, branchBaseHeight, leafBaseHeight, measuredNodeHeights, unnamedNodeLabel,
+        layoutEngine, branchBaseHeight, leafBaseHeight, effectiveMeasuredHeights, unnamedNodeLabel,
       ],
     );
 
@@ -529,6 +524,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     });
 
     const defaultEdgeType = EDGE_TYPE_MAP[edgeType] || 'curved';
+    const defaultEdgeOptions = useMemo(() => ({ type: defaultEdgeType }), [defaultEdgeType]);
 
     const allEdges = useMemo(
       () => [
@@ -558,31 +554,29 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       isDragging: drag.isDragging,
     });
 
+    const prevStyledEdgesRef = useRef<Map<string, Edge>>(new Map());
     const useBranchPalette = Boolean(activeTheme?.useBranchPalette);
     const effectiveEdgeDark = useBranchPalette && isDarkTheme;
-    const styledEdges = useMemo(
-      () =>
-        buildStyledCanvasEdges({
-          allEdges,
-          layoutNodeById,
-          ancestorPathEdgeKeys,
-          focusedNodeId,
-          useBranchPalette,
-          branchIndexById,
-          isDarkTheme: effectiveEdgeDark,
-          spotlightActiveIds,
-        }),
-      [
+    const styledEdges = useMemo(() => {
+      const next = buildStyledCanvasEdges({
         allEdges,
         layoutNodeById,
         ancestorPathEdgeKeys,
         focusedNodeId,
         useBranchPalette,
         branchIndexById,
-        effectiveEdgeDark,
+        isDarkTheme: effectiveEdgeDark,
         spotlightActiveIds,
-      ],
-    );
+        prevEdgesById: prevStyledEdgesRef.current,
+      });
+      const nextById = new Map<string, Edge>();
+      for (const e of next) nextById.set(e.id, e);
+      prevStyledEdgesRef.current = nextById;
+      return next;
+    }, [
+      allEdges, layoutNodeById, ancestorPathEdgeKeys, focusedNodeId,
+      useBranchPalette, branchIndexById, effectiveEdgeDark, spotlightActiveIds,
+    ]);
 
     // MiniMap 分支着色：同步使用 activeTheme.palette（随暗色/主题即时切换）
     const minimapBranchColorById = useMemo(
@@ -610,6 +604,14 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       enabled: !isExporting,
       resetKey: effectiveRootId,
     });
+    progressiveStagingRef.current = isLargeGraph && !progressiveGraph.isComplete;
+
+    useEffect(() => {
+      if (progressiveGraph.isComplete && stableMeasuredHeightsRef.current !== measuredNodeHeights) {
+        stableMeasuredHeightsRef.current = measuredNodeHeights;
+        setMeasuredFlushNonce((n) => n + 1);
+      }
+    }, [progressiveGraph.isComplete, measuredNodeHeights]);
 
     useEffect(() => {
       if (nodes.length === 0 || !isCanvasReady || hasFitView.current) return;
@@ -790,10 +792,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         assoc.setSelectedAssociationId(null);
         assoc.setEditingAssociationId(null);
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
+          const curSel = state.selection;
           state.setSelection(
-            selection.includes(node.id)
-              ? selection.filter((id) => id !== node.id)
-              : [...selection, node.id],
+            curSel.includes(node.id) ? curSel.filter((id) => id !== node.id) : [...curSel, node.id],
           );
           state.setFocusedNodeId(node.id);
           return;
@@ -817,7 +818,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         state.setSelection([node.id]);
         state.setFocusedNodeId(node.id);
       },
-      [touch.suppressNodeClickRef, storeApi, assoc, selection, isCoarsePointer, reciteMode],
+      [touch.suppressNodeClickRef, storeApi, assoc, isCoarsePointer, reciteMode],
     );
 
     const onNodeDoubleClick = useCallback(
@@ -890,8 +891,10 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       [activeTheme, isDark],
     );
 
+    const handleSetViewRootId = useCallback((id: string | null) => storeApi.getState().setViewRootId(id), [storeApi]);
+    const handleExitFocusMode = useMemo(() => (viewRootId ? () => storeApi.getState().setViewRootId(null) : null), [storeApi, viewRootId]);
     const themeContextValue = useStableCanvasThemeContext(styleId, activeTheme, isDark, isLargeGraph);
-    const hideNarrowLargeMiniMap = layoutNodes.length > 150 && isNarrowContainer;
+    const hideHeavyMiniMap = layoutNodes.length > 300 || (layoutNodes.length > 150 && isNarrowContainer);
 
     return (
       <div
@@ -920,7 +923,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       >
         <CanvasTopBanners
           breadcrumbPath={breadcrumbPath}
-          onSetViewRootId={(id) => storeApi.getState().setViewRootId(id)}
+          onSetViewRootId={handleSetViewRootId}
           associatingFromId={assoc.associatingFromId}
           isCoarsePointer={isCoarsePointer}
           onClearAssociationMode={assoc.clearAssociationMode}
@@ -946,9 +949,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           onNodeDrag={drag.onNodeDrag}
           onNodeDragStop={drag.onNodeDragStop}
           onConnect={onConnect}
-          defaultEdgeOptions={{ type: defaultEdgeType }}
+          defaultEdgeOptions={defaultEdgeOptions}
           fitView={false}
-          fitViewOptions={{ padding: REACTFLOW_CONFIG.fitViewPadding }}
+          fitViewOptions={RF_FIT_VIEW_OPTIONS}
           defaultViewport={safeInitialViewport ?? DEFAULT_MINDMAP_VIEWPORT}
           minZoom={REACTFLOW_CONFIG.minZoom}
           maxZoom={REACTFLOW_CONFIG.maxZoom}
@@ -967,7 +970,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           onMoveEnd={momentumPan.onMoveEnd}
           onSelectionStart={onSelectionStart}
           onSelectionEnd={onSelectionEnd}
-          proOptions={{ hideAttribution: true }}
+          proOptions={RF_PRO_OPTIONS}
           onlyRenderVisibleElements={!isExporting}
           selectionOnDrag={!presentationMode && !assoc.associatingFromId && marqueeProps.selectionOnDrag}
           selectionMode={marqueeProps.selectionMode}
@@ -990,14 +993,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             setWheelMode={setWheelMode}
             onFitView={handleFitViewAnimated}
             onAddTopic={handleAddTopic}
-            onToggleShortcutHelp={onToggleShortcutHelp}
           />
-          {!presentationMode && layoutNodes.length > 10 && !hideNarrowLargeMiniMap && progressiveGraph.isComplete && (
+          {!presentationMode && layoutNodes.length > 10 && !hideHeavyMiniMap && progressiveGraph.isComplete && (
             <MiniMap
               nodeColor={minimapNodeColor}
               nodeStrokeWidth={3}
               maskColor="hsl(var(--foreground) / 0.08)"
-              style={{ width: 104, height: 68 }}
+              style={MINIMAP_STYLE}
               className="mm-canvas-minimap"
               pannable
               zoomable
@@ -1038,9 +1040,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           associationId={contextMenu.associationId}
           paneMenu={contextMenu.pane}
           onFitView={handleFitViewAnimated}
-          onExitFocusMode={viewRootId ? () => storeApi.getState().setViewRootId(null) : null}
+          onExitFocusMode={handleExitFocusMode}
           onClose={closeContextMenu}
-          onOpenResourcePicker={(nid) => setResourcePickerNodeId(nid)}
+          onOpenResourcePicker={setResourcePickerNodeId}
           onFocusBranch={handleFocusBranch}
           onStartAssociation={assoc.handleStartAssociation}
           onEditAssociationLabel={assoc.handleEditAssociationLabel}
@@ -1064,7 +1066,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           selectedAssociationId={assoc.selectedAssociationId}
           editingAssociationId={assoc.editingAssociationId}
           lastAssociationIdRef={assoc.lastAssociationIdRef}
-          onEditAssociationLabel={(id) => assoc.setEditingAssociationId(id)}
+          onEditAssociationLabel={assoc.setEditingAssociationId}
           onDeleteAssociation={assoc.handleDeleteAssociation}
           onClearSelectedAssociation={clearSelectedAssociation}
           showMobileToolbar={touch.showMobileToolbar}
@@ -1073,7 +1075,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           mobileToolbarPanel={touch.mobileToolbarPanel}
           onMobileToolbarPanelChange={touch.setMobileToolbarPanel}
           onCloseMobileToolbar={touch.closeMobileToolbar}
-          onOpenResourcePicker={(nid) => setResourcePickerNodeId(nid)}
+          onOpenResourcePicker={setResourcePickerNodeId}
           onStartAssociation={assoc.handleStartAssociation}
           onFocusBranch={handleFocusBranch}
           excerptDropTarget={excerpt.excerptDropTarget}
@@ -1084,13 +1086,11 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
 );
 
 export const MindMapCanvas = React.memo(
-  React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(
-    function MindMapCanvas(props, ref) {
-      return (
-        <ReactFlowProvider>
-          <MindMapCanvasInner ref={ref} {...props} />
-        </ReactFlowProvider>
-      );
-    },
-  ),
+  React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(function MindMapCanvas(props, ref) {
+    return (
+      <ReactFlowProvider>
+        <MindMapCanvasInner ref={ref} {...props} />
+      </ReactFlowProvider>
+    );
+  }),
 );

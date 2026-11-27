@@ -126,6 +126,11 @@ export interface SelectionToolbarProps {
    * 只在宿主真正传入时出现，不做灰显占位。
    */
   extraActions?: SelectionToolbarExtraAction[];
+  /**
+   * 可选顶部扩展槽位（如 PDF 高亮色板、批注、引文与「拖入导图」把手）。
+   * 与下方动作条合并在同一个气泡容器内，避免多条划词浮层互相重叠。
+   */
+  headerSlot?: React.ReactNode;
 }
 
 export interface SelectionToolbarExtraAction {
@@ -289,6 +294,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   ariaLabel,
   className,
   extraActions = [],
+  headerSlot,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
@@ -355,9 +361,25 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       }
       if (hasContainerHeight) {
         const measuredToolbarHeight = toolbarRef.current?.offsetHeight || 36;
+        const effectiveContainerBottom = Math.max(
+          CONTAINER_PADDING,
+          containerRect.height - viewportBottomInset - CONTAINER_PADDING,
+        );
+        if (viewportPos.placement === 'above' && measuredToolbarHeight > 44) {
+          localTop = selectionRect.top - containerRect.top - measuredToolbarHeight - 10;
+        } else if (
+          viewportPos.placement === 'below' &&
+          localTop + measuredToolbarHeight > effectiveContainerBottom
+        ) {
+          // 双行工具条（含 headerSlot）实测高度超出下方空间时，翻到选区上方避免回推遮挡选中文本
+          const aboveTop = selectionRect.top - containerRect.top - measuredToolbarHeight - 10;
+          if (aboveTop >= CONTAINER_PADDING) {
+            localTop = aboveTop;
+          }
+        }
         const maxLocalTop = Math.max(
           CONTAINER_PADDING,
-          containerRect.height - measuredToolbarHeight - CONTAINER_PADDING,
+          effectiveContainerBottom - measuredToolbarHeight,
         );
         localTop = Math.max(CONTAINER_PADDING, Math.min(localTop, maxLocalTop));
       }
@@ -544,33 +566,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   // 新能力只在宿主真正接入时渲染，不做灰显占位
   const showAddAsContext = Boolean(onAddAsContext);
 
-  return (
-    <div
-      ref={toolbarRef}
-      data-selection-toolbar
-      data-placement={position?.placement}
-      data-wb-blur-surface
-      role="toolbar"
-      aria-label={ariaLabel ?? t('selectionToolbar.ariaLabel')}
-      className={cn(
-        'chat-msg-enter absolute z-10 flex items-center',
-        'flex-wrap',
-        'rounded-lg border border-border/35',
-        'bg-background/80 backdrop-blur-xl',
-        'shadow-[var(--shadow-shell-floating)]',
-        'dark:bg-background/90 dark:border-border/35',
-        className,
-      )}
-      style={{
-        top: position?.top ?? 0,
-        left: position?.left ?? 0,
-        maxWidth: maxWidth ?? undefined,
-        visibility: position ? 'visible' : 'hidden',
-      }}
-      // 阻止 mousedown 默认行为，防止清除选择
-      onMouseDown={(e) => e.preventDefault()}
-      onKeyDown={handleToolbarKeyDown}
-    >
+  const actionButtons = (
+    <>
       {/* 复制 */}
       <ToolbarButton
         onClick={handleCopy}
@@ -683,6 +680,52 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           />
         </React.Fragment>
       ))}
+    </>
+  );
+
+  return (
+    <div
+      ref={toolbarRef}
+      data-selection-toolbar
+      data-placement={position?.placement}
+      data-wb-blur-surface
+      role="toolbar"
+      aria-label={ariaLabel ?? t('selectionToolbar.ariaLabel')}
+      className={cn(
+        'chat-msg-enter absolute z-10 flex',
+        headerSlot ? 'flex-col items-stretch' : 'flex-wrap items-center',
+        'rounded-lg border border-border/35',
+        'bg-background/80 backdrop-blur-xl',
+        'shadow-[var(--shadow-shell-floating)]',
+        'dark:bg-background/90 dark:border-border/35',
+        className,
+      )}
+      style={{
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        maxWidth: maxWidth ?? undefined,
+        visibility: position ? 'visible' : 'hidden',
+      }}
+      // 阻止 mousedown 默认行为，防止清除选择；可拖拽把手放行原生 HTML5 dragstart
+      onMouseDown={(e) => {
+        if (!(e.target instanceof Element && e.target.closest('[draggable="true"]'))) {
+          e.preventDefault();
+        }
+      }}
+      onKeyDown={handleToolbarKeyDown}
+    >
+      {headerSlot ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1 border-b border-border/35 px-2 py-1">
+            {headerSlot}
+          </div>
+          <div className="flex flex-wrap items-center">
+            {actionButtons}
+          </div>
+        </>
+      ) : (
+        actionButtons
+      )}
     </div>
   );
 };

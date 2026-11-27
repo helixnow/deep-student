@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { CalendarBlank, Play, X } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -291,7 +292,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
         <div
           data-testid="exam-readiness-hud-agenda"
           className={cn(
-            'wb-agenda-sprint-strip mb-2 flex items-center justify-between gap-2 border-b border-border/35 pb-2 text-xs',
+            'wb-agenda-sprint-strip mb-2.5 flex items-center justify-between gap-2 pb-2.5 text-xs',
             className,
           )}
         >
@@ -299,9 +300,9 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             type="button"
             onClick={() => setConfigOpen(true)}
             aria-label={t('examSprint.hud.editConfigLabel')}
-            className="inline-flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-foreground/5 [@media(pointer:coarse)]:min-h-[44px]"
+            className="wb-agenda-sprint-summary inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-left transition-colors"
           >
-            <span className="truncate font-mono text-2xs font-medium tabular-nums text-foreground">
+            <span className="truncate font-medium tabular-nums">
               {agendaSummary}
             </span>
           </button>
@@ -310,9 +311,9 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             type="button"
             data-testid="wb-agenda-sprint-cta"
             onClick={() => openDailySprint({ source: 'desktop-agenda' })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/12 px-2 py-1 font-mono text-2xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/20 active:scale-95 active:opacity-80 [@media(pointer:coarse)]:min-h-[44px]"
+            className="wb-agenda-sprint-cta inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 font-medium tabular-nums transition-colors active:scale-95 active:opacity-80"
           >
-            <Play size={11} weight="fill" aria-hidden="true" />
+            <Play size={10} weight="fill" aria-hidden="true" />
             <span>{ctaText}</span>
           </button>
         </div>
@@ -333,64 +334,70 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       <section
         data-testid="exam-readiness-hud-mobile"
         className={cn(
-          'space-y-3 rounded-xl border border-border/35 bg-card/90 p-3.5',
+          'flex flex-col gap-3 rounded-xl border border-border/50 bg-card/55 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-5',
           className,
         )}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-            <span className="font-mono font-medium tabular-nums text-foreground">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium text-foreground">
               {countdownText}
             </span>
-            <span className="h-3 w-px shrink-0 bg-border/35" aria-hidden="true" />
+            <span className="h-3 w-px shrink-0 bg-border/50" aria-hidden="true" />
             <span className="font-mono tabular-nums text-muted-foreground">{forecastLabel}</span>
           </div>
 
-          <button
+          {(breakdownParts.length > 0 || readiness.newIntakeFrozen || (hasSprintItems && readiness.deferredBacklogCount > 0)) ? (
+            <div
+              data-testid="hud-mobile-breakdown"
+              className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground"
+            >
+              {breakdownParts.length > 0 ? (
+                <span className="font-mono tabular-nums text-foreground/80">
+                  {breakdownParts.join(' · ')}
+                </span>
+              ) : null}
+              {readiness.newIntakeFrozen ? (
+                <span className="text-warning">{t('examSprint.hud.frozenIntake')}</span>
+              ) : hasSprintItems && readiness.deferredBacklogCount > 0 ? (
+                <span data-testid="hud-mobile-deferred">
+                  {t('examSprint.hud.deferredHint', {
+                    selected: readiness.selectedSprintCount,
+                    count: readiness.deferredBacklogCount,
+                  })}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
+          <DsButton
             type="button"
+            variant="ghost"
+            size="sm"
             data-testid="hud-mobile-set-exam"
             onClick={() => setConfigOpen(true)}
-            className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground active:scale-95 active:opacity-80"
+            className="min-h-[44px] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground sm:min-h-0"
           >
             <CalendarBlank size={14} aria-hidden="true" />
             <span>
               {hasExamDate ? readiness.examDate : t('examSprint.hud.setExamDate')}
             </span>
-          </button>
-        </div>
+          </DsButton>
 
-        {(breakdownParts.length > 0 || readiness.newIntakeFrozen || (hasSprintItems && readiness.deferredBacklogCount > 0)) ? (
-          <div
-            data-testid="hud-mobile-breakdown"
-            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground"
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="hud-mobile-sprint-cta"
+            onClick={() => openDailySprint({ source: 'mobile-banner' })}
+            className="min-h-[48px] w-full justify-center gap-1.5 rounded-lg border border-primary/40 bg-primary/15 px-3.5 text-xs font-medium tabular-nums text-primary hover:bg-primary/25 hover:text-primary active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 sm:min-h-0 sm:w-auto sm:whitespace-nowrap"
           >
-            {breakdownParts.length > 0 ? (
-              <span className="font-mono tabular-nums text-foreground/85">
-                {breakdownParts.join(' · ')}
-              </span>
-            ) : null}
-            {readiness.newIntakeFrozen ? (
-              <span className="text-warning">{t('examSprint.hud.frozenIntake')}</span>
-            ) : hasSprintItems && readiness.deferredBacklogCount > 0 ? (
-              <span data-testid="hud-mobile-deferred">
-                {t('examSprint.hud.deferredHint', {
-                  selected: readiness.selectedSprintCount,
-                  count: readiness.deferredBacklogCount,
-                })}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-
-        <button
-          type="button"
-          data-testid="hud-mobile-sprint-cta"
-          onClick={() => openDailySprint({ source: 'mobile-banner' })}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-mono text-sm font-medium tabular-nums text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98] active:opacity-90 motion-reduce:transition-none motion-reduce:active:scale-100"
-        >
-          <Play size={15} weight="fill" aria-hidden="true" />
-          <span>{ctaText}</span>
-        </button>
+            <Play size={13} weight="fill" aria-hidden="true" />
+            <span>{ctaText}</span>
+          </DsButton>
+        </div>
       </section>
       {configDialog}
     </>

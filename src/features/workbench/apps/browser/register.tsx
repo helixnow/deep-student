@@ -29,6 +29,22 @@ function payloadUrl(payload: unknown): string | null {
   return null;
 }
 
+function payloadString(payload: unknown, key: string): string | null {
+  if (payload && typeof payload === 'object') {
+    const value = (payload as Record<string, unknown>)[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function payloadFiniteNumber(payload: unknown, key: string): number | undefined {
+  if (payload && typeof payload === 'object') {
+    const value = (payload as Record<string, unknown>)[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 function activationError(err: unknown): ActivationResult {
   const message = err instanceof Error ? err.message : String(err);
   return {
@@ -109,6 +125,48 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
       case 'hideContent':
         await api.hideContent();
         return { handled: true, acknowledged: true };
+      case 'newTab': {
+        const url = payloadUrl(ctx.payload) ?? undefined;
+        await api.createTab(url);
+        return { handled: true, acknowledged: true };
+      }
+      case 'switchTab': {
+        const tabId = payloadString(ctx.payload, 'tabId');
+        if (!tabId) {
+          return {
+            handled: false,
+            code: 'INVALID_ARGS',
+            message: 'browser switchTab 缺少 tabId',
+          };
+        }
+        await api.switchTab(tabId);
+        return { handled: true, acknowledged: true };
+      }
+      case 'closeTab': {
+        const tabId = payloadString(ctx.payload, 'tabId');
+        if (!tabId) {
+          return {
+            handled: false,
+            code: 'INVALID_ARGS',
+            message: 'browser closeTab 缺少 tabId',
+          };
+        }
+        await api.closeTab(tabId);
+        return { handled: true, acknowledged: true };
+      }
+      case 'extractContent': {
+        const maxChars = payloadFiniteNumber(ctx.payload, 'maxChars');
+        const startIndex = payloadFiniteNumber(ctx.payload, 'startIndex');
+        const extracted = await api.extractCurrentPage({
+          ...(maxChars != null ? { maxChars } : {}),
+          ...(startIndex != null ? { startIndex } : {}),
+        });
+        return {
+          handled: true,
+          acknowledged: true,
+          message: extracted.markdown,
+        };
+      }
       default:
         return {
           handled: false,

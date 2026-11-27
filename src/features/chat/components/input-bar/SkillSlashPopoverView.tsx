@@ -124,13 +124,12 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
         presence.exiting && 'is-closing',
         (presence.exiting || !open) && 'pointer-events-none',
         presence.shown && 'is-open',
-        'absolute w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/85 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+        'absolute w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-popover text-popover-foreground shadow-lg ring-1 ring-border/40',
         'bottom-full mb-3 left-0',
         className,
       )}
       style={{ zIndex: Z_INDEX.inputBarPopover }}
       data-origin="bottom-left"
-      data-wb-blur-surface
       role="listbox"
       aria-label={t('chatV2:inputBar.slashCommand.title')}
       aria-activedescendant={activeDescendantId}

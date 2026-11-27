@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import { BlankedText } from '../../shared/BlankedText';
 import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
-import TextareaAutosize from 'react-textarea-autosize';
 import type { BlankRange, MindMapImage, MindMapNodeRef } from '../../../types';
 import { getMindMapPreferences } from '../../../utils/mindmapPreferences';
 import { NodeRefList } from '../../shared/NodeRefCard';
@@ -236,33 +235,48 @@ const NodeTitleEditor: React.FC<NodeTitleEditorProps> = ({
     }
   }, [titleIme, commitText, editValue, text, onEmptyCommit, onEndEdit, onCommitAndCreateSibling, onCommitAndCreateChild, onCommitAndEditNote]);
 
+  // 镜像文本驱动宽高：textarea 绝对定位覆盖，彻底绕开原生 <textarea cols=20> 固定固有宽度
+  const mirrorText = editValue
+    ? (editValue.endsWith('\n') ? `${editValue}\u200b` : editValue)
+    : (text || unnamedLabel || '\u200b');
+
   return (
     <>
-      <TextareaAutosize
-        ref={inputRef}
-        aria-label={t('contextMenu.edit')}
-        value={editValue}
-        onChange={(e) => {
-          titleCanceledRef.current = false;
-          closeEditSelectionBubble();
-          setEditValue(e.target.value);
-        }}
-        onBlur={handleSave}
-        onCompositionStart={titleIme.onCompositionStart}
-        onCompositionEnd={titleIme.onCompositionEnd}
-        onKeyDown={handleKeyDown}
-        onClick={(e) => e.stopPropagation()}
-        onMouseUp={handleEditSelectionMouseUp}
-        onTouchEnd={handleEditSelectionMouseUp}
-        placeholder={text || unnamedLabel}
-        className={cn(
-          'nopan nodrag block w-full resize-none overflow-hidden bg-transparent px-1',
-          'rounded-sm border-none outline-none ring-0 focus:ring-0',
-          'text-inherit placeholder:[color:color-mix(in_srgb,currentColor_68%,transparent)]',
-          'text-center',
-        )}
-        style={{ font: 'inherit', letterSpacing: 'inherit' }}
-      />
+      <div className="mm-title-editor-wrap relative grid w-full min-w-0 max-w-full">
+        <span
+          aria-hidden="true"
+          data-testid="mm-title-editor-mirror"
+          className="mm-node-text mm-title-editor-mirror col-start-1 row-start-1 invisible whitespace-pre-wrap break-words px-1 min-h-[1.2em] pointer-events-none select-none text-center"
+        >
+          {mirrorText}
+        </span>
+        <textarea
+          ref={inputRef}
+          rows={1}
+          aria-label={t('contextMenu.edit')}
+          value={editValue}
+          onChange={(e) => {
+            titleCanceledRef.current = false;
+            closeEditSelectionBubble();
+            setEditValue(e.target.value);
+          }}
+          onBlur={handleSave}
+          onCompositionStart={titleIme.onCompositionStart}
+          onCompositionEnd={titleIme.onCompositionEnd}
+          onKeyDown={handleKeyDown}
+          onClick={(e) => e.stopPropagation()}
+          onMouseUp={handleEditSelectionMouseUp}
+          onTouchEnd={handleEditSelectionMouseUp}
+          placeholder={text || unnamedLabel}
+          className={cn(
+            'mm-title-editor-input nopan nodrag absolute inset-0 block w-full h-full resize-none overflow-hidden bg-transparent px-1',
+            'rounded-sm border-none outline-none ring-0 focus:ring-0',
+            'whitespace-pre-wrap break-words text-inherit placeholder:[color:color-mix(in_srgb,currentColor_68%,transparent)]',
+            'text-center',
+          )}
+          style={{ font: 'inherit', letterSpacing: 'inherit', lineHeight: 'inherit' }}
+        />
+      </div>
       {editSelectionBubble}
     </>
   );

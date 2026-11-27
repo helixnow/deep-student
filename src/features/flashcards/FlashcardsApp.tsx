@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Books, ChartBar, Lightning } from '@phosphor-icons/react';
+import { Books, ChartBar, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { useMobileHeader } from '@/components/layout/MobileHeaderContext';
 import { MobileSlidingLayout } from '@/components/layout/MobileSlidingLayout';
 import {
@@ -17,6 +17,13 @@ import {
 } from '@/components/layout/mobileDrawerStyles';
 import { DsButton } from '@/components/ui/DsButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import {
+  CardsHubDesktopNav,
+  CARDS_HUB_SELECT_SCREEN_EVENT,
+  type CardsHubReviewScreen,
+} from '@/components/layout/CardsHubDesktopNav';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { BACK_PRIORITY, registerVisibilityGuardedBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { FlashcardsMobileChromeContext, type FlashcardsMobileChrome } from './useFlashcardsMobileChrome';
@@ -25,6 +32,7 @@ import { TodayScreen } from './screens/TodayScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ReviewSessionScreen } from './screens/ReviewSessionScreen';
 import { StatisticsScreen } from './screens/StatisticsScreen';
+import { SchedulerSettingsScreen } from './screens/SchedulerSettingsScreen';
 import {
   useFsrsReviewStore,
   type FlashcardsScreen,
@@ -40,23 +48,28 @@ const TABS: Array<{
   { id: 'today', icon: <Lightning size={16} weight="duotone" />, labelKey: 'tabs.today' },
   { id: 'library', icon: <Books size={16} weight="duotone" />, labelKey: 'tabs.library' },
   { id: 'settings', icon: <ChartBar size={16} weight="duotone" />, labelKey: 'tabs.statistics' },
+  { id: 'scheduler', icon: <SlidersHorizontal size={16} weight="duotone" />, labelKey: 'tabs.settings' },
 ];
 
 export interface FlashcardsAppProps {
   launchPayload?: unknown;
   /** 工作台窗口/标签页是否处于前台；缺省保持独立宿主兼容。 */
   isActive?: boolean;
+  /** 学习桌面窗口内嵌入态（不接管经典壳桌面顶栏与跨视图单层导航） */
+  embedded?: boolean;
 }
 
 export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   launchPayload,
   isActive = true,
+  embedded = false,
 }) => {
-  const { t } = useTranslation('flashcards');
+  const { t } = useTranslation(['flashcards', 'sidebar']);
   const { isSmallScreen } = useBreakpoint();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileChrome, setMobileChrome] = useState<FlashcardsMobileChrome | null>(null);
   const [pendingOpenComposer, setPendingOpenComposer] = useState(false);
+  const [schedulerFocusField, setSchedulerFocusField] = useState<'newPerDay' | undefined>(undefined);
   const rootRef = useRef<HTMLDivElement>(null);
   const reviewOrigin = useRef<Exclude<FlashcardsScreen, 'session'>>('today');
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
@@ -65,6 +78,14 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   const applyLaunchPayload = useFsrsReviewStore((s) => s.applyLaunchPayload);
   const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
   const endSession = useFsrsReviewStore((s) => s.endSession);
+  const openSchedulerSettings = useCallback((focusField?: 'newPerDay') => {
+    setSchedulerFocusField(focusField);
+    if (screen === 'session') endSession();
+    setScreen('scheduler');
+  }, [endSession, screen, setScreen]);
+  const consumeSchedulerFocusField = useCallback(() => {
+    setSchedulerFocusField(undefined);
+  }, []);
   const handleQuickNewCard = useCallback(() => {
     setPendingOpenComposer(true);
     setScreen('library');
@@ -81,9 +102,71 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
     setScreen(reviewOrigin.current);
   }, [endSession, setScreen]);
 
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !isSmallScreen && !embedded && hasDesktopHeaderHost;
+
+  useEventRegistry(
+    !embedded
+      ? [
+          {
+            target: 'window',
+            type: CARDS_HUB_SELECT_SCREEN_EVENT,
+            listener: (event) => {
+              const targetScreen = (event as CustomEvent<{ screen?: CardsHubReviewScreen }>).detail?.screen;
+              if (
+                targetScreen === 'today'
+                || targetScreen === 'library'
+                || targetScreen === 'settings'
+                || targetScreen === 'scheduler'
+              ) {
+                if (screen === 'session') endSession();
+                setScreen(targetScreen);
+              }
+            },
+          },
+        ]
+      : [],
+    [embedded, screen, endSession, setScreen],
+  );
+  const screenTitle = screen === 'session'
+    ? t('flashcards:session.title', { defaultValue: t('sidebar:navigation.cards_hub.review', { defaultValue: '复习' }) })
+    : screen === 'scheduler'
+      ? t('flashcards:tabs.settings')
+      : t(`flashcards:tabs.${screen === 'settings' ? 'statistics' : screen}`);
+
+  useDesktopHeader(
+    'flashcards',
+    {
+      breadcrumbs: screen === 'session'
+        ? [
+            {
+              id: 'fc-root',
+              label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+              onClick: exitReview,
+            },
+            { id: 'fc-session', label: screenTitle },
+          ]
+        : [
+            {
+              id: 'fc-root',
+              label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+            },
+            { id: `fc-${screen}`, label: screenTitle },
+          ],
+    },
+    [t, screen, screenTitle, exitReview],
+    useClassicDesktopHeader && isActive,
+  );
+
   const onBack = mobileChrome?.onBack;
   useMobileHeader('flashcards', {
-    title: mobileChrome?.title ?? t(screen === 'settings' ? 'statistics.title' : `${screen}.title`),
+    title: mobileChrome?.title ?? t(
+      screen === 'settings'
+        ? 'statistics.title'
+        : screen === 'scheduler'
+          ? 'settings.scheduler.title'
+          : `${screen}.title`,
+    ),
     subtitle: mobileChrome?.subtitle,
     rightActions: mobileChrome?.rightActions,
     showMenu: !onBack,
@@ -128,42 +211,65 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   ) : (
     <>
       {!isSmallScreen && (
-        <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
-          {TABS.map((tab) => {
-            const active = screen === tab.id;
-            const showDueBadge = tab.id === 'today' && dueTotal > 0;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                data-testid={`fc-tab-${tab.id}`}
-                onClick={() => setScreen(tab.id)}
-                className="wb-fc-tab wb-fcx-tab"
-                data-active={active ? 'true' : undefined}
-                aria-current={active ? 'page' : undefined}
-              >
-                {tab.icon}
-                {t(tab.labelKey)}
-                {showDueBadge ? (
-                  <span className="wb-fcx-tab-badge" aria-hidden="true">
-                    {dueTotal > 99 ? '99+' : dueTotal}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
+        useClassicDesktopHeader ? (
+          <CardsHubDesktopNav
+            activeSection={screen}
+            dueTotal={dueTotal}
+            onSelectReviewScreen={setScreen}
+          />
+        ) : (
+          <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
+            {TABS.map((tab) => {
+              const active = screen === tab.id;
+              const showDueBadge = tab.id === 'today' && dueTotal > 0;
+              return (
+                <DsButton
+                  key={tab.id}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid={`fc-tab-${tab.id}`}
+                  onClick={() => setScreen(tab.id)}
+                  className="wb-fc-tab wb-fcx-tab !h-auto !min-h-0 !rounded-b-none !border-x-0 !border-t-0 !bg-transparent hover:!bg-transparent"
+                  data-active={active ? 'true' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {tab.icon}
+                  {t(tab.labelKey)}
+                  {showDueBadge ? (
+                    <span className="wb-fcx-tab-badge" aria-hidden="true">
+                      {dueTotal > 99 ? '99+' : dueTotal}
+                    </span>
+                  ) : null}
+                </DsButton>
+              );
+            })}
+          </nav>
+        )
       )}
       <div className="wb-fc-body">
         <div key={screen} className="wb-fcx-screen-anim">
-          {screen === 'today' ? <TodayScreen onQuickNewCard={handleQuickNewCard} /> : null}
+          {screen === 'today' ? (
+            <TodayScreen
+              onQuickNewCard={handleQuickNewCard}
+              onOpenSchedulerSettings={openSchedulerSettings}
+            />
+          ) : null}
           {screen === 'library' ? (
             <LibraryScreen
               autoOpenComposer={pendingOpenComposer}
               onAutoOpenComposerConsumed={consumePendingOpenComposer}
             />
           ) : null}
-          {screen === 'settings' ? <StatisticsScreen /> : null}
+          {screen === 'settings' ? (
+            <StatisticsScreen onOpenSchedulerSettings={() => openSchedulerSettings()} />
+          ) : null}
+          {screen === 'scheduler' ? (
+            <SchedulerSettingsScreen
+              initialFocusField={schedulerFocusField}
+              onInitialFocusConsumed={consumeSchedulerFocusField}
+            />
+          ) : null}
         </div>
       </div>
     </>

@@ -8,6 +8,7 @@ import enLearningHub from '@/locales/en-US/learningHub.json';
 const mocks = vi.hoisted(() => ({
   pptxPreviewFn: vi.fn(),
   pptxDestroyFn: vi.fn(),
+  docxRenderAsyncFn: vi.fn(),
   debugWarn: vi.fn(),
 }));
 
@@ -49,6 +50,15 @@ vi.mock('pptx-preview', () => ({
     preview: (buffer: ArrayBuffer) => mocks.pptxPreviewFn(container, buffer),
     destroy: () => mocks.pptxDestroyFn(),
   }),
+}));
+
+vi.mock('docx-preview', () => ({
+  renderAsync: (
+    buffer: ArrayBuffer,
+    bodyContainer: HTMLElement,
+    styleContainer: HTMLElement | null,
+    options?: unknown,
+  ) => mocks.docxRenderAsyncFn(buffer, bodyContainer, styleContainer, options),
 }));
 
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({
@@ -97,8 +107,11 @@ vi.mock('@/features/pdf/components/PdfSelectionActions', () => ({
   PdfSelectionActions: () => null,
 }));
 
+import { DocxPreview } from '../DocxPreview';
 import { PptxPreview } from '../PptxPreview';
 import { XlsxPreview } from '../XlsxPreview';
+import { XmindPreview } from '../XmindPreview';
+import { buildZipManifestFromBytes } from '../archiveManifest';
 import EpubPreview from '../EpubPreview';
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -241,6 +254,63 @@ describe('G24 PPTX theme background, XLSX truncated guard, and EPUB blob URL lif
       expect(mocks.pptxPreviewFn).not.toHaveBeenCalled();
       expect(consoleErrSpy).not.toHaveBeenCalled();
     });
+
+    it('accepts valid .pptx with benign trailing padding after ZIP EOCD and strips trailing bytes', async () => {
+      const validZip = new JSZip();
+      validZip.file('[Content_Types].xml', '<Types/>');
+      const rawBytes = await validZip.generateAsync({ type: 'uint8array' });
+      const paddedBytes = new Uint8Array(rawBytes.length + 1);
+      paddedBytes.set(rawBytes, 0);
+      paddedBytes[rawBytes.length] = 0x0a; // trailing newline after EOCD
+
+      mocks.pptxPreviewFn.mockImplementationOnce(async (container: HTMLElement, buffer: ArrayBuffer) => {
+        expect(buffer.byteLength).toBe(rawBytes.length);
+        container.innerHTML = `
+          <div class="pptx-preview-wrapper">
+            <div class="pptx-preview-slide-wrapper pptx-preview-slide-wrapper-0">
+              <div class="slide-wrapper"><p>Lecture 01</p></div>
+            </div>
+          </div>
+        `;
+      });
+
+      render(<PptxPreview base64Content={bytesToBase64(paddedBytes)} fileName="lecture.pptx" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Lecture 01')).toBeTruthy();
+      });
+      expect(mocks.pptxPreviewFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to OOXML slide text extraction when pptx-preview produces an empty slide canvas', async () => {
+      const minimalPptxBase64 = await createValidZipBase64({
+        '[Content_Types].xml': '<Types/>',
+        'ppt/slides/slide1.xml': `<?xml version="1.0" encoding="UTF-8"?>
+          <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <p:cSld><p:spTree><p:sp><p:txBody>
+              <a:p><a:r><a:t>Minimal Deck Title</a:t></a:r></a:p>
+              <a:p><a:r><a:t>Key takeaway bullet</a:t></a:r></a:p>
+            </p:txBody></p:sp></p:spTree></p:cSld>
+          </p:sld>`,
+      });
+
+      mocks.pptxPreviewFn.mockImplementationOnce(async (container: HTMLElement) => {
+        container.innerHTML = `
+          <div class="pptx-preview-wrapper">
+            <div class="pptx-preview-slide-wrapper pptx-preview-slide-wrapper-0">
+              <div class="slide-wrapper"></div>
+            </div>
+          </div>
+        `;
+      });
+
+      render(<PptxPreview base64Content={minimalPptxBase64} fileName="minimal.pptx" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Minimal Deck Title')).toBeTruthy();
+        expect(screen.getByText('Key takeaway bullet')).toBeTruthy();
+      });
+    });
   });
 
   describe('XlsxPreview', () => {
@@ -294,6 +364,79 @@ describe('G24 PPTX theme background, XLSX truncated guard, and EPUB blob URL lif
         expect(screen.getByText('Ada')).toBeTruthy();
         expect(screen.getByText('98')).toBeTruthy();
       });
+    });
+
+    it('renders valid .xlsx workbooks with benign trailing newline after ZIP EOCD', async () => {
+      const validBase64 = await createValidXlsxBase64();
+      const rawBinary = atob(validBase64);
+      const padded = new Uint8Array(rawBinary.length + 1);
+      for (let i = 0; i < rawBinary.length; i += 1) {
+        padded[i] = rawBinary.charCodeAt(i);
+      }
+      padded[rawBinary.length] = 0x0a;
+
+      render(<XlsxPreview base64Content={bytesToBase64(padded)} fileName="padded-scores.xlsx" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Ada')).toBeTruthy();
+        expect(screen.getByText('98')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('XmindPreview', () => {
+    it('renders multi-sheet XMind ZEN workbooks with sheet tab switching', async () => {
+      const xmindContent = JSON.stringify([
+        {
+          id: 'sheet-1',
+          title: 'Overview',
+          rootTopic: {
+            id: 'root-1',
+            title: 'Course Architecture',
+            children: {
+              attached: [
+                { id: 'c1', title: 'Module A', labels: ['core'] },
+                { id: 'c2', title: 'Module B' },
+              ],
+            },
+          },
+        },
+        {
+          id: 'sheet-2',
+          title: 'Exam Plan',
+          rootTopic: {
+            id: 'root-2',
+            title: 'Final Review Checklist',
+            children: {
+              attached: [{ id: 'c3', title: 'Practice Problems' }],
+            },
+          },
+        },
+      ]);
+      const xmindBase64 = await createValidZipBase64({ 'content.json': xmindContent });
+
+      render(<XmindPreview base64Content={xmindBase64} fileName="syllabus.xmind" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Course Architecture')).toBeTruthy();
+        expect(screen.getByText('Module A')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Exam Plan' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Final Review Checklist')).toBeTruthy();
+        expect(screen.getByText('Practice Problems')).toBeTruthy();
+      });
+    });
+
+    it('shows a friendly error state for corrupted .xmind archives', async () => {
+      const corruptBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xde, 0xad, 0xbe, 0xef]);
+
+      render(<XmindPreview base64Content={bytesToBase64(corruptBytes)} fileName="broken.xmind" />);
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBeTruthy();
     });
   });
 
@@ -375,6 +518,79 @@ describe('G24 PPTX theme background, XLSX truncated guard, and EPUB blob URL lif
       } finally {
         container.removeEventListener('load', onCaptureLoad, true);
       }
+    });
+
+    it('rejects truncated .epub archives with localized friendly error message', async () => {
+      const truncated = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00]);
+      render(
+        <EpubPreview
+          base64Content={bytesToBase64(truncated)}
+          fileName="broken.epub"
+          resourceId="res_epub_truncated"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/This file appears truncated or corrupted and cannot be previewed/)).toBeTruthy();
+      });
+    });
+  });
+
+  describe('DocxPreview', () => {
+    it('rejects truncated .docx before invoking docx-preview with zero console.error', async () => {
+      const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const truncated = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00]);
+
+      render(<DocxPreview base64Content={bytesToBase64(truncated)} fileName="truncated.docx" />);
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('This file appears truncated or corrupted and cannot be previewed');
+      expect(mocks.docxRenderAsyncFn).not.toHaveBeenCalled();
+      expect(consoleErrSpy).not.toHaveBeenCalled();
+    });
+
+    it('accepts valid .docx with benign trailing newline after ZIP EOCD and strips trailing bytes', async () => {
+      const zip = new JSZip();
+      zip.file('[Content_Types].xml', '<Types/>');
+      const rawBytes = await zip.generateAsync({ type: 'uint8array' });
+      const paddedBytes = new Uint8Array(rawBytes.length + 1);
+      paddedBytes.set(rawBytes, 0);
+      paddedBytes[rawBytes.length] = 0x0a;
+
+      mocks.docxRenderAsyncFn.mockImplementationOnce(
+        async (buffer: ArrayBuffer, bodyContainer: HTMLElement) => {
+          expect(buffer.byteLength).toBe(rawBytes.length);
+          bodyContainer.innerHTML = '<div class="docx-preview-wrapper"><section class="docx-preview"><p>Report Ready</p></section></div>';
+        },
+      );
+
+      render(<DocxPreview base64Content={bytesToBase64(paddedBytes)} fileName="padded.docx" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Report Ready')).toBeTruthy();
+      });
+      expect(mocks.docxRenderAsyncFn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('buildZipManifestFromBytes', () => {
+    it('lists sorted entries and sizes for a valid ZIP (even with trailing newline) and returns null for truncated ZIP', async () => {
+      const zip = new JSZip();
+      zip.file('notes/b.md', 'hello world');
+      zip.file('a.txt', 'abc');
+      const rawBytes = await zip.generateAsync({ type: 'uint8array' });
+      const padded = new Uint8Array(rawBytes.length + 1);
+      padded.set(rawBytes, 0);
+      padded[rawBytes.length] = 0x0a;
+
+      const manifest = await buildZipManifestFromBytes(padded.buffer, 'bundle.zip');
+      expect(manifest).toContain('bundle.zip (2 files');
+      expect(manifest).toContain('a.txt');
+      expect(manifest).toContain('notes/b.md');
+      expect(manifest!.indexOf('a.txt')).toBeLessThan(manifest!.indexOf('notes/b.md'));
+
+      const truncated = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xde, 0xad]);
+      expect(await buildZipManifestFromBytes(truncated.buffer, 'broken.zip')).toBeNull();
     });
   });
 });

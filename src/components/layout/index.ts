@@ -45,6 +45,33 @@ export {
   type MobileSubviewChrome,
 } from './MobileSubviewChromeContext';
 
+// 统一桌面端顶栏（面包屑范式）
+export {
+  DesktopHeaderProvider,
+  DesktopHeaderActiveViewSync,
+  useDesktopHeader,
+  useDesktopHeaderContextSafe,
+  useHasDesktopHeaderHost,
+  type DesktopBreadcrumbItem,
+  type DesktopHeaderConfig,
+} from './DesktopHeaderContext';
+export { DesktopBreadcrumbBar, type DesktopBreadcrumbBarProps } from './DesktopBreadcrumbBar';
+export { DesktopHeaderSearch, type DesktopHeaderSearchProps } from './DesktopHeaderSearch';
+export {
+  CardsHubDesktopNav,
+  CARDS_HUB_SELECT_SCREEN_EVENT,
+  type CardsHubDesktopNavProps,
+  type CardsHubDesktopSection,
+  type CardsHubReviewScreen,
+} from './CardsHubDesktopNav';
+export {
+  TITLEBAR_TITLE_CLASS,
+  TITLEBAR_META_CLASS,
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_INPUT_CLASS,
+} from './desktopTitlebarTokens';
+
 // 现有桌面端组件
 export { MacTopSafeDragZone } from './MacTopSafeDragZone';
 // Topbar（旧版顶部导航栏）已删除（2026-07）：桌面壳的固定标题栏由 App.tsx 自绘，

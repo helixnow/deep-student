@@ -306,7 +306,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
           onClose();
         }
       }}
-      className="mb-2 rounded-2xl border border-border/60 bg-popover/90 p-3 shadow-md backdrop-blur-xl outline-none"
+      className="mb-2 rounded-2xl border border-border/80 bg-popover p-3 text-popover-foreground shadow-md outline-none"
     >
       {/* 1. /btw Side-channel Quick Q&A */}
       {card.kind === 'btw' && (

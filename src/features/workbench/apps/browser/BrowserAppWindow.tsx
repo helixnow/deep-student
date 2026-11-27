@@ -12,21 +12,31 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowClockwise,
   ArrowLeft,
   ArrowRight,
   ArrowSquareOut,
+  EyeSlash,
+  FileText,
   Globe,
-  HandPalm,
   LockSimple,
   LockOpen,
+  Plus,
+  Prohibit,
   Robot,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { cn } from '@/utils/cn';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useBrowserSession } from '@/features/browser/hooks/useBrowserSession';
-import { browserApi } from '@/features/browser/browserApi';
+import { browserApi, localizeBrowserGateMessage } from '@/features/browser/browserApi';
 import { BROWSER_CONTENT_USER_INPUT_EVENT } from '@/features/browser/controlModeSync';
 import {
   browserSurfaceBoundsFromRect,
@@ -36,8 +46,11 @@ import {
 } from '@/features/browser/nativeSurface';
 import type {
   BrowserControlMode,
+  BrowserRemoteInputEvent,
+  BrowserScreencastFrame,
   BrowserSurfaceHostMode,
   BrowserSurfaceOcclusion,
+  BrowserTabInfo,
 } from '@/features/browser/types';
 import type { AppWindowProps } from '../../core/types';
 import { hubListenKeyed } from '../../core/eventHub';
@@ -55,7 +68,6 @@ import {
 } from './browserChromeEvents';
 import './BrowserAppWindow.css';
 import { resolveBrowserLaunchability } from '@/features/browser/gates';
-import { localizeBrowserGateMessage } from '@/features/browser/browserApi';
 
 // ---------------------------------------------------------------------------
 // Subcomponents
@@ -64,47 +76,71 @@ import { localizeBrowserGateMessage } from '@/features/browser/browserApi';
 const NavControls: React.FC<{
   canGoBack: boolean;
   canGoForward: boolean;
+  canReload: boolean;
   loading: boolean;
   onBack: () => void;
   onForward: () => void;
+  onReload: () => void;
   onStop: () => void;
-}> = ({ canGoBack, canGoForward, loading, onBack, onForward, onStop }) => {
+}> = ({
+  canGoBack,
+  canGoForward,
+  canReload,
+  loading,
+  onBack,
+  onForward,
+  onReload,
+  onStop,
+}) => {
   const { t } = useTranslation('workbench');
   return (
     <div className="wb-browser-nav" role="group" aria-label={t('browser.nav')}>
       {/* loading 期不锁后退/前进：点击会先停止当前加载再导航（对齐常规浏览器） */}
-      <button
-        type="button"
-        className="wb-browser-icon-btn"
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
         disabled={!canGoBack}
         onClick={onBack}
         aria-label={t('browser.back')}
         title={t('browser.back')}
       >
-        <ArrowLeft size={16} weight="bold" />
-      </button>
-      <button
-        type="button"
-        className="wb-browser-icon-btn"
+        <ArrowLeft size={16} weight="bold" aria-hidden />
+      </DsButton>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
         disabled={!canGoForward}
         onClick={onForward}
         aria-label={t('browser.forward')}
         title={t('browser.forward')}
       >
-        <ArrowRight size={16} weight="bold" />
-      </button>
-      {/* 加载期间允许中止导航。 */}
-      {loading && (
-        <button
-          type="button"
-          className="wb-browser-icon-btn"
+        <ArrowRight size={16} weight="bold" aria-hidden />
+      </DsButton>
+      {loading ? (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
           onClick={onStop}
           aria-label={t('browser.stop')}
           title={t('browser.stop')}
         >
-          <X size={16} weight="bold" />
-        </button>
-      )}
+          <X size={16} weight="bold" aria-hidden />
+        </DsButton>
+      ) : canReload ? (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={onReload}
+          aria-label={t('browser.reload')}
+          title={t('browser.reload')}
+        >
+          <ArrowClockwise size={16} weight="bold" aria-hidden />
+        </DsButton>
+      ) : null}
     </div>
   );
 };
@@ -180,37 +216,37 @@ const AddressBar: React.FC<{
   );
 };
 
-const AgentBar: React.FC<{
+const ToolbarControlStatus: React.FC<{
   controlMode: BrowserControlMode;
   onTakeOver: () => void;
 }> = ({ controlMode, onTakeOver }) => {
   const { t } = useTranslation('workbench');
-  const agentActive = controlMode === 'agent';
+  if (controlMode !== 'agent') {
+    return (
+      <span className="sr-only" role="status" data-control-mode="user">
+        {t('browser.userControl')}
+      </span>
+    );
+  }
 
   return (
     <div
-      className={`wb-browser-agent${agentActive ? ' is-agent' : ' is-user'}`}
+      className="wb-browser-control is-agent"
       role="status"
-      data-control-mode={controlMode}
+      data-control-mode="agent"
     >
-      <span className="wb-browser-agent-label">
-        {agentActive ? (
-          <>
-            <Robot size={14} weight="fill" aria-hidden />
-            {t('browser.agentActive')}
-          </>
-        ) : (
-          <>
-            <HandPalm size={14} weight="fill" aria-hidden />
-            {t('browser.userControl')}
-          </>
-        )}
+      <span className="wb-browser-control-label">
+        <Robot size={14} weight="fill" aria-hidden />
+        <span className="min-w-0 truncate">{t('browser.agentActive')}</span>
       </span>
-      {agentActive ? (
-        <button type="button" className="wb-browser-takeover" onClick={onTakeOver}>
-          {t('browser.takeOver')}
-        </button>
-      ) : null}
+      <DsButton
+        variant="ghost"
+        size="sm"
+        className="wb-browser-takeover"
+        onClick={onTakeOver}
+      >
+        {t('browser.takeOver')}
+      </DsButton>
     </div>
   );
 };
@@ -222,10 +258,398 @@ const DetachedPageHint: React.FC<{ onShowContent: () => void }> = ({ onShowConte
       <p className="wb-browser-hint-text">
         {t('browser.detachedHint')}
       </p>
-      <button type="button" className="wb-browser-hint-action" onClick={onShowContent}>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        className="wb-browser-hint-action"
+        onClick={onShowContent}
+      >
         <ArrowSquareOut size={14} weight="bold" aria-hidden />
         {t('browser.showContent')}
-      </button>
+      </DsButton>
+    </div>
+  );
+};
+
+const HeadlessPageHint: React.FC<{ onShowContent: () => void }> = ({ onShowContent }) => {
+  const { t } = useTranslation('workbench');
+  return (
+    <div className="wb-browser-state-view" data-wb-browser-headless>
+      <EyeSlash size={28} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
+      <p className="wb-browser-state-text">
+        {t('browser.headlessHint')}
+      </p>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        className="wb-browser-hint-action"
+        onClick={onShowContent}
+      >
+        <ArrowSquareOut size={14} weight="bold" aria-hidden />
+        {t('browser.promoteForeground')}
+      </DsButton>
+    </div>
+  );
+};
+
+const UnsupportedPageHint: React.FC = () => {
+  const { t } = useTranslation('workbench');
+  return (
+    <div className="wb-browser-state-view" data-wb-browser-unsupported>
+      <Prohibit size={28} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
+      <p className="wb-browser-state-text">
+        {t('browser.unsupportedHint')}
+      </p>
+    </div>
+  );
+};
+
+const TabStrip: React.FC<{
+  tabs: BrowserTabInfo[];
+  activeTabId: string | null;
+  inTitlebar?: boolean;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onNewTab: () => void;
+}> = ({ tabs, activeTabId, inTitlebar = false, onSelectTab, onCloseTab, onNewTab }) => {
+  const { t } = useTranslation('workbench');
+  if (tabs.length <= 1) return null;
+
+  return (
+    <div
+      className={cn('wb-browser-tab-strip', inTitlebar && 'is-titlebar')}
+      role="tablist"
+      aria-label={t('browser.tabs.list')}
+      data-wb-browser-tab-strip
+    >
+      <div className="wb-browser-tab-list">
+        {tabs.map((tab) => {
+          const isActiveTab = activeTabId ? tab.tabId === activeTabId : tab.active;
+          const label = tab.title.trim() || tab.url.trim() || t('browser.tabs.untitled');
+          return (
+            <div
+              key={tab.tabId}
+              className={cn('wb-browser-tab', isActiveTab && 'is-active')}
+              data-active={isActiveTab ? 'true' : 'false'}
+              onPointerDown={inTitlebar ? (e) => e.stopPropagation() : undefined}
+              onDoubleClick={inTitlebar ? (e) => e.stopPropagation() : undefined}
+            >
+              <DsButton
+                variant="ghost"
+                size="sm"
+                role="tab"
+                aria-selected={isActiveTab}
+                title={label}
+                className="wb-browser-tab-trigger"
+                onClick={() => onSelectTab(tab.tabId)}
+              >
+                <span className="min-w-0 truncate">{label}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={t('browser.closeTab')}
+                title={t('browser.closeTab')}
+                className="wb-browser-tab-close"
+                onClick={() => onCloseTab(tab.tabId)}
+              >
+                <X size={12} weight="bold" aria-hidden />
+              </DsButton>
+            </div>
+          );
+        })}
+      </div>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('browser.newTab')}
+        title={t('browser.newTab')}
+        className="wb-browser-tab-add"
+        onPointerDown={inTitlebar ? (e) => e.stopPropagation() : undefined}
+        onDoubleClick={inTitlebar ? (e) => e.stopPropagation() : undefined}
+        onClick={onNewTab}
+      >
+        <Plus size={14} weight="bold" aria-hidden />
+      </DsButton>
+    </div>
+  );
+};
+
+function pointerButtonName(button: number): 'left' | 'middle' | 'right' {
+  if (button === 1) return 'middle';
+  if (button === 2) return 'right';
+  return 'left';
+}
+
+function eventModifiers(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): string[] {
+  const mods: string[] = [];
+  if (event.altKey) mods.push('Alt');
+  if (event.ctrlKey) mods.push('Control');
+  if (event.metaKey) mods.push('Meta');
+  if (event.shiftKey) mods.push('Shift');
+  return mods;
+}
+
+const REMOTE_POINTER_MOVE_THROTTLE_MS = 60;
+
+const RemoteScreencastViewport: React.FC<{
+  frame: BrowserScreencastFrame | null;
+  onRemoteInput: (event: BrowserRemoteInputEvent) => void;
+}> = ({ frame, onRemoteInput }) => {
+  const { t } = useTranslation('workbench');
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const imeInputRef = useRef<HTMLInputElement | null>(null);
+  const isComposingRef = useRef(false);
+  const lastMoveAtRef = useRef(0);
+  const lastCompositionRef = useRef<{ text: string; at: number } | null>(null);
+
+  const mapPointerCoords = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      if (!frame || !imgRef.current) return null;
+      if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+      if (frame.width <= 0 || frame.height <= 0) return null;
+      const rect = imgRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      const scale = Math.min(rect.width / frame.width, rect.height / frame.height);
+      if (!Number.isFinite(scale) || scale <= 0) return null;
+      const renderedW = frame.width * scale;
+      const renderedH = frame.height * scale;
+      const offsetX = rect.left + (rect.width - renderedW) / 2;
+      const offsetY = rect.top + (rect.height - renderedH) / 2;
+      if (
+        clientX < offsetX ||
+        clientX > offsetX + renderedW ||
+        clientY < offsetY ||
+        clientY > offsetY + renderedH
+      ) {
+        return null;
+      }
+      const x = Math.round(((clientX - offsetX) / renderedW) * frame.width);
+      const y = Math.round(((clientY - offsetY) / renderedH) * frame.height);
+      return {
+        x: Math.max(0, Math.min(frame.width, x)),
+        y: Math.max(0, Math.min(frame.height, y)),
+      };
+    },
+    [frame],
+  );
+
+  const handleViewportFocus = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget && imeInputRef.current) {
+        imeInputRef.current.focus({ preventScroll: true });
+      }
+    },
+    [],
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (imeInputRef.current) {
+        imeInputRef.current.focus({ preventScroll: true });
+      } else {
+        event.currentTarget.focus();
+      }
+      const coords = mapPointerCoords(event.clientX, event.clientY);
+      if (!coords) return;
+      onRemoteInput({
+        type: 'mousePressed',
+        x: coords.x,
+        y: coords.y,
+        button: pointerButtonName(event.button),
+        clickCount: Math.max(1, event.detail || 1),
+        modifiers: eventModifiers(event),
+      });
+    },
+    [mapPointerCoords, onRemoteInput],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const now = Date.now();
+      if (now - lastMoveAtRef.current < REMOTE_POINTER_MOVE_THROTTLE_MS) return;
+      const coords = mapPointerCoords(event.clientX, event.clientY);
+      if (!coords) return;
+      lastMoveAtRef.current = now;
+      onRemoteInput({
+        type: 'mouseMoved',
+        x: coords.x,
+        y: coords.y,
+        modifiers: eventModifiers(event),
+      });
+    },
+    [mapPointerCoords, onRemoteInput],
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const coords = mapPointerCoords(event.clientX, event.clientY);
+      if (!coords) return;
+      onRemoteInput({
+        type: 'mouseReleased',
+        x: coords.x,
+        y: coords.y,
+        button: pointerButtonName(event.button),
+        clickCount: Math.max(1, event.detail || 1),
+        modifiers: eventModifiers(event),
+      });
+    },
+    [mapPointerCoords, onRemoteInput],
+  );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onNativeWheel = (event: WheelEvent) => {
+      const coords = mapPointerCoords(event.clientX, event.clientY);
+      if (!coords) return;
+      event.preventDefault();
+      onRemoteInput({
+        type: 'mouseWheel',
+        x: coords.x,
+        y: coords.y,
+        deltaX: Math.round(event.deltaX),
+        deltaY: Math.round(event.deltaY),
+        modifiers: eventModifiers(event),
+      });
+    };
+    viewport.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', onNativeWheel);
+    };
+  }, [mapPointerCoords, onRemoteInput]);
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(
+    (event: React.CompositionEvent<HTMLDivElement>) => {
+      isComposingRef.current = false;
+      const input = imeInputRef.current;
+      const text = event.data || input?.value || '';
+      if (input) input.value = '';
+      if (!text) return;
+      lastCompositionRef.current = { text, at: Date.now() };
+      onRemoteInput({ type: 'insertText', text });
+    },
+    [onRemoteInput],
+  );
+
+  const handleImeChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nativeEvent = event.nativeEvent as InputEvent;
+      if (isComposingRef.current || nativeEvent.isComposing) return;
+      const text = event.currentTarget.value;
+      event.currentTarget.value = '';
+      if (!text) return;
+      const recent = lastCompositionRef.current;
+      if (recent && recent.text === text && Date.now() - recent.at < 50) {
+        lastCompositionRef.current = null;
+        return;
+      }
+      onRemoteInput({ type: 'insertText', text });
+    },
+    [onRemoteInput],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        isComposingRef.current ||
+        event.nativeEvent.isComposing ||
+        event.key === 'Process' ||
+        event.keyCode === 229 ||
+        event.key === 'Unidentified'
+      ) {
+        return;
+      }
+      const modifiers = eventModifiers(event);
+      const isPrintable =
+        event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+      event.preventDefault();
+      if (isPrintable) {
+        onRemoteInput({ type: 'insertText', text: event.key });
+        return;
+      }
+      onRemoteInput({ type: 'keyDown', key: event.key, modifiers });
+    },
+    [onRemoteInput],
+  );
+
+  const handleKeyUp = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        isComposingRef.current ||
+        event.nativeEvent.isComposing ||
+        event.key === 'Process' ||
+        event.keyCode === 229 ||
+        event.key === 'Unidentified'
+      ) {
+        return;
+      }
+      const isPrintable =
+        event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+      if (isPrintable) return;
+      event.preventDefault();
+      onRemoteInput({ type: 'keyUp', key: event.key, modifiers: eventModifiers(event) });
+    },
+    [onRemoteInput],
+  );
+
+  return (
+    <div
+      ref={viewportRef}
+      className="wb-browser-remote-viewport"
+      role="application"
+      tabIndex={0}
+      aria-label={t('browser.remoteViewportHint')}
+      data-wb-browser-remote-viewport
+      onFocus={handleViewportFocus}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+      onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <input
+        ref={imeInputRef}
+        type="text"
+        className="wb-browser-ime-input"
+        aria-label={t('browser.remoteViewportHint')}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        tabIndex={-1}
+        onChange={handleImeChange}
+      />
+      {frame ? (
+        <img
+          ref={imgRef}
+          className="wb-browser-remote-image"
+          src={`data:${frame.mimeType};base64,${frame.data}`}
+          alt={t('browser.remoteViewportHint')}
+          draggable={false}
+        />
+      ) : (
+        <div className="wb-browser-remote-placeholder" role="status">
+          <Globe size={24} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
+          <span className="wb-browser-empty-title">{t('browser.remoteConnecting')}</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -414,19 +838,27 @@ interface NativeBrowserSurfaceOptions {
   overlayOpen: boolean;
 }
 
+interface NativeBrowserSurfaceHandle {
+  hostMode: BrowserSurfaceHostMode | null;
+  recordHostMode: (mode: BrowserSurfaceHostMode) => void;
+  refreshHostMode: () => Promise<BrowserSurfaceHostMode | null>;
+}
+
 function useNativeBrowserSurface({
   windowId,
   slotRef,
   sessionId,
   isVisible,
   overlayOpen,
-}: NativeBrowserSurfaceOptions): BrowserSurfaceHostMode | null {
+}: NativeBrowserSurfaceOptions): NativeBrowserSurfaceHandle {
   const [suspended, setSuspended] = useState(false);
   const [shellMotion, setShellMotion] = useState(() => ({
     suspended: isWorkbenchShellMotionActive(slotRef.current),
     ownWindowDragging: isOwnWorkbenchWindowDragging(slotRef.current),
   }));
   const [hostMode, setHostMode] = useState<BrowserSurfaceHostMode | null>(null);
+  const hostModeRef = useRef<BrowserSurfaceHostMode | null>(null);
+  hostModeRef.current = hostMode;
   const mountedRef = useRef(true);
   const frameRef = useRef<number | null>(null);
   const scheduleMeasureRef = useRef<() => void>(() => {});
@@ -451,9 +883,26 @@ function useNativeBrowserSurface({
   stateRef.current = { sessionId, desiredVisible };
 
   const recordMode = useCallback((mode: BrowserSurfaceHostMode) => {
+    hostModeRef.current = mode;
     if (mountedRef.current) setHostMode(mode);
     reportedErrorRef.current = false;
   }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    void browserApi
+      .getSurfaceHostMode()
+      .then((mode) => {
+        if (!cancelled) recordMode(mode);
+      })
+      .catch(() => {
+        // Older backends without get_surface_host_mode fall back to bounds/visibility reply.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recordMode]);
 
   const reportSurfaceError = useCallback((operation: string, error: unknown) => {
     if (reportedErrorRef.current) return;
@@ -463,6 +912,7 @@ function useNativeBrowserSurface({
 
   const requestVisibility = useCallback(
     (targetSessionId: string, visible: boolean, focus = false) => {
+      if (hostModeRef.current === 'remote') return;
       const last = lastVisibilityRef.current;
       if (!focus && last?.sessionId === targetSessionId && last.visible === visible) return;
       lastVisibilityRef.current = { sessionId: targetSessionId, visible };
@@ -493,6 +943,7 @@ function useNativeBrowserSurface({
   );
 
   const measureAndReveal = useCallback(() => {
+    if (hostModeRef.current === 'remote') return;
     const current = stateRef.current;
     if (!current.sessionId || !current.desiredVisible) return;
     const slot = slotRef.current;
@@ -868,7 +1319,18 @@ function useNativeBrowserSurface({
     };
   }, [requestVisibility]);
 
-  return hostMode;
+  const refreshHostMode = useCallback(async (): Promise<BrowserSurfaceHostMode | null> => {
+    if (!isTauriRuntime()) return null;
+    try {
+      const mode = await browserApi.getSurfaceHostMode();
+      recordMode(mode);
+      return mode;
+    } catch {
+      return hostModeRef.current;
+    }
+  }, [recordMode]);
+
+  return { hostMode, recordHostMode: recordMode, refreshHostMode };
 }
 
 // ---------------------------------------------------------------------------
@@ -902,12 +1364,32 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
   }, []);
   const addressRef = useRef<HTMLInputElement | null>(null);
   const pageSlotRef = useRef<HTMLDivElement | null>(null);
+  const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
+    const queryRoot: ParentNode = shell ?? document;
+    let observer: MutationObserver | null = null;
+    const findTarget = (): HTMLElement | null => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      setTitlebarTarget((current) => (current === target ? current : target));
+      if (target) observer?.disconnect();
+      return target;
+    };
+    if (!findTarget()) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
+  }, [windowId]);
   const workbenchOverlayOpen = useWorkbenchOverlay(
     (state) => state.exposeOpen || state.cheatsheetOpen,
   );
   const appsPanelOpen = useAppsPanelOpen();
   const transientPhase = useWindowTransientPhase(windowId);
-  const hostMode = useNativeBrowserSurface({
+  const { hostMode, recordHostMode, refreshHostMode } = useNativeBrowserSurface({
     windowId,
     slotRef: pageSlotRef,
     sessionId: session.sessionId,
@@ -980,9 +1462,39 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
     void session.forward().catch(() => {});
   }, [session]);
 
+  const handleReload = useCallback(() => {
+    if (gatesDisabled || !session.sessionId) return;
+    void session.reload().catch(() => {});
+  }, [gatesDisabled, session]);
+
   const handleStop = useCallback(() => {
     session.stopLoading();
   }, [session]);
+
+  const [extracting, setExtracting] = useState(false);
+
+  const handleExtractContent = useCallback(() => {
+    if (gatesDisabled || !session.sessionId || extracting) return;
+    setExtracting(true);
+    void browserApi
+      .extractContent(session.sessionId)
+      .then(async (result) => {
+        const copied = await copyTextToClipboard(result.markdown);
+        if (!copied) {
+          throw new Error('Clipboard copy failed');
+        }
+        showGlobalNotification('success', t('browser.extractSuccess'));
+      })
+      .catch((err: unknown) => {
+        showGlobalNotification(
+          'error',
+          t('browser.extractFailed', { error: getErrorMessage(err) }),
+        );
+      })
+      .finally(() => {
+        setExtracting(false);
+      });
+  }, [extracting, gatesDisabled, session.sessionId, t]);
 
   const handleTakeOver = useCallback(() => {
     void session.takeOver().catch(() => {
@@ -994,22 +1506,96 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
     void session.showContent();
   }, [session]);
 
+  const handlePromoteToInteractive = useCallback(() => {
+    void session
+      .promoteToInteractive()
+      .then((mode) => {
+        if (mode) recordHostMode(mode);
+        return refreshHostMode();
+      })
+      .catch(() => {
+        // Store records lastError.
+      });
+  }, [recordHostMode, refreshHostMode, session]);
+
+  const handleSelectTab = useCallback(
+    (tabId: string) => {
+      void session.switchTab(tabId).catch(() => {
+        // Store records lastError.
+      });
+    },
+    [session],
+  );
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      void session.closeTab(tabId).catch(() => {
+        // Store records lastError.
+      });
+    },
+    [session],
+  );
+
+  const handleNewTab = useCallback(() => {
+    void session.createTab().catch(() => {
+      // Store records lastError.
+    });
+  }, [session]);
+
+  const handleRemoteInput = useCallback(
+    (event: BrowserRemoteInputEvent) => {
+      void session.sendRemoteInput(event).catch(() => {
+        // Remote input errors are non-fatal; session state remains authoritative.
+      });
+    },
+    [session],
+  );
+
+  const refreshTabs = session.refreshTabs;
+  useEffect(() => {
+    if (!session.sessionId) return;
+    void refreshTabs();
+  }, [refreshTabs, session.sessionId, session.currentUrl, session.title]);
+
   return (
-    <div
-      ref={sizeRef}
-      className="wb-browser-root"
-      data-wb-browser-app
-      data-wb-browser-chrome
-      data-active={isActive ? 'true' : 'false'}
-      data-loading={session.loading ? 'true' : 'false'}
-    >
+    <>
+      {titlebarTarget ? createPortal(
+        <TabStrip
+          tabs={session.tabs}
+          activeTabId={session.activeTabId}
+          inTitlebar
+          onSelectTab={handleSelectTab}
+          onCloseTab={handleCloseTab}
+          onNewTab={handleNewTab}
+        />,
+        titlebarTarget,
+      ) : null}
+      <div
+        ref={sizeRef}
+        className="wb-browser-root"
+        data-wb-browser-app
+        data-wb-browser-chrome
+        data-active={isActive ? 'true' : 'false'}
+        data-loading={session.loading ? 'true' : 'false'}
+      >
+        {!titlebarTarget ? (
+          <TabStrip
+            tabs={session.tabs}
+            activeTabId={session.activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onNewTab={handleNewTab}
+          />
+        ) : null}
       <div className="wb-browser-toolbar">
         <NavControls
           canGoBack={!gatesDisabled && session.canGoBack}
           canGoForward={!gatesDisabled && session.canGoForward}
+          canReload={!gatesDisabled && Boolean(session.sessionId)}
           loading={session.loading}
           onBack={handleBack}
           onForward={handleForward}
+          onReload={handleReload}
           onStop={handleStop}
         />
         <AddressBar
@@ -1020,8 +1606,37 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
           onDraftChange={gatesDisabled ? () => {} : session.setAddressDraft}
           onSubmit={handleNavigate}
         />
+        <div className="wb-browser-toolbar-actions">
+          {!gatesDisabled && session.sessionId ? (
+            <>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                disabled={extracting}
+                onClick={handleExtractContent}
+                aria-label={t('browser.extractContent')}
+                title={t('browser.extractContent')}
+              >
+                <FileText size={16} weight="bold" aria-hidden />
+              </DsButton>
+              {session.tabs.length <= 1 ? (
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={handleNewTab}
+                  aria-label={t('browser.newTab')}
+                  title={t('browser.newTab')}
+                >
+                  <Plus size={16} weight="bold" aria-hidden />
+                </DsButton>
+              ) : null}
+            </>
+          ) : null}
+          <ToolbarControlStatus controlMode={session.controlMode} onTakeOver={handleTakeOver} />
+        </div>
       </div>
-      <AgentBar controlMode={session.controlMode} onTakeOver={handleTakeOver} />
       {!gatesDisabled && session.lastError ? (
         <p className="wb-browser-error" role="alert">
           <WarningCircle size={14} weight="fill" aria-hidden />
@@ -1036,7 +1651,14 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
         data-host-mode={hostMode ?? 'pending'}
         aria-busy={session.loading || undefined}
       >
-        <div ref={pageSlotRef} className="wb-browser-page-slot" data-wb-browser-page-slot />
+        <div ref={pageSlotRef} className="wb-browser-page-slot" data-wb-browser-page-slot>
+          {session.sessionId && hostMode === 'remote' ? (
+            <RemoteScreencastViewport
+              frame={session.screencastFrame}
+              onRemoteInput={handleRemoteInput}
+            />
+          ) : null}
+        </div>
         {!session.sessionId ? (
           <div className="wb-browser-empty" data-wb-browser-empty data-wb-browser-disabled={gatesDisabled ? 'true' : undefined}>
             <Globe size={30} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
@@ -1046,8 +1668,8 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
                 : t('browser.emptyHint')}
             </span>
             {gatesDisabled ? (
-              <span className="wb-browser-empty-title" style={{ opacity: 0.75, fontSize: 12 }}>
-                {t('browser.gatedHint', { defaultValue: '功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。' })}
+              <span className="wb-browser-empty-sub">
+                {t('browser.gatedHint')}
               </span>
             ) : null}
           </div>
@@ -1055,8 +1677,15 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
         {session.sessionId && hostMode === 'detached' ? (
           <DetachedPageHint onShowContent={handleShowContent} />
         ) : null}
+        {session.sessionId && hostMode === 'headless' ? (
+          <HeadlessPageHint onShowContent={handlePromoteToInteractive} />
+        ) : null}
+        {session.sessionId && hostMode === 'unsupported' ? (
+          <UnsupportedPageHint />
+        ) : null}
       </div>
     </div>
+    </>
   );
 };
 

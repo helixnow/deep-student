@@ -93,10 +93,11 @@ export function useWorkbenchWindowPointer(
       onFrameChange: (frame) => argsRef.current.callbacks.onFrameChange(frame),
       onSnapZoneChange: (zone) => argsRef.current.callbacks.onSnapZoneChange(zone),
       onCommit: (frame, zone) => {
-        // 引擎所有结束路径（松手 / Esc / pointercancel / blur）都会走 onCommit
-        // （未过 move 阈值的纯点击不走此处）
-        argsRef.current.onDragStateChange?.(false);
+        // 先提交落位到 DOM 与 store，再撤壳层并恢复焦点：
+        // 避免 endShellGesture 提前清零 gestureRef / 触发同步 focus 重渲染时，
+        // WindowShell 读到旧的 store frame 将刚拖完的窗口覆写回原位。
         argsRef.current.callbacks.onCommit(frame, zone);
+        argsRef.current.onDragStateChange?.(false);
       },
     },
     getDesktopOffset: getWorkbenchDesktopOffset,
@@ -110,16 +111,23 @@ export function useWorkbenchWindowPointer(
       // 纯点击：撤掉 pointerdown 时抬升的壳层
       argsRef.current.onDragStateChange?.(false);
     },
+    onMoveCancelled: () => {
+      // tear-out 取消：撤壳层并通知 WindowShell 还原受管态，不落盘为 floating
+      argsRef.current.onDragStateChange?.(false);
+      argsRef.current.onMoveCancelled?.();
+    },
   });
 
   return useMemo<WindowShellPointerResult>(
     () => ({
       onMovePointerDown: (e) => {
+        if (pointer.isDragging() || (e.button != null && e.button > 0)) return;
         // 按下即进入拖拽壳层（光标 / 内容 pointer-events），与现代 OS 一致
         argsRef.current.onDragStateChange?.(true);
         pointer.startMove(e);
       },
       onResizePointerDown: (dir, e) => {
+        if (pointer.isDragging() || (e.button != null && e.button > 0)) return;
         argsRef.current.onDragStateChange?.(true);
         pointer.startResize(e, dir);
       },

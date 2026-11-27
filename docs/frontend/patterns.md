@@ -10,10 +10,19 @@
 | | 桌面（`≥ 768px`） | 移动（`< 768px`） |
 |---|---|---|
 | 根 | `[data-shell-role="app-shell"]`，标题栏 `.desktop-shell-titlebar` + 侧栏（`src/app/shell/*`） | 同一根节点，顶栏 `UnifiedMobileHeader`，导航为统一抽屉（`[data-mobile-unified-drawer]`） |
-| 页面顶栏 | 页面自带工具栏 | 页面调用 `useMobileHeader(viewId, config, deps, enabled)`（`src/components/layout/MobileHeaderContext.tsx`）注册到全局唯一顶栏，不自绘第二条 |
+| 页面顶栏 | 页面调用 `useDesktopHeader(viewId, config, deps, enabled)`（`src/components/layout/DesktopHeaderContext.tsx`）向全局统一顶栏注册面包屑、附注与右侧动作，不在正文自绘第二条页面大标题栏 | 页面调用 `useMobileHeader(viewId, config, deps, enabled)`（`src/components/layout/MobileHeaderContext.tsx`）注册到全局唯一顶栏，不自绘第二条 |
 | 多栏 | 侧栏 + 工作区 + 检查器 | `MobileSlidingLayout` 三屏滑动 |
 | 学习桌面 | `src/features/workbench`（多窗口），激活时隐藏桌面壳侧栏 | — |
 | 对话框 | 居中卡片 | DsDialog 自动变底部 sheet |
+
+桌面端（经典壳）右侧顶栏统一规范（面包屑范式）：
+
+1. **单一壳层骨架**：右侧顶栏固定 `40px` 单行，由 `AppShellChrome` 统一渲染：`[>_ 命令面板]` + `[DesktopBreadcrumbBar]` + `[可拖拽弹性空白区]` + `[右侧动作区]` + `[Win 三键]`。水平外边距统一由壳层 `px-5`（`20px`）持有，页面动作区禁止重复套 `px-2`。
+2. **命令面板入口全站常驻**：`>_` 按钮始终固定在右侧顶栏最左侧，仅点击该按钮或按 `⌘K / Ctrl+K` 触发命令面板；面包屑文字本身专职层级导航与重命名，不再绑定命令面板热区。
+3. **面包屑排版与语义**：统一 `14px`（`--font-size-base`）/ `font-medium`，严禁在顶栏使用 `<h1>`–`<h6>` 或双行副标题。父级弱化（`text-muted-foreground`），支持点击返回上级；层级分隔符全站统一用 `/`；超过 3 级自动折叠为 `一级 / … / 父级 / 当前`。轻量计数或状态（如 `66 个`、`1 待完成`）走 `meta` 字段放在末级右侧，严禁用 `/` 拼接数量。
+4. **搜索与动作区统一**：搜索统一使用 `DesktopHeaderSearch`（折叠放大镜图标 → 点击原地展开紧凑输入框，Esc 或失焦空值自动收起）。顶栏控件统一 `28px` 高（`--shell-titlebar-control-height`），默认透明 `ghost` 变体，主 CTA 至多 1 个，低频操作收进末尾 `…` 菜单；触屏宽屏经 `coarseHitClassFor28` 扩区至 44px。
+5. **拖拽区与底边线一致**：仅实际可交互控件挂 `data-no-drag`，中间弹性空白区全站保持可拖动窗口与双击最大化；顶栏底部统一无边线（`border-bottom: none`），页面主体避免紧贴顶栏加硬顶边框。
+6. **子壳侧栏返回入口一致**：设置、待办、资源库的子壳侧栏返回行统一使用 `ArrowLeft` + 「返回主页」。
 
 移动端验收的五条规范：
 

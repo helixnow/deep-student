@@ -88,11 +88,9 @@
   transform: translateY(0) scale(1);
 }
 
-/* 大面板材质升厚一档（Liquid Glass：更大元素 = 更厚材质）：tint 提到 strong 档。
- * blur 保持 regular——lens 320ms 降级输出与 --wb-glass-blur 对齐，避免中途跳变。
- * 双类选择器提权，保证压过 .wb-glass 的 background-color。 */
+/* 大面板材质升厚一档（Liquid Glass：更大元素略提底色保搜索/图标对比） */
 .wb-apps-panel.wb-glass {
-  background-color: var(--wb-glass-bg-strong);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
 }
 
 /* ==== 头部 / 搜索 ======================================================= */

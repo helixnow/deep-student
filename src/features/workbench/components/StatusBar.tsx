@@ -157,7 +157,7 @@ function isInsideMenuBarOrPortal(
   const element = target instanceof Element ? target : target.parentElement;
   return Boolean(
     element?.closest(
-      '.wb-menubar, [data-wb-statusbar-menu], .wb-menubar-flyout, .wb-menubar-hotzone',
+      '.wb-menubar, [data-wb-statusbar-menu], .wb-desk-menu, .wb-menubar-flyout, .wb-menubar-hotzone',
     ),
   );
 }
@@ -291,7 +291,7 @@ const MENUBAR_FLYOUT_EXIT_MS = 120;
 const StatusBarComponent: React.FC = () => {
   const { t, i18n } = useTranslation('workbench');
   const isEnglish = Boolean(i18n.language?.startsWith('en'));
-  // 统一顶栏展开菜单状态：支持 5 个顶栏菜单的 0ms 横滑切换与 ←/→ 循环
+  // 统一顶栏展开菜单状态：支持 5 个顶栏菜单的点击互斥切换与 ←/→ 键盘循环
   const [activeMenuId, setActiveMenuId] = useState<StatusBarMenuId | null>(null);
   // 控制中心离场相位机：open → closing（播离场）→ closed（卸载）；切至相邻菜单时 0ms 瞬切
   const [centerPhase, setCenterPhase] = useState<'closed' | 'open' | 'closing'>('closed');
@@ -344,10 +344,6 @@ const StatusBarComponent: React.FC = () => {
 
   const toggleMenu = useCallback((id: StatusBarMenuId) => {
     setActiveMenuId((cur) => (cur === id ? null : id));
-  }, []);
-
-  const hoverMenu = useCallback((id: StatusBarMenuId) => {
-    setActiveMenuId((cur) => (cur !== null && cur !== id ? id : cur));
   }, []);
 
   const cycleMenu = useCallback((delta: 1 | -1) => {
@@ -840,24 +836,23 @@ const StatusBarComponent: React.FC = () => {
 
   return (
     <>
-      {/* 单一共享外部点击关闭层：z-index 严格位于 .wb-menubar 之下，
-          不阻挡菜单触发器之间的 pointerenter，实现 0ms 横滑切换 */}
-      {activeMenuId !== null
-        ? createPortal(
-            <div
-              className="wb-menubar-dismiss-backdrop"
-              data-testid={sharedBackdropTestId}
-              aria-hidden="true"
-              onPointerDown={closeActiveMenu}
-              onClick={closeActiveMenu}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                closeActiveMenu();
-              }}
-            />,
-            document.body,
-          )
-        : null}
+      {/* 单一共享外部点击关闭层：必须留在 [data-wb-workbench-root]（isolation: isolate）
+          同一 stacking context 内，z-index（8999）才严格位于窗口层之上、.wb-dock（9000）与
+          .wb-menubar（9050，含控制中心/时钟弹层）之下；严禁 portal 到 document.body，否则
+          会整体压过隔离根，拦截顶栏弹层内部的所有点击。 */}
+      {activeMenuId !== null ? (
+        <div
+          className="wb-menubar-dismiss-backdrop"
+          data-testid={sharedBackdropTestId}
+          aria-hidden="true"
+          onPointerDown={closeActiveMenu}
+          onClick={closeActiveMenu}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            closeActiveMenu();
+          }}
+        />
+      ) : null}
 
       {/* 顶缘 4px 热区：portal 到 body 且置于菜单栏 React 子树之外，
           避免 React 合成 enter/leave 沿 portal 父链冒泡到菜单栏（会绕过防误触延迟）。
@@ -917,7 +912,6 @@ const StatusBarComponent: React.FC = () => {
           aria-expanded={brandMenuOpen}
           title={desktopName ?? t('menubar.appName')}
           onClick={() => toggleMenu('brand')}
-          onPointerEnter={() => hoverMenu('brand')}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />
         </button>
@@ -931,7 +925,6 @@ const StatusBarComponent: React.FC = () => {
         <StatusBarAppMenus
           activeMenuId={activeMenuId}
           onToggleMenu={toggleMenu}
-          onHoverMenu={hoverMenu}
           onCloseMenu={closeActiveMenu}
         />
       </div>
@@ -982,7 +975,6 @@ const StatusBarComponent: React.FC = () => {
           aria-expanded={centerOpen}
           title={t('menubar.centerTitle')}
           onClick={() => toggleMenu('control-center')}
-          onPointerEnter={() => hoverMenu('control-center')}
         >
           <SquaresFour size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
         </button>
@@ -1244,7 +1236,6 @@ const StatusBarComponent: React.FC = () => {
         <StatusBarClock
           open={clockMenuOpen}
           onToggle={() => toggleMenu('clock')}
-          onHoverTrigger={() => hoverMenu('clock')}
           onClose={closeActiveMenu}
           onOpenChange={setClockOverlayMounted}
           hideBackdrop

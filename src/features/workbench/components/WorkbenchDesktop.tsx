@@ -530,6 +530,9 @@ export const WorkbenchDesktop: React.FC = () => {
     measure();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
     observer?.observe(el);
+    if (rootRef.current && rootRef.current !== el) {
+      observer?.observe(rootRef.current);
+    }
     // provider 只返回 ResizeObserver 已测得的快照。禁止在这里恢复
     // getBoundingClientRect()：PointerEngine 会在起拖时调用 provider，布局读取会
     // 与 focus/cursor/drag class 的样式写入相撞，造成跨平台首帧强制 layout。

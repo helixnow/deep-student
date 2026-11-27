@@ -48,7 +48,7 @@ describe('Notes and outline visual contracts', () => {
     const tree = readCss('src/features/workbench/apps/notes/tree/NotesWorkspaceTree.css');
 
     // Inspector width & coarse tab targets
-    expect(workspace).toContain('clamp(256px, 26vw, 340px)');
+    expect(workspace).toContain('clamp(236px, 22vw, 300px)');
     expect(backlinks).toMatch(/@media\s*\(pointer:\s*coarse\)[\s\S]*\.notes-backlinks-panel-tab\s*\{[^}]*min-width:\s*44px/s);
     // Avoid double top divider on properties tab
     expect(propsEditor).toContain('.notes-props-editor:not(:first-child)');
@@ -59,10 +59,10 @@ describe('Notes and outline visual contracts', () => {
     expect(tree).toMatch(/\.nwt-context-menu\s*\{[^}]*z-index:\s*var\(--z-popover,\s*3100\)\s*;/s);
     expect(tree).toMatch(/@media\s*\(pointer:\s*coarse\)[\s\S]*\.nwt-indent-guide\s*\{[^}]*opacity:\s*0\.42/s);
     expect(tree).toMatch(/@media\s*\(pointer:\s*coarse\)[\s\S]*\.nwt-link-drag\s*\{[^}]*display:\s*none/s);
-    // Split focus bar & coarse view-switch / subscreen tree rows
+    // Split focus bar & coarse subscreen tree rows (explorer keeps file tree only, no 4-view switch bar)
     expect(workspace).toContain(".notes-workspace-main[data-notes-split='true'] .notes-workspace-pane[data-focused='true']::before");
     expect(workspace).not.toMatch(/\.notes-tab\[data-(?:main|right)-split='true'\][\s\S]*?inset\s+0\s+-2px/);
     expect(workspace).toContain('.notes-files-subscreen .nwt-row');
-    expect(workspace).toMatch(/@media\s*\(pointer:\s*coarse\)[\s\S]*\.notes-view-switch-option\s*\{[^}]*min-height:\s*44px/s);
+    expect(workspace).not.toContain('.notes-view-switch');
   });
 });

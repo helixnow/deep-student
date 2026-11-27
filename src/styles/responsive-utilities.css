@@ -230,28 +230,6 @@
     opacity: 0.65;
   }
 
-  /* 移动统一抽屉内嵌活跃课题状态条：与列表同源 cqi 比例，消除桌面 11px 迷你条割裂感 */
-  [data-mobile-unified-drawer] [data-testid='study-space-badge-strip'] {
-    min-height: 40px;
-    padding: 0.375rem 0.625rem 0.375rem 0.75rem;
-    font-size: calc(var(--md-meta-size) * var(--font-size-scale, 1));
-  }
-
-  [data-mobile-unified-drawer] [data-testid='study-space-badge-strip'] span {
-    font-size: calc(var(--md-meta-size) * var(--font-size-scale, 1));
-  }
-
-  [data-mobile-unified-drawer] [data-testid='study-space-badge-strip'] button {
-    height: 32px !important;
-    width: 32px !important;
-    border-radius: 8px;
-  }
-
-  [data-mobile-unified-drawer] [data-testid='study-space-badge-strip'] svg {
-    width: 17px;
-    height: 17px;
-  }
-
   /* 移动统一抽屉底部 4×2 Dock：图标与标签跟随抽屉宽度等比缩放 */
   [data-mobile-unified-drawer] [data-mobile-drawer-launcher] [data-mobile-app-launcher] > button {
     min-height: var(--md-dock-tile-height);

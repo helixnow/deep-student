@@ -95,6 +95,33 @@ export function looksLikeSecret(text: string): boolean {
   return classes >= 3;
 }
 
+const SHELL_COMMAND_PREFIX_RE = /^(?:git|npm|npx|pnpm|yarn|cd|ls|rm|cp|mv|cat|grep|rg|curl|ssh|scp|docker|kubectl|python|python3|node|cargo|brew)\s+/i;
+const PATH_LIKE_RE = /^(?:~\/|\.{1,2}\/|\/|[A-Za-z]:\\|[\w.-]+\/[\w./-]*)$/;
+const SINGLE_IDENTIFIER_RE = /^[A-Za-z_@$.-][A-Za-z0-9_.:/@$-]*$/;
+
+/**
+ * 呼出小窗时是否值得自动把剪贴板带入上下文区。
+ * 跳过密钥、文件路径（如 `src/demo/`）、纯 URL、命令行片段与单个代码标识符，
+ * 避免日常复制杂项被误判为外文并强行推荐「翻译」。
+ * 手动 Cmd+V 粘贴或点击「带入剪贴板」不受此限制。
+ */
+export function shouldAutoCaptureClipboard(text: string): boolean {
+  const value = text.trim();
+  if (!value || value.length < 4) return false;
+  if (looksLikeSecret(value)) return false;
+  // 多行文本通常是段落、题目或摘录，直接带入
+  if (value.includes('\n')) return true;
+  // 纯 URL、路径或常见终端命令不是学习摘录
+  if (/^https?:\/\/\S+$/i.test(value)) return false;
+  if (PATH_LIKE_RE.test(value)) return false;
+  if (SHELL_COMMAND_PREFIX_RE.test(value)) return false;
+  // 无空格且无中文、无数学运算符的单个 ASCII 标识符（变量名/版本号/文件名）不自动捕获
+  if (!/\s/.test(value) && !/[\u4e00-\u9fff]/.test(value) && !/[=+\-×÷∫∑√^()]/.test(value) && SINGLE_IDENTIFIER_RE.test(value)) {
+    return false;
+  }
+  return true;
+}
+
 export interface QuickRunHandle {
   sessionId: string;
   /** 流结束（完成 / 出错 / 被停止）后 settle。 */

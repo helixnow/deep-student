@@ -36,7 +36,24 @@ export const BROWSER_SETTING_KEYS = {
   networkMode: 'desktop.workbenchBrowserNetworkMode',
   agentControl: 'desktop.workbenchBrowserAgentControl',
   cdpWindows: 'desktop.workbenchBrowserCdpWindows',
+  cdpUrl: 'desktop.workbenchBrowserCdpUrl',
 } as const;
+
+const CDP_URL_SCHEMES = new Set(['http:', 'https:', 'ws:', 'wss:']);
+
+/** 校验远程 CDP 端点 URL：仅接受 http(s):// 与 ws(s):// 且包含有效主机名。 */
+export function isValidBrowserCdpUrl(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || !/^(?:https?|wss?):\/\//i.test(trimmed)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return CDP_URL_SCHEMES.has(parsed.protocol.toLowerCase()) && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
 
 export function isLoopbackHost(host: string): boolean {
   const normalized = host.replace(/\.$/, '').toLowerCase();

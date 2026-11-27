@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence } from 'framer-motion';
 import {
@@ -17,6 +17,14 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  DsDialog,
+  DsDialogBody,
+  DsDialogDescription,
+  DsDialogHeader,
+  DsDialogTitle,
+} from '@/components/ui/DsDialog';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { Input } from '@/components/ui/shad/Input';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
@@ -37,22 +45,30 @@ export interface MindMapImportReportBannerData {
 }
 
 export interface MindMapFormatDockProps {
+  currentView: 'outline' | 'mindmap';
   isCoarsePointer: boolean;
   reciteMode: boolean;
   presentationMode: boolean;
 }
 
 /**
- * 悬浮毛玻璃格式条容器：直接作为 `.mm-content-stage` 的子级渲染，
- * 天然位于文档流状态横幅之下，匹配 `.mm-content-stage:has(...) > .mm-format-dock` 防碰撞规则，
+ * 悬浮毛玻璃格式条容器：仅在思维导图画布视图（`currentView === 'mindmap'`）下渲染，
+ * 直接作为 `.mm-content-stage` 的子级，匹配 `.mm-content-stage:has(...) > .mm-format-dock` 防碰撞规则，
  * 同时将 `focusedNodeId` / `selection` 订阅隔离出主壳层。
+ * 大纲视图已有行内 `OutlineNodeMenu`、选区气泡与底部 `OutlineMultiselectBar`，不叠加此浮层避免遮挡文档标题。
  */
 export const MindMapFormatDock: React.FC<MindMapFormatDockProps> = React.memo(
-  ({ isCoarsePointer, reciteMode, presentationMode }) => {
+  ({ currentView, isCoarsePointer, reciteMode, presentationMode }) => {
     const hasFocusOrSelection = useMindMapStore(
       (state) => Boolean(state.focusedNodeId) || state.selection.length > 0,
     );
-    if (isCoarsePointer || reciteMode || presentationMode || !hasFocusOrSelection) {
+    if (
+      currentView !== 'mindmap' ||
+      isCoarsePointer ||
+      reciteMode ||
+      presentationMode ||
+      !hasFocusOrSelection
+    ) {
       return null;
     }
     return (
@@ -294,35 +310,47 @@ export const MindMapSearchBanner: React.FC<MindMapSearchBannerProps> = React.mem
                   role="group"
                   aria-label={t('mindmap:toolbar.searchMode')}
                 >
-                  <DsButton
-                    variant="ghost"
-                    className={cn(
-                      'mm-search-mode-button',
-                      searchFilterMode
-                        ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
-                        : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
-                    )}
-                    onClick={() => setSearchFilterMode(true)}
-                    title={t('mindmap:toolbar.searchFilterHint')}
-                    aria-pressed={searchFilterMode}
-                  >
-                    {t('mindmap:toolbar.searchFilter')}
-                  </DsButton>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DsButton
+                        variant="ghost"
+                        className={cn(
+                          'mm-search-mode-button',
+                          searchFilterMode
+                            ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
+                            : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
+                        )}
+                        onClick={() => setSearchFilterMode(true)}
+                        aria-pressed={searchFilterMode}
+                      >
+                        {t('mindmap:toolbar.searchFilter')}
+                      </DsButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t('mindmap:toolbar.searchFilterHint')}
+                    </TooltipContent>
+                  </Tooltip>
                   <div className="mm-search-divider" />
-                  <DsButton
-                    variant="ghost"
-                    className={cn(
-                      'mm-search-mode-button',
-                      !searchFilterMode
-                        ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
-                        : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
-                    )}
-                    onClick={() => setSearchFilterMode(false)}
-                    title={t('mindmap:toolbar.searchLocateHint')}
-                    aria-pressed={!searchFilterMode}
-                  >
-                    {t('mindmap:toolbar.searchLocate')}
-                  </DsButton>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DsButton
+                        variant="ghost"
+                        className={cn(
+                          'mm-search-mode-button',
+                          !searchFilterMode
+                            ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
+                            : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
+                        )}
+                        onClick={() => setSearchFilterMode(false)}
+                        aria-pressed={!searchFilterMode}
+                      >
+                        {t('mindmap:toolbar.searchLocate')}
+                      </DsButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t('mindmap:toolbar.searchLocateHint')}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               )}
 
@@ -421,6 +449,12 @@ export const MindMapStatusBanners: React.FC<MindMapStatusBannersProps> = React.m
     onCloseShortcutHelp,
   }) => {
     const { t } = useTranslation(['mindmap', 'common']);
+    const isMobile = useIsMobile();
+    const isDesktopShortcutDialogOpen = showShortcutHelp && !isMobile;
+    const [hasOpenedShortcutDialog, setHasOpenedShortcutDialog] = useState(isDesktopShortcutDialogOpen);
+    useEffect(() => {
+      if (isDesktopShortcutDialogOpen) setHasOpenedShortcutDialog(true);
+    }, [isDesktopShortcutDialogOpen]);
     const hasConflict = useMindMapStore(
       (state) => Boolean(state.conflictSnapshot && state.conflictSnapshot.mindmapId === resourceId),
     );
@@ -569,18 +603,34 @@ export const MindMapStatusBanners: React.FC<MindMapStatusBannersProps> = React.m
           )}
         </AnimatePresence>
 
-        {/* 快捷键帮助：桌面文档流内联面板 */}
-        <AnimatePresence initial={false}>
-          {showShortcutHelp && (
-            <InlineCollapse className="hidden md:block">
+        {/* 快捷键速查：桌面端改为宽幅居中弹窗一次性完整呈现，不再从顶栏往下挤压画布 */}
+        {(hasOpenedShortcutDialog || isDesktopShortcutDialogOpen) && (
+          <DsDialog
+            open={isDesktopShortcutDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) onCloseShortcutHelp();
+            }}
+            maxWidth="max-w-4xl"
+            aria-label={t('mindmap:shortcuts.title')}
+          >
+            <DsDialogHeader>
+              <DsDialogTitle>{t('mindmap:shortcuts.title')}</DsDialogTitle>
+              <DsDialogDescription>
+                {keymap === 'classic'
+                  ? t('mindmap:preferences.classicKeymapActive')
+                  : t('mindmap:preferences.deepStudentKeymapActive')}
+              </DsDialogDescription>
+            </DsDialogHeader>
+            <DsDialogBody>
               <ShortcutHelpPanel
                 view={currentView}
                 keymap={keymap}
                 onClose={onCloseShortcutHelp}
+                embeddedInDialog
               />
-            </InlineCollapse>
-          )}
-        </AnimatePresence>
+            </DsDialogBody>
+          </DsDialog>
+        )}
 
         {/* 背诵模式状态条：顶部文档流内联条（双视图共享，不遮挡画布） */}
         <ReciteStatusBar />

@@ -34,26 +34,26 @@ export const QUICK_TEXT_COLORS_DARK = [
   '#d18ba4', // Soft Plum Rose
 ] as const;
 
-/** 节点背景微染颜色 - 快速选择（亮色模式：浅赤陶、暖羊皮、云母米、青瓷绿、冰瓷蓝、烟紫雾、云母灰） */
+/** 节点背景高亮颜色 - 快速选择（亮色模式：7 色矿物柔彩，与文字/分支 7 色相一致且亮底高对比） */
 export const QUICK_BG_COLORS = [
-  '#f4e6e4', // 浅赤陶 Soft Terracotta
-  '#f5eae0', // 暖羊皮 Warm Parchment
-  '#f3efe2', // 云母暖米 Mica Ochre
-  '#e6f0ec', // 青瓷绿 Celadon Mist
-  '#e7eef4', // 冰瓷蓝 Porcelain Blue
-  '#edebf4', // 烟紫雾 Amethyst Haze
-  '#eaecef', // 云母灰 Mica Slate
+  '#fad9d6', // 浅赤陶红 Soft Terracotta
+  '#fce3c8', // 浅暖杏橙 Soft Apricot
+  '#f9edc2', // 浅云母黄 Soft Ochre
+  '#d5efe3', // 浅青瓷绿 Soft Celadon
+  '#d7e9fa', // 浅冰瓷蓝 Soft Porcelain
+  '#e5ddf8', // 浅烟紫雾 Soft Amethyst
+  '#f7dae9', // 浅梅粉霞 Soft Plum Rose
 ] as const;
 
-/** 暗色模式 - 节点背景微染颜色（低饱和深矿石微染） */
+/** 暗色模式 - 节点背景高亮颜色（高辨识度深矿石微染，明度/饱和度与暗色底板拉开层次且保证浅字 >= 7:1 AAA 对比度） */
 export const QUICK_BG_COLORS_DARK = [
-  '#362423', // Dark Terracotta
-  '#36291f', // Dark Parchment
-  '#332e20', // Dark Ochre
-  '#1d322c', // Dark Celadon
-  '#1e2d3a', // Dark Porcelain
-  '#2a2638', // Dark Amethyst
-  '#25292e', // Dark Mica Slate
+  '#6b2b2b', // 深赤陶红 Deep Terracotta
+  '#6e401b', // 深琥珀橙 Deep Amber Orange
+  '#5c4914', // 深古铜黄 Deep Ochre Gold
+  '#1f5943', // 深青瓷绿 Deep Celadon
+  '#214a75', // 深黛蓝 Deep Porcelain Blue
+  '#493473', // 深烟紫 Deep Amethyst
+  '#662e4d', // 深梅粉 Deep Plum Rose
 ] as const;
 
 /** 节点文字颜色 - 完整列表（样式面板 - 亮色模式） */

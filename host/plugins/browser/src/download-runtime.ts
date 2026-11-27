@@ -51,7 +51,11 @@ export class DownloadRuntime {
   }
 
   async requested(
-    session: BrowserSession | null, browserSessionId: string, url: string, originalName: string,
+    session: BrowserSession | null,
+    browserSessionId: string,
+    url: string,
+    originalName: string,
+    savePath?: string | null,
   ): Promise<{ allow: boolean; path: string | null }> {
     const owner = downloadOwnerForSession(session, browserSessionId);
     if (!owner.ok) return { allow: false, path: null };
@@ -67,14 +71,21 @@ export class DownloadRuntime {
       logWarn(`[browser] failed to resolve download artifact root: ${String(error)}`);
       return { allow: false, path: null };
     }
-    try { createDirAll(`${root}/${DOWNLOAD_ARTIFACT_DIR}`); }
+    const normalizedRoot = root.replace(/\/+$/, '');
+    const downloadsDir = `${normalizedRoot}/${DOWNLOAD_ARTIFACT_DIR}`;
+    try { createDirAll(downloadsDir); }
     catch (error) {
       logWarn(`[browser] failed to create download artifact directory: ${String(error)}`);
       return { allow: false, path: null };
     }
     const filenameSafe = sanitizeDownloadFilename(originalName);
     const id = `bd_${globalThis.crypto.randomUUID()}`;
-    const filename = `${id.slice(3, 11)}-${filenameSafe}`;
+    const normalizedSavePath = typeof savePath === 'string' && savePath.trim() !== '' ? savePath : null;
+    const prefix = `${downloadsDir}/`;
+    const stagedInsideArtifacts = normalizedSavePath !== null && normalizedSavePath.startsWith(prefix);
+    const filename = stagedInsideArtifacts
+      ? sanitizeDownloadFilename(normalizedSavePath.slice(prefix.length))
+      : `${id.slice(3, 11)}-${filenameSafe}`;
     const relativePath = `${DOWNLOAD_ARTIFACT_DIR}/${filename}`;
     let objectHandle: TaskObjectHandle;
     try {
@@ -120,8 +131,11 @@ export class DownloadRuntime {
       objectHandle,
     };
     this.observations.push(observation);
-    const controlledPath = `${root}/${relativePath}`;
+    const controlledPath = normalizedSavePath ?? `${normalizedRoot}/${relativePath}`;
     this.byPath.set(controlledPath, id);
+    if (normalizedSavePath !== null && normalizedSavePath !== `${normalizedRoot}/${relativePath}`) {
+      this.byPath.set(`${normalizedRoot}/${relativePath}`, id);
+    }
     // Rust keeps `MAX_DOWNLOAD_OBSERVATIONS` entries and evicts the oldest
     // completed/failed observation; started downloads are never evicted.
     while (this.observations.length > MAX_DOWNLOAD_OBSERVATIONS) {

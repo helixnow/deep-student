@@ -479,7 +479,10 @@
   "filters": {
     "showCompleted": "显示已完成",
     "priority": "优先级",
-    "allPriorities": "全部优先级"
+    "allPriorities": "全部优先级",
+    "viewOptions": "视图",
+    "display": "显示",
+    "clearFilter": "清除筛选"
   },
   "sort": {
     "label": "排序",

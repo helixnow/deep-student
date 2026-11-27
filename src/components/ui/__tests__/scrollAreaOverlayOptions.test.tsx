@@ -59,6 +59,15 @@ describe('ScrollArea overlay options identity', () => {
     expect(changed.events).toBe(first.events);
     expect((changed.options as { scrollbars: { autoHide: string } }).scrollbars.autoHide).toBe('never');
   });
+
+  it('默认仅在滚动时显现滚动条（autoHide=scroll 且 autoHideSuspend=false），避免 hover 时遮挡行右侧操作按钮', () => {
+    render(<ScrollArea nativeScrollbars={false}>content</ScrollArea>);
+    const opts = hookParams[0]!.options as {
+      scrollbars: { autoHide: string; autoHideSuspend: boolean };
+    };
+    expect(opts.scrollbars.autoHide).toBe('scroll');
+    expect(opts.scrollbars.autoHideSuspend).toBe(false);
+  });
 });
 
 describe('ScrollArea trackOffset 同步', () => {

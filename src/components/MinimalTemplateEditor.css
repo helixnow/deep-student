@@ -1,636 +1,56 @@
-/* Minimal Template Editor - 简约设计风格 */
+/* Minimal Template Editor — 仅保留壳层布局与 CodeMirror 细节，其余走 Tailwind 设计令牌 */
+
 .minimal-template-editor {
   display: flex;
-  gap: 16px;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  padding: 0 32px;
 }
 
-/* 代码编辑模式：撑满父容器，禁止外部滚动 */
 .minimal-template-editor.code-mode {
-  height: 100%;
-  padding: 0;
-  gap: 0;
   overflow: hidden;
 }
 
-.minimal-template-editor.code-mode .editor-main {
-  width: 100%;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-/* 无侧边栏模式 - 内容区占满宽度，参考设置页面风格 */
-.minimal-template-editor.no-sidebar {
-  padding: 0;
-}
-
-.minimal-template-editor.no-sidebar .editor-main {
-  width: 100%;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.minimal-template-editor.no-sidebar .editor-content {
-  padding: 0;
-}
-
-.minimal-template-editor.no-sidebar .editor-content-viewport {
-  padding: 24px;
-}
-
-/* 侧边栏导航 - 圆角卡片 */
-.editor-sidebar {
-  width: 240px;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  padding: 24px 0;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
-}
-
-.editor-nav {
-  padding: 0 12px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border: none;
-  background: none;
-  color: hsl(var(--muted-foreground));
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  width: 100%;
-  text-align: left;
-  margin-bottom: 4px;
-}
-
-.nav-item:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--foreground));
-}
-
-.nav-item.active {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
-.nav-item svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-/* 主内容区 - 圆角卡片 */
 .editor-main {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
 }
 
-/* 设置页面风格的内容区块 */
-.setting-section {
-  background: hsl(var(--card));
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
-  transition: box-shadow 0.3s ease;
-}
-
-.setting-section:hover {
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.08);
-}
-
-.setting-section-header {
-  margin-bottom: 24px;
-}
-
-.setting-section-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: hsl(var(--card-foreground));
-  margin: 0 0 4px 0;
-}
-
-.setting-section-desc {
-  font-size: 0.875rem;
-  color: hsl(var(--muted-foreground));
-  margin: 0;
-}
-
-/* 内容区域 */
 .editor-content {
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
-.editor-content-viewport {
-  padding: 24px;
-}
-
-/* 错误提示 - 更优雅的设计 */
-.validation-alert {
-  background: hsl(var(--danger-bg));
-  border: 1px solid hsl(var(--danger) / 0.3);
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.validation-alert svg {
-  color: hsl(var(--danger));
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.validation-messages {
-  flex: 1;
-}
-
-.validation-message {
-  color: hsl(var(--danger));
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* 卡片容器 - 已使用 shadcn Card 组件，保留兼容样式 */
-.editor-content .content-card {
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 20px;
-}
-
-/* 表单样式 */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.form-field {
+.editor-content.editor-content-code {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.form-field.full-width {
-  grid-column: 1 / -1;
-}
-
-.field-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: hsl(var(--foreground));
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.field-label.required::after {
-  content: '*';
-  color: hsl(var(--danger));
-}
-
-.field-hint {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-  margin-top: -4px;
-}
-
-/* 字段输入样式 - 已使用 shadcn Input/Textarea 组件，保留兼容样式 */
-.field-input {
-  width: 100%;
-}
-
-.field-textarea {
-  width: 100%;
-  min-height: 80px;
-}
-
-/* 代码编辑器样式 - 适配 shadcn 设计风格 */
-.code-editor {
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  overflow: hidden;
-  background: hsl(var(--muted));
-  position: relative;
-}
-
-/* 焦点可见性提升 */
-.code-editor:focus-within {
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.1);
-}
-
-.code-editor-header {
-  background: hsl(var(--card));
-  border-bottom: 1px solid hsl(var(--border));
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.code-language {
-  font-size: 11px;
-  color: hsl(var(--muted-foreground));
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.code-editor-content {
-  padding: 12px;
-  min-height: 220px;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-  border: none;
-  outline: none;
-  resize: vertical;
-  width: 100%;
-  box-sizing: border-box;
-  tab-size: 2;
-  display: block;
-  overflow: auto;
-  white-space: pre;
-  caret-color: hsl(var(--foreground));
-  font-variant-ligatures: none;
-}
-
-.code-editor textarea {
-  padding: 12px;
-  min-height: 220px;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-  border: none;
-  outline: none;
-  resize: vertical;
-  width: 100%;
-  box-sizing: border-box;
-  tab-size: 2;
-  display: block;
-  overflow: auto;
-  white-space: pre;
-  caret-color: hsl(var(--foreground));
-  font-variant-ligatures: none;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
-
-.code-editor textarea::placeholder {
-  color: hsl(var(--muted-foreground));
-}
-
-/* 小屏适配：避免占满屏过高 */
-@media (max-width: 767.98px) {
-  .code-editor-content,
-  .code-editor textarea {
-    min-height: 160px;
-  }
-}
-
-/* 开关按钮 - 已使用 shadcn Switch 组件，移除自定义样式 */
-
-/* 字段管理 - 紧凑标签式布局 */
-.fields-manager {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.field-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.field-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: auto;
-  max-width: 200px;
-  padding: 8px 12px;
-  background: hsl(var(--accent));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-}
-
-.field-item input {
-  flex: 1;
-  min-width: 80px;
-  max-width: 140px;
-  border: none;
-  background: none;
-  font-size: 14px;
-  color: hsl(var(--foreground));
-  outline: none;
-}
-
-.field-item-actions {
-  display: flex;
-  gap: 4px;
-}
-
-/* 预览区域 */
-.preview-section {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 4px;
   overflow: hidden;
 }
 
-.preview-header {
-  background: hsl(var(--card));
-  border-bottom: 1px solid hsl(var(--border));
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.preview-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: hsl(var(--foreground));
-}
-
-.preview-content {
-  padding: 16px;
-  min-height: 150px;
-  background: hsl(var(--card));
-}
-
-/* 按钮样式 - 已使用 shadcn Button 组件，保留兼容样式 */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* 底部操作栏：布局改由 TSX 内联 Tailwind 承担，此处仅保留仍被引用的 .footer-info */
-.footer-info {
-  font-size: 14px;
-  color: hsl(var(--muted-foreground));
-}
-
-/* 加载状态 */
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid hsl(var(--border));
-  border-top-color: hsl(var(--primary));
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* 响应式设计 */
-@media (max-width: 767.98px) {
-  .minimal-template-editor {
-    flex-direction: column;
-    padding: 0 12px;
-    gap: 12px;
-  }
-
-  .minimal-template-editor.no-sidebar {
-    padding: 0;
-  }
-
-  .minimal-template-editor.no-sidebar .editor-content-viewport {
-    padding: 16px 12px;
-  }
-
-  .editor-sidebar {
-    width: 100%;
-    border-radius: 12px;
-    padding: 0;
-  }
-
-  .editor-nav {
-    display: flex;
-    overflow-x: auto;
-    padding: 12px;
-    gap: 8px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .nav-item {
-    white-space: nowrap;
-    margin-bottom: 0;
-    flex-shrink: 0;
-  }
-
-  .editor-main {
-    border-radius: 8px;
-  }
-
-  .editor-content-viewport {
-    padding: 12px;
-  }
-
-  .setting-section {
-    padding: 16px;
-    margin-bottom: 16px;
-    border-radius: 12px;
-  }
-
-  .setting-section-title {
-    font-size: 1.25rem;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .field-list {
-    flex-direction: column;
-  }
-
-  .field-item {
-    max-width: 100%;
-    width: 100%;
-  }
-
-  .field-item input {
-    max-width: 100%;
-  }
-
-  .preview-content {
-    padding: 12px;
-    min-height: 120px;
-  }
-
-}
-
-/* 细节优化 - 已移除 builtin-badge，使用 shadcn 组件 */
-
-/* 规则编辑器 */
-.rules-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.rule-card {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-}
-
-.rule-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.rule-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-}
-
-.rule-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* 提示信息 */
-.info-box {
-  background: hsl(var(--info-bg));
-  border: 1px solid hsl(var(--info) / 0.3);
-  border-radius: 4px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.info-box svg {
-  color: hsl(var(--info));
-  flex-shrink: 0;
-}
-
-.info-text {
-  font-size: 14px;
-  color: hsl(var(--foreground));
-  line-height: 1.5;
-}
-
-/* 完整提示词预览 */
-.prompt-preview {
-  margin-top: 20px;
-  padding: 20px;
-  background: hsl(var(--accent));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.prompt-preview h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  margin: 0 0 16px 0;
-}
-
-.prompt-preview .preview-content {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
-  font-size: 14px;
-  line-height: 1.6;
-  color: hsl(var(--code-foreground));
-  background: hsl(var(--code-bg));
-  padding: 16px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  max-height: 600px;
-  overflow-y: auto;
-  overflow-x: auto;
-}
-
-/* 确保 pre 标签正确处理文本换行 */
-.prompt-preview .preview-content pre {
-  margin: 0;
-  padding: 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  word-break: break-word;
-  overflow-wrap: break-word;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
-  background: transparent;
-  max-width: 100%;
-}
-
-/* ============================================================
- * 模板代码分栏布局 - 参考技能编辑器 (SkillFullscreenEditor)
- * ============================================================ */
 .template-code-split-panel {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-/* 代码编辑模式：去掉 padding、禁止外部滚动，面板撑满 */
-.editor-content.editor-content-code {
-  padding: 0 !important;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.minimal-template-editor.no-sidebar .editor-content.editor-content-code {
-  padding: 0 !important;
-}
-
-/* CodeMirror 编辑器样式 - 参考 skill-codemirror-editor */
+/* CodeMirror 编辑器外观 — 统一跟随全局 --font-mono 与主题令牌 */
 .template-codemirror-editor {
   height: 100%;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-ui);
 }
 
+/* stylelint-disable selector-class-pattern -- CodeMirror 6 third-party camelCase classes */
 .template-codemirror-editor .cm-editor {
   height: 100%;
   background: transparent;
@@ -642,7 +62,7 @@
 }
 
 .template-codemirror-editor .cm-content {
-  padding: 16px 0;
+  padding: 12px 0;
 }
 
 .template-codemirror-editor .cm-line {
@@ -651,7 +71,7 @@
 
 .template-codemirror-editor .cm-gutters {
   background: transparent;
-  border-right: 1px solid hsl(var(--border) / 0.3);
+  border-right: 1px solid hsl(var(--border) / 35%);
   padding-right: 8px;
 }
 
@@ -660,50 +80,45 @@
 }
 
 .template-codemirror-editor .cm-activeLineGutter {
-  background: hsl(var(--primary) / 0.1);
+  background: hsl(var(--primary) / 8%);
 }
 
 .template-codemirror-editor .cm-activeLine {
-  background: hsl(var(--primary) / 0.05);
+  background: hsl(var(--primary) / 4%);
 }
 
-/* 选中高亮 */
 .template-codemirror-editor .cm-selectionBackground {
-  background: hsl(var(--primary) / 0.2) !important;
+  background: hsl(var(--primary) / 22%);
 }
 
 .template-codemirror-editor .cm-focused .cm-selectionBackground {
-  background: hsl(var(--primary) / 0.25) !important;
+  background: hsl(var(--primary) / 28%);
 }
 
-/* 光标样式 */
 .template-codemirror-editor .cm-cursor {
   border-left-color: hsl(var(--primary));
   border-left-width: 2px;
 }
 
-/* 行号样式 */
 .template-codemirror-editor .cm-lineNumbers .cm-gutterElement {
   padding: 0 12px 0 8px;
   min-width: 40px;
-  color: hsl(var(--muted-foreground) / 0.5);
-  font-size: 12px;
+  color: hsl(var(--muted-foreground) / 50%);
+  font-size: var(--font-size-xs);
 }
 
-/* 折叠标记 */
 .template-codemirror-editor .cm-foldGutter .cm-gutterElement {
   padding: 0 4px;
   cursor: pointer;
-  color: hsl(var(--muted-foreground) / 0.4);
-  transition: color 0.15s ease;
+  color: hsl(var(--muted-foreground) / 45%);
+  transition: color 150ms ease;
 }
 
 .template-codemirror-editor .cm-foldGutter .cm-gutterElement:hover {
   color: hsl(var(--foreground));
 }
 
-/* 桌面端隐藏原生滚动条，由 CodeMirrorScrollOverlay 自管。 */
-@media (min-width: 768px) {
+@media (width >= 768px) {
   .template-codemirror-editor .cm-scroller {
     scrollbar-width: none;
   }
@@ -713,23 +128,24 @@
   }
 }
 
-/* 搜索高亮 */
 .template-codemirror-editor .cm-searchMatch {
-  background: hsl(50 100% 50% / 0.3);
+  background: hsl(var(--warning) / 28%);
   border-radius: 2px;
 }
 
 .template-codemirror-editor .cm-searchMatch-selected {
-  background: hsl(50 100% 50% / 0.5);
+  background: hsl(var(--warning) / 45%);
 }
 
-/* 移动端：分栏面板保持弹性高度 */
-@media (max-width: 767.98px) {
-  .template-code-split-panel {
-    min-height: 0;
-  }
-
+@media (width <= 767.98px) {
   .template-codemirror-editor .cm-scroller {
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .template-codemirror-editor .cm-foldGutter .cm-gutterElement {
+    transition: none;
+  }
+}
+/* stylelint-enable selector-class-pattern */

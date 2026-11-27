@@ -290,6 +290,7 @@ export interface InputBarUIProps {
     providerLabel?: string;
     iconId?: string;
     providerId?: string;
+    providerType?: string;
     isRecent?: boolean;
     /** 最近选择中的名次（0 = 最近一次） */
     recentRank?: number;

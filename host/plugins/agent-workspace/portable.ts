@@ -25,7 +25,7 @@ export { CHATANKI_READONLY_TOOLS } from './src/workspace/tool-registry.ts';
 export { WORKSPACE_WORKER_READY_EVENT } from './src/tools/workspace-executor.ts';
 export { installWorkspaceCardReadScope, workspaceCardReadScope } from './src/workspace/card-read-scope.ts';
 export {
-  AgentProfileResolver, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID, validatePersonaModelConfig,
+  AgentProfileResolver, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID, BROWSER_PROFILE_ID, validatePersonaModelConfig,
 } from './src/workspace/agent-profile.ts';
 export { newSleepBlockData } from './src/workspace/sleep-manager.ts';
 export { WorkspaceInjector, InjectionThrottle, MAX_INJECTED_MESSAGE_CHARS } from './src/workspace/injector.ts';

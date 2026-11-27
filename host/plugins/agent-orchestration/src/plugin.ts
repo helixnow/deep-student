@@ -14,6 +14,7 @@ import type {
   AgentSubagentService, BackgroundResidencyState, HeadlessSessionTurn, HeadlessTurnOutcome, HeadlessTurnRequest,
   HeadlessTurnResult, Json,
 } from '../api.ts';
+import type { BrowserHostFacts } from '../../browser/api.ts';
 import type {} from '../../../platform/settings/api.ts';
 import type { StartupFinalizerOptions } from '../../../platform/storage/api.ts';
 import type { BackgroundTasks } from '../../../platform/diagnostics/api.ts';
@@ -764,8 +765,19 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
       const log = { info: (message: string) => ctx.logger.info(message), warn: (message: string) => ctx.logger.warn(message),
         debug: (message: string) => ctx.logger.debug(message) };
       const workerRuntime = () => ctx.get('chatWorkerRuntime');
+      const getBrowserHostFacts = (sessionId?: string | null): BrowserHostFacts | null => {
+        const browser = ctx.get('browser') as {
+          getHostFactsForChatSession?: (chatSessionId: string) => BrowserHostFacts | null;
+          getHostFacts?: (sessionId?: string | null) => BrowserHostFacts | null;
+        } | undefined;
+        if (!browser) return null;
+        if (sessionId && typeof browser.getHostFactsForChatSession === 'function') {
+          return browser.getHostFactsForChatSession(sessionId);
+        }
+        return browser.getHostFacts?.(sessionId ?? null) ?? null;
+      };
       const subagent = new SubagentExecutor({ coordinator: scope.agentWorkspace, workerRuntime,
-        chatSession: () => ctx.get('chatSession'), log });
+        chatSession: () => ctx.get('chatSession'), getBrowserHostFacts, log });
       scope.commands.register<Commands['chat_v2_background_subagent']['args'], boolean>(
         'chat_v2_background_subagent', ({ sessionId, blockId }) => subagent.background(sessionId, blockId));
       const superSession = new SuperSessionExecutor({ coordinator: scope.agentWorkspace, subagent,

@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.12](https://github.com/helixnow/deep-student/compare/v0.20.11...v0.20.12) (2026-11-28)
+
+### Features
+
+* **browser:** upgrade embedded & remote CDP browser agent tooling, snapshot folding, host facts verification, and multimodal screenshot handling
+* **preview:** add read-only multi-sheet `.xmind` preview, client-side `.zip` manifest listing fallback, text/markdown selection toolbar, and collapsible GPU-accelerated PPTX thumbnail drawer
+* **ui:** unify desktop header navigation, adaptive liquid glass workbench surfaces, flashcards scheduler settings screen, and streamlined template editor
+
+### Bug Fixes
+
+* **pdf:** unify desktop PDF selection actions (5-color highlights, notes, citations, drag-to-mindmap, and AI actions) into a single popover with bottom-edge auto-flip and drawer-open dismissal
+* **pdf,epub:** convert PDF and EPUB sidebars to GPU-composited overlay drawers to eliminate flex reflow, ResizeObserver cascades, and canvas/iframe re-renders on toggle
+* **preview:** tolerate benign trailing padding bytes after ZIP EOCD across PPTX/XLSX/DOCX/EPUB, add minimal OOXML PPTX fallback, route SVG safely to image preview, localize corrupt archive errors, and silence redundant managed-media console errors
+
 ## [0.20.11](https://github.com/helixnow/deep-student/compare/v0.20.10...v0.20.11) (2026-11-26)
 
 ### Features

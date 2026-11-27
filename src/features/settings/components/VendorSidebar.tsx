@@ -167,7 +167,7 @@ const SortableVendorRow: React.FC<SortableVendorRowProps> = ({
           size={14}
           showTooltip={false}
           variant="color"
-          renderMode="glyph"
+          renderMode="plate-glyph"
         />
       </span>
       <div className="flex-1 min-w-0 text-left">

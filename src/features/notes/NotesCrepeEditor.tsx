@@ -1608,10 +1608,12 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   }, [cancelPendingScrollRestore, captureViewportMetrics, editorApi, save.noteIdRef]);
 
   // ── 页面级操作栏与菜单 ──
+  const readingModeLabel = readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode');
   const readingModeAction = !readOnly && (
     <DsButton variant="ghost" size="sm" className="notes-chrome-text-button"
       role={hasMobileResourceMenu ? 'menuitem' : undefined}
-      aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+      aria-label={readingModeLabel}
+      title={readingModeLabel}
       aria-pressed={readingMode}
       onClick={() => { if (!readingMode) void save.flushNoteDraft().catch(() => {}); setReadingMode((prev) => !prev); }}>
       {readingMode ? <PencilLine size={15} /> : <BookOpen size={15} />}
@@ -1687,12 +1689,16 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onMoveToTrash={handleMoveToTrash}
       movingToTrash={movingToTrash}
       acrWindowId={acrWindowId}
+      charCount={charCount}
+      saveStatus={save.saveStatus}
+      lastSaved={save.lastSaved}
     />
   );
 
   const chromeSlotActive = notesChromeSlotVisible ?? isActive;
   const hasPortalChromeHost = chromeSlotActive && Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu;
   const portalChrome = hasPortalChromeHost && !focus.focusMode;
+  const pageActionsLabel = t('notes:toolbar.page_actions', 'More note actions');
   const chromeActions = (
     <>
       <NotesSaveIndicator saveStatus={save.saveStatus} lastSaved={save.lastSaved} charCount={charCount}
@@ -1701,7 +1707,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
         <PopoverTrigger asChild>
           <DsButton ref={templateTriggerRef} variant="ghost" size="sm" className="notes-chrome-text-button"
-            aria-haspopup="dialog" aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
+            aria-haspopup="dialog" aria-label={pageActionsLabel} title={pageActionsLabel}>
             <DotsThree size={16} weight="bold" className="notes-chrome-compact-icon" aria-hidden="true" />
             <span>{t('notes:chrome.page')}</span><CaretDown size={12} className="notes-chrome-caret" />
           </DsButton>

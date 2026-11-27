@@ -20,8 +20,12 @@
  * 学习桌面玻璃面统一走整面壁纸复刻：`<WallpaperReplica hostRef={el} />`
  * 铺满宿主，与边界同一套折射，不挖环。
  */
-import { createElement, useLayoutEffect, useRef, type ReactElement, type RefObject } from 'react';
+import { createElement, useRef, type ReactElement, type RefObject } from 'react';
 import { getMaterialTier } from './materialTier';
+import {
+  useLiquidGlassSurfaceFilter,
+  type LiquidGlassSurfaceVariant,
+} from './liquidGlassSurface';
 
 const HTML_LENS_ATTR = 'data-wb-lens';
 const SVG_HOST_ID = 'wb-liquid-glass-defs';
@@ -608,79 +612,32 @@ export function detachLiquidGlassLens(el: HTMLElement): void {
   bindings.delete(el);
 }
 
-const REPLICA_FILTER = 'blur(18px) url(#FILTER) saturate(1.85) brightness(1.1)';
-
 /**
- * 整面壁纸复刻折射：克隆 `.wb-wallpaper-root` 并对齐视口，滤镜铺满宿主。
- * 宿主需 `position: relative`（`.wb-glass` 已具备）。
+ * 统一实景液态玻璃折射适配（原壁纸复刻已退役）：
+ * 不再克隆不透明 `.wb-wallpaper-root` 覆盖宿主 backdrop-filter，
+ * 而是直接对宿主元素挂载等厚倒角实景折射滤镜（Chromium / Electron 生效）。
  */
 export function useWallpaperReplicaLens(
   hostRef: RefObject<HTMLElement | null>,
-  replicaRef: RefObject<HTMLElement | null>,
+  _replicaRef: RefObject<HTMLElement | null>,
   enabled = true,
+  variant: LiquidGlassSurfaceVariant = 'surface',
 ): void {
-  useLayoutEffect(() => {
-    if (!enabled) return undefined;
-    const replica = replicaRef.current;
-    const host = hostRef.current;
-    const wallpaper = document.querySelector<HTMLElement>('.wb-wallpaper-root');
-    if (!replica || !host || !wallpaper) return undefined;
-    const radius = parseFloat(getComputedStyle(host).borderTopLeftRadius) || 18;
-    const lens = acquireLensDisplacementFilter(radius);
-    if (!lens) return undefined;
-
-    const clone = wallpaper.cloneNode(true) as HTMLElement;
-    clone.removeAttribute('id');
-    clone.style.position = 'absolute';
-    clone.style.inset = 'auto';
-    clone.style.width = '100vw';
-    clone.style.height = '100vh';
-    replica.appendChild(clone);
-    replica.style.filter = REPLICA_FILTER.replace('FILTER', lens.filterId);
-
-    const syncReplica = () => {
-      const rect = host.getBoundingClientRect();
-      clone.style.left = `${-rect.left}px`;
-      clone.style.top = `${-rect.top}px`;
-    };
-    syncReplica();
-
-    const ro =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncReplica) : null;
-    ro?.observe(host);
-    window.addEventListener('resize', syncReplica);
-
-    const enterStart = performance.now();
-    let rafId = 0;
-    const rafSync = () => {
-      syncReplica();
-      if (performance.now() - enterStart < 280) {
-        rafId = requestAnimationFrame(rafSync);
-      }
-    };
-    rafId = requestAnimationFrame(rafSync);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      ro?.disconnect();
-      window.removeEventListener('resize', syncReplica);
-      lens.release();
-      replica.style.filter = '';
-      replica.replaceChildren();
-    };
-  }, [hostRef, replicaRef, enabled]);
+  useLiquidGlassSurfaceFilter(hostRef, enabled, { variant });
 }
 
-/** 玻璃面第一子节点：整面壁纸复刻。 */
+/** 兼容占位节点（display: none，不遮挡真实 backdrop-filter），同时为宿主挂载实景液态折射。 */
 export function WallpaperReplica({
   hostRef,
   enabled = true,
+  variant = 'surface',
 }: {
   hostRef: RefObject<HTMLElement | null>;
   enabled?: boolean;
+  variant?: LiquidGlassSurfaceVariant;
 }): ReactElement {
   const replicaRef = useRef<HTMLDivElement | null>(null);
-  useWallpaperReplicaLens(hostRef, replicaRef, enabled);
+  useWallpaperReplicaLens(hostRef, replicaRef, enabled, variant);
   return createElement('div', {
     ref: replicaRef,
     className: 'wb-glass-replica',
@@ -688,24 +645,14 @@ export function WallpaperReplica({
   });
 }
 
-/** React：对 ref 启用透镜 */
+/** React：对 ref 启用统一实景液态玻璃倒角折射（自动去重，不与 WallpaperReplica 重复挂载） */
 export function useLiquidGlassLens(
   ref: RefObject<HTMLElement | null>,
   enabled = true,
   options?: LensOptions,
 ): void {
-  const radius = options?.radius;
-  const scale = options?.scale;
   const staticOnly = options?.staticOnly === true;
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || !enabled) return;
-    return attachLiquidGlassLens(el, {
-      ...(radius !== undefined ? { radius } : {}),
-      ...(scale !== undefined ? { scale } : {}),
-      ...(staticOnly ? { staticOnly: true } : {}),
-    });
-  }, [ref, enabled, radius, scale, staticOnly]);
+  useLiquidGlassSurfaceFilter(ref, enabled && !staticOnly, { variant: 'surface' });
 }
 
 /** 单测：重置（真正 disconnect observer/media 监听，防重复挂载叠加） */

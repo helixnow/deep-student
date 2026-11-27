@@ -857,8 +857,8 @@ describe('StatusBar autohide', () => {
   });
 });
 
-describe('StatusBar 菜单栏横滑切换与键盘 ←/→ 循环', () => {
-  it('未展开菜单时鼠标划过触发器不会自动展开；展开后 0ms 无缝横滑切换全部 5 个菜单', () => {
+describe('StatusBar 菜单栏点击切换与键盘 ←/→ 循环', () => {
+  it('无论菜单是否展开，鼠标悬停其他顶栏触发器都不会自动切换，仅点击切换', () => {
     render(<StatusBar />);
     const brand = screen.getByTestId('wb-menubar-brand');
     const app = screen.getByTestId('wb-menubar-appmenu');
@@ -870,27 +870,38 @@ describe('StatusBar 菜单栏横滑切换与键盘 ←/→ 循环', () => {
     fireEvent.pointerEnter(app);
     expect(app).toHaveAttribute('aria-expanded', 'false');
 
-    // 点击展开品牌菜单，再依次横滑相邻触发器 0ms 切换
+    // 点击展开品牌菜单后，划过其他触发器不会自动切过去
     fireEvent.click(brand);
     expect(brand).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('wb-menubar-menu-backdrop')).toBeInTheDocument();
 
     fireEvent.pointerEnter(app);
+    fireEvent.pointerEnter(win);
+    fireEvent.pointerEnter(center);
+    fireEvent.pointerEnter(clock);
+    expect(brand).toHaveAttribute('aria-expanded', 'true');
+    expect(app).toHaveAttribute('aria-expanded', 'false');
+    expect(win).toHaveAttribute('aria-expanded', 'false');
+    expect(center).toHaveAttribute('aria-expanded', 'false');
+    expect(clock).toHaveAttribute('aria-expanded', 'false');
+
+    // 显式点击才切换到目标菜单
+    fireEvent.click(app);
     expect(brand).toHaveAttribute('aria-expanded', 'false');
     expect(app).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('wb-menubar-appmenu-panel')).toBeInTheDocument();
 
-    fireEvent.pointerEnter(win);
+    fireEvent.click(win);
     expect(app).toHaveAttribute('aria-expanded', 'false');
     expect(win).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('wb-menubar-windowmenu-panel')).toBeInTheDocument();
 
-    fireEvent.pointerEnter(center);
+    fireEvent.click(center);
     expect(win).toHaveAttribute('aria-expanded', 'false');
     expect(center).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('wb-menubar-flyout')).toBeInTheDocument();
 
-    fireEvent.pointerEnter(clock);
+    fireEvent.click(clock);
     expect(center).toHaveAttribute('aria-expanded', 'false');
     expect(clock).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
@@ -1061,6 +1072,30 @@ describe('StatusBar MenuBar backdrop, Escape in inputs, and window-focus auto-di
       useWindowStore.getState().focusWindow(winA);
     });
     expect(windowMenuBtn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('renders dismiss backdrop inside the isolated workbench root so Control Center controls stay clickable', () => {
+    render(
+      <div data-wb-workbench-root style={{ isolation: 'isolate' }}>
+        <StatusBar />
+      </div>,
+    );
+
+    const root = document.querySelector('[data-wb-workbench-root]') as HTMLElement;
+    const centerBtn = screen.getByTestId('wb-menubar-center');
+    fireEvent.click(centerBtn);
+
+    const backdrop = screen.getByTestId('wb-menubar-flyout-backdrop');
+    const flyout = screen.getByTestId('wb-menubar-flyout');
+    // backdrop 必须与 .wb-menubar 共处同一隔离根内，绝不能 portal 到 document.body 压过控制中心
+    expect(root.contains(backdrop)).toBe(true);
+    expect(root.contains(flyout)).toBe(true);
+
+    const dockToggle = screen.getByTestId('wb-cc-tile-dock-autohide');
+    fireEvent.pointerDown(dockToggle);
+    fireEvent.click(dockToggle);
+    expect(centerBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(dockToggle).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('dismisses an active MenuBar dropdown on Dock pointerdown without blocking the Dock click', async () => {

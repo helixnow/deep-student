@@ -60,6 +60,14 @@
         "undoCreate": "删除刚创建的模板",
         "undoRename": "恢复模板名称",
         "undoUpdateContent": "恢复模板内容"
+      },
+      "browser": {
+        "actions": {
+          "newTab": "新建标签页",
+          "switchTab": "切换标签页",
+          "closeTab": "关闭标签页",
+          "extractContent": "提取网页正文"
+        }
       }
     },
     "drivers": {
@@ -182,7 +190,7 @@
       },
       "browser": {
         "name": "浏览器",
-        "actions": "导航网址、前进后退、刷新、聚焦地址栏和显示页面窗口"
+        "actions": "导航网址、管理标签页、提取网页正文、前进后退、刷新、聚焦地址栏和显示页面窗口"
       }
     },
     "killSwitch": {
@@ -927,7 +935,21 @@
     "approveClick": "允许助手点击页面元素",
     "approveType": "允许助手在页面中输入",
     "nav": "导航",
-    "gatedHint": "功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。"
+    "gatedHint": "功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。",
+    "newTab": "新建标签页",
+    "closeTab": "关闭标签页",
+    "extractContent": "提取网页正文",
+    "extractSuccess": "已提取网页正文并复制到剪贴板",
+    "extractFailed": "提取网页正文失败：{{error}}",
+    "headlessHint": "当前浏览器会话正在后台无头模式运行",
+    "promoteForeground": "切换到前台显示",
+    "unsupportedHint": "当前运行环境暂不支持本地内嵌浏览器，建议使用远程 CDP 连接或桌面端模式。",
+    "remoteConnecting": "正在连接远程浏览器画面…",
+    "remoteViewportHint": "远程浏览器交互视图（可直接点击、滚动和输入）",
+    "tabs": {
+      "list": "标签页列表",
+      "untitled": "新标签页"
+    }
   },
   "devPanel": {
     "title": "桌面运行诊断",

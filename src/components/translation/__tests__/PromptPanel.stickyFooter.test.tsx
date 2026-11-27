@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({
@@ -19,30 +19,29 @@ vi.mock('@/components/UnifiedNotification', () => ({
 
 import { PromptPanel } from '../PromptPanel';
 
-describe('PromptPanel 360px mobile sticky footer (S3-17)', () => {
-  it('keeps Save and Restore Default actions pinned in a sticky footer outside the scroll area', () => {
+describe('PromptPanel instant-apply settings layout', () => {
+  it('omits manual save footer and applies changes immediately on mobile and desktop', () => {
+    const setFormality = vi.fn();
+    const onRestoreDefaultPrompt = vi.fn();
+
     render(
       <PromptPanel
-        customPrompt=""
+        customPrompt="custom"
         setCustomPrompt={vi.fn()}
-        onSavePrompt={vi.fn()}
-        onRestoreDefaultPrompt={vi.fn()}
+        onRestoreDefaultPrompt={onRestoreDefaultPrompt}
         isOpen={true}
         setIsOpen={vi.fn()}
         formality="auto"
-        setFormality={vi.fn()}
+        setFormality={setFormality}
         mobileFullscreen={true}
       />,
     );
 
-    const footer = screen.getByTestId('translation-settings-sticky-footer');
-    expect(footer.className).toContain('sticky');
-    expect(footer.className).toContain('bottom-0');
-    expect(footer).toContainElement(
-      screen.getByRole('button', { name: 'translation:prompt_editor.save' }),
-    );
-    expect(footer).toContainElement(
-      screen.getByRole('button', { name: 'translation:prompt_editor.restore_default' }),
-    );
+    expect(screen.queryByTestId('translation-settings-sticky-footer')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'translation:prompt_editor.save' })).toBeNull();
+    expect(screen.getByTestId('translation-settings-autosave-hint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'translation:prompt_editor.restore_default' }));
+    expect(onRestoreDefaultPrompt).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,16 +11,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { getSetting, saveSetting } from '@/utils/settingsApi';
+import { deleteSetting, getSetting, saveSetting } from '@/utils/settingsApi';
 import { CircleNotch, Image as ImageIcon } from '@phosphor-icons/react';
 
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
+import { inputShellClass } from '@/components/ui/shad/inputShell';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 // 刻意深路径导入：workbench 公共出口（index.ts）聚合了 chat/系统应用等重量级
@@ -84,6 +87,7 @@ export const WORKBENCH_SETTING_KEYS = {
   browserNetworkMode: 'desktop.workbenchBrowserNetworkMode',
   browserAgentControl: 'desktop.workbenchBrowserAgentControl',
   browserCdpWindows: 'desktop.workbenchBrowserCdpWindows',
+  browserCdpUrl: 'desktop.workbenchBrowserCdpUrl',
   /** ACR 双闸设置面（R1-17）：off | background | follow */
   agentControl: 'desktop.workbenchAgentControl',
   /** ACR 演出节奏（R1-17）：fast | normal | demo */
@@ -152,6 +156,21 @@ function parseBrowserNetworkMode(raw: unknown): BrowserNetworkMode {
   return String(raw ?? '') === 'full' ? 'full' : 'local_whitelist';
 }
 
+const CDP_URL_SCHEMES = new Set(['http:', 'https:', 'ws:', 'wss:']);
+
+function isValidBrowserCdpUrl(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || !/^(?:https?|wss?):\/\//i.test(trimmed)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return CDP_URL_SCHEMES.has(parsed.protocol.toLowerCase()) && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function parseAgentControl(raw: unknown): WorkbenchAgentControl {
   const v = String(raw ?? '').trim();
   if (!v) return 'follow'; // 未设置 = 开箱默认跟随
@@ -201,6 +220,10 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [browserNetworkModeSaving, setBrowserNetworkModeSaving] = useState(false);
   const [browserAgentControl, setBrowserAgentControl] = useState(false);
   const [browserCdpWindows, setBrowserCdpWindows] = useState(false);
+  const [browserCdpUrl, setBrowserCdpUrl] = useState('');
+  const [browserCdpUrlDraft, setBrowserCdpUrlDraft] = useState('');
+  const [browserCdpUrlError, setBrowserCdpUrlError] = useState<string | null>(null);
+  const [browserCdpUrlSaving, setBrowserCdpUrlSaving] = useState(false);
   const [browserAdvancedOpen, setBrowserAdvancedOpen] = useState(false);
   const [browserFullNetworkConfirmOpen, setBrowserFullNetworkConfirmOpen] = useState(false);
   const [agentControl, setAgentControl] = useState<WorkbenchAgentControl>('follow');
@@ -230,6 +253,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         browserNetworkModeVal,
         browserAgentControlVal,
         browserCdpWindowsVal,
+        browserCdpUrlVal,
         agentControlVal,
         agentPacingVal,
       ] = await Promise.all([
@@ -251,6 +275,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.browserNetworkMode),
         read(WORKBENCH_SETTING_KEYS.browserAgentControl),
         read(WORKBENCH_SETTING_KEYS.browserCdpWindows),
+        read(WORKBENCH_SETTING_KEYS.browserCdpUrl),
         read(WORKBENCH_SETTING_KEYS.agentControl),
         read(WORKBENCH_SETTING_KEYS.agentPacing),
       ]);
@@ -275,6 +300,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setBrowserNetworkMode(parseBrowserNetworkMode(browserNetworkModeVal));
       setBrowserAgentControl(String(browserAgentControlVal ?? '') === 'true');
       setBrowserCdpWindows(String(browserCdpWindowsVal ?? '') === 'true');
+      const normalizedCdpUrl = typeof browserCdpUrlVal === 'string' ? browserCdpUrlVal.trim() : '';
+      setBrowserCdpUrl(normalizedCdpUrl);
+      setBrowserCdpUrlDraft(normalizedCdpUrl);
       setAgentControl(parseAgentControl(agentControlVal));
       setAgentPacing(parseAgentPacing(agentPacingVal));
       setLoaded(true);
@@ -482,6 +510,60 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     setBrowserFullNetworkConfirmOpen(false);
     void saveBrowserNetworkMode('full');
   }, [saveBrowserNetworkMode]);
+
+  const handleClearBrowserCdpUrl = useCallback(async () => {
+    if (!loaded || browserControlsDisabled || browserCdpUrlSaving) return;
+    setBrowserCdpUrlError(null);
+    if (browserCdpUrl === '') {
+      setBrowserCdpUrlDraft('');
+      return;
+    }
+    setBrowserCdpUrlSaving(true);
+    try {
+      await deleteSetting(WORKBENCH_SETTING_KEYS.browserCdpUrl);
+      dispatchSettingsChanged(WORKBENCH_SETTING_KEYS.browserCdpUrl, '');
+      setBrowserCdpUrl('');
+      setBrowserCdpUrlDraft('');
+      showGlobalNotification('success', t('settings:workbenchBrowserCdpUrl.cleared'));
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setBrowserCdpUrlSaving(false);
+    }
+  }, [browserCdpUrl, browserCdpUrlSaving, browserControlsDisabled, loaded, t]);
+
+  const handleSaveBrowserCdpUrl = useCallback(async () => {
+    if (!loaded || browserControlsDisabled || browserCdpUrlSaving) return;
+    const trimmed = browserCdpUrlDraft.trim();
+    if (trimmed === '') {
+      await handleClearBrowserCdpUrl();
+      return;
+    }
+    if (!isValidBrowserCdpUrl(trimmed)) {
+      setBrowserCdpUrlError(t('settings:workbenchBrowserCdpUrl.invalidUrl'));
+      return;
+    }
+    setBrowserCdpUrlError(null);
+    setBrowserCdpUrlSaving(true);
+    try {
+      const ok = await persist(WORKBENCH_SETTING_KEYS.browserCdpUrl, trimmed, trimmed);
+      if (ok) {
+        setBrowserCdpUrl(trimmed);
+        setBrowserCdpUrlDraft(trimmed);
+        showGlobalNotification('success', t('settings:workbenchBrowserCdpUrl.saved'));
+      }
+    } finally {
+      setBrowserCdpUrlSaving(false);
+    }
+  }, [
+    browserCdpUrlDraft,
+    browserCdpUrlSaving,
+    browserControlsDisabled,
+    handleClearBrowserCdpUrl,
+    loaded,
+    persist,
+    t,
+  ]);
 
   return (
     <SettingsGroup
@@ -1038,18 +1120,89 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           {t('workbench:settings.browserAdvanced')}
         </DsButton>
         {browserAdvancedOpen && !browserControlsDisabled && (
-          <SwitchRow
-            title={t('workbench:settings.browserCdpWindows.title')}
-            description={t('workbench:settings.browserCdpWindows.desc')}
-            checked={browserCdpWindows}
-            loading={!loaded}
-            disabled={browserControlsDisabled}
-            onCheckedChange={(next) => {
-              if (!loaded || browserControlsDisabled) return;
-              setBrowserCdpWindows(next);
-              void persist(WORKBENCH_SETTING_KEYS.browserCdpWindows, String(next), next);
-            }}
-          />
+          <div className="space-y-1">
+            <SwitchRow
+              title={t('workbench:settings.browserCdpWindows.title')}
+              description={t('workbench:settings.browserCdpWindows.desc')}
+              checked={browserCdpWindows}
+              loading={!loaded}
+              disabled={browserControlsDisabled}
+              onCheckedChange={(next) => {
+                if (!loaded || browserControlsDisabled) return;
+                setBrowserCdpWindows(next);
+                void persist(WORKBENCH_SETTING_KEYS.browserCdpWindows, String(next), next);
+              }}
+            />
+            <SettingRow
+              title={t('settings:workbenchBrowserCdpUrl.title')}
+              description={t('settings:workbenchBrowserCdpUrl.desc')}
+              className="sm:flex-col lg:flex-row"
+            >
+              <div className="w-full min-w-0 space-y-1.5 lg:max-w-[440px]">
+                <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <input
+                    type="url"
+                    aria-label={t('settings:workbenchBrowserCdpUrl.title')}
+                    aria-invalid={browserCdpUrlError !== null}
+                    aria-describedby={browserCdpUrlError ? 'workbench-browser-cdp-url-error' : undefined}
+                    {...TECHNICAL_INPUT_PROPS}
+                    value={browserCdpUrlDraft}
+                    placeholder={t('settings:workbenchBrowserCdpUrl.placeholder')}
+                    disabled={!loaded || browserControlsDisabled || browserCdpUrlSaving}
+                    onChange={(event) => {
+                      setBrowserCdpUrlDraft(event.target.value);
+                      if (browserCdpUrlError !== null) setBrowserCdpUrlError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void handleSaveBrowserCdpUrl();
+                      }
+                    }}
+                    className={cn(
+                      inputShellClass,
+                      'h-11 min-w-0 flex-1 sm:h-9',
+                      browserCdpUrlError && 'border-destructive focus:border-destructive focus-visible:border-destructive',
+                    )}
+                  />
+                  <DsButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !loaded ||
+                      browserControlsDisabled ||
+                      browserCdpUrlSaving ||
+                      browserCdpUrlDraft.trim() === browserCdpUrl
+                    }
+                    onClick={() => void handleSaveBrowserCdpUrl()}
+                  >
+                    {t('settings:workbenchBrowserCdpUrl.save')}
+                  </DsButton>
+                  {(browserCdpUrl !== '' || browserCdpUrlDraft !== '') && (
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!loaded || browserControlsDisabled || browserCdpUrlSaving}
+                      onClick={() => void handleClearBrowserCdpUrl()}
+                    >
+                      {t('settings:workbenchBrowserCdpUrl.clear')}
+                    </DsButton>
+                  )}
+                </div>
+                {browserCdpUrlError && (
+                  <p
+                    id="workbench-browser-cdp-url-error"
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {browserCdpUrlError}
+                  </p>
+                )}
+              </div>
+            </SettingRow>
+          </div>
         )}
       </div>
 

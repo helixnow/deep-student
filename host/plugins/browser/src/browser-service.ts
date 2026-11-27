@@ -7,10 +7,14 @@ import { mkdirSync, unlinkSync } from 'node:fs';
 import type {
   BrowserDownloadObservation, BrowserSessionState,
 } from '../../../../contracts/ipc/generated/L19-mcp-browser.ts';
-import type { BrowserSurfaceHost, BrowserSurfaceCreateOptions } from '../api.ts';
+import type {
+  BrowserRemoteInputEvent, BrowserScreenshotOptions, BrowserScreenshotResult,
+  BrowserSurfaceHost, BrowserSurfaceCreateOptions, BrowserTabInfo, BrowserTarget, BrowserWaitOptions,
+} from '../api.ts';
 import type { SettingsStore } from '../../../platform/settings/api.ts';
 import { BrowserDatabase } from './database.ts';
 import { BrowserFailure } from './error.ts';
+import { BrowserHostFactsTracker, type BrowserFactsMode, type BrowserHostFacts } from './host-facts.ts';
 import { bridgeErrorMessage, mapBrowserError, type BrowserError, type JsonValue } from './command-result.ts';
 import {
   BrowserSession, BROWSER_CONTENT_LABEL, MAX_HISTORY, USER_TAKEOVER_BLOCK_SECS,
@@ -119,6 +123,11 @@ export class BrowserRuntimeService {
   private surfaceMaskSignature: MaskSignature | null = null;
   private surfaceInputOcclusions: readonly LogicalRect[] | null = null;
   private readonly downloads: DownloadRuntime;
+  private readonly artifactRootResolver: ((chatSessionId: string) => Promise<string>) | null;
+  private readonly factsTracker: BrowserHostFactsTracker;
+  private readonly factsByChatSession = new Map<string, BrowserHostFacts>();
+  private readonly pendingDownloadsByUrl = new Map<string, Promise<void>>();
+  private sessionMode: BrowserFactsMode = 'interactive';
   private unsubscribe: (() => void) | null = null;
 
   constructor(options: BrowserServiceOptions) {
@@ -130,6 +139,8 @@ export class BrowserRuntimeService {
     this.emitRaw = options.emit;
     this.logLine = options.log ?? (() => undefined);
     this.now = options.now ?? (() => new Date());
+    this.artifactRootResolver = options.artifactRoot ?? null;
+    this.factsTracker = new BrowserHostFactsTracker(this.now);
     this.downloads = new DownloadRuntime({
       artifactRoot: options.artifactRoot ?? null,
       now: this.now,
@@ -159,6 +170,34 @@ export class BrowserRuntimeService {
       pageFinished: url => { void this.onPageFinished(url); },
       titleChanged: (title, url) => { void this.onTitleChanged(title, url); },
       navigationBlocked: (url, reason) => { void this.onNavigationBlocked(url, reason); },
+      downloadStarted: (url, filename, savePath) => {
+        const activeId = this.session?.id;
+        if (activeId === undefined) return;
+        const previous = this.pendingDownloadsByUrl.get(url) ?? Promise.resolve();
+        const next = previous
+          .then(async () => {
+            await this.onDownloadRequested(activeId, url, filename, savePath ?? null);
+          })
+          .catch((error: unknown) => {
+            this.logWarn(`[browser] download tracking failed: ${String(error)}`);
+          });
+        this.pendingDownloadsByUrl.set(url, next);
+      },
+      downloadFinished: (url, path, success) => {
+        const previous = this.pendingDownloadsByUrl.get(url);
+        if (previous !== undefined) {
+          void previous.finally(() => {
+            if (this.pendingDownloadsByUrl.get(url) === previous) {
+              this.pendingDownloadsByUrl.delete(url);
+            }
+            this.onDownloadFinished(url, path, success);
+            this.recordChatSessionFacts();
+          });
+        } else {
+          this.onDownloadFinished(url, path, success);
+          this.recordChatSessionFacts();
+        }
+      },
     });
   }
 
@@ -200,6 +239,9 @@ export class BrowserRuntimeService {
   }
 
   agentAutomationSupported(): boolean {
+    if (this.session?.alive && this.sessionMode === 'headless') return true;
+    const mode = this.surface?.hostMode();
+    if (mode === 'remote' || mode === 'headless') return true;
     return this.platform === 'darwin' || this.platform === 'win32';
   }
 
@@ -220,16 +262,31 @@ export class BrowserRuntimeService {
     return this.db.activeDir();
   }
 
+  private async syncSurfaceHostMode(): Promise<void> {
+    if (this.surface === null || typeof this.surface.syncHostMode !== 'function') return;
+    await ignoreSurfaceError(() => this.surface!.syncHostMode!());
+  }
+
   surfaceHostMode(): string {
+    if (this.session?.alive && this.sessionMode === 'headless') return 'headless';
+    const mode = this.surface?.hostMode();
+    if (mode === 'remote' || mode === 'headless') return mode;
     return surfaceHostMode(this.platform);
+  }
+
+  async getSurfaceHostMode(): Promise<string> {
+    await this.syncSurfaceHostMode();
+    return this.surfaceHostMode();
   }
 
   async openSession(options: {
     url: string; displayName?: string | null; chatSessionId?: string | null;
     width?: number | null; height?: number | null; focused?: boolean | null;
     reuseExisting?: boolean | null; fromAgent?: boolean | null;
+    headless?: boolean | null;
   }): Promise<BrowserSessionState> {
     await this.assertGatesOpen();
+    await this.syncSurfaceHostMode();
     const allowHttp = this.allowInsecureHttp();
     const fromAgent = options.fromAgent ?? false;
     if (fromAgent) this.ensureAgentAutomationSupported();
@@ -240,13 +297,18 @@ export class BrowserRuntimeService {
     if (reuse && this.session !== null && this.session.alive && this.surface !== null
       && this.surface.hasContentWindow()) {
       const id = this.session.id;
+      if (options.headless !== true && this.sessionMode === 'headless') {
+        await this.promoteToInteractive(id);
+      }
       updateReusedDownloadOwner(this.session, fromAgent, options.chatSessionId ?? null);
       if (fromAgent) this.setAgentControl();
       else {
         this.policy.setAgentPrivateNetworkGuard(false);
         if (this.session.controlMode === 'agent') this.takeOverWithReason('user_navigation');
+        else this.pushDownloadPolicyBestEffort();
       }
       const state = await this.navigateInner(id, options.url, true);
+      this.recordChatSessionFacts();
       if (this.surfaceHostMode() === 'detached') await this.focus(id);
       return state;
     }
@@ -304,11 +366,18 @@ export class BrowserRuntimeService {
     const createOptions: BrowserSurfaceCreateOptions = {
       url: parsed.toString(), title, width, height, focused, profileDir,
       initializationScript,
+      ...(options.headless === true ? { headless: true } : {}),
     };
     const surface = this.surface;
     await surfaceOp(() => surface.createContentWindow(createOptions));
     if (surface.waitForReady !== undefined) await surfaceOp(() => surface.waitForReady!());
     this.attachSurface(this.surface);
+
+    this.factsTracker.reset();
+    this.sessionMode = surface.hostMode() === 'remote'
+      ? 'remote'
+      : (options.headless === true || surface.hostMode() === 'headless' ? 'headless' : 'interactive');
+    this.factsTracker.recordNavigation(options.url);
 
     this.surfaceSequence = null;
     this.surfaceMaskSignature = null;
@@ -317,6 +386,8 @@ export class BrowserRuntimeService {
     this.session = session;
 
     const state = fromAgent ? this.setAgentControl() : this.snapshotOf(session);
+    if (!fromAgent) this.pushDownloadPolicyBestEffort();
+    this.recordChatSessionFacts();
     this.emitEvent('browser:navigated', {
       sessionId: state.id, label: state.label, url: state.url, title: state.title,
       canGoBack: state.canGoBack, canGoForward: state.canGoForward,
@@ -330,14 +401,17 @@ export class BrowserRuntimeService {
   }
 
   private async closeSessionInner(reason: string): Promise<void> {
+    this.recordChatSessionFacts();
     this.policy.setAgentPrivateNetworkGuard(false);
     this.surfaceSequence = null;
     this.surfaceMaskSignature = null;
     this.surfaceInputOcclusions = null;
     this.pending = null;
+    this.pendingDownloadsByUrl.clear();
     const session = this.session;
     this.trustedInput = null;
     this.session = null;
+    this.pushDownloadPolicyBestEffort();
     const surface = this.surface;
     if (session === null) {
       if (surface !== null) await this.destroySurface(surface);
@@ -405,8 +479,12 @@ export class BrowserRuntimeService {
     }
     const applied = applyPendingNavigation(session, attempt, url, replace);
     if (!applied.ok) {
+      this.factsTracker.recordBlocked(applied.blocked.url, applied.blocked.reason, eventAt(this.now));
+      this.recordChatSessionFacts();
       throw validation(`navigation_blocked: ${applied.blocked.reason}`);
     }
+    this.factsTracker.recordNavigation(applied.value.url);
+    this.recordChatSessionFacts();
     this.emitEvent('browser:navigated', {
       sessionId: applied.value.id, label: applied.value.label, url: applied.value.url,
       title: applied.value.title, canGoBack: applied.value.canGoBack,
@@ -431,6 +509,8 @@ export class BrowserRuntimeService {
     await surfaceOp(() => surface.goBack(), 'navigate failed: ');
     const url = session.goBack(this.now());
     if (url === null) throw validation('cannot go back');
+    this.factsTracker.recordNavigation(url);
+    this.recordChatSessionFacts();
     return this.persistHistoryNavigation(url, this.snapshotOf(session));
   }
 
@@ -449,6 +529,8 @@ export class BrowserRuntimeService {
     await surfaceOp(() => surface.goForward(), 'navigate failed: ');
     const url = session.goForward(this.now());
     if (url === null) throw validation('cannot go forward');
+    this.factsTracker.recordNavigation(url);
+    this.recordChatSessionFacts();
     return this.persistHistoryNavigation(url, this.snapshotOf(session));
   }
 
@@ -553,6 +635,12 @@ export class BrowserRuntimeService {
 
   async setSurfaceVisibility(sessionId: string, visible: boolean, focus: boolean): Promise<string> {
     this.requireLiveSurfaceSession(sessionId);
+    if (visible && this.sessionMode === 'headless') {
+      await this.promoteToInteractive(sessionId);
+      this.surfaceSequence = null;
+      this.surfaceMaskSignature = null;
+      this.surfaceInputOcclusions = null;
+    }
     const surface = this.surface;
     if (surface !== null) await surfaceOp(() => surface.setContentVisibility(visible, focus));
     return this.surfaceHostMode();
@@ -627,8 +715,13 @@ export class BrowserRuntimeService {
       throw validation('user_takeover: user recently took control of the browser');
     }
     this.policy.setAgentPrivateNetworkGuard(true);
-    if (session.controlMode === 'agent') return this.snapshotOf(session);
+    if (session.controlMode === 'agent') {
+      this.pushDownloadPolicyBestEffort();
+      return this.snapshotOf(session);
+    }
     session.setControlMode('agent', this.now());
+    this.pushDownloadPolicyBestEffort();
+    this.recordChatSessionFacts();
     const state = this.snapshotOf(session);
     this.emitControlMode(state, 'agent', 'agent_claim');
     return state;
@@ -653,16 +746,28 @@ export class BrowserRuntimeService {
     return this.snapshotOf(session);
   }
 
-  async snapshot(sessionId: string, maxChars: number | null, interactiveOnly = true): Promise<{
+  async snapshot(
+    sessionId: string,
+    maxChars: number | null,
+    interactiveOnly = true,
+    extra?: { diff?: boolean; selector?: string },
+  ): Promise<{
     sessionId: string; url: string; title: string; snapshot: string; epoch?: JsonValue;
   }> {
     const state = await this.bridgeState(sessionId);
     if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
-    const options: { interactiveOnly: boolean; maxChars?: number } = { interactiveOnly };
+    const options: { interactiveOnly: boolean; maxChars?: number; diff?: boolean; selector?: string } = {
+      interactiveOnly,
+    };
     if (maxChars !== null) options.maxChars = maxChars;
+    if (extra?.diff === true) options.diff = true;
+    if (typeof extra?.selector === 'string' && extra.selector.trim() !== '') {
+      options.selector = extra.selector.trim();
+    }
     const value = await this.surface.snapshot(options);
     const text = typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (typeof value.text === 'string' ? value.text
+      ? (typeof value.tree === 'string' ? value.tree
+        : typeof value.text === 'string' ? value.text
         : typeof value.snapshot === 'string' ? value.snapshot : JSON.stringify(value))
       : String(value);
     const epoch = typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -674,21 +779,61 @@ export class BrowserRuntimeService {
     };
   }
 
-  async click(sessionId: string, ref: string): Promise<JsonValue> {
+  async click(
+    sessionId: string,
+    ref: string,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue> {
     await this.bridgeState(sessionId);
     if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
-    return this.surface.click(ref);
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    return options !== undefined && (options.doubleClick === true || options.button !== undefined)
+      ? this.surface.click(ref, options)
+      : this.surface.click(ref);
   }
 
-  async type(sessionId: string, ref: string, text: string, _submit: boolean): Promise<JsonValue> {
+  async clickAt(
+    sessionId: string,
+    x: number,
+    y: number,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue> {
     await this.bridgeState(sessionId);
     if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.clickAt !== 'function') {
+      throw validation('coordinate click is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    return this.surface.clickAt(x, y, options);
+  }
+
+  async type(
+    sessionId: string,
+    ref: string,
+    text: string,
+    submit: boolean,
+    clear = false,
+  ): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    if (clear || submit) {
+      return this.surface.typeText(ref, text, {
+        ...(clear ? { clear: true } : {}),
+        ...(submit ? { submit: true } : {}),
+      });
+    }
     return this.surface.typeText(ref, text);
   }
 
   async setInputFiles(sessionId: string, ref: string, files: JsonValue): Promise<JsonValue> {
     await this.bridgeState(sessionId);
     if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
     return this.surface.setInputFiles(ref, files);
   }
 
@@ -697,7 +842,308 @@ export class BrowserRuntimeService {
   ): Promise<JsonValue> {
     await this.bridgeState(sessionId);
     if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
     return this.surface.scroll({ direction, amount, ref });
+  }
+
+  async screenshot(sessionId: string, options?: BrowserScreenshotOptions): Promise<BrowserScreenshotResult> {
+    await this.assertGatesOpen();
+    this.requireSession(sessionId);
+    if (this.surface === null || typeof this.surface.screenshot !== 'function') {
+      return {
+        available: false,
+        capability: 'browser_visible_webview_screenshot',
+        reasonCode: 'PLATFORM_API_UNAVAILABLE',
+        reason: '当前 Tauri/Wry 平台未提供嵌入式 WebView 可见区域截图接口',
+      };
+    }
+    const result = await this.surface.screenshot(options);
+    if (result.available) {
+      this.factsTracker.recordScreenshot({
+        path: null,
+        locator: null,
+        width: result.width,
+        height: result.height,
+        capturedAt: eventAt(this.now),
+      });
+      this.recordChatSessionFacts();
+    }
+    return result;
+  }
+
+  recordScreenshotArtifact(info: {
+    path: string | null; locator: string | null; width: number; height: number; capturedAt?: string;
+  }): void {
+    this.factsTracker.recordScreenshot({
+      path: info.path,
+      locator: info.locator,
+      width: info.width,
+      height: info.height,
+      capturedAt: info.capturedAt ?? eventAt(this.now),
+    });
+    this.recordChatSessionFacts();
+  }
+
+  async hover(sessionId: string, target: BrowserTarget): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.hover !== 'function') {
+      throw validation('hover is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    return this.surface.hover(target);
+  }
+
+  async pressKey(sessionId: string, key: string, modifiers?: string[]): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.pressKey !== 'function') {
+      throw validation('pressKey is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    return this.surface.pressKey(key, modifiers);
+  }
+
+  async selectOption(sessionId: string, ref: string, values: string[]): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.selectOption !== 'function') {
+      throw validation('selectOption is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    return this.surface.selectOption(ref, values);
+  }
+
+  async waitFor(sessionId: string, options: BrowserWaitOptions): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.waitFor !== 'function') {
+      throw validation('waitFor is unsupported on this browser surface');
+    }
+    return this.surface.waitFor(options);
+  }
+
+  async extractContent(
+    sessionId: string,
+    options?: { maxChars?: number; startIndex?: number },
+  ): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null) throw notFound(`window ${BROWSER_CONTENT_LABEL}`);
+    if (typeof this.surface.extractContent !== 'function') {
+      throw validation('extractContent is unsupported on this browser surface');
+    }
+    return this.surface.extractContent(options);
+  }
+
+  async listTabs(sessionId: string): Promise<BrowserTabInfo[]> {
+    await this.assertGatesOpen();
+    const session = this.requireSession(sessionId);
+    if (this.surface !== null && typeof this.surface.listTabs === 'function') {
+      return this.surface.listTabs();
+    }
+    return [{
+      tabId: session.id,
+      url: session.url,
+      title: session.title,
+      active: true,
+    }];
+  }
+
+  async newTab(sessionId: string, url: string, fromAgent = false): Promise<BrowserTabInfo> {
+    await this.assertGatesOpen();
+    const allowHttp = this.allowInsecureHttp();
+    const isBlank = url === 'about:blank';
+    if (fromAgent) {
+      this.ensureAgentAutomationSupported();
+      if (!isBlank) await this.checkNavigationUrl(url, allowHttp, true);
+      this.setAgentControl();
+    } else {
+      this.policy.setAgentPrivateNetworkGuard(false);
+      if (this.session !== null && this.session.controlMode === 'agent') {
+        this.takeOverWithReason('user_navigation');
+      }
+      if (!isBlank) await this.checkNavigationUrl(url, allowHttp, false);
+    }
+    const session = this.requireSession(sessionId);
+    if (this.surface === null || typeof this.surface.newTab !== 'function') {
+      throw validation('multi-tab management is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    const tab = await this.surface.newTab(url);
+    const effectiveUrl = tab.url || url;
+    session.url = effectiveUrl;
+    session.title = tab.title ?? '';
+    session.updatedAt = this.now();
+    this.factsTracker.recordNavigation(effectiveUrl);
+    this.recordChatSessionFacts();
+    return tab;
+  }
+
+  async switchTab(sessionId: string, tabId: string): Promise<BrowserTabInfo> {
+    await this.assertGatesOpen();
+    const session = this.requireSession(sessionId);
+    if (this.surface === null || typeof this.surface.switchTab !== 'function') {
+      throw validation('multi-tab management is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    const tab = await this.surface.switchTab(tabId);
+    session.url = tab.url;
+    session.title = tab.title;
+    session.updatedAt = this.now();
+    if (tab.url) this.factsTracker.recordNavigation(tab.url);
+    this.recordChatSessionFacts();
+    return tab;
+  }
+
+  async closeTab(sessionId: string, tabId: string): Promise<JsonValue> {
+    await this.assertGatesOpen();
+    const session = this.requireSession(sessionId);
+    if (this.surface === null || typeof this.surface.closeTab !== 'function') {
+      throw validation('multi-tab management is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    const raw = await this.surface.closeTab(tabId);
+    if (typeof raw === 'boolean') {
+      this.recordChatSessionFacts();
+      return { closed: raw, tabId };
+    }
+    if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+      const remainingCount = typeof raw.remainingCount === 'number' ? raw.remainingCount : null;
+      const activeTab = raw.activeTab !== null && typeof raw.activeTab === 'object' && !Array.isArray(raw.activeTab)
+        ? raw.activeTab as Record<string, JsonValue>
+        : null;
+      if (remainingCount === 0) {
+        this.recordChatSessionFacts();
+        await ignoreSurfaceError(() => this.closeSessionInner('last_tab_closed'));
+        return raw;
+      }
+      if (activeTab !== null) {
+        if (typeof activeTab.url === 'string') {
+          session.url = activeTab.url;
+          if (activeTab.url) this.factsTracker.recordNavigation(activeTab.url);
+        }
+        if (typeof activeTab.title === 'string') {
+          session.title = activeTab.title;
+        }
+        session.updatedAt = this.now();
+      }
+    }
+    this.recordChatSessionFacts();
+    return raw;
+  }
+
+  async consoleLogs(
+    sessionId: string,
+    options?: { level?: string; limit?: number },
+  ): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null || typeof this.surface.consoleLogs !== 'function') {
+      return [];
+    }
+    return this.surface.consoleLogs(options);
+  }
+
+  async networkLogs(
+    sessionId: string,
+    options?: { statusMin?: number; limit?: number },
+  ): Promise<JsonValue> {
+    await this.bridgeState(sessionId);
+    if (this.surface === null || typeof this.surface.networkLogs !== 'function') {
+      return [];
+    }
+    return this.surface.networkLogs(options);
+  }
+
+  async promoteToInteractive(sessionId: string): Promise<void> {
+    await this.assertGatesOpen();
+    this.requireLiveSurfaceSession(sessionId);
+    if (this.surface !== null && typeof this.surface.promoteToInteractive === 'function') {
+      await surfaceOp(() => this.surface!.promoteToInteractive!());
+    }
+    if (this.sessionMode === 'headless') {
+      this.sessionMode = 'interactive';
+    }
+    this.recordChatSessionFacts();
+  }
+
+  async remoteInput(sessionId: string, event: BrowserRemoteInputEvent): Promise<void> {
+    await this.assertGatesOpen();
+    this.requireLiveSurfaceSession(sessionId);
+    if (this.surface === null || typeof this.surface.remoteInput !== 'function') {
+      throw validation('remote input is unsupported on this browser surface');
+    }
+    this.factsTracker.recordAction();
+    this.recordChatSessionFacts();
+    await surfaceOp(() => this.surface!.remoteInput!(event));
+  }
+
+  private cloneHostFacts(facts: BrowserHostFacts, downloadsCount?: number): BrowserHostFacts {
+    return {
+      ...facts,
+      visitedOrigins: [...facts.visitedOrigins],
+      blockedNavigations: facts.blockedNavigations.map(entry => ({ ...entry })),
+      latestScreenshot: facts.latestScreenshot === null ? null : { ...facts.latestScreenshot },
+      downloadsCount: downloadsCount ?? facts.downloadsCount,
+    };
+  }
+
+  private recordChatSessionFacts(): void {
+    const session = this.session;
+    const chatSessionId = session?.chatSessionId ?? null;
+    if (session === null || chatSessionId === null || chatSessionId === '') return;
+    const downloadsCount = this.downloads.listForTask(chatSessionId).length;
+    const snapshot = this.factsTracker.snapshot(session.id, this.sessionMode, downloadsCount, session.url);
+    if (this.factsByChatSession.has(chatSessionId)) {
+      this.factsByChatSession.delete(chatSessionId);
+    } else if (this.factsByChatSession.size >= 32) {
+      const oldest = this.factsByChatSession.keys().next().value;
+      if (oldest !== undefined) this.factsByChatSession.delete(oldest);
+    }
+    this.factsByChatSession.set(chatSessionId, snapshot);
+  }
+
+  getHostFactsForChatSession(chatSessionId: string): BrowserHostFacts | null {
+    if (chatSessionId === '') return null;
+    if (this.session !== null && this.session.chatSessionId === chatSessionId) {
+      const downloadsCount = this.downloads.listForTask(chatSessionId).length;
+      return this.factsTracker.snapshot(this.session.id, this.sessionMode, downloadsCount, this.session.url);
+    }
+    const cached = this.factsByChatSession.get(chatSessionId);
+    if (cached !== undefined) {
+      return this.cloneHostFacts(cached, this.downloads.listForTask(chatSessionId).length);
+    }
+    return null;
+  }
+
+  getHostFacts(sessionId?: string | null): BrowserHostFacts {
+    if (sessionId === undefined || sessionId === null) {
+      const targetSession = this.session;
+      const id = targetSession?.id ?? '';
+      const downloadsCount = targetSession?.chatSessionId !== null && targetSession?.chatSessionId !== undefined
+        ? this.downloads.listForTask(targetSession.chatSessionId).length
+        : (id !== '' ? this.downloads.list(id).length : 0);
+      return this.factsTracker.snapshot(id, this.sessionMode, downloadsCount, targetSession?.url ?? null);
+    }
+    if (this.session !== null && (this.session.id === sessionId || this.session.chatSessionId === sessionId)) {
+      const downloadsCount = this.session.chatSessionId !== null
+        ? this.downloads.listForTask(this.session.chatSessionId).length
+        : this.downloads.list(this.session.id).length;
+      return this.factsTracker.snapshot(this.session.id, this.sessionMode, downloadsCount, this.session.url);
+    }
+    const cachedByChat = this.factsByChatSession.get(sessionId);
+    if (cachedByChat !== undefined) {
+      return this.cloneHostFacts(cachedByChat, this.downloads.listForTask(sessionId).length);
+    }
+    for (const [chatId, cached] of this.factsByChatSession.entries()) {
+      if (cached.sessionId === sessionId) {
+        return this.cloneHostFacts(cached, this.downloads.listForTask(chatId).length);
+      }
+    }
+    throw notFound(`session ${sessionId}`);
   }
 
   // ---------------------------------------------------------------- downloads
@@ -710,14 +1156,17 @@ export class BrowserRuntimeService {
     return this.downloads.listForTask(chatSessionId);
   }
 
-  onDownloadRequested(
-    browserSessionId: string, url: string, originalName: string,
+  async onDownloadRequested(
+    browserSessionId: string, url: string, originalName: string, savePath?: string | null,
   ): Promise<{ allow: boolean; path: string | null }> {
-    return this.downloads.requested(this.session, browserSessionId, url, originalName);
+    const result = await this.downloads.requested(this.session, browserSessionId, url, originalName, savePath);
+    this.recordChatSessionFacts();
+    return result;
   }
 
   onDownloadFinished(url: string, path: string | null, success: boolean): void {
     this.downloads.finished(url, path, success);
+    this.recordChatSessionFacts();
   }
 
   // ---------------------------------------------------------------- native callbacks
@@ -739,6 +1188,8 @@ export class BrowserRuntimeService {
       session.markLoaded(url, this.now());
     }
     const state = this.snapshotOf(session);
+    this.factsTracker.recordNavigation(state.url);
+    this.recordChatSessionFacts();
     if (this.db.isOpen()) {
       try {
         if (pending !== null) {
@@ -811,6 +1262,8 @@ export class BrowserRuntimeService {
     }
     const session = this.session;
     if (session === null) return;
+    this.factsTracker.recordBlocked(url, reason, eventAt(this.now));
+    this.recordChatSessionFacts();
     const state = this.snapshotOf(session);
     this.emitEvent('browser:navigation-blocked', {
       sessionId: session.id, label: BROWSER_CONTENT_LABEL, url, reason,
@@ -850,7 +1303,38 @@ export class BrowserRuntimeService {
   private takeOverLocked(session: BrowserSession): BrowserSessionState {
     this.policy.setAgentPrivateNetworkGuard(false);
     session.takeOver(this.now());
+    this.factsTracker.recordTakeover();
+    this.pushDownloadPolicyBestEffort();
+    this.recordChatSessionFacts();
     return this.snapshotOf(session);
+  }
+
+  private pushDownloadPolicyBestEffort(): void {
+    const surface = this.surface;
+    if (surface === null || typeof surface.setDownloadPolicy !== 'function') return;
+    const session = this.session;
+    const agentOwned = session !== null && session.alive && session.controlMode === 'agent'
+      && session.chatSessionId !== null;
+    if (!agentOwned || this.artifactRootResolver === null) {
+      void surface.setDownloadPolicy({ agentOwned: false, artifactDir: null }).catch((error: unknown) => {
+        this.logWarn(`[browser] failed to update native download policy: ${String(error)}`);
+      });
+      return;
+    }
+    const chatSessionId = session.chatSessionId!;
+    void this.artifactRootResolver(chatSessionId)
+      .then(root => {
+        const artifactDir = `${root.replace(/\/+$/, '')}/browser-downloads`;
+        try {
+          mkdirSync(artifactDir, { recursive: true });
+        } catch (error) {
+          this.logWarn(`[browser] failed to create download artifact dir: ${String(error)}`);
+        }
+        return surface.setDownloadPolicy!({ agentOwned: true, artifactDir });
+      })
+      .catch((error: unknown) => {
+        this.logWarn(`[browser] failed to update native download policy: ${String(error)}`);
+      });
   }
 
   private emitControlMode(
@@ -864,10 +1348,19 @@ export class BrowserRuntimeService {
   private async checkNavigationUrl(url: string, allowInsecureHttp: boolean, fromAgent: boolean): Promise<void> {
     const effectiveAllow = !fromAgent || allowInsecureHttp;
     const denial = allowNavigationWithOptions(url, effectiveAllow);
-    if (denial !== null) throw validation(`navigation_blocked: ${navigationDenyMessage(denial)}`);
+    if (denial !== null) {
+      const reason = navigationDenyMessage(denial);
+      this.factsTracker.recordBlocked(url, reason, eventAt(this.now));
+      this.recordChatSessionFacts();
+      throw validation(`navigation_blocked: ${reason}`);
+    }
     if (fromAgent) {
       const reason = await this.policy.validateAgentTargetForAgent(url);
-      if (reason !== null) throw validation(`navigation_blocked: ${reason}`);
+      if (reason !== null) {
+        this.factsTracker.recordBlocked(url, reason, eventAt(this.now));
+        this.recordChatSessionFacts();
+        throw validation(`navigation_blocked: ${reason}`);
+      }
     }
   }
 

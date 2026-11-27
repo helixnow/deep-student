@@ -73,6 +73,8 @@ import { OutlineMultiselectBar } from './outline/OutlineMultiselectBar';
 import { OutlineDragOverlayContent } from './outline/OutlineDragOverlay';
 import { toggleOutlineSelection } from './outline/outlineStructureActions';
 
+const EMPTY_ENTERING_IDS: ReadonlySet<string> = new Set();
+
 const dropAnimationConfig: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
     styles: { active: { opacity: '0.4' } },
@@ -319,24 +321,43 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   // 专注切换（zoom in/out）会一次性显隐大量行：跳过差分入场，
   // 由容器级 WAAPI 过渡承担视觉反馈，避免整树逐行重放动画
   const enteringViewRootRef = useRef(viewRootId);
-  const enteringNodeIds = useMemo(() => {
-    const entering = new Set<string>();
+  const enteringNodeIds = useMemo<ReadonlySet<string>>(() => {
     const zoomChanged = enteringViewRootRef.current !== viewRootId;
+    let entering: Set<string> | null = null;
     if (!isInitialRender.current && !zoomChanged) {
       const prev = prevNodeIdsRef.current;
-      allFlatNodes.forEach(fn => {
-        if (!prev.has(fn.id)) entering.add(fn.id);
-      });
+      for (let i = 0; i < allFlatNodes.length; i += 1) {
+        const id = allFlatNodes[i]!.id;
+        if (!prev.has(id)) {
+          if (!entering) entering = new Set<string>();
+          entering.add(id);
+        }
+      }
     }
     // Agent 演出：即使差分未命中（如 update/move），也播 entering
-    agentEnteringIds.forEach(id => entering.add(id));
-    return entering;
+    if (agentEnteringIds.size > 0) {
+      if (!entering) entering = new Set<string>();
+      agentEnteringIds.forEach((id) => entering!.add(id));
+    }
+    return entering ?? EMPTY_ENTERING_IDS;
   }, [allFlatNodes, agentEnteringIds, viewRootId]);
 
   useEffect(() => {
     isInitialRender.current = false;
     enteringViewRootRef.current = viewRootId;
-    prevNodeIdsRef.current = new Set(allFlatNodes.map(fn => fn.id));
+    // 快路径：节点 ID 集合未变（例如大纲内打字编辑）时跳过 Set 全量重建
+    const prev = prevNodeIdsRef.current;
+    if (prev.size === allFlatNodes.length) {
+      let identical = true;
+      for (let i = 0; i < allFlatNodes.length; i += 1) {
+        if (!prev.has(allFlatNodes[i]!.id)) {
+          identical = false;
+          break;
+        }
+      }
+      if (identical) return;
+    }
+    prevNodeIdsRef.current = new Set(allFlatNodes.map((fn) => fn.id));
   }, [allFlatNodes, viewRootId]);
 
   // 拖拽时收集被拖节点（及多选组其它成员）的后代 ID，用于隐藏子树

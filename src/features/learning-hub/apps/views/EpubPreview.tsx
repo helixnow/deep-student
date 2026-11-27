@@ -78,6 +78,8 @@ export interface EpubPreviewProps {
   onProgressChange?: (progress: { page: number; lastReadAt?: number }) => void;
   /** 宿主标签页是否活跃；隐藏 tab 不注册返回键 handler（对照 NoteContentView） */
   isActive?: boolean;
+  /** 外部窗口标题栏已承载文件名/书名时，工具栏内不再重复渲染书名 */
+  hideTitle?: boolean;
 }
 
 function escapeRegExp(value: string): string {
@@ -94,8 +96,11 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   metadataProgress,
   onProgressChange,
   isActive = true,
+  hideTitle = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
+  const tRef = useRef(t);
+  tRef.current = t;
   // 与 App shell 同源的移动端判定（<768px）；旧实现自造 700px 断点，
   // 700-767px 区间会与 EpubPreview.css 的移动样式及全局移动壳分叉
   const isNarrow = useIsMobile();
@@ -135,7 +140,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   const [lineHeight, setLineHeight] = useState(initialState.lineHeight);
   const [pageMargin, setPageMargin] = useState(initialState.pageMargin);
   const [appDark, setAppDark] = useState(() => document.documentElement.classList.contains('dark'));
-  const [sidebarOpen, setSidebarOpen] = useState(!isNarrow);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<'toc' | 'search'>('toc');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<EpubSearchResult[]>([]);
@@ -182,6 +187,17 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
     return () => observer.disconnect();
     // bookLoaded：加载中 / 出错时组件提前返回占位，rootRef 尚未挂载，需在书加载后再挂观察
   }, [resourceId, bookLoaded]);
+
+  // 打开侧栏抽屉时清除正文/iframe 内的残余划词选区，避免气泡浮在抽屉上方
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    window.getSelection()?.removeAllRanges();
+    try {
+      iframeRef.current?.contentWindow?.getSelection()?.removeAllRanges();
+    } catch {
+      // ignore cross-origin/detached iframe
+    }
+  }, [sidebarOpen]);
 
   // isActive 守卫：保活隐藏的 tab 不注册，避免消费当前活跃视图的返回键；
   // 失活仅注销 handler，不动 sidebarOpen（隐藏 tab 不关侧栏）
@@ -259,7 +275,10 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
       .catch((reason: unknown) => {
         if (!cancelled) {
           revokeAllObjectUrls();
-          setError(getErrorMessage(reason));
+          const raw = getErrorMessage(reason);
+          const isCorrupt =
+            /end of central directory|corrupted|corrupt|invalid epub|invalid signature|bad compressed|unexpected eof/i.test(raw);
+          setError(isCorrupt ? tRef.current('learningHub:officePreview.corruptedOrTruncated') : raw);
         }
       })
       .finally(() => {
@@ -311,7 +330,10 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
       .catch((reason: unknown) => {
         if (!cancelled) {
           revokeAllObjectUrls();
-          setError(getErrorMessage(reason));
+          const raw = getErrorMessage(reason);
+          const isCorrupt =
+            /end of central directory|corrupted|corrupt|invalid epub|invalid signature|bad compressed|unexpected eof/i.test(raw);
+          setError(isCorrupt ? tRef.current('learningHub:officePreview.corruptedOrTruncated') : raw);
         }
       })
       .finally(() => {
@@ -845,10 +867,12 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
         <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSidebarOpen((value) => !value)} title={t('learningHub:epubPreview.toggleSidebar')} aria-label={t('learningHub:epubPreview.toggleSidebar')} aria-expanded={sidebarOpen}>
           <SidebarSimple size={16} />
         </DsButton>
-        <div className="epub-preview-book-title" title={`${book.title}${book.author ? ` - ${book.author}` : ''}`}>
-          <strong>{book.title || fileName}</strong>
-          {book.author && <span>{book.author}</span>}
-        </div>
+        {(!hideTitle || Boolean(book.author)) && (
+          <div className="epub-preview-book-title" title={`${book.title}${book.author ? ` - ${book.author}` : ''}`}>
+            {!hideTitle && <strong>{book.title || fileName}</strong>}
+            {book.author && <span>{book.author}</span>}
+          </div>
+        )}
         <div className="epub-preview-toolbar-spacer" />
         <div className="epub-preview-theme-seg" role="radiogroup" aria-label={t('learningHub:epubPreview.theme')}>
           {THEME_OPTIONS.map((option) => (

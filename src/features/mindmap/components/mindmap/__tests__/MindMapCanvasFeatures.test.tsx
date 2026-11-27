@@ -287,6 +287,26 @@ describe('MindMapCanvas M6 modular features & P0 fixes', () => {
         spotlightActiveIds: null,
       });
       expect(defaultTheme[0].style?.stroke).toContain('var(--mm-edge)');
+
+      // Structural sharing: switching focusedNodeId reuses unaffected edge references
+      const prevEdgesById = new Map(defaultTheme.map((e) => [e.id, e]));
+      const afterFocusB1 = buildStyledCanvasEdges({
+        allEdges: edges.map((e) => ({ ...e, data: { kind: 'tree' } })),
+        layoutNodeById,
+        ancestorPathEdgeKeys: new Set(['root->b1']),
+        focusedNodeId: 'b1',
+        useBranchPalette: false,
+        branchIndexById,
+        isDarkTheme: false,
+        spotlightActiveIds: null,
+        prevEdgesById,
+      });
+      expect(afterFocusB1.find((e) => e.target === 'b1')).not.toBe(
+        defaultTheme.find((e) => e.target === 'b1'),
+      );
+      expect(afterFocusB1.find((e) => e.target === 'b2')).toBe(
+        defaultTheme.find((e) => e.target === 'b2'),
+      );
     });
 
     it('updates MiniMap branch color map immediately when switching light/dark theme palettes', () => {
@@ -522,10 +542,9 @@ describe('MindMapCanvas M6 modular features & P0 fixes', () => {
     });
   });
 
-  describe('5. Controls dedup, shortcut pill wiring & canvas contracts', () => {
-    it('hides duplicate FitView on <Controls> and wires onToggleShortcutHelp to CanvasShortcutHintPill', () => {
-      const onToggleShortcutHelp = vi.fn();
-      const { getByTestId } = render(
+  describe('5. Controls dedup & canvas contracts', () => {
+    it('hides duplicate FitView on <Controls> and does not render the bottom-left shortcut hint pill', () => {
+      const { getByTestId, container } = render(
         <CanvasBottomControls
           isCoarsePointer={false}
           reciteMode={false}
@@ -536,13 +555,12 @@ describe('MindMapCanvas M6 modular features & P0 fixes', () => {
           setWheelMode={vi.fn()}
           onFitView={vi.fn()}
           onAddTopic={vi.fn()}
-          onToggleShortcutHelp={onToggleShortcutHelp}
         />,
       );
 
       expect(getByTestId('mock-rf-controls').getAttribute('data-show-fit-view')).toBe('false');
-      fireEvent.click(getByTestId('mm-shortcut-hint-more'));
-      expect(onToggleShortcutHelp).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.mm-shortcut-hint-pill')).toBeNull();
+      expect(container.querySelector('[data-testid="mm-shortcut-hint-pill"]')).toBeNull();
     });
 
     it('satisfies MindMapCanvas modular size (<1100 lines), multi-select menu retention, MiniMap glass, and Background dots contracts', () => {

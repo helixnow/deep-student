@@ -10,12 +10,13 @@ import type {
   ToolSensitivity,
 } from '../../chat/api.ts';
 import {
-  AgentProfileResolver, MAX_SUBAGENT_DEPTH, SUBAGENT_WAIT_BUDGET_SECS, WORKSPACE_WORKER_READY_EVENT,
+  AgentProfileResolver, BROWSER_PROFILE_ID, MAX_SUBAGENT_DEPTH, SUBAGENT_WAIT_BUDGET_SECS, WORKSPACE_WORKER_READY_EVENT,
   newSubagentTask, validatePersonaModelConfig,
 } from '../../agent-workspace/portable.ts';
 import type {
   AgentProfile, JsonValue, SubagentTaskData, WorkspaceCoordinator,
 } from '../../agent-workspace/api.ts';
+import type { BrowserHostFacts } from '../../browser/api.ts';
 import { agentOrchestrationWorkspaceRuntime } from './workspace-runtime.ts';
 import { toRfc3339 } from '../../../platform/time/index.ts';
 import type { Json } from '../api.ts';
@@ -41,6 +42,8 @@ export interface SubagentExecutorDeps {
   /** Test seam for the wait loop; production uses the Rust constants. */
   timing?: { pollIntervalMs: number; waitBudgetMs: number; settleGraceMs: number };
   now?(): number;
+  /** L19 `browser.getHostFacts`: deterministic host-verified receipt for browser workers. */
+  getBrowserHostFacts?: (sessionId?: string | null) => BrowserHostFacts | null;
 }
 
 function message(error: unknown): string {
@@ -81,7 +84,12 @@ interface DispatchedRun { messageId: string; status: string; runtime: ChatWorker
 interface SubagentWaitRun {
   workspaceId: string; agentSessionId: string; taskId: string; runId: string; taskMessageId: string;
   autoCreatedWorkspace: boolean; profileId: string; skillId: string | null; runtime: ChatWorkerRuntimeService;
-  resumed: boolean; watchAgentSettle: boolean;
+  resumed: boolean; watchAgentSettle: boolean; isBrowserWorker: boolean;
+}
+
+function isBrowserCapableProfile(profile: Pick<AgentProfile, 'id' | 'allowedTools'>): boolean {
+  return profile.id === BROWSER_PROFILE_ID
+    || profile.allowedTools.some(tool => tool.startsWith('builtin-browser_') || tool.startsWith('browser_'));
 }
 
 export class SubagentExecutor {
@@ -173,8 +181,15 @@ export class SubagentExecutor {
     if (session === null) throw new Error(`Chat session not found for agent ${resumeId}; the subagent conversation was deleted`);
 
     let profileId = 'worker';
-    try { profileId = AgentProfileResolver.resolveForAgent(agent).id; }
-    catch { profileId = 'worker'; }
+    let isBrowserWorker = false;
+    try {
+      const resolved = AgentProfileResolver.resolveForAgent(agent);
+      profileId = resolved.id;
+      isBrowserWorker = isBrowserCapableProfile(resolved);
+    } catch {
+      profileId = 'worker';
+      isBrowserWorker = false;
+    }
 
     const taskManager = this.coordinator.getTaskManager(workspaceId);
     const task = newSubagentTask(workspaceId, resumeId, agent.skillId, args.task);
@@ -192,7 +207,7 @@ export class SubagentExecutor {
     }
     return this.waitForCompletion(ctx, { workspaceId, agentSessionId: resumeId, taskId: task.id, runId: run.messageId,
       taskMessageId: sent.id, autoCreatedWorkspace: false, profileId, skillId: args.skillId, runtime: run.runtime,
-      resumed: true, watchAgentSettle: idempotent });
+      resumed: true, watchAgentSettle: idempotent, isBrowserWorker });
   }
 
   /** `execute_subagent_call_with_args`: also the Super-session entry (fixed workspace, wait=false, title, metadata). */
@@ -299,7 +314,8 @@ export class SubagentExecutor {
     }
     return this.waitForCompletion(ctx, { workspaceId, agentSessionId, taskId: task.id, runId: run.messageId,
       taskMessageId: sent.id, autoCreatedWorkspace: autoCreated, profileId: profile.id, skillId: args.skillId,
-      runtime: run.runtime, resumed: false, watchAgentSettle: false });
+      runtime: run.runtime, resumed: false, watchAgentSettle: false,
+      isBrowserWorker: isBrowserCapableProfile(profile) });
   }
 
   private async waitForCompletion(ctx: ChatExecutionContext, run: SubagentWaitRun): Promise<JsonValue> {
@@ -396,6 +412,20 @@ export class SubagentExecutor {
     if (terminal.status === 'failed') {
       result.error = terminal.resultSummary !== null && terminal.resultSummary !== ''
         ? terminal.resultSummary : 'Subagent failed without an error summary';
+    }
+    if (run.isBrowserWorker && typeof this.deps.getBrowserHostFacts === 'function') {
+      try {
+        const facts = this.deps.getBrowserHostFacts(agentSessionId);
+        if (facts !== null) {
+          result.host_facts = {
+            verified_by: 'host',
+            note: 'Host-verified deterministic browser session facts (not LLM-generated)',
+            ...facts,
+          } as unknown as JsonValue;
+        }
+      } catch (error) {
+        this.deps.log.warn(`[SubagentExecutor] Failed to query browser host facts for ${agentSessionId}: ${message(error)}`);
+      }
     }
     return result;
   }

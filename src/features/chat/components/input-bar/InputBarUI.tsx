@@ -3663,7 +3663,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           {showFloatingPreemptBar && (
             <div
               data-testid="floating-preempt-bar"
-              className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/35 bg-background/95 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm"
+              className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background px-2.5 py-1.5 text-xs shadow-sm"
             >
               <div className="flex min-w-0 items-center text-muted-foreground">
                 <span className="truncate">正在生成回复，可选择排队或抢占打断</span>

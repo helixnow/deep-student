@@ -186,7 +186,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  // ⌥ 按下/抬起/失焦状态（集中通过 useEventRegistry 监听，切换三键语义与绿灯 + 符号）
+  // ⌥ 按下/抬起/失焦状态（集中通过 useEventRegistry 监听，切换三键语义与绿灯 + 符号）；
+  // Esc 取消拖拽时同步摘掉标题栏 wb-title-dragging 光标态。
   const altKeyEvents = useMemo(
     () => [
       {
@@ -195,7 +196,11 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         listener: (event: Event) => {
           const e = event as KeyboardEvent;
           if (e.key === 'Alt') setAltHeld(true);
+          if (e.key === 'Escape' && dragArmCleanupRef.current) {
+            dragArmCleanupRef.current();
+          }
         },
+        options: true,
       },
       {
         target: 'window' as const,
@@ -311,39 +316,80 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   /** 本次按下序列是否发生过拖拽（armed）；拖过后的双击不触发 zoom（对齐 macOS） */
   const recentDragRef = useRef(false);
 
-  /** 双击标题栏按设置分发：zoom（默认）/ minimize / none（拖过不触发照旧） */
-  const handleDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  /** 标题栏槽位内的交互控件不应触发窗口拖拽或双击最大化 */
+  const isInteractiveTitlebarTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(
+      target.closest(
+        'button, a, input, select, textarea, label, [data-wb-traffic], [role="button"], [role="tab"], [role="menuitem"], [role="combobox"], [role="switch"], [role="checkbox"], [role="slider"], [contenteditable="true"], [draggable="true"], [data-wb-no-drag]',
+      ),
+    );
+  };
+
+  /**
+   * 标题栏原生 DOM 监听（pointerdown / dblclick）：
+   * 子应用（Todo / Skills / Notes / Files / Browser 等）通过 React createPortal
+   * 把工具栏挂载到 [data-wb-titlebar-slot]，React 合成事件沿 Fiber 树冒泡到 WindowBody
+   * 而绕过 WindowTitleBar；改为原生 DOM 监听后，槽位内非交互区域点击/拖拽/双击均可稳定触发，
+   * 同时经 isInteractiveTitlebarTarget 精准放行按钮、输入框、标签页与可拖拽 tab。
+   */
+  const nativeBarHandlersRef = useRef({
+    doubleClickAction,
+    onMinimize,
+    onZoom,
+    onMovePointerDown,
+  });
+  nativeBarHandlersRef.current = {
+    doubleClickAction,
+    onMinimize,
+    onZoom,
+    onMovePointerDown,
+  };
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return undefined;
+
+    const handleNativeDoubleClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || isInteractiveTitlebarTarget(e.target)) return;
+      // Notes 已有标签页时双击标签条空白区 = 新建标签（WorkspaceTabStrip 语义），不抢占为缩放
+      if (
+        e.target instanceof Element &&
+        e.target.closest('[data-notes-tabstrip]')?.querySelector('[role="tab"]')
+      ) {
+        return;
+      }
       if (recentDragRef.current) {
         recentDragRef.current = false;
         return;
       }
-      if (doubleClickAction === 'none') return;
-      if (doubleClickAction === 'minimize') {
-        onMinimize();
+      const { doubleClickAction: action, onMinimize: minimize, onZoom: zoom } =
+        nativeBarHandlersRef.current;
+      if (action === 'none') return;
+      if (action === 'minimize') {
+        minimize();
         return;
       }
-      onZoom({ alt: e.altKey });
-    },
-    [doubleClickAction, onMinimize, onZoom],
-  );
+      zoom({ alt: e.altKey });
+    };
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
+    const handleNativePointerDown = (e: PointerEvent) => {
+      if ((e.button != null && e.button > 0) || e.defaultPrevented) return;
+      if (isInteractiveTitlebarTarget(e.target)) return;
       dragArmCleanupRef.current?.();
       // 视觉 dragging 过 3px 阈值才挂 class（DOM 直写，避免 React 重渲染抢首帧）
       const startX = e.clientX;
       const startY = e.clientY;
+      const pointerId = e.pointerId;
       dragArmRef.current = { x: startX, y: startY, armed: false };
       // 每次按下重置"拖过"标记：仅当本次双击序列中发生拖拽才抑制 zoom
       recentDragRef.current = false;
-      const bar = barRef.current;
       // 直接共用内核 pointerEngine 的 MOVE_ARM_THRESHOLD_PX（3px）：
       // 视觉 dragging 态与真实起拖同刻武装；触控板/高分屏双击的 1–2px 微抖
       // 不会被误判成「拖过」而吞掉 zoom。
       const THRESHOLD_SQ = MOVE_ARM_THRESHOLD_PX * MOVE_ARM_THRESHOLD_PX;
       const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
         const arm = dragArmRef.current;
         if (!arm || arm.armed) return;
         const dx = ev.clientX - arm.x;
@@ -351,28 +397,52 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         if (dx * dx + dy * dy < THRESHOLD_SQ) return;
         arm.armed = true;
         recentDragRef.current = true;
-        bar?.classList.add('wb-title-dragging');
+        bar.classList.add('wb-title-dragging');
       };
-      const onUp = () => {
+      const onUp = (ev?: Event) => {
+        if (ev && 'pointerId' in ev && (ev as PointerEvent).pointerId !== pointerId) return;
         dragArmRef.current = null;
-        bar?.classList.remove('wb-title-dragging');
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        window.removeEventListener('pointercancel', onUp);
+        bar.classList.remove('wb-title-dragging');
+        window.removeEventListener('pointermove', onMove, true);
+        window.removeEventListener('pointerup', onUp, true);
+        window.removeEventListener('pointercancel', onUp, true);
         window.removeEventListener('blur', onUp);
         if (dragArmCleanupRef.current === onUp) dragArmCleanupRef.current = null;
       };
       dragArmCleanupRef.current = onUp;
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onUp);
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+      window.addEventListener('pointercancel', onUp, true);
       window.addEventListener('blur', onUp);
-      onMovePointerDown?.(e);
-    },
-    [onMovePointerDown],
-  );
 
-  useEffect(() => () => dragArmCleanupRef.current?.(), []);
+      const syntheticLike = {
+        nativeEvent: e,
+        currentTarget: bar,
+        target: e.target,
+        button: e.button,
+        buttons: e.buttons,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      } as unknown as React.PointerEvent<HTMLDivElement>;
+      nativeBarHandlersRef.current.onMovePointerDown?.(syntheticLike);
+    };
+
+    bar.addEventListener('pointerdown', handleNativePointerDown);
+    bar.addEventListener('dblclick', handleNativeDoubleClick);
+    return () => {
+      bar.removeEventListener('pointerdown', handleNativePointerDown);
+      bar.removeEventListener('dblclick', handleNativeDoubleClick);
+      dragArmCleanupRef.current?.();
+    };
+  }, []);
 
   /** 悬停预提升壳层合成层（wb-shell-lift）；离开后短延迟拆除，避免划过 thrash */
   const liftLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -424,6 +494,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   // 题目集/翻译/作文只放资源列表开关，保留居中标题
   const hostsAppTitlebarSlot = hostsAppTabs
     || appTypeId === 'chat'
+    || appTypeId === 'browser'
     || appTypeId === 'todo'
     || appTypeId === 'skills'
     || appTypeId === 'exam'
@@ -444,12 +515,18 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       data-wb-title-seamless={seamlessChat ? '' : undefined}
       data-wb-title-draggable=""
       title={barTooltip}
-      data-wb-app-tabs={appTypeId === 'notes' ? 'notes' : appTypeId === 'files' ? 'files' : undefined}
+      data-wb-app-tabs={
+        appTypeId === 'notes'
+          ? 'notes'
+          : appTypeId === 'files'
+            ? 'files'
+            : appTypeId === 'browser'
+              ? 'browser'
+              : undefined
+      }
       data-window-id={windowId}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
-      onPointerDown={handlePointerDown}
-      onDoubleClick={handleDoubleClick}
     >
       <div
         className="wb-traffic relative z-10"

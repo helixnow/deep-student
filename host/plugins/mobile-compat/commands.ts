@@ -1,5 +1,5 @@
 /**
- * 移动端「已注册但不支持」命令表——由 `node scripts/contracts/generate-mobile-compat.mjs` 生成，请勿手改。
+ * 移动端「已注册但不支持」命令表——由 `node scripts/mobile-compat/generate.mjs` 生成，请勿手改。
  *
  * 集合 = (Rust `allow-application-commands` ∩ `contracts/ipc`) − 其它移动端插件的 `meta.commands`。
  * `host/plugins/mobile-compat/tests/commands.test.ts` 守护它与 profile / 契约 / Rust 允许表一致。
@@ -9,22 +9,31 @@ export const COMPAT_COMMANDS = [
   "browser_back",
   "browser_click",
   "browser_close",
+  "browser_close_tab",
   "browser_content_user_input",
+  "browser_extract_content",
   "browser_focus",
   "browser_forward",
+  "browser_get_host_facts",
   "browser_get_state",
   "browser_get_surface_host_mode",
   "browser_list_downloads",
+  "browser_list_tabs",
   "browser_list_task_downloads",
   "browser_navigate",
+  "browser_new_tab",
   "browser_open_session",
+  "browser_promote_to_interactive",
   "browser_release_surface_focus",
   "browser_reload",
+  "browser_remote_input",
+  "browser_screenshot",
   "browser_scroll",
   "browser_set_input_files",
   "browser_set_surface_bounds",
   "browser_set_surface_visibility",
   "browser_snapshot",
+  "browser_switch_tab",
   "browser_take_over",
   "browser_type",
   "cancel_mcp_oauth",

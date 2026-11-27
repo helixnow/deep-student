@@ -29,7 +29,6 @@ import {
 import { cn } from '@/utils/cn';
 import { INBOX_SPACE_ID } from '@/shared/study-space/types';
 import { formatSpaceCountdown, stripEmojiText } from '@/shared/study-space/spaceCountdown';
-import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeStrip';
 import { useActiveStudySpace } from '@/components/study-space/useActiveStudySpace';
 import { useSpaceAutoScope } from '@/components/study-space/useSpaceAutoScope';
 import { DsButton } from '@/components/ui/DsButton';
@@ -357,7 +356,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
   const {
     activeSpaceId,
-    activeSpace,
     spaces,
     viewFilter,
     setActiveSpace,
@@ -698,20 +696,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </div>
         </div>
 
-        {/* 移动端活跃课题状态条：直接内嵌到该课题行下方，不再游离在收件箱上方并重复课题名 */}
-        {unified && isActiveSpaceHighlight && activeSpace && group ? (
-          <StudySpaceBadgeStrip
-            hideName
-            space={activeSpace}
-            onEditSpace={
-              editableGroupIds.has(group.id)
-                ? () => onEditGroup(group)
-                : undefined
-            }
-            className="ml-4 rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-hover)]"
-          />
-        ) : null}
-
         {/* 分组归档行内确认条（替代模态确认框） */}
         {group && pendingArchiveGroupId === group.id && (
           <div
@@ -859,10 +843,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       </div>
     ) : null;
 
-    const activeGroupForStrip = activeSpace
-      ? visibleGroups.find((group) => group.id === activeSpace.spaceId) ?? null
-      : null;
-
     return (
       <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {(visibleSuperSession || pinnedSessions.length > 0) && (
@@ -894,16 +874,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <Plus size={unified ? 18 : 15} />
             </DsButton>
           </div>
-          {!unified && activeSpace && activeGroupForStrip ? (
-            <StudySpaceBadgeStrip
-              space={activeSpace}
-              onEditSpace={
-                editableGroupIds.has(activeGroupForStrip.id)
-                  ? () => onEditGroup(activeGroupForStrip)
-                  : undefined
-              }
-            />
-          ) : null}
           <div className="space-y-1">
             {ungroupedFolder}
             {filteredVisibleGroups.map((group) => {

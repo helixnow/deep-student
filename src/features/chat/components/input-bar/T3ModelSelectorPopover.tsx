@@ -34,6 +34,11 @@ import {
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import {
+  coarseHitClassFor24,
+  coarseHitClassFor28,
+  coarseHitClassFor32,
+} from '@/components/ui/coarseHit';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   formatCompactCliModelName,
@@ -46,10 +51,9 @@ import {
   useAgentMeshStore,
   type CliReasoningEffortLevel,
 } from '@/features/agent-mesh';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import {
   detectProviderBrand,
-  getProviderDisplayName,
   type ProviderBrand,
 } from '@/utils/providerIconEngine';
 import type { ReasoningLevel, ReasoningLevelOption } from '@/utils/reasoning';
@@ -82,12 +86,15 @@ const CLI_EFFORT_FALLBACK_LABELS: Readonly<Record<CliReasoningEffortLevel, strin
   max: '超高',
 };
 
-/** 单色黑标品牌在深色背景上使用 currentColor 才能保持清晰对比度 */
+/** 单色黑标品牌在深浅色背景上均使用 currentColor 才能保持清晰对比度 */
 const MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<ProviderBrand>([
   'openai',
   'opencode',
   'xai',
   'ollama',
+  'mimo',
+  'baai',
+  'pika',
   'flux',
   'ideogram',
   'midjourney',
@@ -210,7 +217,7 @@ export function renderAdaptiveBrandGlyph(modelId: string, size: number): React.R
       showTooltip={false}
       variant="color"
       renderMode="glyph"
-      className="shrink-0"
+      className="shrink-0 text-foreground"
     />
   );
 }
@@ -225,18 +232,56 @@ function extractCliAgentId(option: T3ModelSelectorOption): string {
   return parsed?.cliAgentId ?? option.id.trim();
 }
 
-function resolveOptionBrand(option: T3ModelSelectorOption): ProviderBrand {
-  if (isCliOption(option)) {
-    const mapped = resolveCliBrandIconModelId(option.iconId || option.id || option.label);
-    return mapped ? detectProviderBrand(mapped) : 'generic';
+const GENERIC_PROTOCOL_PROVIDER_TYPES = new Set([
+  'custom',
+  'openai_compatible',
+  'openai-compatible',
+  'compatible',
+  'other',
+]);
+
+/**
+ * 仅依据实际供应商元数据解析左侧轨图标标识（不回退到模型名，避免第三方中转站被误判成其旗下某个模型品牌）
+ */
+function resolveVendorRailIconId(option: T3ModelSelectorOption): string | undefined {
+  const providerLabel = option.providerLabel?.trim() ?? '';
+  if (providerLabel && detectProviderBrand(providerLabel) !== 'generic') {
+    return providerLabel;
   }
-  const providerSignal = `${option.providerId ?? ''} ${option.providerLabel ?? ''}`.trim();
-  if (/opencode/i.test(providerSignal)) {
-    return 'opencode';
+
+  const rawProviderId = option.providerId?.trim() ?? '';
+  const normalizedProviderId = rawProviderId.replace(/^builtin[-_]/i, '');
+  if (normalizedProviderId && detectProviderBrand(normalizedProviderId) !== 'generic') {
+    return normalizedProviderId;
   }
-  const byModel = detectProviderBrand(option.iconId || option.label || option.id);
-  if (byModel !== 'generic') return byModel;
-  return detectProviderBrand(providerSignal);
+
+  const rawProviderType = option.providerType?.trim() ?? '';
+  if (!rawProviderType) return undefined;
+  const lowerType = rawProviderType.toLowerCase();
+  if (GENERIC_PROTOCOL_PROVIDER_TYPES.has(lowerType)) {
+    return undefined;
+  }
+  if (lowerType === 'openai') {
+    const looksLikeOfficialOpenAi =
+      !providerLabel ||
+      /\b(openai|chatgpt|codex)\b/i.test(providerLabel) ||
+      /^openai([_-]codex)?$/i.test(normalizedProviderId);
+    if (!looksLikeOfficialOpenAi) {
+      return undefined;
+    }
+  }
+  if (detectProviderBrand(rawProviderType) !== 'generic') {
+    return rawProviderType;
+  }
+  return undefined;
+}
+
+/** 为无法映射官方品牌图标的自建/中转供应商提取简洁单色首字 */
+function resolveVendorMonogram(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return '?';
+  const firstChar = Array.from(trimmed)[0] ?? '?';
+  return /^[a-z]$/.test(firstChar) ? firstChar.toUpperCase() : firstChar;
 }
 
 function resolveOptionGroupMeta(
@@ -251,22 +296,14 @@ function resolveOptionGroupMeta(
       isCodingCli: true,
     };
   }
-  const brand = resolveOptionBrand(option);
-  if (brand !== 'generic') {
-    const sampleId =
-      brand === 'opencode' ? 'opencode' : option.iconId || option.label || brand;
-    return {
-      key: `brand:${brand}`,
-      label: brand === 'opencode' ? 'OpenCode' : getProviderDisplayName(sampleId),
-      iconModelId: sampleId,
-    };
-  }
-  const fallbackLabel = option.providerLabel?.trim() || otherProviderLabel;
-  const fallbackId = option.providerId?.trim() || fallbackLabel.toLowerCase();
+  const rawProviderId = option.providerId?.trim() ?? '';
+  const rawProviderLabel = option.providerLabel?.trim() ?? '';
+  const label = rawProviderLabel || rawProviderId || otherProviderLabel;
+  const groupId = rawProviderId || (rawProviderLabel ? rawProviderLabel.toLowerCase() : '__other__');
   return {
-    key: `provider:${fallbackId}`,
-    label: fallbackLabel,
-    iconModelId: option.iconId || option.label || option.id,
+    key: `provider:${groupId}`,
+    label,
+    iconModelId: resolveVendorRailIconId(option),
   };
 }
 
@@ -1115,7 +1152,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       >
         {/* 主体区域：flex-1 min-h-0 严格服从外层锁定高度，顶栏与底栏永不被裁切 */}
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-          {/* 第一栏：左侧收藏 + 品牌供应商图标轨（纯原生按钮，零重排闪烁） */}
+          {/* 第一栏：左侧收藏 + 实际供应商图标轨（固定尺寸，零重排闪烁） */}
           <div
             data-testid="t3-provider-rail"
             className={cn(
@@ -1124,7 +1161,9 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             )}
           >
             <DsButton
-              variant="nav"
+              variant="ghost"
+              size="icon"
+              iconOnly
               type="button"
               data-testid="t3-rail-favorites"
               title={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
@@ -1143,10 +1182,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 );
               }}
               className={cn(
-                'relative flex h-8 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                effectiveTier === 'wide' ? 'w-9' : 'w-8',
+                'relative !h-8 !min-h-0 !p-0 shrink-0 rounded-lg border-transparent bg-transparent transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring',
+                effectiveTier === 'wide' ? '!w-9 !min-w-0' : '!w-8 !min-w-0',
+                coarseHitClassFor32,
                 viewMode === 'models' && activeRailKey === FAVORITES_RAIL_KEY && !keyword
-                  ? 'bg-muted/45 text-foreground'
+                  ? 'bg-muted/55 text-foreground'
                   : 'text-foreground/80',
               )}
             >
@@ -1165,7 +1205,9 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               const isActive = viewMode === 'models' && !keyword && activeRailKey === group.key;
               return (
                 <DsButton
-                  variant="nav"
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
                   key={group.key}
                   type="button"
                   data-testid={`t3-rail-group-${group.key}`}
@@ -1192,17 +1234,25 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     setActiveRailKey((prev) => (prev === group.key ? ALL_RAIL_KEY : group.key));
                   }}
                   className={cn(
-                    'relative flex h-8 shrink-0 items-center justify-center rounded-lg transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                    effectiveTier === 'wide' ? 'w-9' : 'w-8',
+                    'relative !h-8 !min-h-0 !p-0 shrink-0 rounded-lg border-transparent bg-transparent transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring',
+                    effectiveTier === 'wide' ? '!w-9 !min-w-0' : '!w-8 !min-w-0',
+                    coarseHitClassFor32,
                     isActive
-                      ? 'bg-muted/45 text-foreground'
+                      ? 'bg-muted/55 text-foreground'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
                   {group.isCodingCli ? (
                     <TerminalWindow size={17} weight="duotone" className="text-foreground/85" />
+                  ) : group.iconModelId ? (
+                    renderAdaptiveBrandGlyph(group.iconModelId, 17)
                   ) : (
-                    renderAdaptiveBrandGlyph(group.iconModelId || group.label, 17)
+                    <span
+                      aria-hidden="true"
+                      className="text-xs font-semibold leading-none tracking-tight text-foreground/85"
+                    >
+                      {resolveVendorMonogram(group.label)}
+                    </span>
                   )}
                   {isActive && (
                     <span
@@ -1223,11 +1273,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <DsButton
-                    variant="nav"
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     data-testid="t3-params-back"
                     onClick={() => setViewMode('models')}
-                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="!h-auto !w-auto !min-h-0 !px-1.5 !py-0.5 shrink-0 gap-1 rounded-md border-transparent bg-transparent text-xs font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                   >
                     <CaretLeft size={12} weight="bold" className="shrink-0" />
                     <span className="truncate">
@@ -1284,14 +1335,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 className="flex shrink-0 items-center gap-1.5 px-3 pt-2 pb-0.5 text-xs"
               >
                 <DsButton
-                  variant="nav"
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   data-testid="t3-cli-drilldown-back"
                   onClick={() => {
                     setSearch('');
                     setDrilledCliAgentId(null);
                   }}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="!h-auto !w-auto !min-h-0 !px-1.5 !py-0.5 shrink-0 gap-1 rounded-md border-transparent bg-transparent text-xs font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 >
                   <CaretLeft size={12} weight="bold" className="shrink-0" />
                   <span className="truncate">
@@ -1326,11 +1378,17 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 />
                 {search && (
                   <DsButton
-                    variant="nav"
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
                     type="button"
+                    data-testid="t3-model-search-clear"
                     onClick={() => setSearch('')}
                     aria-label={t('chatV2:common.clearSearch', { defaultValue: '清除搜索' })}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className={cn(
+                      '!h-5 !w-5 !min-h-0 !min-w-0 !p-0 shrink-0 rounded border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+                      coarseHitClassFor24,
+                    )}
                   >
                     <X size={12} weight="bold" />
                   </DsButton>
@@ -1342,7 +1400,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             <div
               role="menu"
               aria-label={t('chatV2:inputBar.runtimeModelTitle', { defaultValue: '模型' })}
-              className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 [mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent_100%)]"
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1.5 [mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent_100%)]"
             >
               {drilledCliOption ? (
                 <div className="flex flex-col gap-0.5 pb-2.5">
@@ -1390,7 +1448,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           }
                           disabled={disabled}
                           onClick={() => handlePickCliSubModel(row)}
-                          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
+                          className="!h-full !min-h-0 !w-auto !rounded-none !bg-transparent !p-0 hover:!bg-transparent active:!bg-transparent flex min-w-0 flex-1 items-center gap-2 text-left text-inherit outline-none"
                         >
                           {renderModelBrandIcon(drilledCliOption, 15)}
                           <span className="min-w-0 flex-1 truncate" title={row.label}>
@@ -1419,14 +1477,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               ) : sanitizedOptions.length === 0 && hasModelPanel && onOpenRuntimeModelPanel ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
                   <DsButton
-                    variant="nav"
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     role="menuitem"
                     onClick={() => {
                       onRequestClose?.();
                       onOpenRuntimeModelPanel('single');
                     }}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-muted/70 px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    className="!h-8 !w-auto !min-h-0 gap-1.5 rounded-lg border-transparent bg-muted/70 px-3 text-xs font-medium text-foreground hover:bg-muted"
                   >
                     {t('chatV2:inputBar.chooseRuntimeModel', { defaultValue: '选择模型' })}
                   </DsButton>
@@ -1445,9 +1504,23 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 </div>
               ) : (
                 <div className="flex flex-col gap-0.5 pb-2.5">
+                  {!keyword && (activeRailKey === FAVORITES_RAIL_KEY || railGroups.some((g) => g.key === activeRailKey)) && (
+                    <div
+                      data-testid="t3-active-group-heading"
+                      className="truncate px-2.5 pt-0.5 pb-1 text-2xs font-medium text-muted-foreground/85"
+                    >
+                      {activeRailKey === FAVORITES_RAIL_KEY
+                        ? t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })
+                        : railGroups.find((g) => g.key === activeRailKey)?.label}
+                    </div>
+                  )}
                   {visibleModels.map((model, index) => {
                     const cliItem = isCliOption(model);
                     const cliId = cliItem ? extractCliAgentId(model) : '';
+                    const isCrossProviderView =
+                      Boolean(keyword) ||
+                      activeRailKey === FAVORITES_RAIL_KEY ||
+                      activeRailKey === ALL_RAIL_KEY;
                     const isCurrent =
                       !multiActive &&
                       (cliItem
@@ -1468,13 +1541,23 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         : cliItem && model.cliDefaultModel
                           ? formatCompactCliModelName(model.cliDefaultModel)
                           : null;
+                    const inlineVendorLabel =
+                      isCrossProviderView && !cliItem && model.providerLabel?.trim()
+                        ? model.providerLabel.trim()
+                        : null;
 
                     return (
                       <div
                         key={model.id}
                         className={cn(
-                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center rounded-lg text-left text-ui transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                          isMediumTier || isCompactTier ? 'gap-2 px-2' : 'gap-2.5 px-2.5',
+                          'group relative flex h-8.5 min-h-[34px] w-full min-w-0 items-center overflow-hidden rounded-lg text-left text-ui transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          cliItem
+                            ? isMediumTier || isCompactTier
+                              ? 'gap-1.5 px-2'
+                              : 'gap-2 px-2.5'
+                            : isMediumTier || isCompactTier
+                              ? 'gap-1.5 pl-2 pr-0'
+                              : 'gap-2 pl-2.5 pr-0',
                           isCurrent || isChecked
                             ? 'bg-primary/12 font-medium text-foreground'
                             : isHighlighted
@@ -1491,12 +1574,21 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           data-testid={cliItem ? `t3-cli-agent-row-${cliId}` : undefined}
                           disabled={disabled}
                           onClick={() => handlePickRow(model)}
-                          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
+                          className="!h-full !min-h-0 !w-auto !rounded-none !bg-transparent !p-0 hover:!bg-transparent active:!bg-transparent flex min-w-0 flex-1 items-center gap-2 text-left text-inherit outline-none"
                         >
                           {renderModelBrandIcon(model, 16)}
                           <span className="min-w-0 flex-1 truncate" title={model.label}>
                             {model.label}
                           </span>
+                          {inlineVendorLabel && (
+                            <span
+                              data-testid={`t3-model-vendor-tag-${model.id}`}
+                              className="max-w-[5.5rem] shrink-0 truncate text-2xs font-normal text-muted-foreground/75"
+                              title={inlineVendorLabel}
+                            >
+                              {inlineVendorLabel}
+                            </span>
+                          )}
                           {cliSubModelBadge && (
                             <span className="max-w-[6.5rem] shrink-0 truncate rounded bg-muted/80 px-1.5 py-px font-mono text-2xs font-normal text-muted-foreground">
                               {cliSubModelBadge}
@@ -1513,38 +1605,6 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                             </span>
                           )}
                         </DsButton>
-
-                        {!cliItem && (
-                          <DsButton
-                            variant="nav"
-                            type="button"
-                            data-testid={`t3-favorite-toggle-${model.id}`}
-                            aria-label={
-                              isFavorite
-                                ? t('chatV2:modelPicker.unfavoriteModel', {
-                                    name: model.label,
-                                    defaultValue: `取消收藏 ${model.label}`,
-                                  })
-                                : t('chatV2:modelPicker.favoriteModel', {
-                                    name: model.label,
-                                    defaultValue: `收藏 ${model.label}`,
-                                  })
-                            }
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleToggleFavorite(model.id);
-                            }}
-                            className={cn(
-                              'flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
-                              isFavorite
-                                ? 'opacity-100 text-warning'
-                                : 'hidden group-hover:flex focus-visible:flex [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:opacity-70',
-                            )}
-                          >
-                            <Star size={13} weight={isFavorite ? 'fill' : 'regular'} />
-                          </DsButton>
-                        )}
 
                         {multiActive ? (
                           <span
@@ -1580,6 +1640,44 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         ) : isCurrent ? (
                           <Check size={14} weight="bold" className="shrink-0 text-primary" />
                         ) : null}
+
+                        {!cliItem && (
+                          <DsButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            tabIndex={-1}
+                            type="button"
+                            data-testid={`t3-favorite-toggle-${model.id}`}
+                            aria-label={
+                              isFavorite
+                                ? t('chatV2:modelPicker.unfavoriteModel', {
+                                    name: model.label,
+                                    defaultValue: `取消收藏 ${model.label}`,
+                                  })
+                                : t('chatV2:modelPicker.favoriteModel', {
+                                    name: model.label,
+                                    defaultValue: `收藏 ${model.label}`,
+                                  })
+                            }
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleToggleFavorite(model.id);
+                            }}
+                            className={cn(
+                              'self-stretch !h-auto !w-9 !min-h-0 !min-w-0 !p-0 !rounded-none shrink-0 border-transparent bg-transparent transition-[opacity,background-color,color] hover:bg-foreground/10 [@media(pointer:coarse)]:!w-[var(--touch-target-size)]',
+                              isFavorite
+                                ? 'opacity-100 text-warning hover:text-warning'
+                                : 'text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-foreground [@media(pointer:coarse)]:opacity-70',
+                            )}
+                          >
+                            <Star size={13} weight={isFavorite ? 'fill' : 'regular'} />
+                          </DsButton>
+                        )}
                       </div>
                     );
                   })}
@@ -1643,13 +1741,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 ) : (
                   <>
                     <DsButton
-                      variant="nav"
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!effectiveCliEffort}
                       onClick={() => handleSetCliEffort(null)}
                       className={cn(
-                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                        coarseHitClassFor28,
                         !effectiveCliEffort
                           ? 'bg-primary/15 font-medium text-primary'
                           : 'bg-muted/60 text-muted-foreground',
@@ -1661,14 +1761,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       const isSelected = effectiveCliEffort === level;
                       return (
                         <DsButton
-                          variant="nav"
+                          variant="ghost"
+                          size="sm"
                           key={level}
                           type="button"
                           role="menuitemradio"
                           aria-checked={isSelected}
                           onClick={() => handleSetCliEffort(level)}
                           className={cn(
-                            'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                            '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                            coarseHitClassFor28,
                             isSelected
                               ? 'bg-primary/15 font-medium text-primary'
                               : 'bg-muted/60 text-muted-foreground',
@@ -1693,13 +1795,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 <>
                   {thinkingCanDisable && (
                     <DsButton
-                      variant="nav"
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!enableThinking}
                       onClick={handleTurnOffThinking}
                       className={cn(
-                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                        coarseHitClassFor28,
                         !enableThinking
                           ? 'bg-primary/15 font-medium text-primary'
                           : 'bg-muted/60 text-muted-foreground',
@@ -1713,14 +1817,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       Boolean(enableThinking) && thinkingDepthValue === option.value;
                     return (
                       <DsButton
-                        variant="nav"
+                        variant="ghost"
+                        size="sm"
                         key={option.value}
                         type="button"
                         role="menuitemradio"
                         aria-checked={isSelected}
                         onClick={() => onSetThinkingDepth?.(option.value)}
                         className={cn(
-                          'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                          '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                          coarseHitClassFor28,
                           isSelected
                             ? 'bg-primary/15 font-medium text-primary'
                             : 'bg-muted/60 text-muted-foreground',
@@ -1734,13 +1840,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               ) : (
                 <>
                   <DsButton
-                    variant="nav"
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     role="menuitemradio"
                     aria-checked={Boolean(enableThinking)}
                     onClick={handleTurnOnThinking}
                     className={cn(
-                      'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                      '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                      coarseHitClassFor28,
                       enableThinking
                         ? 'bg-primary/15 font-medium text-primary'
                         : 'bg-muted/60 text-muted-foreground',
@@ -1750,13 +1858,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   </DsButton>
                   {thinkingCanDisable && (
                     <DsButton
-                      variant="nav"
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!enableThinking}
                       onClick={handleTurnOffThinking}
                       className={cn(
-                        'shrink-0 rounded-md px-2 py-1 text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                        '!h-auto !w-auto !min-h-0 !px-2 !py-1 shrink-0 rounded-md border-transparent text-xs transition-colors',
+                        coarseHitClassFor28,
                         !enableThinking
                           ? 'bg-primary/15 font-medium text-primary'
                           : 'bg-muted/60 text-muted-foreground',
@@ -1779,7 +1889,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
             {onWebSearchEnabledChange && (
               <DsButton
-                variant="nav"
+                variant="ghost"
+                size="sm"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={Boolean(webSearchEnabled)}
@@ -1795,12 +1906,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 }
                 onClick={() => void onWebSearchEnabledChange(!webSearchEnabled)}
                 className={cn(
-                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  '!h-7 !w-auto !min-h-0 !px-2 !py-0 shrink-0 gap-1 rounded-md border-transparent text-xs transition-colors',
+                  coarseHitClassFor28,
                   webSearchEnabled && !isExternalCliEngine && !drilledCliOption
-                    ? 'bg-primary/12 font-medium text-primary'
+                    ? 'bg-primary/12 font-medium text-primary hover:bg-primary/18 hover:text-primary'
                     : webSearchEnabled
                       ? 'bg-muted/60 text-muted-foreground hover:bg-muted/80'
-                      : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+                      : 'bg-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                 )}
               >
                 <Globe
@@ -1816,17 +1928,19 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
 
             {multiSelect && viewMode === 'models' && !drilledCliOption && sanitizedOptions.some((o) => !isCliOption(o)) && (
               <DsButton
-                variant="nav"
+                variant="ghost"
+                size="sm"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={multiActive}
                 data-testid="runtime-model-multi-select-switch"
                 onClick={() => multiSelect.onActiveChange(!multiActive)}
                 className={cn(
-                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  '!h-7 !w-auto !min-h-0 !px-2 !py-0 shrink-0 gap-1 rounded-md border-transparent text-xs transition-colors',
+                  coarseHitClassFor28,
                   multiActive
-                    ? 'bg-primary/12 font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+                    ? 'bg-primary/12 font-medium text-primary hover:bg-primary/18 hover:text-primary'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                 )}
               >
                 <SquaresFour size={13} weight={multiActive ? 'fill' : 'regular'} className="shrink-0" />
@@ -1845,7 +1959,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
 
             {(renderAdvancedPanel || onOpenAdvancedPanel) && (
               <DsButton
-                variant="nav"
+                variant="ghost"
+                size="sm"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={viewMode === 'params'}
@@ -1860,10 +1975,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   onOpenAdvancedPanel?.();
                 }}
                 className={cn(
-                  'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  '!h-7 !w-auto !min-h-0 !px-2 !py-0 shrink-0 gap-1 rounded-md border-transparent text-xs transition-colors',
+                  coarseHitClassFor28,
                   viewMode === 'params'
-                    ? 'bg-primary/12 font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+                    ? 'bg-primary/12 font-medium text-primary hover:bg-primary/18 hover:text-primary'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                 )}
               >
                 <SlidersHorizontal
@@ -1881,7 +1997,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           {/* 右下角权限预设选择器 */}
           <div ref={permissionContainerRef} className="relative flex shrink-0 items-center">
             <DsButton
-              variant="nav"
+              variant="ghost"
+              size="sm"
               type="button"
               data-testid="t3-permission-trigger"
               disabled={!onPermissionPresetChange || permissionSyncing}
@@ -1891,7 +2008,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 setPermissionMenuOpen((prev) => !prev);
               }}
               className={cn(
-                'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                '!h-7 !w-auto !min-h-0 !px-2 !py-0 shrink-0 gap-1.5 rounded-md border-transparent bg-transparent text-xs text-muted-foreground transition-colors',
+                coarseHitClassFor28,
                 onPermissionPresetChange
                   ? 'hover:bg-muted/70 hover:text-foreground cursor-pointer'
                   : 'opacity-75 cursor-default',

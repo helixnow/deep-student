@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { HEADLESS_ALLOWED_TOOLS } from '../../agent-workspace/api.ts';
 import { LEGACY_HEADLESS_ALLOWED_TOOLS } from '../../agent-orchestration/api.ts';
 import {
-  BROWSER_PASSWORD_BLOCKED, annotateControlClaim, browserToolConcurrency, browserToolSensitivity,
+  BROWSER_PASSWORD_BLOCKED, BROWSER_TOOLS, annotateControlClaim, browserToolConcurrency, browserToolSensitivity,
   browserUserTakeoverError, isBrowserTool, isMutatingBrowserTool, isPasswordBlockedBridgeError,
   isUploadRootKind, mapBrowserToolBridgeError, mimeTypeForName,
 } from '../src/tool-executor.ts';
+import { BROWSER_WORKER_TOOL_NAMES, browserWorkerToolSchemas } from '../src/browser-tool-schemas.ts';
 import type { BridgeError, JsonValue } from '../src/command-result.ts';
 
 describe('src/chat_v2/tools/browser_executor.rs::tests', () => {
@@ -130,5 +131,21 @@ describe('src/chat_v2/tools/browser_executor.rs::tests', () => {
     expect(parsed.code).toBe('USER_TAKEOVER');
     expect(parsed.hint).toBe('用户已接管浏览器，请询问用户或稍后再试');
     expect(parsed.retryable).toBe(true);
+  });
+
+  it('publishes all 19 worker tool schemas (18 BROWSER_TOOLS + builtin-webpage_save) with <= 24000 max_chars', () => {
+    const schemas = browserWorkerToolSchemas();
+    expect(schemas).toHaveLength(19);
+    expect(BROWSER_WORKER_TOOL_NAMES).toHaveLength(19);
+    expect(BROWSER_TOOLS).toHaveLength(18);
+    expect(BROWSER_WORKER_TOOL_NAMES).toContain('builtin-webpage_save');
+    for (const schema of schemas) {
+      if (schema.name === 'builtin-webpage_save') continue;
+      expect(schema.name.startsWith('builtin-browser_')).toBe(true);
+      expect(isBrowserTool(schema.name)).toBe(true);
+    }
+    const snapSchema = schemas.find(s => s.name === 'builtin-browser_snapshot');
+    const maxCharsProp = ((snapSchema?.inputSchema as Record<string, unknown>)?.properties as Record<string, Record<string, unknown>>)?.max_chars;
+    expect(maxCharsProp?.maximum).toBe(24_000);
   });
 });

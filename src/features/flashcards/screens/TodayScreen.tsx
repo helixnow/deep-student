@@ -90,9 +90,14 @@ const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
 export interface TodayScreenProps {
   /** 从移动顶栏点击「+ 新建卡片」时的回调；缺省切到卡片库 */
   onQuickNewCard?: () => void;
+  /** 打开调度设置弹窗（可指定聚焦字段）；缺省回退切换到统计/设置屏 */
+  onOpenSchedulerSettings?: (focusField?: 'newPerDay') => void;
 }
 
-export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
+export const TodayScreen: React.FC<TodayScreenProps> = ({
+  onQuickNewCard,
+  onOpenSchedulerSettings,
+}) => {
   const { t } = useTranslation('flashcards');
   const { isSmallScreen } = useBreakpoint();
   const dueCards = useFsrsReviewStore((s) => s.dueCards);
@@ -297,6 +302,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
+          <div className="wb-fcx-scroll">
           <ExamReadinessHud variant="mobile-banner" />
           <section className="wb-fcx-panel wb-fcx-hero">
             <div className="wb-fcx-hero-ring">
@@ -411,7 +417,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setScreen('settings')}
+                    onClick={() => (
+                      onOpenSchedulerSettings
+                        ? onOpenSchedulerSettings('newPerDay')
+                        : setScreen('scheduler')
+                    )}
                     className="rounded-xl border-border/65 bg-background/50 px-3 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   >
                     {t('today.adjustDailyLimit')}
@@ -557,6 +567,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
               </div>
             </section>
           )}
+          </div>
         </div>
       )}
     </div>

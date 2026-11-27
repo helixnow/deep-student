@@ -7,6 +7,7 @@ import {
   artifactRoot, cleanupSessionRuntimeRoots, listCustomAgentFiles, tempRoot, type CustomAgentFileInfo,
   type RuntimeRoot,
 } from '../../agent-workspace/api.ts';
+import { browserWorkerToolSchemas } from '../../browser/api.ts';
 import type { ChatWorkspaceLogger, ChatWorkspaceRuntime, SessionRootKind } from './runtime-roots.ts';
 
 function sessionRoot(dataDir: string, sessionId: string, kind: SessionRootKind, create: boolean): RuntimeRoot {
@@ -18,4 +19,5 @@ export const nodeChatWorkspaceRuntime: ChatWorkspaceRuntime = {
   cleanupSessionRuntimeRoots,
   listCustomAgentFiles: (dir: string, logger?: ChatWorkspaceLogger): CustomAgentFileInfo[] =>
     listCustomAgentFiles(dir, logger),
+  browserWorkerToolSchemas: () => browserWorkerToolSchemas(),
 };

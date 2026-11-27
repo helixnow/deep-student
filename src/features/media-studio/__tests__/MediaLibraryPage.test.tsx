@@ -181,4 +181,33 @@ describe('MediaLibraryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /mediaStudio:import.bilibili/ }));
     expect(document.querySelector('[data-bilibili-dialog="create"]')).toBeTruthy();
   });
+
+  it('hides the internal title in workbench windows while preserving counts and actions', () => {
+    const { rerender } = render(
+      <MediaLibraryPage
+        library={library([])}
+        importer={importer(false)}
+        onOpen={vi.fn()}
+        isSmallScreen={false}
+        titlebarTarget={null}
+        hideInternalTitle
+      />,
+    );
+    expect(screen.queryByText('mediaStudio:title')).toBeNull();
+    expect(document.querySelector('[data-media-library-toolbar]')).toBeNull();
+
+    rerender(
+      <MediaLibraryPage
+        library={library([item('a')])}
+        importer={importer(false)}
+        onOpen={vi.fn()}
+        isSmallScreen={false}
+        titlebarTarget={null}
+        hideInternalTitle
+      />,
+    );
+    expect(screen.queryByText('mediaStudio:title')).toBeNull();
+    expect(screen.getByText('mediaStudio:count:1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /mediaStudio:import.button/ })).toBeTruthy();
+  });
 });
