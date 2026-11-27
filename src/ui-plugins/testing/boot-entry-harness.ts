@@ -7,7 +7,7 @@ import { UiKernel } from '../../ui-kernel/kernel';
 import { installOfficialUiPlugins } from '../official/install';
 
 export interface BootCase {
-  entry: 'main' | 'demo' | 'demo-app';
+  entry: 'main';
   search?: string;
   scenario?: string;
   tauri?: boolean;
@@ -109,7 +109,7 @@ export async function observeBoot(input: BootCase, onKernel?: (kernel: UiKernel)
     './quick-assistant/window': { initializeQuickAssistantGlobalShortcut: async () => () => {}, initializeQuickAssistantMainBridge: async () => () => {} },
     './features/study-time/studyTimeTracker': { startStudyTracking: () => { trace.push(['study']); return () => {}; } },
   };
-  const entry = input.entry === 'main' ? 'src/main.tsx' : input.entry === 'demo' ? 'src/demo/main.tsx' : 'src/demo/app/main.tsx';
+  const entry = 'src/main.tsx';
   const source = fs.readFileSync(path.resolve(entry), 'utf8').replace(/import\.meta/g, '__importMeta');
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
