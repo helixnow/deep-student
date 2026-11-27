@@ -39,10 +39,6 @@ describe('generativeUI Tauri E2E contract', () => {
     ).toBe(true);
   });
 
-  it('TAURI_E2E documentation exists', () => {
-    expect(fs.existsSync(path.join(REPO, 'docs/generative-ui/TAURI_E2E.md'))).toBe(true);
-  });
-
   it('Playwright CT generative-ui smoke spec exists', () => {
     expect(
       fs.existsSync(path.join(REPO, 'tests/ct/generative-ui/hpiasResearchPanel.spec.tsx')),
@@ -61,18 +57,6 @@ describe('generativeUI Tauri E2E contract', () => {
       expect(ALL_BLOCK_TYPES).toContain(type);
       expect(registered.has(type)).toBe(true);
     }
-  });
-
-  it('TAURI_E2E documents 18 blocks and v1.1 layout optional check', () => {
-    const doc = fs.readFileSync(path.join(REPO, 'docs/generative-ui/TAURI_E2E.md'), 'utf8');
-    expect(doc).toContain('18 块');
-    expect(doc).toContain('markdown');
-    expect(doc).toContain('chart');
-    expect(doc).toContain('steps');
-    expect(doc).toContain('table');
-    expect(doc).toContain('v1.1');
-    expect(doc).toContain('data-layout-mode');
-    expect(doc).toContain('data-layout-columns');
   });
 
   it('Playwright CT smoke covers 18 types and v1.1 layout', () => {

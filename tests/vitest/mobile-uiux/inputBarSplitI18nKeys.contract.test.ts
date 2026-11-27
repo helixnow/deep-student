@@ -78,7 +78,7 @@ describe('split input bar i18n key resolution contract', () => {
     expectAttribution('chatV2:inputBar.uploadStage.creating', 'AttachmentPanelBody.tsx');
     expectAttribution(
       'chatV2:authority.permissionPreset.shortHints.danger_full_access',
-      'ComposerPlusMenu.tsx',
+      'T3ModelSelectorPopover.tsx',
     );
     expectAttribution('chatV2:injectMode.pdf.ocr', 'useInputBarV2.ts');
     expectAttribution('chatV2:inputBar.thinkingDepth.max', 'InputBarV2.tsx');
@@ -130,15 +130,15 @@ describe('split input bar i18n key resolution contract', () => {
     expect(new Set(collectQuotedStrings(imageModesDecl![1]))).toEqual(new Set(IMAGE_INJECT_MODES));
     expect(new Set(collectQuotedStrings(pdfModesDecl![1]))).toEqual(new Set(PDF_INJECT_MODES));
 
-    // permissionPreset：ComposerPlusMenu 的 PERMISSION_PRESETS 数组
-    const plusMenuSource = readRepoSource(
-      'src/features/chat/components/input-bar/ComposerPlusMenu.tsx',
+    // permissionPreset：T3ModelSelectorPopover 的 PERMISSION_PRESET_ORDER 数组
+    const selectorSource = readRepoSource(
+      'src/features/chat/components/input-bar/T3ModelSelectorPopover.tsx',
     );
-    const presetsStart = plusMenuSource.indexOf('const PERMISSION_PRESETS');
+    const presetsStart = selectorSource.indexOf('const PERMISSION_PRESET_ORDER');
     expect(presetsStart).toBeGreaterThan(-1);
-    const presetsSlice = plusMenuSource.slice(
+    const presetsSlice = selectorSource.slice(
       presetsStart,
-      plusMenuSource.indexOf('];', presetsStart),
+      selectorSource.indexOf('];', presetsStart),
     );
     expect(new Set(collectQuotedStrings(presetsSlice))).toEqual(new Set(PERMISSION_PRESETS));
 

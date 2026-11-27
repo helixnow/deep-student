@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main, develop, nightly]
+    branches: [main]
   pull_request:
-    branches: [main, develop, nightly]
+    branches: [main]
   workflow_dispatch: {}
 
 # PR updates cancel obsolete work. Main commits retain their own verification:
@@ -71,8 +71,10 @@ jobs:
           npx tsgo --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsgo.log" 2>&1 || TSGO_CODE=$?
           TSC_CODE=0
           npx tsc --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsc.log" 2>&1 || TSC_CODE=$?
-          cat "$RUNNER_TEMP/tsc.log" "$RUNNER_TEMP/tsgo.log"
-          test "$TSC_CODE" -eq 0 && test "$TSGO_CODE" -eq 0
+          HOST_CODE=0
+          npm run typecheck:host > "$RUNNER_TEMP/tsc-host.log" 2>&1 || HOST_CODE=$?
+          cat "$RUNNER_TEMP/tsc.log" "$RUNNER_TEMP/tsgo.log" "$RUNNER_TEMP/tsc-host.log"
+          test "$TSC_CODE" -eq 0 && test "$TSGO_CODE" -eq 0 && test "$HOST_CODE" -eq 0
       - if: matrix.task == 'lint'
         run: npm run lint && npm run licenses:check && npm run check:frontend-layers && npm run check:lint-ratchet
       - name: Build production bundle
@@ -307,5 +309,7 @@ jobs:
       - run: node scripts/generate-version.mjs
       - name: Plugin manifest gate (no new findings)
         run: node scripts/arch/gate-checks/plugin-manifest.mjs --check
+      - name: Typecheck community plugin examples (examples/tsconfig.json)
+        run: npx tsc --noEmit -p examples/tsconfig.json
       - name: Example plugin tests (examples/vitest.config.ts)
         run: npx vitest run -c examples/vitest.config.ts

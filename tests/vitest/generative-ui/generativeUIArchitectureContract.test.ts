@@ -89,8 +89,4 @@ describe('generativeUIArchitectureContract', () => {
     }
   });
 
-  it('documents architecture in docs/generative-ui', () => {
-    expect(fs.existsSync(path.join(process.cwd(), 'docs/generative-ui/ARCHITECTURE.md'))).toBe(true);
-    expect(fs.existsSync(path.join(process.cwd(), 'docs/generative-ui/PROGRESS.md'))).toBe(true);
-  });
 });

@@ -2,133 +2,52 @@
 
 ## Supported Versions | 支持的版本
 
+Only the latest minor release line receives security fixes.
+
+仅当前最新的次版本系列接收安全更新。
+
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.9.x   | :white_check_mark: |
-| < 0.9.0 | :x:                |
+| 0.20.x  | :white_check_mark: |
+| < 0.20  | :x:                |
 
 ## Reporting a Vulnerability | 报告安全漏洞
 
-We take security issues seriously. If you discover a security vulnerability, please follow the process below.
+We take security issues seriously. **Please DO NOT open a public GitHub issue for security vulnerabilities.**
 
-我们非常重视安全问题。如果您发现安全漏洞，请按照以下流程操作。
+我们非常重视安全问题。**请不要为安全漏洞创建公开的 GitHub Issue。**
 
-### Reporting Process | 报告流程
+### Preferred Channel | 首选渠道
 
-1. **DO NOT** create a public GitHub issue for security vulnerabilities.
-   
-   **不要**为安全漏洞创建公开的 GitHub Issue。
+1. **GitHub Private Vulnerability Reporting** (Recommended): submit a confidential report directly via [Security Advisories](https://github.com/helixnow/deep-student/security/advisories/new).
+2. **Email**: send details to **support@deepstudent.cn**.
 
-2. Send an email to: **support@deepstudent.cn** (or use GitHub Security Advisories if available)
-   
-   请发送邮件至：**support@deepstudent.cn**（或使用 GitHub Security Advisories，如可用）
-
-3. Include the following information:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
-   
-   请包含以下信息：
-   - 漏洞描述
-   - 复现步骤
-   - 潜在影响
-   - 建议的修复方案（如有）
+Please include:
+- Description of the vulnerability and affected component (Desktop / Mobile / WebUI / Host Plugin / MCP)
+- Minimal reproduction steps or PoC
+- Potential impact and suggested fix (if any)
 
 ### Response SLA | 响应时效
 
-| Severity | Initial Response | Resolution Target |
+| Severity | Initial Response | Target Resolution |
 | -------- | ---------------- | ----------------- |
 | Critical | 24 hours         | 7 days            |
 | High     | 48 hours         | 14 days           |
 | Medium   | 7 days           | 30 days           |
-| Low      | 14 days          | 90 days           |
+| Low      | 90 days          | 90 days           |
 
-### What to Expect | 您可以期待
+## Security Architecture & Boundaries | 安全架构与边界
 
-1. **Acknowledgment**: We will acknowledge receipt of your report within the SLA timeframe.
-   
-   **确认**：我们将在 SLA 时效内确认收到您的报告。
-
-2. **Investigation**: Our security team will investigate and validate the report.
-   
-   **调查**：我们的安全团队将调查并验证报告。
-
-3. **Updates**: We will keep you informed of our progress.
-   
-   **更新**：我们将持续通知您进展情况。
-
-4. **Resolution**: Once resolved, we will notify you and coordinate disclosure.
-   
-   **解决**：问题解决后，我们将通知您并协调披露事宜。
-
-5. **Credit**: With your permission, we will acknowledge your contribution in the release notes.
-   
-   **致谢**：经您许可，我们将在发布说明中致谢您的贡献。
-
-## Security Best Practices | 安全最佳实践
-
-### For Users | 用户须知
-
-- Always download releases from official sources (GitHub Releases / Official Website)
-- Keep the application updated to the latest version
-- Be cautious when importing data from untrusted sources
-- Review MCP server configurations before enabling
-
-### For Developers | 开发者须知
-
-- Follow the secure coding guidelines in [`CODE_STYLE.md`](../docs/CODE_STYLE.md)
-- Never commit secrets, API keys, or credentials
-- Use the secure store API (`secure_store.rs`) for sensitive data
-- Review third-party dependencies before adding
+- **Local-first storage**: user notes, study data, and SQLite databases stay local by default.
+- **Encrypted secrets**: API keys and sensitive credentials are protected via OS keyring and AES-256-GCM encryption in `host/platform/secrets/`.
+- **IPC & capability isolation**: renderer-to-host commands are governed by explicit IPC contracts (`contracts/ipc/`) and permission manifests (`resources/app/permissions/`).
+- **Electron hardening**: production builds enforce Electron Fuses (`electron/scripts/app-hardening.cjs`) and ASAR integrity checks (`electron/scripts/verify-fuses.mjs`).
+- **CSP & sandboxing**: HTML/Markdown previews sanitize untrusted content (`rehype-sanitize` / DOMPurify) and enforce strict URL scheme allowlists.
+- **Supply-chain hygiene**: automated Dependabot vulnerability alerts & security updates, secret scanning with push protection, pinned GitHub Actions commit SHAs, and AGPL-3.0 license compliance checks (`npm run licenses:check`).
 
 ## Scope | 范围
 
-### In Scope | 在范围内
-
-- DeepStudent desktop application (Windows, macOS, Linux)
-- DeepStudent mobile application (iOS, Android)
-- Official MCP server integrations
-- Data storage and encryption mechanisms
-
-### Out of Scope | 不在范围内
-
-- Third-party MCP servers
-- User-configured external services
-- Issues in upstream dependencies (report to respective projects)
-
-## Security Features | 安全特性
-
-DeepStudent implements the following security measures:
-
-DeepStudent 实现了以下安全措施：
-
-- **Local-first data storage**: All user data stored locally by default
-  
-  **本地优先数据存储**：所有用户数据默认存储在本地
-
-- **AES-256-GCM encryption**: Sensitive data (API keys) encrypted at rest via `secure_store.rs`
-  
-  **AES-256-GCM 加密**：敏感数据（API 密钥）通过 `secure_store.rs` 静态加密
-
-- **MCP allow/deny lists**: Configurable tool access controls
-  
-  **MCP 允许/拒绝列表**：可配置的工具访问控制
-
-### Known Limitations | 已知限制
-
-- **CSP (Content Security Policy)**: The CSP has been hardened (`script-src 'self'`, no `unsafe-eval`, explicit `connect-src` allowlist, `withGlobalTauri` disabled). Remaining relaxations: `style-src 'unsafe-inline'` (required by the styling pipeline) and `img-src https:` (user-provided remote images).
-  
-  **CSP（内容安全策略）**：CSP 已加固（`script-src 'self'`、无 `unsafe-eval`、`connect-src` 为显式域名白名单、`withGlobalTauri` 已禁用）。仍保留的放宽项：`style-src 'unsafe-inline'`（样式管线所需）与 `img-src https:`（用户引用的远程图片）。
-
-- **File system permissions**: The application requests broad file system access (user directories) for resource management. Users should be aware of this when granting permissions.
-  
-  **文件系统权限**：应用请求较广泛的文件系统访问权限（用户目录），用于资源管理。用户在授权时应注意这一点。
-
----
+- **In Scope**: DeepStudent desktop app (macOS/Windows/Linux Electron), mobile app (Capacitor Android/iOS), self-hosted WebUI/PWA, official Host plugins, and official Plugin v2 SDK security guarantees (`docs/plugins/SECURITY.md`).
+- **Out of Scope**: third-party community plugins, external MCP servers, and user-configured remote LLM endpoints.
 
 Thank you for helping keep DeepStudent and our users safe!
-
-感谢您帮助保护 DeepStudent 和我们的用户安全！
-
-

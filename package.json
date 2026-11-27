@@ -1,7 +1,20 @@
 {
   "name": "deep-student",
-  "version": "0.20.10",
+  "version": "0.20.11",
+  "private": true,
+  "description": "AI-native study workbench for deep reading, spaced repetition, practice, and knowledge mastery across Desktop, Web/PWA, and Mobile.",
   "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/helixnow/deep-student#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/helixnow/deep-student.git"
+  },
+  "bugs": {
+    "url": "https://github.com/helixnow/deep-student/issues"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "type": "module",
   "scripts": {
     "predev": "npm run version:generate",
@@ -38,7 +51,7 @@
     "test:sync-env:down": "docker compose -f ./scripts/ci/sync-test/docker-compose.yml down --volumes --remove-orphans",
     "contracts:generate": "node scripts/contracts/generate.mjs",
     "contracts:check": "node scripts/contracts/generate.mjs --check",
-    "check:arch": "node scripts/arch/gate-checks/plugin-manifest.mjs --check && node scripts/arch/gate-checks/portability.mjs --base HEAD",
+    "check:arch": "node scripts/arch/gate-checks/plugin-manifest.mjs --check && node scripts/arch/gate-checks/portability.mjs --base HEAD && node scripts/arch/boundaries.mjs --check",
     "check:plugins": "node scripts/plugins/generate-contracts.mjs --check && node scripts/plugins/check-boundaries.mjs && tsc --noEmit -p tsconfig.plugins.json",
     "check:frontend-layers": "node scripts/lint/check-frontend-layers.mjs",
     "check:lint-ratchet": "node scripts/lint/check-lint-ratchet.mjs",
@@ -108,6 +121,7 @@
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.1",
     "prosemirror-transform": "^1.10.4",
+    "handlebars": "^4.7.10",
     "prosemirror-keymap": "^1.2.2",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-schema-list": "^1.5.1",
@@ -138,7 +152,7 @@
     "@milkdown/prose": "7.22.1",
     "@milkdown/transformer": "7.22.1",
     "@milkdown/utils": "7.22.1",
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@nvq/flowtoken": "2.0.6",
     "@open-spaced-repetition/binding": "0.6.0",
     "@phosphor-icons/react": "^2.1.10",
@@ -213,7 +227,7 @@
     "date-fns": "^4.1.0",
     "diff": "^8.0.2",
     "docx-preview": "^0.3.7",
-    "dompurify": "^3.2.6",
+    "dompurify": "^3.5.0",
     "electron": "45.2.1",
     "electron-builder": "26.17.0",
     "eslint": "^9.18.0",
@@ -266,7 +280,7 @@
     "vega-embed": "^7.2.0",
     "vega-interpreter": "^2.3.2",
     "vega-lite": "^6.4.3",
-    "vite": "^6.0.3",
+    "vite": "^6.4.6",
     "vite-plugin-static-copy": "^3.1.5",
     "vitest": "^3.2.4",
     "wavedrom": "^3.7.0",

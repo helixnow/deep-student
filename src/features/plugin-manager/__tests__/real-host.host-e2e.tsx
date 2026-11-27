@@ -182,6 +182,11 @@ describe('plugin manager UI with a real Host', () => {
       await user.type(urlInput, 'https://127.0.0.1/blocked.dspack');
       await user.click(screen.getByTestId('plugin-url-install-submit'));
       await waitFor(() => expect(calls).toContain(MANAGER_COMMANDS.installUrl));
+      // Wait for handleUrlSubmit's diagnostic state & finally block to settle before unmount
+      await screen.findByTestId('plugin-install-diagnostic-category');
+
+      await controller.resetProfile();
+      await waitFor(() => expect(calls).toContain(MANAGER_COMMANDS.resetProfile));
 
       expect(new Set(calls)).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
     } finally {

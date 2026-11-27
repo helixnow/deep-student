@@ -1,0 +1,225 @@
+{
+  "description": "Host / Electron 架构边界棘轮基线（按 规则+文件 计数，只减不增）。见 scripts/arch/boundaries.mjs。",
+  "entries": [
+    {
+      "rule": "cross-plugin-impl",
+      "file": "host/plugins/browser/tests/web-search-http-inject.test.ts",
+      "count": 1
+    },
+    {
+      "rule": "cross-plugin-impl",
+      "file": "host/plugins/chat-pipeline/tests/plugin-v2-core-hooks.test.ts",
+      "count": 2
+    },
+    {
+      "rule": "cross-plugin-impl",
+      "file": "host/plugins/memory/tests/memory-kernel-v2.test.ts",
+      "count": 1
+    },
+    {
+      "rule": "cross-plugin-impl",
+      "file": "host/plugins/sync/tests/s5-08-weak-network-lease-recovery.test.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/declarative-registry.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/plugin-admin.ts",
+      "count": 5
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/plugin-packages/index.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/profile.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/runtime.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/sandbox/portable-sandbox.ts",
+      "count": 4
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/kernel/sandbox/worker-sandbox-host.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/agent-orchestration/repository/automation-definitions.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/anki/src/apkg-import-archive.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/anki/src/plugin.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/backup/src/backup-manager.ts",
+      "count": 3
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/backup/src/progress-messages.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/backup/src/zip.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/chat-pipeline/src/execution-runtime.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/llm/src/essay_grading/pipeline.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/mcp/src/web-search-providers.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/memory/src/memory-provider.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/notes/src/command-utils.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/plugin-workshop/src/generation.ts",
+      "count": 3
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/plugin-workshop/src/operations.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/review/src/essay-grading-commands.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync-providers/src/lease.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/repository/apply-guard.ts",
+      "count": 2
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/repository/change-log.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/src/collect-sync-changes.ts",
+      "count": 5
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/src/conflict-commands.ts",
+      "count": 12
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/src/plugin.ts",
+      "count": 5
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/src/prune-gap.ts",
+      "count": 1
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/sync/src/run-sync.ts",
+      "count": 3
+    },
+    {
+      "rule": "empty-catch",
+      "file": "host/plugins/vfs/src/dstu-trash.ts",
+      "count": 5
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/backup/src/backup-manager.ts",
+      "count": 12
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/backup/src/zip.ts",
+      "count": 11
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/chat-pipeline/src/final-persistence.ts",
+      "count": 1
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/review/src/review.ts",
+      "count": 4
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/sync/src/collect-sync-changes.ts",
+      "count": 4
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/sync/src/conflict-commands.ts",
+      "count": 33
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/sync/src/run-sync.ts",
+      "count": 1
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/sync/src/status.ts",
+      "count": 1
+    },
+    {
+      "rule": "sql-outside-repository",
+      "file": "host/plugins/vfs/src/dstu-trash.ts",
+      "count": 19
+    },
+    {
+      "rule": "test-double",
+      "file": "host/plugins/mcp/src/web-search-providers.ts",
+      "count": 2
+    }
+  ]
+}

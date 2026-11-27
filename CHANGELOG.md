@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.11](https://github.com/helixnow/deep-student/compare/v0.20.10...v0.20.11) (2026-11-26)
+
+### Features
+
+* **agent-mesh:** add native Coding CLI mesh integration (Claude Code, Codex CLI, OpenCode, Pi Agent, Antigravity CLI, DeepSeek Harness) with unified T3-style model/CLI/reasoning/permission selector and inline parameter morphing
+* **agent-mesh:** dynamically probe live CLI model catalogs, multi-PATH fallback, and per-CLI custom executable path & launch arguments configuration in Settings
+
+### Bug Fixes
+
+* **agent-mesh:** reject crashed Node.js shims on stderr, add macOS app-bundled Codex CLI fallback, and fix Antigravity CLI (`--conversation`) & DeepSeek Harness (`--profile headless`) invocation flags
+* **chat:** lock T3 model selector dimensions across provider switches and adapt responsive viewport tiers
+
 ## [0.20.10](https://github.com/helixnow/deep-student/compare/v0.20.9...v0.20.10) (2026-11-26)
 
 

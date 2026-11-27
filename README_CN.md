@@ -149,8 +149,8 @@
 
 | 平台 | 安装包格式 | 架构 |
 |:---:|---|---|
-| macOS | `.dmg` / `.app.tar.gz` | Apple Silicon / Intel |
-| Windows | `.exe` | x86_64 |
+| macOS | `.dmg` / `.zip` | Apple Silicon / Intel |
+| Windows | `.exe` / `.zip` | x86_64 |
 | Linux | `.deb` / `.AppImage` | x86_64 |
 | Android | `.apk` | arm64 |
 | WebUI / PWA | 自托管（`npm run web:prod`） | 现代桌面与移动浏览器 |

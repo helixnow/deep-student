@@ -93,7 +93,15 @@ if (!fs.existsSync(noticePath)) {
   if (!notices.includes('https://github.com/helixnow/deep-student')) {
     fail('Generated notices are missing the MPL-2.0 Section 3.2(b) repository source availability notice.');
   }
-  for (const required of ['@embedpdf/pdfium', 'format@0.2.2', 'unzipper@0.12.5', 'pako@1.0.11', 'pdfjs-dist@']) {
+  const { shipped: shippedNpm } = shippedNpmPackages(repoRoot);
+  const requiredNpm = [
+    '@embedpdf/pdfium',
+    ...(shippedNpm.has('node_modules/format') ? ['format@0.2.2'] : []),
+    'unzipper@0.12.5',
+    'pako@1.0.11',
+    'pdfjs-dist@',
+  ];
+  for (const required of requiredNpm) {
     if (!notices.includes(`NPM: ${required}`)) fail(`Generated notices do not include ${required}.`);
   }
   for (const desktopEntry of ['Desktop runtime: Electron@', 'Desktop runtime: Chromium', 'Desktop runtime: Node.js']) {

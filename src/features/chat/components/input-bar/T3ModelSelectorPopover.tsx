@@ -32,6 +32,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -937,7 +938,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           aria-label={t('chatV2:inputBar.thinkingDepthTitle', { defaultValue: '推理强度' })}
           className="flex flex-col gap-0.5"
         >
-          <button
+          <DsButton
+            variant="nav"
             type="button"
             role="menuitemradio"
             aria-checked={!effectiveCliEffort}
@@ -953,11 +955,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               {t('chatV2:modelPicker.t3.cliEffortDefault', { defaultValue: '默认' })}
             </span>
             {!effectiveCliEffort && <Check size={13} weight="bold" className="shrink-0" />}
-          </button>
+          </DsButton>
           {cliReasoningLevels.map((level) => {
             const isSelected = effectiveCliEffort === level;
             return (
-              <button
+              <DsButton
+                variant="nav"
                 key={level}
                 type="button"
                 role="menuitemradio"
@@ -972,7 +975,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               >
                 <span className="truncate">{resolveCliEffortLabel(level)}</span>
                 {isSelected && <Check size={13} weight="bold" className="shrink-0" />}
-              </button>
+              </DsButton>
             );
           })}
         </div>
@@ -1000,7 +1003,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
           className="flex flex-col gap-0.5"
         >
           {thinkingCanDisable && (
-            <button
+            <DsButton
+              variant="nav"
               type="button"
               role="menuitemradio"
               aria-checked={!enableThinking}
@@ -1016,12 +1020,13 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
               </span>
               {!enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
-            </button>
+            </DsButton>
           )}
           {thinkingDepthOptions.map((option) => {
             const isSelected = Boolean(enableThinking) && thinkingDepthValue === option.value;
             return (
-              <button
+              <DsButton
+                variant="nav"
                 key={option.value}
                 type="button"
                 role="menuitemradio"
@@ -1036,7 +1041,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               >
                 <span className="truncate">{resolveDepthLabel(option)}</span>
                 {isSelected && <Check size={13} weight="bold" className="shrink-0" />}
-              </button>
+              </DsButton>
             );
           })}
         </div>
@@ -1049,7 +1054,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         aria-label={t('chatV2:inputBar.thinking', { defaultValue: '推理模式' })}
         className="flex flex-col gap-0.5"
       >
-        <button
+        <DsButton
+          variant="nav"
           type="button"
           role="menuitemradio"
           aria-checked={Boolean(enableThinking)}
@@ -1065,9 +1071,10 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             {t('chatV2:inputBar.thinkingOn', { defaultValue: '开启' })}
           </span>
           {enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
-        </button>
+        </DsButton>
         {thinkingCanDisable && (
-          <button
+          <DsButton
+            variant="nav"
             type="button"
             role="menuitemradio"
             aria-checked={!enableThinking}
@@ -1083,7 +1090,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
             </span>
             {!enableThinking && <Check size={13} weight="bold" className="shrink-0" />}
-          </button>
+          </DsButton>
         )}
       </div>
     );
@@ -1116,7 +1123,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               effectiveTier === 'wide' ? 'w-12' : 'w-10',
             )}
           >
-            <button
+            <DsButton
+              variant="nav"
               type="button"
               data-testid="t3-rail-favorites"
               title={t('chatV2:modelPicker.favorites', { defaultValue: '收藏' })}
@@ -1149,14 +1157,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   className="absolute right-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
                 />
               )}
-            </button>
+            </DsButton>
 
             <div className="my-0.5 h-px w-6 shrink-0 bg-border/70" aria-hidden="true" />
 
             {railGroups.map((group) => {
               const isActive = viewMode === 'models' && !keyword && activeRailKey === group.key;
               return (
-                <button
+                <DsButton
+                  variant="nav"
                   key={group.key}
                   type="button"
                   data-testid={`t3-rail-group-${group.key}`}
@@ -1201,7 +1210,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       className="absolute right-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
                     />
                   )}
-                </button>
+                </DsButton>
               );
             })}
           </div>
@@ -1213,7 +1222,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
             >
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <button
+                  <DsButton
+                    variant="nav"
                     type="button"
                     data-testid="t3-params-back"
                     onClick={() => setViewMode('models')}
@@ -1223,7 +1233,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     <span className="truncate">
                       {t('chatV2:modelPicker.t3.backToModels', { defaultValue: '返回模型' })}
                     </span>
-                  </button>
+                  </DsButton>
                   <span className="text-muted-foreground/50">/</span>
                   <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground">
                     <SlidersHorizontal size={13} weight="bold" className="shrink-0 text-primary" />
@@ -1273,7 +1283,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 data-testid="t3-cli-drilldown-header"
                 className="flex shrink-0 items-center gap-1.5 px-3 pt-2 pb-0.5 text-xs"
               >
-                <button
+                <DsButton
+                  variant="nav"
                   type="button"
                   data-testid="t3-cli-drilldown-back"
                   onClick={() => {
@@ -1286,7 +1297,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   <span className="truncate">
                     {t('chatV2:modelPicker.t3.backToCliList', { defaultValue: '返回编程 CLI' })}
                   </span>
-                </button>
+                </DsButton>
                 <span className="text-muted-foreground/50">/</span>
                 <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground">
                   {renderModelBrandIcon(drilledCliOption, 14)}
@@ -1314,14 +1325,15 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   className="min-w-0 flex-1 bg-transparent text-ui leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [@media(pointer:coarse)]:text-base"
                 />
                 {search && (
-                  <button
+                  <DsButton
+                    variant="nav"
                     type="button"
                     onClick={() => setSearch('')}
                     aria-label={t('chatV2:common.clearSearch', { defaultValue: '清除搜索' })}
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
                     <X size={12} weight="bold" />
-                  </button>
+                  </DsButton>
                 )}
               </div>
             </div>
@@ -1364,7 +1376,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         )}
                         onMouseEnter={() => setHighlightedIndex(index)}
                       >
-                        <button
+                        <DsButton
+                          variant="nav"
                           type="button"
                           role="menuitemradio"
                           aria-checked={isSelectedRow}
@@ -1388,7 +1401,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                               {formatCompactCliModelName(row.badge)}
                             </span>
                           )}
-                        </button>
+                        </DsButton>
                         {isSelectedRow ? (
                           <Check size={14} weight="bold" className="shrink-0 text-primary" />
                         ) : shortcutLabel ? (
@@ -1405,7 +1418,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 </div>
               ) : sanitizedOptions.length === 0 && hasModelPanel && onOpenRuntimeModelPanel ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
-                  <button
+                  <DsButton
+                    variant="nav"
                     type="button"
                     role="menuitem"
                     onClick={() => {
@@ -1415,7 +1429,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-muted/70 px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                   >
                     {t('chatV2:inputBar.chooseRuntimeModel', { defaultValue: '选择模型' })}
-                  </button>
+                  </DsButton>
                 </div>
               ) : visibleModels.length === 0 ? (
                 <div className="flex h-full items-center justify-center px-3 text-center text-xs leading-relaxed text-muted-foreground">
@@ -1469,7 +1483,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         )}
                         onMouseEnter={() => setHighlightedIndex(index)}
                       >
-                        <button
+                        <DsButton
+                          variant="nav"
                           type="button"
                           role={multiActive ? 'menuitemcheckbox' : 'menuitem'}
                           aria-checked={multiActive ? isChecked : undefined}
@@ -1497,10 +1512,11 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                               {t('agentMesh:picker.cliBadge', { defaultValue: 'CLI' })}
                             </span>
                           )}
-                        </button>
+                        </DsButton>
 
                         {!cliItem && (
-                          <button
+                          <DsButton
+                            variant="nav"
                             type="button"
                             data-testid={`t3-favorite-toggle-${model.id}`}
                             aria-label={
@@ -1527,7 +1543,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                             )}
                           >
                             <Star size={13} weight={isFavorite ? 'fill' : 'regular'} />
-                          </button>
+                          </DsButton>
                         )}
 
                         {multiActive ? (
@@ -1626,7 +1642,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   </span>
                 ) : (
                   <>
-                    <button
+                    <DsButton
+                      variant="nav"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!effectiveCliEffort}
@@ -1639,11 +1656,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       )}
                     >
                       {t('chatV2:modelPicker.t3.cliEffortDefault', { defaultValue: '默认' })}
-                    </button>
+                    </DsButton>
                     {cliReasoningLevels.map((level) => {
                       const isSelected = effectiveCliEffort === level;
                       return (
-                        <button
+                        <DsButton
+                          variant="nav"
                           key={level}
                           type="button"
                           role="menuitemradio"
@@ -1657,7 +1675,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                           )}
                         >
                           {resolveCliEffortLabel(level)}
-                        </button>
+                        </DsButton>
                       );
                     })}
                   </>
@@ -1674,7 +1692,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
               ) : hasDepthOptions && thinkingDepthOptions ? (
                 <>
                   {thinkingCanDisable && (
-                    <button
+                    <DsButton
+                      variant="nav"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!enableThinking}
@@ -1687,13 +1706,14 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       )}
                     >
                       {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
-                    </button>
+                    </DsButton>
                   )}
                   {thinkingDepthOptions.map((option) => {
                     const isSelected =
                       Boolean(enableThinking) && thinkingDepthValue === option.value;
                     return (
-                      <button
+                      <DsButton
+                        variant="nav"
                         key={option.value}
                         type="button"
                         role="menuitemradio"
@@ -1707,13 +1727,14 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                         )}
                       >
                         {resolveDepthLabel(option)}
-                      </button>
+                      </DsButton>
                     );
                   })}
                 </>
               ) : (
                 <>
-                  <button
+                  <DsButton
+                    variant="nav"
                     type="button"
                     role="menuitemradio"
                     aria-checked={Boolean(enableThinking)}
@@ -1726,9 +1747,10 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     )}
                   >
                     {t('chatV2:inputBar.thinkingOn', { defaultValue: '开启' })}
-                  </button>
+                  </DsButton>
                   {thinkingCanDisable && (
-                    <button
+                    <DsButton
+                      variant="nav"
                       type="button"
                       role="menuitemradio"
                       aria-checked={!enableThinking}
@@ -1741,7 +1763,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                       )}
                     >
                       {t('chatV2:inputBar.thinkingOff', { defaultValue: '关闭' })}
-                    </button>
+                    </DsButton>
                   )}
                 </>
               )}
@@ -1756,7 +1778,8 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         >
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
             {onWebSearchEnabledChange && (
-              <button
+              <DsButton
+                variant="nav"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={Boolean(webSearchEnabled)}
@@ -1788,11 +1811,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 <span className="truncate">
                   {t('chatV2:modelPicker.t3.webSearchShort', { defaultValue: '联网' })}
                 </span>
-              </button>
+              </DsButton>
             )}
 
             {multiSelect && viewMode === 'models' && !drilledCliOption && sanitizedOptions.some((o) => !isCliOption(o)) && (
-              <button
+              <DsButton
+                variant="nav"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={multiActive}
@@ -1816,11 +1840,12 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     {multiSelect.selectedIds.length}
                   </span>
                 )}
-              </button>
+              </DsButton>
             )}
 
             {(renderAdvancedPanel || onOpenAdvancedPanel) && (
-              <button
+              <DsButton
+                variant="nav"
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={viewMode === 'params'}
@@ -1849,13 +1874,14 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                 <span className="truncate">
                   {t('chatV2:modelPicker.t3.paramsShort', { defaultValue: '参数' })}
                 </span>
-              </button>
+              </DsButton>
             )}
           </div>
 
           {/* 右下角权限预设选择器 */}
           <div ref={permissionContainerRef} className="relative flex shrink-0 items-center">
-            <button
+            <DsButton
+              variant="nav"
               type="button"
               data-testid="t3-permission-trigger"
               disabled={!onPermissionPresetChange || permissionSyncing}
@@ -1887,18 +1913,22 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                   )}
                 />
               )}
-            </button>
+            </DsButton>
 
             {permissionMenuOpen && onPermissionPresetChange && (
               <div
                 role="menu"
                 data-testid="t3-permission-menu"
-                className="absolute bottom-full right-0 z-20 mb-1.5 w-48 max-w-[calc(100vw-32px)] rounded-xl border border-border/80 bg-popover p-1 shadow-lg"
+                className="absolute bottom-full right-0 z-20 mb-1.5 w-56 max-w-[calc(100vw-32px)] rounded-xl border border-border/80 bg-popover p-1 shadow-lg"
               >
                 {PERMISSION_PRESET_ORDER.map((preset) => {
                   const isSelected = preset === permissionPreset;
+                  const shortHint = t(`chatV2:authority.permissionPreset.shortHints.${preset}`, {
+                    defaultValue: '',
+                  });
                   return (
-                    <button
+                    <DsButton
+                      variant="nav"
                       key={preset}
                       type="button"
                       role="menuitemradio"
@@ -1920,14 +1950,21 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         {renderPermissionIcon(preset)}
-                        <span className="truncate">
-                          {t(`chatV2:authority.permissionPreset.modes.${preset}`, {
-                            defaultValue: preset,
-                          })}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate">
+                            {t(`chatV2:authority.permissionPreset.modes.${preset}`, {
+                              defaultValue: preset,
+                            })}
+                          </span>
+                          {shortHint && (
+                            <span className="truncate text-2xs font-normal text-muted-foreground">
+                              {shortHint}
+                            </span>
+                          )}
                         </span>
                       </span>
                       {isSelected && <Check size={13} weight="bold" className="shrink-0" />}
-                    </button>
+                    </DsButton>
                   );
                 })}
               </div>

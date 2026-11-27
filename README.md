@@ -149,8 +149,8 @@ Download the latest release from [GitHub Releases](https://github.com/helixnow/d
 
 | Platform | Package | Architecture |
 |:---:|---|---|
-| macOS | `.dmg` / `.app.tar.gz` | Apple Silicon / Intel |
-| Windows | `.exe` | x86_64 |
+| macOS | `.dmg` / `.zip` | Apple Silicon / Intel |
+| Windows | `.exe` / `.zip` | x86_64 |
 | Linux | `.deb` / `.AppImage` | x86_64 |
 | Android | `.apk` | arm64 |
 | WebUI / PWA | Self-hosted (`npm run web:prod`) | Modern desktop & mobile browsers |

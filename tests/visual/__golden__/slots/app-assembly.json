@@ -14786,22 +14786,9 @@
           }
         },
         {
-          "id": "tool_approval_request",
-          "key": "tool_approval_request",
-          "order": 1,
-          "owner": "dstu.ui.chat",
-          "origin": "builtin",
-          "value": {
-            "deliverTerminalByBlockId": true,
-            "onEnd": "ƒ",
-            "onError": "ƒ",
-            "onStart": "ƒ"
-          }
-        },
-        {
           "id": "thinking",
           "key": "thinking",
-          "order": 2,
+          "order": 1,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14814,7 +14801,7 @@
         {
           "id": "content",
           "key": "content",
-          "order": 3,
+          "order": 2,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14827,7 +14814,7 @@
         {
           "id": "tool_call",
           "key": "tool_call",
-          "order": 4,
+          "order": 3,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14840,7 +14827,7 @@
         {
           "id": "image_gen",
           "key": "image_gen",
-          "order": 5,
+          "order": 4,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14853,7 +14840,7 @@
         {
           "id": "tool_call_preparing",
           "key": "tool_call_preparing",
-          "order": 6,
+          "order": 5,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14866,7 +14853,7 @@
         {
           "id": "rag",
           "key": "rag",
-          "order": 7,
+          "order": 6,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14879,7 +14866,7 @@
         {
           "id": "memory",
           "key": "memory",
-          "order": 8,
+          "order": 7,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14892,7 +14879,7 @@
         {
           "id": "web_search",
           "key": "web_search",
-          "order": 9,
+          "order": 8,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14905,7 +14892,7 @@
         {
           "id": "multimodal_rag",
           "key": "multimodal_rag",
-          "order": 10,
+          "order": 9,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14918,7 +14905,7 @@
         {
           "id": "academic_search",
           "key": "academic_search",
-          "order": 11,
+          "order": 10,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
@@ -14931,11 +14918,24 @@
         {
           "id": "insight_recall",
           "key": "insight_recall",
-          "order": 12,
+          "order": 11,
           "owner": "dstu.ui.chat",
           "origin": "builtin",
           "value": {
             "onChunk": "ƒ",
+            "onEnd": "ƒ",
+            "onError": "ƒ",
+            "onStart": "ƒ"
+          }
+        },
+        {
+          "id": "tool_approval_request",
+          "key": "tool_approval_request",
+          "order": 12,
+          "owner": "dstu.ui.chat",
+          "origin": "builtin",
+          "value": {
+            "deliverTerminalByBlockId": true,
             "onEnd": "ƒ",
             "onError": "ƒ",
             "onStart": "ƒ"

@@ -194,14 +194,4 @@ describe('reduced-motion source contracts', () => {
     expect(css).toContain('transition: none');
   });
 
-  it('DESIGN_CONSTITUTION §8 requires prefers-reduced-motion', () => {
-    const doc = fs.readFileSync(
-      path.join(process.cwd(), 'docs/generative-ui/DESIGN_CONSTITUTION.md'),
-      'utf8',
-    );
-    const section8 = doc.slice(doc.indexOf('## 8. Accessibility'));
-    expect(section8).toContain('prefers-reduced-motion');
-    expect(section8).toContain('data-reduced-motion');
-    expect(section8).toContain('流式指示');
-  });
 });

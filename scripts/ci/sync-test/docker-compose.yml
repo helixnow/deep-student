@@ -11,7 +11,7 @@ services:
   # ============== MinIO (S3 兼容) ==============
   minio:
     build:
-      context: ../..
+      context: ../../..
       dockerfile: scripts/ci/sync-test/Dockerfile.minio-tool
     image: deep-student-sync-test-minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ds-minio
@@ -69,7 +69,7 @@ services:
   # ============== FTP ==============
   ftp:
     build:
-      context: ./sync-test-docker
+      context: .
       dockerfile: Dockerfile.ftp
     image: deep-student-sync-test-ftp:pyftpdlib-2.2.0
     container_name: ds-ftp
