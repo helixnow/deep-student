@@ -253,9 +253,9 @@
                       "..."
                   <p class="mt-1 line-clamp-2">
                     "第 11 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
-            <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
               <div class="os-scrollbar-track">
                 <div class="os-scrollbar-handle">
-            <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+            <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
               <div class="os-scrollbar-track">
                 <div class="os-scrollbar-handle">

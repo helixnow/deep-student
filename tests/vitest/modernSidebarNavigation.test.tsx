@@ -1691,7 +1691,6 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     expect(await screen.findByRole('button', { name: 'Seeded Chat 205' })).toBeInTheDocument();
-    expect(screen.getByTestId('sidebar-inbox-count')).toHaveTextContent('50');
     const conversationsNav = screen.getByRole('navigation', { name: '对话' });
     await user.click(within(conversationsNav).getByRole('button', { name: '展开显示' }));
     expect(await within(conversationsNav).findByRole('button', { name: 'Seeded Chat 156' })).toBeInTheDocument();

@@ -7,6 +7,7 @@ import {
   parseCssUrl,
   useAdaptiveGlassTone,
 } from '../useAdaptiveGlassTone';
+import { resetMaterialTierForTests, setMaterialTier } from '../materialTier';
 
 function ToneHarness({ testId }: { testId: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -40,7 +41,7 @@ function renderDesktopScene(initialPreset: string) {
 describe('useAdaptiveGlassTone helpers', () => {
   afterEach(() => {
     document.documentElement.classList.remove('dark');
-    document.documentElement.removeAttribute('data-wb-material');
+    resetMaterialTierForTests();
   });
 
   it('正确解析 CSS background-image url 与 background-position', () => {
@@ -83,7 +84,7 @@ describe('useAdaptiveGlassTone helpers', () => {
   });
 
   it('壁纸切换至深色渐变预设或亮色预设时立刻响应更新', async () => {
-    document.documentElement.setAttribute('data-wb-material', 'full');
+    setMaterialTier('full');
     const { container, getByTestId } = renderDesktopScene('aurora');
 
     const target = getByTestId('briefing-target');
@@ -112,7 +113,7 @@ describe('useAdaptiveGlassTone helpers', () => {
   });
 
   it('兄弟组件折叠触发父列变动时立即重采样', async () => {
-    document.documentElement.setAttribute('data-wb-material', 'full');
+    setMaterialTier('full');
     const { container, getByTestId } = renderDesktopScene('nebula');
 
     const sibling = getByTestId('sibling-widget');

@@ -58,18 +58,24 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('state.sessionMetadata !== prevState.sessionMetadata');
   });
 
+  const breadcrumbBarSource = readFileSync(
+    resolve(process.cwd(), 'src/components/layout/DesktopBreadcrumbBar.tsx'),
+    'utf-8'
+  );
+
   it('renders chat header title through an animated display label when a generated title arrives later', () => {
-    expect(appSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
-    expect(appSource).toContain('<TextSwap');
-    expect(appSource).toContain('text={desktopShellViewLabel}');
-    expect(appSource).toContain('className="block max-w-full truncate"');
+    expect(breadcrumbBarSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
+    expect(breadcrumbBarSource).toContain('<TextSwap');
+    expect(breadcrumbBarSource).toContain('text={item.label}');
+    expect(appSource).toContain('<DesktopBreadcrumbBar items={breadcrumbs} meta={meta} />');
+    expect(appSource).toContain('label: desktopShellViewLabel');
   });
 
-  it('keeps desktop header nav and title cells as explicit hotzones beyond the inner icon buttons', () => {
+  it('keeps desktop header nav hotzone and workspace titlebar drag behavior intact', () => {
     expect(appSource).toContain('data-shell-hotzone="desktop-nav"');
-    expect(appSource).toContain('data-shell-hotzone="desktop-title"');
+    expect(appSource).toContain('desktop-shell-header-cell--workspace');
     expect(appSource).toContain('const desktopHeaderNavHotzoneLabel = t(\'chatV2:page.newSession\');');
-    expect(appSource).toContain('const desktopHeaderTitleHotzoneLabel = t(\'common:command_palette_label\');');
+    expect(appSource).toContain('<CommandPaletteButton onOpenReady={onCommandPaletteReady} />');
     expect(appSource).toContain('const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {');
     expect(appSource).toContain("const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');");
     expect(appSource).toContain('void startDragging(event);');
@@ -82,9 +88,7 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('onMouseUp={handleHeaderHotzoneMouseUp}');
     expect(appSource).toContain('onMouseLeave={handleHeaderHotzoneMouseLeave}');
     expect(appSource).toContain('onClick={(event) => handleHeaderHotzoneClick(event, handleCreateChatSession)}');
-    expect(appSource).toContain('onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}');
     expect(appSource).toContain('onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}');
-    expect(appSource).toContain('onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}');
     expect(appSource).not.toContain('data-tauri-drag-region');
   });
 

@@ -13,6 +13,7 @@ describe('BROWSER_SETTING_KEYS', () => {
       networkMode: 'desktop.workbenchBrowserNetworkMode',
       agentControl: 'desktop.workbenchBrowserAgentControl',
       cdpWindows: 'desktop.workbenchBrowserCdpWindows',
+      cdpUrl: 'desktop.workbenchBrowserCdpUrl',
     });
   });
 });

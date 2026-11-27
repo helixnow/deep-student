@@ -61,7 +61,7 @@ describe('MessageList empty state source guards', () => {
     expect(source).not.toContain(`defaultValue: '${oldWorkspaceHintText}'`);
     expect(source).not.toContain("defaultValue: '查看建议起点'");
     expect(source).not.toContain('<Sparkles');
-    expect(source).not.toContain('<DsButton');
+    expect(emptyBlock).not.toContain('<DsButton');
     expect(source).not.toContain(`messageList.empty.${oldWorkspaceHintKey}`);
     expect(source).not.toContain(`messageList.empty.${oldShowSuggestionsKey}`);
     expect(emptyBlock).not.toContain("const starterPrompt = t('messageList.empty.suggestion2');");

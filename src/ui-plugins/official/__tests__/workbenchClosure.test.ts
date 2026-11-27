@@ -29,7 +29,12 @@ describe('Workbench chunk vs startup closure (FE-B4)', () => {
     }
     const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8')) as typeof current;
     const bridge = 'src/features/workbench/core/appContributions.ts';
-    const smallStartupModules = new Set([bridge, 'src/features/workbench/core/besidePlacement.ts']);
+    const smallStartupModules = new Set([
+      bridge,
+      'src/features/workbench/core/besidePlacement.ts',
+      'src/features/workbench/core/liquidGlassAppearanceStore.ts',
+      'src/features/workbench/core/liquidGlassSurface.ts',
+    ]);
     expect(current.entry.filter((file) => !golden.entry.includes(file) && !smallStartupModules.has(file))).toEqual([]);
     expect(current.boot.filter((file) => !golden.entry.includes(file) && !golden.boot.includes(file) && !smallStartupModules.has(file))).toEqual([]);
     // The bridge is how the startup plugin reaches the lazy app modules; it must not drag anything in itself.
