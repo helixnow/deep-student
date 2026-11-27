@@ -21,6 +21,18 @@ export interface VfsFile {
   processingStatus?: string; processingProgress?: string; processingError?: string;
   processingStartedAt?: number; processingCompletedAt?: number; compressedBlobHash?: string;
 }
+export interface ReplaceFileContentParams {
+  sha256: string;
+  size: number;
+  blobHash: string;
+  extractedText: string | null;
+  pageCount: number | null;
+  ocrPagesJson: string | null;
+}
+export interface ReplaceFileContentOutcome {
+  file: VfsFile;
+  previousBlobHash: string | null;
+}
 export interface FileRepository {
   createFile(conn: SqlExecutor, sha256: string, fileName: string, size: number, fileType: string,
     mimeType?: string | null, blobHash?: string | null, originalPath?: string | null): VfsFile;
@@ -99,6 +111,7 @@ export interface FileRepository {
   purgeDeletedFiles(conn: SqlExecutor, blobsDir: string): number;
   fileExists(conn: SqlExecutor, fileId: string): boolean;
   getResourceIdByFileId(conn: SqlExecutor, fileId: string): string | null;
+  replaceFileContentWithConn(conn: SqlExecutor, fileId: string, params: ReplaceFileContentParams): ReplaceFileContentOutcome;
   /**
    * dstu-qbank question_import_service.rs:3758-3812 `ensure_vfs_file_for_blob` (connection part):
    * returns the first live (`deleted_at IS NULL`) `files.id` with this `blob_hash`; a lookup SQL

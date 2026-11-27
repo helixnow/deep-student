@@ -120,10 +120,7 @@
   margin-bottom: 0.75rem;
   padding: 0.75rem;
   border-radius: var(--radius-shell-toolbar);
-  border: 1px solid hsl(var(--border) / 0.3);
-
-  /* --brand-primary 是裸 HSL 分量，必须包 hsl() 才是合法颜色 */
-  border-left: 2px solid hsl(var(--brand-primary));
+  border: 1px solid hsl(var(--border) / 30%);
   background: hsl(var(--card));
 }
 

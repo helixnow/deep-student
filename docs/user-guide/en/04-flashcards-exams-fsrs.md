@@ -12,9 +12,11 @@
 
 1. **Open your daily queue**: Open **Flashcards** → **Today** to see your **Today's progress** ring (**Due**, **New**, **Learning**) and your **Review by deck** breakdown.
 2. **Start reviewing**: Click **Start review** (or review a single deck with **Review N** / **Learn N new**). Newly AI-generated cards wait in your inbox until you click **Add to review**, so bulk generation never floods your queue unexpectedly.
-3. **Flip, rate, and trace back to source**:
-   - Reveal the answer and rate honestly: **Again**, **Hard**, **Good**, or **Easy** (hit **Undo rating** if you tapped the wrong button).
+3. **Flip, rate, zoom images, and rescue missed cards**:
+   - Reveal the answer and rate honestly: **Again**, **Hard**, **Good**, or **Easy** (hit **Undo rating** if you tapped the wrong button). Press **`?`** anytime during review (or click **Shortcuts**) to open the **Keyboard shortcuts** sheet for flipping, rating, undoing, replaying audio, editing, skipping, and burying cards.
+   - Reviewing diagrams or dense textbook crops? Click any card image to open a crisp **200-DPI image zoom lightbox** without accidentally flipping the card.
    - Stuck on a card? Click **View source** to jump back to the exact PDF page, note, or lecture timestamp it came from, or click **Ask AI about this card** for a fresh explanation and memory hook.
+   - **Session-end forgotten-card rescue**: Whenever a review round finishes with cards rated **Again**, the summary card lets you immediately drill them while fresh (**Review missed cards (N)** — retry again cards) or click **Ask AI about missed cards** (ask AI to review hard cards, highlight common traps, and generate quick check questions).
 
 **What you get**: An adaptive review plan tuned to when you actually remember or forget each concept.
 
@@ -46,19 +48,20 @@
 
 **What you want to do**: Manage thousands of flashcards across semesters without constantly losing your filter or scroll position — and jump to any specific card or note in two seconds.
 
-### Session Memory in the Card Library
+### Session Memory & Manual Card Creation in the Card Library
 
 1. Open **Flashcards** → **Library** and narrow down cards with **Search front / back / tags…**, status filters (**All**, **Due**, **New**, **Learning**, **Review**, **Suspended**, **Not enqueued**), or deck selection.
-2. Expand card details, adjust your page size, or scroll deep into a 5,000-card library.
-3. Switch away to **Today**, **Chat**, or **Notes**, then come back to **Library**.
+2. Click **New card** to create cards manually in either **Basic (Q&A)** or **Cloze deletion** (**Cloze**, highlighting key terms and clicking **Insert cloze** to wrap `{{c1::...}}` blanks) — saved cards join your review queue right away.
+3. Expand card details, adjust your page size, or scroll deep into a 5,000-card library.
+4. Switch away to **Today**, **Chat**, or **Notes**, then come back to **Library**.
 
 **What you get**: DeepStudent remembers your active filters, search query, page size, expanded rows, and exact scroll position for the entire session — no starting over from page 1 every time you switch tabs. You can also click **Review this page** to drill just your filtered slice.
 
 ### Deep Content Jump with `⌘/Ctrl+K`
 
 1. Press **`⌘/Ctrl+K`** from anywhere in DeepStudent to open the Command Palette.
-2. Type a keyword from a card, note, or past conversation (at least 2 characters for session history).
-3. Browse live matching snippets under **Notes**, **Flashcards**, and **Sessions**, then press `Enter`.
+2. Use the **scope filter chips** (**`All`** / **`Commands`** / **`Files`** / **`Cards`** [Flashcards]) — or type quick prefixes (`>` commands, `@` files, `#` cards) — and enter a keyword from a card, note, or past conversation (at least 2 characters for files, flashcards, and session history).
+3. Browse live matching snippets with **match highlighting** under **Files**, **Flashcards**, and **Sessions**, then press `Enter`.
 
 **What you get**: Instant deep jump straight to the exact matching item — picking a flashcard opens **Library** and focuses directly on that card so you can inspect, edit, or review it immediately.
 
@@ -72,9 +75,10 @@
 
 ### Import & Export `.apkg` (Full WebUI Media Parity)
 
-1. In **Flashcards** → **Library**, import an existing `.apkg` deck or select cards and click **Export .apkg** (or **Export .csv** for spreadsheets).
-2. Card templates, styling, bundled math fonts (KaTeX), and embedded images or audio travel inside the `.apkg` archive.
-3. Review imported `.apkg` cards anywhere — embedded images and audio now render with full parity across both the **Desktop App** and **self-hosted WebUI**.
+1. In **Flashcards** → **Library**, click **Import .apkg** to import an existing `.apkg` deck, or select cards and click **Export .apkg** (or **Export .csv** for spreadsheets).
+2. Right after an `.apkg` import completes, a **post-import quick-study banner** (**Deck imported**) summarizes imported cards, media, and preserved Anki review history with one-click **Start Studying Now** and **Filter Deck in Library** actions.
+3. Card templates, styling, bundled math fonts (KaTeX), and embedded images or audio travel inside the `.apkg` archive.
+4. Review imported `.apkg` cards anywhere — embedded images and audio render with full parity across both the **Desktop App** and **self-hosted WebUI**.
 
 ### Push Directly to Desktop Anki via AnkiConnect v6
 
@@ -115,4 +119,4 @@
 - Add custom exam grading rubrics, study workflows, or AI-built study widgets → [05 · Plugins v2, Study Packs & Safe Mode Rescue](./05-plugins-v2-and-safe-mode.md)
 - Keep your flashcard streak synced across laptop, phone, and WebUI → [06 · Backups, Cloud Sync, Mobile & WebUI / PWA](./06-sync-backup-mobile-webui.md)
 
-<!-- Baseline: DeepStudent v0.20.9 -->
+<!-- Baseline: DeepStudent v0.20.10 -->

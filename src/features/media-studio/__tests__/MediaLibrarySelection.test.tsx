@@ -285,14 +285,15 @@ describe('MediaLibraryPage grouped view', () => {
     expect(dstuMocks.moveItem).toHaveBeenCalledWith('file', 'c2', undefined, { skipCacheRefresh: true });
   });
 
-  it('phone: the selection bar replaces the bottom import bar', () => {
+  it('phone: entering select mode shows bottom selection bar without a redundant bottom import bar', () => {
     renderPage([item('a')], vi.fn(), true);
-    expect(document.querySelector('[data-media-import-bar]')).toBeTruthy();
-    enterSelect();
     expect(document.querySelector('[data-media-import-bar]')).toBeNull();
+    expect(document.querySelector('[data-media-select-bar]')).toBeNull();
+    enterSelect();
     const bar = document.querySelector('[data-media-select-bar]') as HTMLElement;
+    expect(bar).toBeTruthy();
     expect(within(bar).getByRole('button', { name: 'mediaStudio:select.done' })).toBeTruthy();
     fireEvent.click(within(bar).getByRole('button', { name: 'mediaStudio:select.done' }));
-    expect(document.querySelector('[data-media-import-bar]')).toBeTruthy();
+    expect(document.querySelector('[data-media-select-bar]')).toBeNull();
   });
 });

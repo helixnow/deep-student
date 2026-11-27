@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, CircleNotch, SpeakerHigh } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { isWebUiShell } from '@/utils/platform';
@@ -69,6 +69,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
   const [activeTab, setActiveTab] = useState<string>(MEDIA_STUDY_TRANSCRIPT_TAB);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [embeddedToolbarSlot, setEmbeddedToolbarSlot] = useState<HTMLElement | null>(null);
   const studyContainerRef = useRef<HTMLDivElement | null>(null);
   const lastToastedErrorRef = useRef<string | null>(null);
 
@@ -437,13 +438,42 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
     </div>
   );
 
+  const embedHeaderInMediaToolbar = !titlebarTarget && !isSmallScreen;
+
+  useEffect(() => {
+    const container = studyContainerRef.current;
+    if (!embedHeaderInMediaToolbar || !container || !node || error) {
+      setEmbeddedToolbarSlot(null);
+      return;
+    }
+    const syncSlot = () => {
+      const slot = container.querySelector<HTMLElement>('[data-media-study-toolbar-leading]');
+      setEmbeddedToolbarSlot((prev) => (prev === slot ? prev : slot));
+    };
+    syncSlot();
+    const observer =
+      typeof MutationObserver === 'function' ? new MutationObserver(syncSlot) : null;
+    observer?.observe(container, { childList: true, subtree: true });
+    return () => {
+      observer?.disconnect();
+      setEmbeddedToolbarSlot(null);
+    };
+  }, [embedHeaderInMediaToolbar, error, node]);
+
   return (
     <div ref={studyContainerRef} className="flex h-full min-h-0 min-w-0 flex-col" data-media-study={resourceId}>
       {titlebarTarget ? createPortal(
         <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{headerRow(true)}</div>,
         titlebarTarget,
       ) : null}
-      {!titlebarTarget && !isSmallScreen ? (
+      {embedHeaderInMediaToolbar && embeddedToolbarSlot ? createPortal(
+        <>
+          {headerRow(false)}
+          <span className="h-4 w-px shrink-0 bg-border/35" aria-hidden="true" />
+        </>,
+        embeddedToolbarSlot,
+      ) : null}
+      {embedHeaderInMediaToolbar && !embeddedToolbarSlot ? (
         <div className="study-shell-toolbar flex h-11 shrink-0 items-center px-3">{headerRow(false)}</div>
       ) : null}
       {mutedAutoplayNotice ? (

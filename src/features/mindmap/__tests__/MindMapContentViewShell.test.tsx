@@ -509,10 +509,37 @@ describe('MindMapContentView shell modules', () => {
       fireEvent.click(screen.getByTestId('mm-mobile-staging-tray-toggle'));
       expect(store.getState().stagingTrayOpen).toBe(true);
 
-      // 顶栏直接暴露「导入思维导图」入口，点击无需翻找溢出菜单
-      const importBtn = screen.getByTestId('mm-import-toggle');
-      fireEvent.click(importBtn);
-      expect(baseProps.onImport).toHaveBeenCalledTimes(1);
+      // 桌面端「导入思维导图」统一收纳在更多菜单（与导出并列，消除重复按钮）
+      expect(screen.queryByTestId('mm-import-toggle')).toBeNull();
+      const [moreBtn] = screen.getAllByLabelText('mindmap:toolbar.moreActions');
+      fireEvent.click(moreBtn);
+      expect(baseProps.onActivePanelChange).toHaveBeenCalledWith('more');
+    });
+
+    it('invokes onImport from the More menu when open', () => {
+      const store = createMindMapStore();
+      store.setState({ document: createSampleDocument() });
+      const onImport = vi.fn();
+
+      render(
+        <MindMapStoreContext.Provider value={store}>
+          <MindMapToolbar
+            view="canvas"
+            onViewChange={vi.fn()}
+            activePanel="more"
+            onActivePanelChange={vi.fn()}
+            onOpenSearch={vi.fn()}
+            onStartAssociation={vi.fn()}
+            onOpenVersionHistory={vi.fn()}
+            onEnterPresentation={vi.fn()}
+            onImport={onImport}
+            onExport={vi.fn()}
+          />
+        </MindMapStoreContext.Provider>,
+      );
+
+      fireEvent.click(screen.getByTestId('mm-import-toggle'));
+      expect(onImport).toHaveBeenCalledTimes(1);
     });
   });
 

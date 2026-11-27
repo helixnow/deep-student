@@ -844,11 +844,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-  border-radius: 999px;
-  background: var(--button-utility-surface);
+  margin-bottom: 12px;
   color: var(--text-muted);
 }
 

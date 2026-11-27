@@ -6,7 +6,8 @@ import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIco
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NoteGlyph } from './NoteGlyph';
-import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
+import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, renderNoteIcon, useNoteAppearance } from '../noteAppearance';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -738,11 +739,14 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             )}
 
             {/* Notion：图标在操作行之上，点击图标即可更换 */}
-            {hasIcon && <button type="button" className="notes-document-icon"
+            {hasIcon && <button type="button" className="notes-document-icon text-foreground/85"
+                data-note-icon={appearance.value.icon}
                 aria-label={t('notes:appearance.change_icon', { defaultValue: isZh ? '更换图标' : 'Change icon' })}
                 disabled={appearance.loading || appearance.error === 'load'}
                 onClick={() => setAppearanceOpen(true)}>
-                <span aria-hidden="true">{appearance.value.icon}</span>
+                <span aria-hidden="true" className="inline-flex items-center justify-center">
+                    {renderNoteIcon ? renderNoteIcon(appearance.value.icon, '0.65em') : <FileText size={40} aria-hidden="true" />}
+                </span>
             </button>}
             {/* Notion 式页面操作行：平时隐身，悬停标题区或键盘聚焦时浮现；触屏常显 */}
             <div className="notes-document-affordances" data-has-icon={hasIcon || undefined}>
@@ -783,8 +787,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 <legend className="sr-only">{appearanceLabel}</legend>
                                 <div className="flex flex-wrap gap-1">
                                     {NOTE_APPEARANCE_ICONS.map((icon, index) => (
-                                        <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
-                                            {icon ? <span aria-hidden="true">{icon}</span> : <X size={14} aria-hidden="true" />}
+                                        <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option text-foreground/80" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                            {icon ? (renderNoteIcon ? renderNoteIcon(icon, 16) : <FileText size={16} aria-hidden="true" />) : <X size={14} aria-hidden="true" />}
                                         </DsButton>
                                     ))}
                                 </div>
@@ -792,8 +796,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     {NOTE_ICON_GROUPS.map((group) => (
                                         <div key={group.key} role="group" aria-label={t(`notes:appearance.icon_group_${group.key}`, { defaultValue: group.key })} className="grid grid-cols-8 gap-0.5 py-1">
                                             {group.icons.map((icon) => (
-                                                <button key={icon} type="button" className="notes-icon-option" aria-label={icon} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
-                                                    <span aria-hidden="true">{icon}</span>
+                                                <button key={icon} type="button" className="notes-icon-option text-foreground/80" aria-label={icon.replace(/-/g, ' ')} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                                    {renderNoteIcon ? renderNoteIcon(icon, 16) : <FileText size={16} aria-hidden="true" />}
                                                 </button>
                                             ))}
                                         </div>
@@ -864,13 +868,16 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.85 }}
                                 transition={motionSafe(springSnap)}
-                                className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground [@media(pointer:coarse)]:py-1.5"
+                                className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground"
                             >
                                 <span className="max-w-[140px] min-w-0 truncate" title={tag}>{tag}</span>
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.06))] hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                                        className={cn(
+                                            'inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.06))] hover:text-foreground [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6',
+                                            coarseHitClassFor24,
+                                        )}
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}

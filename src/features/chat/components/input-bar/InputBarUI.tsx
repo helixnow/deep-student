@@ -17,6 +17,7 @@ import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
 import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsButton } from '@/components/ui/DsButton';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTauriDragAndDrop, type DroppedPathFile } from '@/hooks/useTauriDragAndDrop';
@@ -608,7 +609,6 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   onDeactivateSkill,
   onClearAllSkills,
   // 🔧 MCP 选中状态
-  mcpEnabled = false,
   selectedMcpServerCount = 0,
   onClearMcpServers,
   // 🔧 P1-27: 上下文引用可视化
@@ -3488,8 +3488,45 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
             </React.Suspense>
           )}
 
-          {/* ★ 长文本粘贴建议条：默认保留为文本，可一键转为附件 */}
-          {longPasteCandidate && (
+          {/* ★ 单一优先级提示横幅槽位：任意时刻在输入区上方至多渲染 1 条提示横幅 */}
+          {missingApiKey ? (
+            <div
+              data-testid="chat-missing-api-key-banner"
+              data-attention={missingApiKeyAttention ? 'true' : 'false'}
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-shell-control)] border px-3 py-2 text-xs transition-colors',
+                missingApiKeyAttention
+                  ? 'border-warning/60 bg-warning/[0.12] text-foreground'
+                  : 'border-warning/35 bg-warning/[0.07] text-foreground/90',
+              )}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Key
+                  size={14}
+                  weight="duotone"
+                  className="shrink-0 text-warning"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 leading-snug">
+                  {isZh
+                    ? '尚未配置 AI 模型，连接一个模型服务后即可开始对话与学习'
+                    : 'No AI model is configured yet. Connect a provider to start chatting.'}
+                </span>
+              </div>
+              <DsButton
+                ref={configureApiKeyBtnRef}
+                variant="primary"
+                size="sm"
+                data-testid="chat-configure-api-key-btn"
+                onClick={handleOpenApiSettingsClick}
+                className="!h-7 shrink-0 !px-2.5 !text-xs font-medium [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              >
+                {isZh ? '配置 AI 模型' : 'Configure AI Model'}
+              </DsButton>
+            </div>
+          ) : longPasteCandidate ? (
             <div
               data-testid="long-paste-suggestion"
               className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
@@ -3514,32 +3551,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
                 {t('chatV2:inputBar.longPaste.dismiss')}
               </DsButton>
             </div>
-          )}
-
-          {/* ★ 制卡可发现性提示：pdf/docx 可制卡，apkg 可导入（窄屏隐藏避免叠加撑高输入区） */}
-          {flashcardHintKind && !flashcardHintDismissed && (
-            <div
-              data-testid="flashcard-hint"
-              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground max-sm:hidden"
-            >
-              <span className="min-w-0 truncate">
-                {flashcardHintKind === 'apkg'
-                  ? t('chatV2:inputBar.flashcardHint.apkg')
-                  : t('chatV2:inputBar.flashcardHint.document')}
-              </span>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-                onClick={() => setFlashcardHintDismissed(true)}
-              >
-                {t('chatV2:inputBar.flashcardHint.dismiss')}
-              </DsButton>
-            </div>
-          )}
-
-          {/* ★ 音视频可见性警示：AI 仅能看到文件名 */}
-          {mediaHintKind && !mediaHintDismissed && (
+          ) : mediaHintKind && !mediaHintDismissed ? (
             <div
               data-testid="media-attachment-hint"
               className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
@@ -3558,10 +3570,26 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
                 {t('chatV2:inputBar.mediaHint.dismiss')}
               </DsButton>
             </div>
-          )}
-
-          {/* ★ 思维导图导入提示：xmind/opml/mm/mmap 可导入为思维导图 */}
-          {hasMindmapAttachment && !mindmapHintDismissed && (
+          ) : !isMobile && flashcardHintKind && !flashcardHintDismissed ? (
+            <div
+              data-testid="flashcard-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground max-sm:hidden"
+            >
+              <span className="min-w-0 truncate">
+                {flashcardHintKind === 'apkg'
+                  ? t('chatV2:inputBar.flashcardHint.apkg')
+                  : t('chatV2:inputBar.flashcardHint.document')}
+              </span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                onClick={() => setFlashcardHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.flashcardHint.dismiss')}
+              </DsButton>
+            </div>
+          ) : hasMindmapAttachment && !mindmapHintDismissed ? (
             <div
               data-testid="mindmap-hint"
               className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
@@ -3578,7 +3606,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
                 {t('chatV2:inputBar.mindmapHint.dismiss')}
               </DsButton>
             </div>
-          )}
+          ) : null}
 
           {/* 🔧 已选中的模型 Chips */}
           {modelMentionState && modelMentionActions && (
@@ -3587,46 +3615,6 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
               onRemove={modelMentionActions.removeSelectedModel}
               disabled={isStreaming}
             />
-          )}
-
-          {/* ★ U01：尚未配置 AI 模型 / API 密钥时的清晰内联引导横幅 */}
-          {missingApiKey && (
-            <div
-              data-testid="chat-missing-api-key-banner"
-              data-attention={missingApiKeyAttention ? 'true' : 'false'}
-              role="status"
-              aria-live="polite"
-              className={cn(
-                'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-shell-control)] border px-3 py-2 text-xs transition-colors',
-                missingApiKeyAttention
-                  ? 'border-amber-500/60 bg-amber-500/[0.12] text-foreground'
-                  : 'border-amber-500/35 bg-amber-500/[0.07] text-foreground/90',
-              )}
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <Key
-                  size={14}
-                  weight="duotone"
-                  className="shrink-0 text-amber-600 dark:text-amber-400"
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 leading-snug">
-                  {isZh
-                    ? '尚未配置 AI 模型，连接一个模型服务后即可开始对话与学习'
-                    : 'No AI model is configured yet. Connect a provider to start chatting.'}
-                </span>
-              </div>
-              <DsButton
-                ref={configureApiKeyBtnRef}
-                variant="primary"
-                size="sm"
-                data-testid="chat-configure-api-key-btn"
-                onClick={handleOpenApiSettingsClick}
-                className="!h-7 shrink-0 !px-2.5 !text-xs font-medium [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-              >
-                {isZh ? '配置 AI 模型' : 'Configure AI Model'}
-              </DsButton>
-            </div>
           )}
 
           {/* ★ 已绑定的技能 Chips（支持可见状态与一键解绑 ×） */}
@@ -3677,11 +3665,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
               data-testid="floating-preempt-bar"
               className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/35 bg-background/95 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm"
             >
-              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                <span
-                  className="h-[6px] w-[6px] shrink-0 rounded-full bg-primary"
-                  aria-hidden="true"
-                />
+              <div className="flex min-w-0 items-center text-muted-foreground">
                 <span className="truncate">正在生成回复，可选择排队或抢占打断</span>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -3732,7 +3716,10 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
                     size="sm"
                     data-testid={`large-paste-pill-expand-${pill.id}`}
                     onClick={() => handleExpandPastedPill(pill.id)}
-                    className="!h-5 shrink-0 !px-1.5 !text-xs font-medium text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                    className={cn(
+                      '!h-5 shrink-0 !px-1.5 !text-xs font-medium text-primary',
+                      coarseHitClassFor24,
+                    )}
                   >
                     展开
                   </DsButton>
@@ -3742,7 +3729,10 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
                     data-testid={`large-paste-pill-remove-${pill.id}`}
                     aria-label={`移除 ${pill.summaryLabel}`}
                     onClick={() => handleRemovePastedPill(pill.id)}
-                    className="!h-5 !w-5 shrink-0 !px-0 !text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]"
+                    className={cn(
+                      '!h-5 !w-5 shrink-0 !px-0 !text-xs text-muted-foreground hover:text-foreground',
+                      coarseHitClassFor24,
+                    )}
                   >
                     ×
                   </DsButton>
@@ -3822,7 +3812,6 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
           hasLoadedSkills={!!hasLoadedSkills}
           renderMcpPanel={renderMcpPanel}
           onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
-          mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
           renderAdvancedPanel={renderAdvancedPanel}
           advancedPanelRequested={Boolean(panelStates?.advanced)}

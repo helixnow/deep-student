@@ -2,7 +2,7 @@ import React, { act } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CrepeEditorApi, CrepeSelectionAction } from '@/components/crepe';
-import { NotesChromeSlotContext } from '../notesChromeSlot';
+import { NotesChromeSlotContext, NotesChromeSlotVisibleContext } from '../notesChromeSlot';
 import { publishNotesFindQuery } from '../findQueryBridge';
 
 const mocks = vi.hoisted(() => ({
@@ -555,6 +555,26 @@ describe('NotesCrepeEditor P0/P1/P2 state machine & interaction fixes', () => {
       fireEvent.keyDown(proseMirror, { key: 'u', ctrlKey: true, shiftKey: true });
       expect(container.querySelector('.notes-editor-chrome-row')).toBeNull();
       expect(slotEl.childElementCount).toBe(0);
+    } finally {
+      slotEl.remove();
+    }
+  });
+
+  it('keeps chrome portaled when window blurs (isActive=false) while tab remains visible via NotesChromeSlotVisibleContext', async () => {
+    const slotEl = document.createElement('div');
+    document.body.appendChild(slotEl);
+    try {
+      const { container } = render(
+        <NotesChromeSlotContext.Provider value={slotEl}>
+          <NotesChromeSlotVisibleContext.Provider value={true}>
+            <NotesCrepeEditor noteId="note-portal-blur" initialContent="# Blur" isActive={false} />
+          </NotesChromeSlotVisibleContext.Provider>
+        </NotesChromeSlotContext.Provider>,
+      );
+
+      await screen.findByTestId('mock-prosemirror');
+      expect(container.querySelector('.notes-editor-chrome-row')).toBeNull();
+      expect(slotEl.childElementCount).toBeGreaterThan(0);
     } finally {
       slotEl.remove();
     }

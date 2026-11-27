@@ -259,13 +259,13 @@ function FinderDropChip({
     tone === 'danger'
       ? 'bg-destructive/15 text-destructive border-destructive/40 ring-1 ring-destructive/30'
       : tone === 'favorite'
-        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
+        ? 'bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30'
         : 'bg-primary/15 text-primary border-primary/40 ring-1 ring-primary/30';
   const idleClass =
     tone === 'danger'
       ? 'bg-destructive/5 text-destructive/80'
       : tone === 'favorite'
-        ? 'bg-amber-500/10 text-amber-700/80 dark:text-amber-300/80'
+        ? 'bg-warning/10 text-warning/80'
         : 'bg-muted/60 text-muted-foreground';
 
   return (

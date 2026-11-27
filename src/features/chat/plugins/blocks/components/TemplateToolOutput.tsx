@@ -24,6 +24,7 @@ import {
   GitFork,
   Plus,
   Pencil,
+  Warning,
 } from '@phosphor-icons/react';
 import { emitTemplateDesignerLifecycle } from '@/features/chat/debug/templateDesignerDebug';
 
@@ -184,8 +185,9 @@ const RenderIssueList: React.FC<{ issues: TemplateRenderIssue[] }> = ({ issues }
         {t('templateTool.renderIssues', { count: issues.length })}
       </div>
       {issues.map((issue, i) => (
-        <div key={`${issue.code}-${i}`} className="text-xs text-warning">
-          ⚠ {issue.message}{issue.tag ? `（${issue.tag}）` : ''}
+        <div key={`${issue.code}-${i}`} className="flex items-start gap-1 text-xs text-warning">
+          <Warning size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{issue.message}{issue.tag ? `（${issue.tag}）` : ''}</span>
         </div>
       ))}
     </div>
@@ -265,8 +267,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
       {/* Before / After 并排（窄屏纵向堆叠，避免每列被压到不可读） */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-danger/70" />
+          <div className="text-xs text-muted-foreground mb-1.5">
             {t('templateTool.before')}
           </div>
           <div
@@ -285,8 +286,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
         </div>
 
         <div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-success/70" />
+          <div className="text-xs text-muted-foreground mb-1.5">
             {t('templateTool.after')}
           </div>
           <div
@@ -464,8 +464,9 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
       {warnings.length > 0 && (
         <div className="mb-2 px-2 py-1.5 rounded bg-warning/10 border border-warning/50">
           {warnings.map((w, i) => (
-            <div key={i} className="text-xs text-warning">
-              ⚠ {w}
+            <div key={i} className="flex items-start gap-1 text-xs text-warning">
+              <Warning size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>{w}</span>
             </div>
           ))}
         </div>

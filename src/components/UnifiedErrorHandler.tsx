@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
-import { Warning, ArrowClockwise, X, ArrowCounterClockwise, Trash, Download, WifiHigh } from '@phosphor-icons/react';
+import { Warning, ArrowClockwise, X, ArrowCounterClockwise, Trash, WifiHigh } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
@@ -48,43 +48,45 @@ const getErrorStyles = (type: UnifiedErrorType) => {
   switch (type) {
     case 'streaming':
       return {
-        bgColor: 'bg-blue-50 border-blue-200',
-        iconColor: 'text-blue-600',
-        titleColor: 'text-blue-900'
+        bgColor: 'bg-card border-info/40',
+        iconColor: 'text-info',
+        titleColor: 'text-foreground'
       };
     case 'attachment':
     case 'ocr':
       return {
-        bgColor: 'bg-yellow-50 border-yellow-200', 
-        iconColor: 'text-yellow-600',
-        titleColor: 'text-yellow-900'
+        bgColor: 'bg-card border-warning/40',
+        iconColor: 'text-warning',
+        titleColor: 'text-foreground'
       };
     case 'network':
     case 'analysis':
     case 'persistence':
       return {
-        bgColor: 'bg-red-50 border-red-200',
-        iconColor: 'text-red-600', 
-        titleColor: 'text-red-900'
+        bgColor: 'bg-card border-destructive/40',
+        iconColor: 'text-destructive',
+        titleColor: 'text-foreground'
       };
     default:
       return {
-        bgColor: 'bg-gray-50 border-gray-200',
-        iconColor: 'text-gray-600',
-        titleColor: 'text-gray-900'
+        bgColor: 'bg-card border-border',
+        iconColor: 'text-muted-foreground',
+        titleColor: 'text-foreground'
       };
   }
 };
 
-// P0修复：恢复操作按钮样式
-const getActionStyles = (variant: RecoveryAction['variant'] = 'secondary') => {
+// P0修复：恢复操作按钮变体映射
+const getActionButtonVariant = (
+  variant: RecoveryAction['variant'] = 'secondary'
+): 'default' | 'danger' | 'ghost' => {
   switch (variant) {
     case 'primary':
-      return 'bg-blue-600 hover:bg-blue-700 text-white';
+      return 'default';
     case 'danger':
-      return 'bg-red-600 hover:bg-red-700 text-white';
+      return 'danger';
     default:
-      return 'bg-gray-600 hover:bg-[var(--interactive-hover)] text-white';
+      return 'ghost';
   }
 };
 
@@ -119,8 +121,8 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {/* P0修复：批量清理按钮 */}
       {errors.length > 1 && (
         <div className="flex justify-end">
-          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700 [@media(pointer:coarse)]:!min-h-11">
-            <Trash size={12} />
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-muted-foreground hover:text-foreground">
+            <Trash size={12} aria-hidden="true" />
             {t('messages.errorHandler.clearAll', { count: errors.length })}
           </DsButton>
         </div>
@@ -139,34 +141,50 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
             {/* 错误头部 */}
             <div className="p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1">
-                  <Warning className={`${styles.iconColor} flex-shrink-0 mt-0.5`} size={20} />
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <Warning className={`${styles.iconColor} shrink-0 mt-0.5`} size={20} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <h4 className={`font-medium ${styles.titleColor}`}>
                       {error.title}
                     </h4>
-                    <p className="text-sm text-gray-700 mt-1 break-words">
+                    <p className="text-sm text-muted-foreground mt-1 break-words">
                       {error.message}
                     </p>
-                    <div className="text-xs text-gray-500 mt-2">
+                    <div className="text-xs text-muted-foreground mt-2">
                       {error.timestamp.toLocaleTimeString()}
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-1">
                   {/* 展开/收起按钮 */}
                   {(error.details || error.context) && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
-                      <ArrowCounterClockwise 
-                        size={14} 
+                    <DsButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      onClick={() => toggleExpanded(error.id)}
+                      className="text-muted-foreground hover:text-foreground"
+                      title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}
+                      aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}
+                    >
+                      <ArrowCounterClockwise
+                        size={14}
                         className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-/>
+                      />
                     </DsButton>
                   )}
-                  
+
                   {/* 关闭按钮 */}
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={t('actions.close')} aria-label={t('actions.close')}>
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={() => onDismiss(error.id)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title={t('actions.close')}
+                    aria-label={t('actions.close')}
+                  >
                     <X size={14} />
                   </DsButton>
                 </div>
@@ -174,20 +192,20 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
 
               {/* P0修复：错误详情展开区域 */}
               {isExpanded && (error.details || error.context) && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="mt-3 pt-3 border-t border-border">
                   {error.details && (
                     <div className="mb-2">
-                      <div className="text-xs font-medium text-gray-600 mb-1">{t('messages.errorHandler.details')}:</div>
-                      <div className="text-xs text-gray-700 bg-white p-2 rounded border font-mono whitespace-pre-wrap">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">{t('messages.errorHandler.details')}:</div>
+                      <div className="text-xs text-foreground bg-muted/50 p-2 rounded border border-border font-mono whitespace-pre-wrap">
                         {error.details}
                       </div>
                     </div>
                   )}
-                  
+
                   {error.context && Object.keys(error.context).length > 0 && (
                     <div>
-                      <div className="text-xs font-medium text-gray-600 mb-1">{t('messages.errorHandler.contextInfo')}:</div>
-                      <div className="text-xs text-gray-700 bg-white p-2 rounded border">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">{t('messages.errorHandler.contextInfo')}:</div>
+                      <div className="text-xs text-foreground bg-muted/50 p-2 rounded border border-border">
                         {Object.entries(error.context).map(([key, value]) => (
                           <div key={key} className="flex justify-between py-0.5">
                             <span className="font-medium">{key}:</span>
@@ -208,7 +226,8 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                   {error.recoveryActions.map((action, index) => (
                     <DsButton
                       key={index}
-                      variant="ghost" size="sm"
+                      variant={getActionButtonVariant(action.variant)}
+                      size="sm"
                       onClick={async () => {
                         try {
                           await action.action();
@@ -216,10 +235,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                           console.error('Recovery action failed:', err);
                         }
                       }}
-                      className={`
-                        !px-3 !py-1.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11
-                        ${getActionStyles(action.variant)}
-                      `}
+                      className="text-xs font-medium"
                     >
                       {action.icon}
                       {action.label}
@@ -235,7 +251,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {/* P0修复：隐藏错误计数提示 */}
       {hiddenCount > 0 && (
         <div className="text-center">
-          <div className="text-xs text-gray-500 bg-gray-100 rounded px-3 py-2">
+          <div className="text-xs text-muted-foreground bg-muted border border-border rounded px-3 py-2">
             {t('messages.errorHandler.hiddenCount', { count: hiddenCount })}
           </div>
         </div>

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import './TagTreeImportCheckModal.css';
 import UnifiedModal from './UnifiedModal';
 import { ValidationResult } from '../utils/TagTreeValidator';
-import { Warning, XCircle } from '@phosphor-icons/react';
+import { CheckCircle, Warning, XCircle } from '@phosphor-icons/react';
 
 interface Props {
   open: boolean;
@@ -39,8 +39,19 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
             <li>{t('tag_tree.hard_rule_2')}</li>
             <li>{t('tag_tree.hard_rule_3')}</li>
           </ul>
-          <p className="rule-status">
-            {t('status.current')}：{hardErrors.length === 0 ? `✅ ${t('tag_tree.status_passed')}` : `❌ ${t('tag_tree.status_failed', { count: hardErrors.length })}`}
+          <p className="rule-status inline-flex items-center gap-1.5">
+            <span>{t('status.current')}：</span>
+            {hardErrors.length === 0 ? (
+              <span className="inline-flex items-center gap-1 text-success">
+                <CheckCircle size={15} aria-hidden="true" />
+                {t('tag_tree.status_passed')}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-destructive">
+                <XCircle size={15} aria-hidden="true" />
+                {t('tag_tree.status_failed', { count: hardErrors.length })}
+              </span>
+            )}
           </p>
 
           <h4>{t('tag_tree.soft_rules')}</h4>
@@ -48,8 +59,19 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
             <li>{t('tag_tree.soft_rule_1')}</li>
             <li>{t('tag_tree.soft_rule_2')}</li>
           </ul>
-          <p className="rule-status">
-            {t('status.current')}：{warnings.length === 0 ? `✅ ${t('tag_tree.status_passed')}` : `⚠️ ${t('tag_tree.status_warning', { count: warnings.length })}`}
+          <p className="rule-status inline-flex items-center gap-1.5">
+            <span>{t('status.current')}：</span>
+            {warnings.length === 0 ? (
+              <span className="inline-flex items-center gap-1 text-success">
+                <CheckCircle size={15} aria-hidden="true" />
+                {t('tag_tree.status_passed')}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-warning">
+                <Warning size={15} aria-hidden="true" />
+                {t('tag_tree.status_warning', { count: warnings.length })}
+              </span>
+            )}
           </p>
         </div>
 
@@ -73,10 +95,10 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
         </div>
 
         <div className="actions">
-          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>{t('actions.cancel')}</DsButton>
+          <DsButton variant="ghost" size="sm" onClick={onCancel}>{t('actions.cancel')}</DsButton>
           <DsButton
-            variant="primary" size="sm"
-            className="confirm-btn [@media(pointer:coarse)]:!min-h-11"
+            variant="default" size="sm"
+            className="confirm-btn"
             onClick={onConfirm}
             disabled={!canImport}
             title={canImport ? '' : t('tag_tree.import_blocked_hint')}

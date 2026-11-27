@@ -1022,7 +1022,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             </span>
           ) : null}
           {learningWaitMs != null ? (
-            <>
             <span
               className="wb-fc-chip wb-fc-chip--learn"
               title={t('review.learningStepHint', { time: formatDuration(learningWaitMs) })}
@@ -1030,21 +1029,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               <Hourglass size={11} aria-hidden="true" />
               {t('review.learningStep')}
             </span>
-            <DsButton type="button" variant="ghost" size="sm" disabled={ratingBusy} onClick={exitSession}>
-              <Hourglass size={14} aria-hidden="true" />
-              {t('review.returnWhenDue')}
-            </DsButton>
-            </>
           ) : null}
           {newCount > 0 ? (
             <span className="wb-fc-chip wb-fc-chip--new">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" aria-hidden="true" />
               {t('review.newCount', { count: newCount })}
             </span>
           ) : null}
           {learnCount > 0 ? (
             <span className="wb-fc-chip wb-fc-chip--learn">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500/80" aria-hidden="true" />
               {t('review.learnCount', { count: learnCount })}
             </span>
           ) : null}
@@ -1070,7 +1062,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </div>
       </div>
 
-      {/* DsButton 在 lg 断点后压缩到 30px，宽屏触屏平板会跌破触控基线，coarse 兜底 ≥44px（与 library.css .fc-lib-row-actions 同基线） */}
       <div className="wb-fc-session-actions flex items-center justify-end gap-0.5 text-muted-foreground/65">
         <DsButton
           type="button"
@@ -1082,7 +1073,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           aria-label={t('session.undo')}
           aria-keyshortcuts="Z Control+Z Meta+Z"
           title={`${t('session.undo')} · Z`}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
@@ -1096,7 +1086,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             onClick={() => void resumeLastSuspended()}
             aria-label={resumeLabel}
             title={resumeLabel}
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Play size={16} />
           </DsButton>
@@ -1112,7 +1101,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           aria-label={ttsLabel}
           title={ttsLabel}
           data-testid="fc-review-tts"
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           {speaking ? <Stop size={16} /> : <SpeakerHigh size={16} />}
         </DsButton>
@@ -1127,7 +1115,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             aria-keyshortcuts="R"
             title={`${replayAudioLabel} · R`}
             data-testid="fc-review-replay-audio-toolbar"
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowClockwise size={16} />
           </DsButton>
@@ -1137,24 +1124,10 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           variant="ghost"
           size="sm"
           iconOnly
-          onClick={openSource}
-          aria-label={t('session.viewSource')}
-          title={t('session.viewSource')}
-          data-testid="fc-review-view-source"
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <ArrowSquareOut size={16} />
-        </DsButton>
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly
           onClick={askAi}
           aria-label={t('session.askAi')}
           title={t('session.askAi')}
           data-testid="fc-review-ask-ai"
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <ChatCircleText size={16} />
         </DsButton>
@@ -1171,7 +1144,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               aria-label={entry.value.label}
               title={entry.value.label}
               data-testid={`fc-review-action-${entry.id}`}
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               {Icon ? (
                 <SlotEntryScope slot="review.cardActions" entry={entry} fallback={<Lightning size={16} />}>
@@ -1183,61 +1155,62 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             </DsButton>
           );
         })}
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          disabled={ratingBusy || templateLoading || !current.ankiCardId}
-          onClick={beginEdit}
-          aria-label={t('session.edit')}
-          aria-keyshortcuts="E"
-          title={`${t('session.edit')} · E`}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <PencilSimple size={16} />
-        </DsButton>
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          disabled={ratingBusy || editing}
-          onClick={skipCurrent}
-          aria-label={t('review.skip')}
-          aria-keyshortcuts="S"
-          title={`${t('review.skip')} · S`}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <SkipForward size={16} />
-        </DsButton>
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          disabled={ratingBusy}
-          onClick={() => void buryCurrent()}
-          aria-label={t('session.bury')}
-          aria-keyshortcuts="-"
-          title={`${t('session.bury')} · -`}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <Moon size={16} />
-        </DsButton>
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          disabled={ratingBusy}
-          onClick={() => void suspendCurrent()}
-          aria-label={t('session.suspend')}
-          title={t('session.suspend')}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <Pause size={16} />
-        </DsButton>
+        <AppMenu>
+          <AppMenuTrigger asChild>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label={t('common:more')}
+              title={t('common:more')}
+              data-testid="fc-review-more-actions"
+            >
+              <DotsThree size={18} />
+            </DsButton>
+          </AppMenuTrigger>
+          <AppMenuContent align="end" width={200}>
+            <AppMenuItem
+              icon={<ArrowSquareOut size={16} />}
+              onClick={openSource}
+              data-testid="fc-review-view-source"
+            >
+              {t('session.viewSource')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<PencilSimple size={16} />}
+              shortcut="E"
+              disabled={ratingBusy || templateLoading || !current.ankiCardId}
+              onClick={beginEdit}
+              data-testid="fc-review-edit"
+            >
+              {t('session.edit')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<SkipForward size={16} />}
+              shortcut="S"
+              disabled={ratingBusy || editing}
+              onClick={skipCurrent}
+            >
+              {t('review.skip')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Moon size={16} />}
+              shortcut="-"
+              disabled={ratingBusy}
+              onClick={() => void buryCurrent()}
+            >
+              {t('session.bury')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Pause size={16} />}
+              disabled={ratingBusy}
+              onClick={() => void suspendCurrent()}
+            >
+              {t('session.suspend')}
+            </AppMenuItem>
+          </AppMenuContent>
+        </AppMenu>
       </div>
       </div>}
 

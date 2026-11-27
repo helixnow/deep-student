@@ -26,23 +26,23 @@ export interface MatchingAnswerProps {
   className?: string;
 }
 
-/** 配对配色（按结对顺序循环取色，双侧同色 = 视觉连线） */
+/** 配对配色（按结对顺序循环取色，双侧同色 + 编号徽标 = 视觉连线） */
 const PAIR_TONES = [
-  'border-sky-400/70 bg-sky-500/[0.08] text-sky-600 dark:text-sky-400',
-  'border-amber-400/70 bg-amber-500/[0.08] text-amber-600 dark:text-amber-400',
-  'border-violet-400/70 bg-violet-500/[0.08] text-violet-600 dark:text-violet-400',
-  'border-teal-400/70 bg-teal-500/[0.08] text-teal-600 dark:text-teal-400',
-  'border-rose-400/70 bg-rose-500/[0.08] text-rose-600 dark:text-rose-400',
-  'border-indigo-400/70 bg-indigo-500/[0.08] text-indigo-600 dark:text-indigo-400',
+  'border-primary/60 bg-primary/[0.08] text-primary',
+  'border-info/60 bg-info/[0.08] text-info',
+  'border-warning/60 bg-warning/[0.08] text-warning',
+  'border-success/60 bg-success/[0.08] text-success',
+  'border-destructive/50 bg-destructive/[0.08] text-destructive',
+  'border-foreground/35 bg-muted/60 text-foreground',
 ];
 
 const PAIR_BADGE_TONES = [
-  'bg-sky-500',
-  'bg-amber-500',
-  'bg-violet-500',
-  'bg-teal-500',
-  'bg-rose-500',
-  'bg-indigo-500',
+  'bg-primary text-primary-foreground',
+  'bg-info text-info-foreground',
+  'bg-warning text-warning-foreground',
+  'bg-success text-success-foreground',
+  'bg-destructive text-destructive-foreground',
+  'bg-foreground text-background',
 ];
 
 export const MatchingAnswer: React.FC<MatchingAnswerProps> = ({
@@ -181,10 +181,10 @@ export const MatchingAnswer: React.FC<MatchingAnswerProps> = ({
         {/* 配对徽标 / 待配对指示 */}
         <span
           className={cn(
-            'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white transition-colors',
+            'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-2xs font-semibold transition-colors',
             isPaired && resultCorrect === null && badgeTone,
-            submitted && resultCorrect === true && 'bg-success',
-            submitted && resultCorrect === false && 'bg-destructive',
+            submitted && resultCorrect === true && 'bg-success text-success-foreground',
+            submitted && resultCorrect === false && 'bg-destructive text-destructive-foreground',
             !isPaired && 'bg-transparent border border-dashed border-foreground/25 text-transparent'
           )}
           aria-hidden
@@ -230,13 +230,13 @@ export const MatchingAnswer: React.FC<MatchingAnswerProps> = ({
       {/* 左右两列 */}
       <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 min-[420px]:gap-2 sm:gap-3">
         <div className="min-w-0 space-y-1.5">
-          <div className="px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          <div className="px-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
             {t('editor.matching.leftColumn')}
           </div>
           {data.left.map((item) => renderItem('left', item))}
         </div>
         <div className="min-w-0 space-y-1.5">
-          <div className="px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          <div className="px-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
             {t('editor.matching.rightColumn')}
           </div>
           {data.right.map((item) => renderItem('right', item))}

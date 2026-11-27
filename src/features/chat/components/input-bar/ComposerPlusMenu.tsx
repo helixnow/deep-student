@@ -24,8 +24,8 @@ import {
   LinkSimple,
   Paperclip,
   Plus,
+  PuzzlePiece,
   ShieldWarning,
-  Sparkle,
   Warning,
   X,
 } from '@phosphor-icons/react';
@@ -86,7 +86,6 @@ export interface ComposerPlusMenuProps {
   hasLoadedSkills?: boolean;
   renderMcpPanel?: () => React.ReactNode;
   onOpenMcpPanel?: () => void;
-  mcpEnabled?: boolean;
   selectedMcpServerCount?: number;
   /** 兼容保留（已迁入右侧模型选择器底栏「参数」） */
   onOpenAdvancedPanel?: () => void;
@@ -127,7 +126,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   hasLoadedSkills = false,
   renderMcpPanel,
   onOpenMcpPanel,
-  mcpEnabled = false,
   selectedMcpServerCount = 0,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
@@ -200,8 +198,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     <span className="rounded-full bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
       {selectedMcpServerCount}
     </span>
-  ) : mcpEnabled ? (
-    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
   ) : null;
 
   const renderKnowledgeBaseItems = (itemClassName?: string) => (
@@ -384,13 +380,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     icon={<Books className="w-4 h-4" />}
                     data-testid="plus-menu-knowledge-base"
                   >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate">
-                        {t('chatV2:inputBar.plusMenu.knowledgeBase')}
-                      </span>
-                      {ragEnabled && knowledgeBaseProactive && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                      )}
+                    <span className="truncate">
+                      {t('chatV2:inputBar.plusMenu.knowledgeBase')}
                     </span>
                   </AppMenuSubTrigger>
                   <AppMenuSubContent
@@ -482,7 +473,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               'group-hover:bg-primary/25 group-focus-visible:ring-1 group-focus-visible:ring-primary/40',
             )}
           >
-            <Sparkle size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+            <PuzzlePiece size={12} weight="fill" className="shrink-0" aria-hidden="true" />
             <span className="max-w-[5rem] truncate">
               {t('chatV2:inputBar.plusMenu.pluginWorkshopActive')}
             </span>

@@ -361,7 +361,7 @@
   "update_template_failed_msg": "更新模板失败",
   "check_status_report": "数据库模板总数: {{total}}\n已导入复杂模板: {{existing}}个\n缺失模板: {{missing}}个",
   "check_status_missing_list": "\n缺失的模板:\n{{list}}",
-  "check_status_all_imported": "\n✅ 所有复杂模板都已导入！",
+  "check_status_all_imported": "\n所有复杂模板都已导入！",
   "refresh_done": "刷新完成！当前显示 {{count}} 个模板。若数量仍不正确，请重试或重启应用。",
   "delete_success": "模板已删除",
   "delete_confirm_again": "将删除模板 {{name}}。请在 8 秒内再次点击删除以确认。",

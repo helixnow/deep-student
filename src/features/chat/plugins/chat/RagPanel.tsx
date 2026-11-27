@@ -11,7 +11,8 @@ import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { Stack, Image, Info } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SnappySlider } from '@/components/ui/SnappySlider';
@@ -135,10 +136,10 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
         closeAriaLabel={t('common:actions.cancel')}
       />
 
-      {/* 配置区域（简化：只保留检索参数） */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* 配置区域（简化：只保留检索参数；平面分区 + 1px 分割线，避免面板内嵌套边框卡片） */}
+      <div className="grid grid-cols-1 divide-y divide-border/35 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {/* Top-K 滑条 */}
-        <div className="rounded-md border border-border/35 bg-card p-2">
+        <div className="py-2 first:pt-0 sm:py-0 sm:pr-3">
           <SnappySlider
             className={cn('pb-1', ragControlsDisabled && 'pointer-events-none opacity-60')}
             values={RAG_TOPK_SNAP_POINTS}
@@ -169,7 +170,10 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
               size="sm"
               onClick={resetTopK}
               disabled={ragControlsDisabled}
-              className="h-5 px-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className={cn(
+                'h-5 px-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50',
+                coarseHitClassFor24,
+              )}
             >
               {t('common:actions.reset')}
             </DsButton>
@@ -177,7 +181,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
         </div>
 
         {/* Rerank 开关 */}
-        <div className="rounded-md border border-border/35 bg-card p-2">
+        <div className="py-2 sm:px-3 sm:py-0">
           {/* ★ 触控目标：label 点击即切换 Switch，触屏行高兜底 ≥44px */}
           <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <span className="text-ui text-foreground">
@@ -196,7 +200,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           </p>
         </div>
 
-        <div className="rounded-md border border-border/35 bg-card p-2">
+        <div className="py-2 last:pb-0 sm:py-0 sm:pl-3">
           <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <div className="flex items-center gap-1.5">
               <Image size={13} className="text-muted-foreground" />

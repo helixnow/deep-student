@@ -49,6 +49,8 @@ interface TimedPracticeModeProps {
   markedQuestionIds?: ReadonlySet<string>;
   /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
   isActive?: boolean;
+  /** 嵌入 PracticeLauncher 等自带顶栏的容器时省略内部重复标题 */
+  embedded?: boolean;
   className?: string;
 }
 
@@ -69,6 +71,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   currentQuestionId,
   markedQuestionIds,
   isActive,
+  embedded = false,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -305,13 +308,15 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   if (!isStarted) {
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="px-0 pb-4 sm:px-6">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Timer size={18} className="text-primary" />
-            {t('timed.title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6 px-0 sm:px-6">
+        {!embedded && (
+          <CardHeader className="px-0 pb-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Timer size={18} className="text-primary" />
+              {t('timed.title')}
+            </CardTitle>
+          </CardHeader>
+        )}
+        <CardContent className={cn('space-y-6 px-0 sm:px-6', embedded && 'pt-1')}>
           {/* 上轮总结 + 再来一轮（Quizlet 式练习闭环：结束不落回冷启动配置页） */}
           {lastFinishedSession && (
             <div
@@ -595,7 +600,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {/* 警告提示 */}
         {isFinalCountdown && (
           <div className="ui-rise-in flex items-center gap-2 rounded-md bg-destructive/10 p-2.5 text-destructive">
-            <WarningCircle size={16} className="animate-pulse" />
+            <WarningCircle size={16} className="animate-pulse motion-reduce:animate-none" />
             <span className="text-sm font-medium">{t('timed.warning')}</span>
           </div>
         )}

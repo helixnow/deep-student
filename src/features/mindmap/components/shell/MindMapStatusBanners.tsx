@@ -421,132 +421,141 @@ export const MindMapStatusBanners: React.FC<MindMapStatusBannersProps> = React.m
     onCloseShortcutHelp,
   }) => {
     const { t } = useTranslation(['mindmap', 'common']);
+    const hasConflict = useMindMapStore(
+      (state) => Boolean(state.conflictSnapshot && state.conflictSnapshot.mindmapId === resourceId),
+    );
+    const isExporting = useMindMapStore((state) => state.isExporting);
+
+    // 单一顶部瞬态状态横幅槽（冲突 > 导入未保存确认 > 导入失败 > 导入中 > 导出中 > 导入报告）
+    const activeTransientBanner: React.ReactNode = (() => {
+      if (hasConflict) {
+        return <ConflictSnapshotBanner resourceId={resourceId} />;
+      }
+      if (showImportConfirm) {
+        return (
+          <InlineCollapse key="import-confirm" role="alert">
+            <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm flex-1 min-w-[160px]">
+                {t('mindmap:import.unsavedWarning')}
+              </span>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                onClick={onSaveAndImport}
+              >
+                <FloppyDisk size={14} />
+                <span className="text-xs">
+                  {t('mindmap:import.saveAndImport', { defaultValue: '保存并导入' })}
+                </span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                onClick={onConfirmImport}
+              >
+                <Upload size={14} />
+                <span className="text-xs">{t('mindmap:import.unsavedConfirm')}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
+                onClick={onCancelImportConfirm}
+              >
+                <span className="text-xs">{t('common:cancel')}</span>
+              </DsButton>
+            </div>
+          </InlineCollapse>
+        );
+      }
+      if (importError) {
+        return (
+          <InlineCollapse key="import-error" role="alert">
+            <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm font-medium shrink-0">
+                {t('mindmap:shellV2.import.errorTitle')}
+              </span>
+              <span className="text-xs flex-1 min-w-[160px] break-words opacity-90">
+                {importError}
+              </span>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                onClick={onRetryImport}
+              >
+                <ArrowClockwise size={14} />
+                <span className="text-xs">{t('mindmap:shellV2.import.retry')}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
+                onClick={onDismissImportError}
+              >
+                <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
+              </DsButton>
+            </div>
+          </InlineCollapse>
+        );
+      }
+      if (isImporting) {
+        return (
+          <InlineCollapse key="importing" role="status">
+            <div
+              className="mm-inline-banner flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-muted)]"
+              aria-busy="true"
+            >
+              <CircleNotch
+                size={16}
+                className="shrink-0 animate-spin motion-reduce:animate-none"
+              />
+              <span className="text-sm">{t('mindmap:import.importing')}</span>
+            </div>
+          </InlineCollapse>
+        );
+      }
+      if (isExporting) {
+        return <ExportProgressBanner />;
+      }
+      if (importReport) {
+        return (
+          <InlineCollapse key="import-report" role="status">
+            <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text)]">
+              <Info size={16} className="shrink-0 text-[var(--mm-primary)]" />
+              <span className="text-xs font-medium shrink-0">
+                {t('mindmap:import.reportTitle', {
+                  defaultValue: '导入完成（含兼容提示）',
+                })}
+              </span>
+              <span className="text-xs flex-1 min-w-[160px] text-[var(--mm-text-secondary)]">
+                {t('mindmap:import.successSummaryIgnored', {
+                  nodes: importReport.nodes,
+                  images: importReport.droppedImages,
+                  summaries: importReport.droppedSummaries,
+                })}
+              </span>
+              <DsButton
+                variant="ghost"
+                className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
+                onClick={onDismissImportReport}
+              >
+                <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
+              </DsButton>
+            </div>
+          </InlineCollapse>
+        );
+      }
+      return null;
+    })();
 
     return (
       <>
-        <ConflictSnapshotBanner resourceId={resourceId} />
+        <AnimatePresence initial={false}>
+          {activeTransientBanner}
+        </AnimatePresence>
 
         {/* P2 人机双写：AI 建议确认条（组件内部空态返回 null，不套 InlineCollapse） */}
         {resourceId && <MindmapAgentSuggestionBar mindmapId={resourceId} />}
-
-        {/* 大文件导入进行中 */}
-        <AnimatePresence initial={false}>
-          {isImporting && (
-            <InlineCollapse role="status">
-              <div
-                className="mm-inline-banner flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-muted)]"
-                aria-busy="true"
-              >
-                <CircleNotch
-                  size={16}
-                  className="shrink-0 animate-spin motion-reduce:animate-none"
-                />
-                <span className="text-sm">{t('mindmap:import.importing')}</span>
-              </div>
-            </InlineCollapse>
-          )}
-        </AnimatePresence>
-
-        {/* 导入报告横幅（含被静默丢弃的图片/概要提示，可关闭） */}
-        <AnimatePresence initial={false}>
-          {importReport && (
-            <InlineCollapse role="status">
-              <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text)]">
-                <Info size={16} className="shrink-0 text-[var(--mm-primary)]" />
-                <span className="text-xs font-medium shrink-0">
-                  {t('mindmap:import.reportTitle', {
-                    defaultValue: '导入完成（含兼容提示）',
-                  })}
-                </span>
-                <span className="text-xs flex-1 min-w-[160px] text-[var(--mm-text-secondary)]">
-                  {t('mindmap:import.successSummaryIgnored', {
-                    nodes: importReport.nodes,
-                    images: importReport.droppedImages,
-                    summaries: importReport.droppedSummaries,
-                  })}
-                </span>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
-                  onClick={onDismissImportReport}
-                >
-                  <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
-                </DsButton>
-              </div>
-            </InlineCollapse>
-          )}
-        </AnimatePresence>
-
-        {/* 导入解析/读取失败 */}
-        <AnimatePresence initial={false}>
-          {importError && (
-            <InlineCollapse role="alert">
-              <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
-                <WarningCircle size={16} className="shrink-0" />
-                <span className="text-sm font-medium shrink-0">
-                  {t('mindmap:shellV2.import.errorTitle')}
-                </span>
-                <span className="text-xs flex-1 min-w-[160px] break-words opacity-90">
-                  {importError}
-                </span>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
-                  onClick={onRetryImport}
-                >
-                  <ArrowClockwise size={14} />
-                  <span className="text-xs">{t('mindmap:shellV2.import.retry')}</span>
-                </DsButton>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
-                  onClick={onDismissImportError}
-                >
-                  <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
-                </DsButton>
-              </div>
-            </InlineCollapse>
-          )}
-        </AnimatePresence>
-
-        {/* 导入未保存确认条 */}
-        <AnimatePresence initial={false}>
-          {showImportConfirm && (
-            <InlineCollapse role="alert">
-              <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
-                <WarningCircle size={16} className="shrink-0" />
-                <span className="text-sm flex-1 min-w-[160px]">
-                  {t('mindmap:import.unsavedWarning')}
-                </span>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
-                  onClick={onSaveAndImport}
-                >
-                  <FloppyDisk size={14} />
-                  <span className="text-xs">
-                    {t('mindmap:import.saveAndImport', { defaultValue: '保存并导入' })}
-                  </span>
-                </DsButton>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
-                  onClick={onConfirmImport}
-                >
-                  <Upload size={14} />
-                  <span className="text-xs">{t('mindmap:import.unsavedConfirm')}</span>
-                </DsButton>
-                <DsButton
-                  variant="ghost"
-                  className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
-                  onClick={onCancelImportConfirm}
-                >
-                  <span className="text-xs">{t('common:cancel')}</span>
-                </DsButton>
-              </div>
-            </InlineCollapse>
-          )}
-        </AnimatePresence>
 
         {/* 版本历史内联面板 */}
         <AnimatePresence initial={false}>
@@ -572,8 +581,6 @@ export const MindMapStatusBanners: React.FC<MindMapStatusBannersProps> = React.m
             </InlineCollapse>
           )}
         </AnimatePresence>
-
-        <ExportProgressBanner />
 
         {/* 背诵模式状态条：顶部文档流内联条（双视图共享，不遮挡画布） */}
         <ReciteStatusBar />

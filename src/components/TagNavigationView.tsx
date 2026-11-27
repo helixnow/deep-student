@@ -14,6 +14,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -742,7 +743,8 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                     onClick={() => setCloudSelectedTag(isActive ? null : group.tag)}
                     style={{ ...staggerStyle(index), fontSize: `${Math.round(12 + ratio * 8)}px` }}
                     className={cn(
-                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3.5',
+                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border',
+                      coarseHitClassFor28,
                       isActive
                         ? 'border-primary/50 bg-primary/10 text-primary font-medium'
                         : 'border-border/60 text-foreground/80 hover:border-primary/40 hover:bg-primary/5'

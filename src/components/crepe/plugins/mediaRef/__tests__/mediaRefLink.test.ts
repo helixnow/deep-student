@@ -129,7 +129,8 @@ describe('buildMediaRefDecorations badge mode', () => {
     expect(raw).toBeTruthy();
     const widget = decos.find((d) => typeof d.type.toDOM === 'function');
     const badge = widget.type.toDOM() as HTMLElement;
-    expect(badge.textContent).toBe('▶ 01:20');
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(badge.textContent).toBe('01:20');
     expect(badge.getAttribute('data-media-ref-id')).toBe('file_1');
     expect(badge.getAttribute('data-media-ref-seconds')).toBe('80');
   });

@@ -26,6 +26,7 @@ import {
   ArrowCounterClockwise,
   CaretDown,
   CaretRight,
+  CircleNotch,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
@@ -158,16 +159,19 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       {/* 标题行（窄屏允许右侧状态簇换行，避免挤压标题） */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Icon
-            className={cn(
-              'w-3.5 h-3.5 shrink-0',
-              isDone && 'text-success',
-              isError && 'text-destructive',
-              isActive && 'text-primary',
-              isActive && paper.s !== 'downloading' && 'animate-pulse',
-              retryState === 'success' && 'text-success',
-            )}
-          />
+          {isActive && paper.s !== 'downloading' ? (
+            <CircleNotch className="w-3.5 h-3.5 shrink-0 text-primary animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Icon
+              className={cn(
+                'w-3.5 h-3.5 shrink-0',
+                isDone && 'text-success',
+                isError && 'text-destructive',
+                isActive && 'text-primary',
+                retryState === 'success' && 'text-success',
+              )}
+            />
+          )}
           <span
             className={cn(
               'text-sm truncate',
@@ -249,7 +253,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 </span>
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11" title={t('blocks.paperSave.retryTitle')}>
+                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
                     <span>{t('blocks.paperSave.retry')}</span>
                   </DsButton>
@@ -283,7 +287,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
-                '!h-auto !py-1 [@media(pointer:coarse)]:!min-h-11',
+                '!h-auto !py-1',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',
@@ -315,7 +319,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
             (isDone || retryState === 'success') && 'bg-success',
             isError && retryState !== 'success' && 'bg-destructive',
             isActive && 'bg-primary',
-            retryState === 'loading' && 'bg-primary animate-pulse',
+            retryState === 'loading' && 'bg-primary animate-pulse motion-reduce:animate-none',
           )}
           style={{ width: `${isDone || retryState === 'success' ? 100 : isError ? 100 : overallPct}%` }}
         />

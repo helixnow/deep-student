@@ -1,7 +1,7 @@
 // RUST-FIX(RF-P6-manager-cards): 「我的插件」用卡片呈现——身份、它增加了什么、状态、就近的开关与一个顺手的主操作。
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, Info, NotePencil, Play, Power, ShieldCheck, Sparkle, Trash, WarningCircle,
+  ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, Info, NotePencil, PencilSimple, Play, Power, ShieldCheck, Trash, WarningCircle,
 } from '@phosphor-icons/react';
 
 import { AppMenu, AppMenuContent, AppMenuItem, AppMenuSeparator, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
@@ -21,21 +21,20 @@ import {
 /** 与设置页一致的触屏命中高度。 */
 const COARSE_TOUCH = '[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]';
 
-const DOT_TONE = {
-  ok: 'bg-success',
-  off: 'bg-muted-foreground/40',
-  warn: 'bg-warning',
-  bad: 'bg-destructive',
+const STATUS_TEXT_TONE = {
+  ok: 'text-success',
+  off: 'text-muted-foreground',
+  warn: 'text-warning',
+  bad: 'text-destructive',
 } as const;
 
-/** 状态：一个安静的圆点 + 文字；颜色只是辅助，文字始终在。 */
+/** 状态文字；使用语义色区分状态，避免装饰性交通灯圆点。 */
 export function PluginStatus({ statusKey, className }: { statusKey: string; className?: string }) {
   const { t } = useTranslation('plugin_manager');
   const tone = pluginStatusTone(statusKey);
   return (
     <span data-testid="plugin-summary-state" data-tone={tone}
-      className={cn('inline-flex min-w-0 items-center gap-1.5 text-xs', tone === 'bad' ? 'text-destructive' : 'text-muted-foreground', className)}>
-      <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', DOT_TONE[tone])} />
+      className={cn('inline-flex min-w-0 items-center text-xs', STATUS_TEXT_TONE[tone], className)}>
       <span className="min-w-0 truncate">{t(statusKey)}</span>
     </span>
   );
@@ -313,17 +312,20 @@ export function PluginCard({
             </DsButton>
           </AppMenuTrigger>
           <AppMenuContent align="end" width={208}>
-            {canModify && onModify ? <AppMenuItem icon={<Sparkle size={16} />} onClick={onModify}>{t('manager.modify')}</AppMenuItem> : null}
+            {canModify && onModify ? <AppMenuItem icon={<PencilSimple size={16} />} onClick={onModify}>{t('manager.modify')}</AppMenuItem> : null}
             <AppMenuItem icon={<Info size={16} />} onClick={onSelect}>{t('card.details')}</AppMenuItem>
-            {plugin.enabled && !consentRequired ? <AppMenuItem icon={<Power size={16} />} disabled={busy || !supported} onClick={() => onToggle(false)}>{t('card.disable')}</AppMenuItem> : null}
-            {canExport && onExport ? <AppMenuItem icon={<Export size={16} />} disabled={busy} onClick={onExport}>{t('card.export')}</AppMenuItem> : null}
+            {plugin.enabled && !consentRequired && !showDirectRecoveryActions ? <AppMenuItem icon={<Power size={16} />} disabled={busy || !supported} onClick={() => onToggle(false)}>{t('card.disable')}</AppMenuItem> : null}
             {previousVersion && onRestorePrevious ? (
               <AppMenuItem icon={<ArrowCounterClockwise size={16} />} disabled={busy || blockedBySafeMode} onClick={onRestorePrevious}>
                 {t('card.restorePrevious', { version: previousVersion })}
               </AppMenuItem>
             ) : null}
-            <AppMenuSeparator />
-            <AppMenuItem destructive icon={<Trash size={16} />} disabled={busy} onClick={onUninstall}>{t('row.uninstall')}</AppMenuItem>
+            {!showDirectRecoveryActions ? (
+              <>
+                <AppMenuSeparator />
+                <AppMenuItem destructive icon={<Trash size={16} />} disabled={busy} onClick={onUninstall}>{t('row.uninstall')}</AppMenuItem>
+              </>
+            ) : null}
           </AppMenuContent>
         </AppMenu>
       </div>

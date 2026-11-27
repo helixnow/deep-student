@@ -305,12 +305,6 @@ const ToolbarLearningGroup: React.FC<{
         aria-pressed={autoExcerptEnabled}
         data-testid="mm-auto-excerpt-toggle"
       >
-        {autoExcerptEnabled && (
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-[var(--mm-primary)] shrink-0"
-            aria-hidden="true"
-          />
-        )}
         <SelectionPlus size={15} />
         <span className="mm-learning-text">{t('mindmap:mn5.autoExcerptToggle')}</span>
       </DsButton>
@@ -329,12 +323,6 @@ const ToolbarLearningGroup: React.FC<{
         aria-pressed={stagingTrayOpen}
         data-testid="mm-staging-tray-toggle"
       >
-        {(excerptIntakeMode === 'staging' || stagingCount > 0) && (
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-[var(--mm-primary)] shrink-0"
-            aria-hidden="true"
-          />
-        )}
         <Tray size={15} />
         <span className="mm-learning-text">{t('mindmap:mn5.stagingTrayTitle')}</span>
         <span
@@ -623,23 +611,6 @@ export const MindMapToolbar: React.FC<MindMapToolbarProps> = React.memo(
             </TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DsButton
-                variant="ghost"
-                className="mm-toolbar-button shrink-0 hidden md:flex motion-reduce:transition-none"
-                onClick={onImport}
-                aria-label={t('mindmap:import.dialogTitle')}
-                data-testid="mm-import-toggle"
-              >
-                <Upload size={16} />
-              </DsButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t('mindmap:import.dialogTitle')}
-            </TooltipContent>
-          </Tooltip>
-
           <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden md:block shrink-0" />
 
           {/* Desktop: More Menu（次要项归拢，不重复工具栏已有开关） */}
@@ -696,7 +667,7 @@ export const MindMapToolbar: React.FC<MindMapToolbarProps> = React.memo(
                 {t('mindmap:versions.title')}
               </AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Upload size={16} />} onClick={onImport}>
+              <AppMenuItem icon={<Upload size={16} />} onClick={onImport} data-testid="mm-import-toggle">
                 {t('mindmap:import.title')}
               </AppMenuItem>
               <AppMenuGroup label={t('mindmap:shellV2.export.group')}>

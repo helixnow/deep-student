@@ -13,7 +13,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/T
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
 import { ApiKeyField } from './ApiKeyField';
 import { 
-  Sparkle, 
   Info, 
   Robot, 
   Atom, 
@@ -23,6 +22,7 @@ import {
   Wrench,
   GearSix,
   Lightning,
+  CircleNotch,
   Cpu,
   SlidersHorizontal,
   SquaresFour
@@ -992,17 +992,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Label htmlFor={fieldIds.model} className="text-xs font-medium text-muted-foreground/80 ml-1">
                         {t('common:api_config_modal.model_name')}
                       </Label>
-                      <div className="relative">
-                        <Input
-                          {...TECHNICAL_INPUT_PROPS}
-                          id={fieldIds.model}
-                          value={formData.model}
-                          onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
-                          placeholder={t('common:api_config_modal.model_name_placeholder')}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
-                        />
-                        <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
-                      </div>
+                      <Input
+                        {...TECHNICAL_INPUT_PROPS}
+                        id={fieldIds.model}
+                        value={formData.model}
+                        onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
+                        placeholder={t('common:api_config_modal.model_name_placeholder')}
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
+                      />
                       <p className="text-2xs text-muted-foreground/60 flex items-center gap-1 ml-1">
                         {t('settings:api.modal.model_name_hint')}
                       </p>
@@ -1258,7 +1255,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         {t('settings:api.modal.fields.max_tokens_hint')}
                       </p>
                       {formData.modelAdapter === 'general' && formData.model?.toLowerCase().includes('qwen') && (
-                        <p className="text-2xs text-amber-500 ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
+                        <p className="text-2xs text-warning ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
                       )}
                     </div>
                   </div>
@@ -1773,7 +1770,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             </div>
                           )}
                           {isDeepseekV31 && formData.supportsTools && (
-                            <p className="text-xs text-amber-500 flex items-center gap-1">
+                            <p className="text-xs text-warning flex items-center gap-1">
                               <Info className="h-3 w-3" />
                               {t('settings:api.modal.deepseek.v31_warning')}
                             </p>
@@ -1892,7 +1889,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             </p>
                           </div>
                           {formData.model?.toLowerCase().includes('grok-4') && (
-                            <p className="text-xs text-amber-500 flex items-center gap-1">
+                            <p className="text-xs text-warning flex items-center gap-1">
                               <Info className="h-3 w-3" />
                               {t('settings:api.modal.grok.grok4_warning')}
                             </p>
@@ -2172,7 +2169,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             />
                           </div>
                           {(miniMaxModelMajor === undefined || miniMaxModelMajor < 3) && (
-                            <p className="text-xs text-amber-500 flex items-center gap-1">
+                            <p className="text-xs text-warning flex items-center gap-1">
                               <Info className="h-3 w-3" />
                               {t('settings:api.modal.minimax.no_enable_thinking')}
                             </p>
@@ -2198,10 +2195,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               variant="outline"
               onClick={() => void handleTestConnection()}
               disabled={connectionTest.state === 'testing'}
-              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {connectionTest.state === 'testing' ? (
-                <Lightning className="h-4 w-4 animate-pulse" />
+                <CircleNotch className="h-4 w-4 animate-spin motion-reduce:animate-none" />
               ) : (
                 <Lightning className="h-4 w-4" />
               )}
@@ -2218,10 +2215,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
             </DsButton>
             <div className="flex-1" />
-            <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11">
+            <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
               {t('common:actions.cancel')}
             </DsButton>
-            <DsButton type="submit" variant="primary" className="min-w-[100px] [@media(pointer:coarse)]:!min-h-11">
+            <DsButton type="submit" variant="primary" className="min-w-[100px]">
               {t('common:actions.save')}
             </DsButton>
           </div>

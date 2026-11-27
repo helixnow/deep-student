@@ -277,7 +277,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             className={cn(
               'h-7 gap-1 !px-2 text-xs transition-colors [@media(pointer:coarse)]:!h-11',
               confirmingDelete
-                ? '!bg-[color:hsl(var(--destructive))] !text-white'
+                ? '!bg-[color:hsl(var(--destructive))] !text-destructive-foreground'
                 : 'hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]',
             )}
           >

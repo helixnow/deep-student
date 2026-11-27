@@ -612,7 +612,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                   variant="ghost" size="sm"
                   onClick={() => handleDateRangeChange(value)}
                   className={cn(
-                    'ui-state-colors !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11',
+                    'ui-state-colors !h-auto !px-2 !py-1 text-xs',
                     selectedRange === value
                       ? 'bg-background font-medium shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -629,21 +629,15 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
 
       {/* 统计摘要 */}
       {hasData && (
-        <div className="mb-4 grid grid-cols-3 gap-2">
+        <div className="mb-4 grid grid-cols-3 divide-x divide-border/50 border-y border-border/40 py-2.5">
           {([
-            { value: `${summary.totalAttempts}`, label: t('trendChart.totalQuestions'), dot: 'bg-primary' },
-            { value: `${summary.avgCorrectRate}%`, label: t('trendChart.avgCorrectRate'), dot: 'bg-success' },
-            { value: `${summary.activeDays}`, label: t('trendChart.activeDays'), dot: 'bg-warning' },
-          ] as const).map(({ value, label, dot }) => (
-            <div
-              key={label}
-              className="rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80"
-            >
+            { value: `${summary.totalAttempts}`, label: t('trendChart.totalQuestions') },
+            { value: `${summary.avgCorrectRate}%`, label: t('trendChart.avgCorrectRate') },
+            { value: `${summary.activeDays}`, label: t('trendChart.activeDays') },
+          ] as const).map(({ value, label }) => (
+            <div key={label} className="min-w-0 px-3 first:pl-0 last:pr-0">
               <div className="text-base font-semibold tabular-nums text-foreground">{value}</div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', dot)} />
-                <span className="truncate">{label}</span>
-              </div>
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>

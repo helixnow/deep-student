@@ -15,10 +15,8 @@ import { QuestionMaterialView } from '@/components/QuestionMaterialView';
 import type { Question, SubmitResult } from '@/api/questionBankApi';
 import type { ExtendedQuestionType } from '@/components/question-types';
 import {
-  DIFFICULTY_CONFIG,
   DIFFICULTY_I18N_KEY,
   QUESTION_TYPE_I18N_KEY,
-  STATUS_CONFIG,
   STATUS_I18N_KEY,
 } from './questionBankEditorConfig';
 import {
@@ -119,14 +117,12 @@ export const QuestionEditorStage: React.FC<QuestionEditorStageProps> = ({
         </span>
         {/* 专注模式下隐藏难度、状态与标签 */}
         {!focusMode && currentQuestion.difficulty && (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
-            <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', DIFFICULTY_CONFIG[currentQuestion.difficulty].dot)} aria-hidden="true" />
+          <span className="inline-flex items-center rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
             {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
           </span>
         )}
         {isDesktop && !focusMode && currentQuestion.status && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[currentQuestion.status].dot)} aria-hidden="true" />
+          <span className="inline-flex items-center text-xs text-muted-foreground">
             {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
           </span>
         )}

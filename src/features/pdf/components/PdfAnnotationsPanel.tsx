@@ -18,6 +18,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Export, Highlighter, NotePencil, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
+import { cn } from '@/utils/cn';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
@@ -163,7 +165,11 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className={`ds-annotations-color-chip !h-[18px] !w-[18px] !min-h-0 !min-w-0 !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${active ? 'active' : ''}`}
+                      className={cn(
+                        'ds-annotations-color-chip !h-[18px] !w-[18px] !min-h-0 !min-w-0 !p-0',
+                        coarseHitClassFor24,
+                        active && 'active',
+                      )}
                       style={{ backgroundColor: color }}
                       onClick={() => toggleColor(color)}
                       aria-pressed={active}
@@ -182,7 +188,7 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="ds-annotations-export gap-1.5 font-mono tabular-nums [@media(pointer:coarse)]:!min-h-11"
+              className="ds-annotations-export gap-1.5 font-mono tabular-nums"
               onClick={handleExport}
               disabled={visible.length === 0 || saveAsNoteFlow.isSaving}
               title={t('pdf:annotations.export_hint')}

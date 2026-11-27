@@ -30,6 +30,8 @@ import {
   Flag,
   CheckSquare,
   Sparkle,
+  TreeStructure,
+  ListBullets,
   LinkSimple,
   X,
 } from '@phosphor-icons/react';
@@ -715,7 +717,7 @@ export const MindMapFormatBar: React.FC = () => {
                 onClick={() => handleAiAction('expand')}
                 data-testid="mm-format-ai-expand"
               >
-                <Sparkle size={13} className="text-[var(--mm-primary)] shrink-0" />
+                <TreeStructure size={13} className="text-[var(--mm-primary)] shrink-0" />
                 <span>{t('ai.expand', { defaultValue: 'AI 扩写' })}</span>
               </button>
               <button
@@ -724,7 +726,7 @@ export const MindMapFormatBar: React.FC = () => {
                 onClick={() => handleAiAction('summarize')}
                 data-testid="mm-format-ai-summarize"
               >
-                <Sparkle size={13} className="text-[var(--mm-primary)] shrink-0" />
+                <ListBullets size={13} className="text-[var(--mm-primary)] shrink-0" />
                 <span>{t('ai.summarize', { defaultValue: 'AI 总结' })}</span>
               </button>
             </PopoverContent>

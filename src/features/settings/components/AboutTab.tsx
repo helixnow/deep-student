@@ -1,7 +1,16 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Shield as PhosphorShield } from '@phosphor-icons/react';
-import { Globe, GithubLogo, Bug, ArrowSquareOut, ArrowClockwise, Download } from '@phosphor-icons/react';
+import {
+  Shield as PhosphorShield,
+  Globe,
+  GithubLogo,
+  Bug,
+  ArrowSquareOut,
+  ArrowClockwise,
+  Download,
+  Check,
+  CircleNotch,
+} from '@phosphor-icons/react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
@@ -242,9 +251,10 @@ export const AboutTab: React.FC = () => {
 
             {/* 已是最新版本提示 */}
             {updater.upToDate && !updater.available && (
-              <div className="mx-1 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
-                <p className="text-xs text-green-600 dark:text-green-400">
-                  ✓ {t('about.update.upToDate')}
+              <div className="mx-1 p-2 rounded-lg bg-success/5 border border-success/20">
+                <p className="text-xs text-success flex items-center gap-1.5">
+                  <Check size={14} className="shrink-0" />
+                  <span>{t('about.update.upToDate')}</span>
                 </p>
               </div>
             )}
@@ -288,7 +298,9 @@ export const AboutTab: React.FC = () => {
                           onClick={() => updater.downloadAndInstall()}
                           disabled={updater.downloading}
                         >
-                          <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                          {updater.downloading
+                            ? <CircleNotch size={14} className="mr-1 animate-spin motion-reduce:animate-none" />
+                            : <Download size={14} className="mr-1" />}
                           {updater.downloading
                             ? t('about.update.downloading')
                             : t('about.update.install')}
@@ -342,7 +354,9 @@ export const AboutTab: React.FC = () => {
                       disabled={updater.downloading}
                       className="ml-3 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                     >
-                      <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                      {updater.downloading
+                        ? <CircleNotch size={14} className="mr-1 animate-spin motion-reduce:animate-none" />
+                        : <Download size={14} className="mr-1" />}
                       {updater.downloading
                         ? t('about.update.downloading')
                         : t('about.update.install')}
@@ -382,11 +396,11 @@ export const AboutTab: React.FC = () => {
             {updater.error && (
               <div className={`mx-1 p-2 rounded-lg border ${
                 updater.error.phase === 'relaunch'
-                  ? 'bg-amber-500/5 border-amber-500/20'
+                  ? 'bg-warning/5 border-warning/20'
                   : 'bg-destructive/5 border-destructive/20'
               }`}>
                 <p className={`text-xs ${
-                  updater.error.phase === 'relaunch' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive'
+                  updater.error.phase === 'relaunch' ? 'text-warning' : 'text-destructive'
                 }`}>
                   {updater.error.phase === 'check' && `${t('about.update.error.check')}：`}
                   {updater.error.phase === 'download' && `${t('about.update.error.download')}：`}

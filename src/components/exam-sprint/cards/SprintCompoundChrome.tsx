@@ -6,7 +6,6 @@ import { cn } from '@/utils/cn';
 import type { NormalizedCompoundExcerpt } from '../compoundCardModel';
 import { formatProvenancePillLabel } from '../sourceAnchorBridge';
 import {
-  getSourceKindDotClass,
   type ResolvedSprintSourceAnchor,
   type SemanticAnchorKind,
 } from '../sprintContracts';
@@ -78,12 +77,7 @@ export const SprintBreadcrumbHeader: React.FC<SprintBreadcrumbHeaderProps> = ({
         data-testid={navTestId}
         className="flex min-w-0 flex-wrap items-center gap-1.5"
       >
-        <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-foreground/85">
-          <span
-            data-testid="sprint-breadcrumb-dot"
-            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', getSourceKindDotClass(originKind))}
-            aria-hidden="true"
-          />
+        <span className="inline-flex shrink-0 items-center font-medium text-foreground/85">
           <span>{originLabel}</span>
         </span>
 
@@ -98,12 +92,12 @@ export const SprintBreadcrumbHeader: React.FC<SprintBreadcrumbHeaderProps> = ({
       {anchorCount > 1 ? (
         <span
           data-testid="sprint-breadcrumb-source-count"
-          className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+          className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground"
         >
           {t('examSprint.player.provenance.multiCount', { count: anchorCount })}
         </span>
       ) : trailingMeta ? (
-        <span className="max-w-[200px] truncate font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className="max-w-[200px] truncate font-mono text-2xs tabular-nums text-muted-foreground">
           {trailingMeta}
         </span>
       ) : null}
@@ -158,9 +152,9 @@ export const SprintCompoundEvidenceBlocks: React.FC<SprintCompoundEvidenceBlocks
                     key={excerpt.id}
                     data-testid="sprint-excerpt-block"
                     data-excerpt-kind="image"
-                    className="space-y-2 rounded-lg border border-border/35 bg-muted/20 p-2.5"
+                    className="space-y-2 rounded-lg bg-muted/25 p-2.5"
                   >
-                    <div className="overflow-hidden rounded border border-border/35 bg-background/60">
+                    <div className="overflow-hidden rounded-md bg-background/60">
                       <img
                         src={excerpt.imageSrc}
                         alt={excerpt.text ?? excerpt.sourceLabel ?? excerpt.id}
@@ -191,15 +185,8 @@ export const SprintCompoundEvidenceBlocks: React.FC<SprintCompoundEvidenceBlocks
                               event.stopPropagation();
                               onRevealAnchor(excerpt.anchor!);
                             }}
-                            className="inline-flex shrink-0 items-center gap-1 rounded border border-border/35 bg-card px-2 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                            className="inline-flex shrink-0 items-center gap-1 rounded border border-border/35 bg-card px-2 py-0.5 font-mono text-2xs tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                           >
-                            <span
-                              className={cn(
-                                'h-1.5 w-1.5 shrink-0 rounded-full',
-                                getSourceKindDotClass(excerpt.anchor.kind),
-                              )}
-                              aria-hidden="true"
-                            />
                             <span>{pillLabel}</span>
                           </button>
                         ) : null}
@@ -214,7 +201,7 @@ export const SprintCompoundEvidenceBlocks: React.FC<SprintCompoundEvidenceBlocks
                   key={excerpt.id}
                   data-testid="sprint-excerpt-block"
                   data-excerpt-kind={excerpt.kind}
-                  className="flex items-start justify-between gap-2.5 rounded-lg border border-border/35 border-l-2 border-l-primary/50 bg-muted/20 px-3.5 py-2.5"
+                  className="flex items-start justify-between gap-2.5 rounded-lg bg-muted/25 px-3.5 py-2.5"
                 >
                   <div className="min-w-0 flex-1 space-y-1">
                     {excerpt.text ? (
@@ -235,15 +222,8 @@ export const SprintCompoundEvidenceBlocks: React.FC<SprintCompoundEvidenceBlocks
                         event.stopPropagation();
                         onRevealAnchor(excerpt.anchor!);
                       }}
-                      className="inline-flex shrink-0 items-center gap-1 rounded border border-border/35 bg-card px-2 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      className="inline-flex shrink-0 items-center gap-1 rounded border border-border/35 bg-card px-2 py-0.5 font-mono text-2xs tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
                     >
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          getSourceKindDotClass(excerpt.anchor.kind),
-                        )}
-                        aria-hidden="true"
-                      />
                       <span>{pillLabel}</span>
                     </button>
                   ) : null}
@@ -259,20 +239,14 @@ export const SprintCompoundEvidenceBlocks: React.FC<SprintCompoundEvidenceBlocks
           <div className="text-xs font-medium text-muted-foreground">
             {t('examSprint.player.childSummaries')}
           </div>
-          <ul className="space-y-1.5">
+          <ul className="list-disc space-y-1.5 pl-4 text-sm text-foreground marker:text-muted-foreground/60">
             {childBullets.map((bullet, idx) => (
               <li
                 key={`${idx}-${bullet.slice(0, 24)}`}
                 data-testid="sprint-child-bullet"
-                className="flex items-start gap-2 text-sm text-foreground"
+                className="min-w-0"
               >
-                <span
-                  className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70"
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <SprintMathOrPlainText text={bullet} className="text-sm" />
-                </div>
+                <SprintMathOrPlainText text={bullet} className="text-sm" />
               </li>
             ))}
           </ul>
@@ -340,16 +314,9 @@ export const SprintProvenanceBar: React.FC<SprintProvenanceBarProps> = ({
                       : 'border-border/35 bg-card text-foreground hover:border-border/60 hover:bg-muted/60',
                   )}
                 >
-                  <span
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      getSourceKindDotClass(anchor.kind),
-                    )}
-                    aria-hidden="true"
-                  />
                   <span>{pillLabel}</span>
                   {isPrimary ? (
-                    <kbd className="ml-0.5 hidden rounded border border-primary/25 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-primary sm:inline-block">
+                    <kbd className="ml-0.5 hidden rounded border border-primary/25 bg-background/70 px-1.5 py-0.5 font-mono text-2xs text-primary sm:inline-block">
                       O
                     </kbd>
                   ) : null}
@@ -414,7 +381,7 @@ export const SprintProvenanceBar: React.FC<SprintProvenanceBarProps> = ({
         ) : null}
         <kbd
           className={cn(
-            'ml-1 hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline-block',
+            'ml-1 hidden rounded border px-1.5 py-0.5 font-mono text-2xs sm:inline-block',
             accentPrimary
               ? 'border-primary/25 bg-background/60 text-primary'
               : 'border-border/35 bg-muted/50 text-muted-foreground',

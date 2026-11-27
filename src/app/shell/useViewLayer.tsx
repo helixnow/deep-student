@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { CurrentView } from '@/types/navigation';
 import { runUnifiedBack } from '@/app/navigation/androidBackCoordinator';
 import { MobilePageScaffold } from '@/components/layout';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { FeatureUnavailablePanel } from '@/components/system-status/FeatureUnavailablePanel';
 import {
@@ -355,8 +356,9 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
             <span className="text-muted-foreground">
               {t('plugin_manager:workshop.creationBadge', 'Workshop Creation')}
             </span>
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               data-testid="workshop-refine-with-ai"
               onClick={() => {
                 if (workshop?.onModify) {
@@ -365,10 +367,10 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
                   setCurrentView('chat-v2');
                 }
               }}
-              className="rounded-full bg-primary px-2.5 py-1 font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="rounded-full bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
             >
-              {t('plugin_manager:workshop.actions.refineWithAi', '✦ Refine with AI')}
-            </button>
+              {t('plugin_manager:workshop.actions.refineWithAi', 'Refine with AI')}
+            </DsButton>
           </div>
         ) : undefined}
         view={value.id as CurrentView}

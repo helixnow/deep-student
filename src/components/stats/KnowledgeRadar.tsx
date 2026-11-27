@@ -513,21 +513,15 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
 
       {/* 总体统计 */}
       {hasData && (
-        <div className="mb-4 grid grid-cols-3 gap-2">
+        <div className="mb-4 grid grid-cols-3 divide-x divide-border/50 border-y border-border/40 py-2.5">
           {([
-            { value: `${overallStats.avgMastery}%`, label: t('knowledgeRadar.avgMastery'), dot: 'bg-primary' },
-            { value: `${overallStats.avgCorrectRate}%`, label: t('knowledgeRadar.avgCorrectRate'), dot: 'bg-success' },
-            { value: `${overallStats.totalKnowledgePoints}`, label: t('knowledgeRadar.knowledgePoints'), dot: 'bg-info' },
-          ] as const).map(({ value, label, dot }) => (
-            <div
-              key={label}
-              className="rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80"
-            >
+            { value: `${overallStats.avgMastery}%`, label: t('knowledgeRadar.avgMastery') },
+            { value: `${overallStats.avgCorrectRate}%`, label: t('knowledgeRadar.avgCorrectRate') },
+            { value: `${overallStats.totalKnowledgePoints}`, label: t('knowledgeRadar.knowledgePoints') },
+          ] as const).map(({ value, label }) => (
+            <div key={label} className="min-w-0 px-3 first:pl-0 last:pr-0">
               <div className="text-base font-semibold tabular-nums text-foreground">{value}</div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', dot)} />
-                <span className="truncate">{label}</span>
-              </div>
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>

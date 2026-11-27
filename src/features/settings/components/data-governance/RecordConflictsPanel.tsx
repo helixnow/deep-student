@@ -909,7 +909,7 @@ export const RecordConflictsPanel: React.FC<{
         key={fieldKey}
         className={cn(
           'rounded px-1.5 py-1 text-xs leading-relaxed',
-          isDiff ? 'bg-amber-500/12 text-foreground ring-1 ring-amber-500/25' : 'text-foreground/85',
+          isDiff ? 'bg-warning/12 text-foreground ring-1 ring-warning/25' : 'text-foreground/85',
         )}
       >
         <dt className="text-2xs font-medium text-muted-foreground" title={fieldKey}>
@@ -945,7 +945,7 @@ export const RecordConflictsPanel: React.FC<{
               className={cn(
                 'rounded px-1.5 py-1 text-xs leading-relaxed',
                 extraPrimary.counterpartBody !== undefined && extraPrimary.body !== extraPrimary.counterpartBody
-                  ? 'bg-amber-500/12 text-foreground ring-1 ring-amber-500/25'
+                  ? 'bg-warning/12 text-foreground ring-1 ring-warning/25'
                   : 'text-foreground/85',
               )}
             >
@@ -1309,7 +1309,7 @@ export const RecordConflictsPanel: React.FC<{
               {showContentDiffSummary && (
                 <div
                   data-testid="conflict-content-diff-summary"
-                  className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-2.5 text-xs space-y-1.5"
+                  className="rounded-md border border-warning/30 bg-warning/[0.06] p-2.5 text-xs space-y-1.5"
                 >
                   <div className="font-medium text-foreground">
                     {t('data:governance.conflict_content_diff')}
@@ -1432,8 +1432,8 @@ export const RecordConflictsPanel: React.FC<{
                               className={cn(
                                 'rounded-full px-2 py-0.5 text-2xs font-medium',
                                 diffCount > 0
-                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                                  ? 'bg-warning/15 text-warning'
+                                  : 'bg-success/15 text-success',
                               )}
                             >
                               {diffCount > 0
@@ -1487,7 +1487,7 @@ export const RecordConflictsPanel: React.FC<{
                               className={cn(
                                 'min-w-0 rounded-md border p-2.5 text-xs space-y-2',
                                 fieldRow.hasDiff
-                                  ? 'border-amber-500/35 bg-amber-500/[0.06]'
+                                  ? 'border-warning/35 bg-warning/[0.06]'
                                   : 'border-border/30 bg-background/40 opacity-85',
                               )}
                             >
@@ -1504,7 +1504,7 @@ export const RecordConflictsPanel: React.FC<{
                                     fieldRow.selectedSource === 'custom'
                                       ? 'bg-primary/15 text-primary'
                                       : fieldRow.hasDiff
-                                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                        ? 'bg-warning/15 text-warning'
                                         : 'bg-muted text-muted-foreground',
                                   )}
                                 >
@@ -1600,7 +1600,7 @@ export const RecordConflictsPanel: React.FC<{
                     </div>
                   ) : (
                     <div
-                      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-200"
+                      className="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
                       data-testid="conflict-raw-json-fallback-hint"
                     >
                       {t('data:governance.merge_raw_json_fallback_hint')}

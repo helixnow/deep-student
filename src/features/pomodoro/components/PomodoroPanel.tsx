@@ -97,9 +97,6 @@ const ExtendChips: React.FC<{
   );
 };
 
-/** 环境音播放态呼吸圆点（挂在扬声器按钮角上；样式见 pomodoro-panel.css） */
-const NoisePlayingDot: React.FC = () => <span className="pomodoro-noise-dot" aria-hidden="true" />;
-
 // ============================================================================
 // 紧凑 hero 环 —— 桌面行内布局用的 44px SVG 进度环（阶段语义色 + 中心模式图标）
 // ============================================================================
@@ -794,20 +791,6 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
   // 严格模式徽章说明：触屏无 hover（Tooltip 不可达），tap 徽章切换内联提示行
   const [showStrictHint, setShowStrictHint] = useState(false);
 
-  // 目标达成瞬间的一次性微庆祝（150-400ms，reduced-motion 下自动跳过动画）
-  const prevGoalReachedRef = useRef(goalReached);
-  const [celebrate, setCelebrate] = useState(false);
-  useEffect(() => {
-    const was = prevGoalReachedRef.current;
-    prevGoalReachedRef.current = goalReached;
-    if (goalReached && !was) {
-      setCelebrate(true);
-      const id = window.setTimeout(() => setCelebrate(false), 400);
-      return () => window.clearTimeout(id);
-    }
-    return undefined;
-  }, [goalReached]);
-
   const statsLabel = t('pomodoro.statsPopover.title');
   const settingsLabel = t('pomodoro.settings.title');
 
@@ -1112,7 +1095,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-[color:var(--shell-workspace-border)] bg-[var(--surface-panel)]/75 px-4 py-2 text-xs pb-[var(--mobile-safe-area-bottom,0px)]"
       >
         <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-          <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" aria-hidden="true" />
+          <Timer size={14} className="flex-shrink-0 text-primary" aria-hidden="true" />
           <span className="truncate font-medium text-foreground">
             {t('pomodoro.hostBridge.runningInWindow', {
               defaultValue: '番茄钟正在独立窗口中运行',
@@ -1321,14 +1304,13 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 onClick={toggleNoise}
                 title={noiseEnabled ? t('pomodoro.controls.noiseOff') : t('pomodoro.controls.noiseOn')}
                 aria-label={noiseEnabled ? t('pomodoro.controls.noiseOff') : t('pomodoro.controls.noiseOn')}
-                className={cn(mobileIconBtnClass, 'relative', noiseEnabled && 'text-primary')}
+                className={cn(mobileIconBtnClass, noiseEnabled && 'text-primary')}
               >
                 <IconSwap
                   active={noiseEnabled}
                   a={<SpeakerSlash size={16} />}
-                  b={<SpeakerHigh size={16} />}
+                  b={<SpeakerHigh size={16} weight="fill" />}
                 />
-                {noiseEnabled && <NoisePlayingDot />}
               </DsButton>
               {mode !== 'idle' && (
                 <DsButton
@@ -1505,16 +1487,14 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             aria-label={noiseEnabled ? t('pomodoro.controls.noiseOffKey') : t('pomodoro.controls.noiseOnKey')}
             className={cn(
               desktopIconBtnClass,
-              'relative',
               noiseEnabled && 'text-primary',
             )}
           >
             <IconSwap
               active={noiseEnabled}
               a={<SpeakerSlash size={14} />}
-              b={<SpeakerHigh size={14} />}
+              b={<SpeakerHigh size={14} weight="fill" />}
             />
-            {noiseEnabled && <NoisePlayingDot />}
           </DsButton>
 
           {mode !== 'idle' && (
@@ -1553,7 +1533,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         <span
           data-testid="pomodoro-today-badge"
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 transition-colors duration-200 motion-reduce:transition-none',
+            'inline-flex items-center rounded-full border px-2 py-0.5 transition-colors duration-200 motion-reduce:transition-none',
             goalReached
               ? 'border-[color:hsl(var(--success))]/30 bg-[color:hsl(var(--success))]/10 text-[color:hsl(var(--success))]'
               : todayCount > 0
@@ -1571,18 +1551,6 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               : undefined
           }
         >
-          <span
-            aria-hidden="true"
-            className={cn(
-              'h-1.5 w-1.5 shrink-0 rounded-full transition-transform duration-200 motion-reduce:transition-none',
-              goalReached
-                ? 'bg-[color:hsl(var(--success))]'
-                : todayCount > 0
-                  ? 'bg-primary'
-                  : 'bg-[color:hsl(var(--warning))]',
-              celebrate && 'scale-125 motion-reduce:scale-100',
-            )}
-          />
           <span>
             {t('pomodoro.stats.todayLabel')}{' '}
             <strong className="font-semibold text-current">

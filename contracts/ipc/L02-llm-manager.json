@@ -1277,6 +1277,126 @@
         "$ref": "_shared.json#/$defs/AppError"
       },
       "frontend": "app"
+    },
+    {
+      "name": "scan_external_llm_configs",
+      "lane": "L02-llm-manager",
+      "source": "host/plugins/llm/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "textInput",
+          "schema": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "filePath",
+          "schema": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/ExternalLlmScanReport"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "probe_external_llm_candidate_models",
+      "lane": "L02-llm-manager",
+      "source": "host/plugins/llm/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "schema": { "type": "string" },
+          "optional": false
+        },
+        {
+          "key": "candidateId",
+          "schema": { "type": "string" },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ExternalCandidateModelDto"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "import_external_llm_configs",
+      "lane": "L02-llm-manager",
+      "source": "host/plugins/llm/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "schema": { "type": "string" },
+          "optional": false
+        },
+        {
+          "key": "selections",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ExternalVendorImportSelection"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "autoFetchMissingModels",
+          "schema": {
+            "anyOf": [
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "autoAssignEmptySlots",
+          "schema": {
+            "anyOf": [
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/ExternalLlmImportResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
     }
   ],
   "events": [
@@ -5765,6 +5885,236 @@
         "apiKey"
       ],
       "x-rust": "dstu_llm::llm_manager::VendorConfig"
+    },
+    "ExternalScannedSourceInfo": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "pathLabel": { "type": "string" },
+        "candidateCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "error": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": ["source", "pathLabel", "candidateCount", "error"],
+      "additionalProperties": false
+    },
+    "ExternalCandidateModelDto": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        },
+        "maxOutputTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        },
+        "alreadyExists": { "type": "boolean" },
+        "recommended": { "type": "boolean" }
+      },
+      "required": ["id", "label", "contextWindow", "maxOutputTokens", "alreadyExists", "recommended"],
+      "additionalProperties": false
+    },
+    "ExternalVendorCandidateDto": {
+      "type": "object",
+      "properties": {
+        "candidateId": { "type": "string" },
+        "name": { "type": "string" },
+        "providerType": { "type": "string" },
+        "apiProtocol": { "type": "string" },
+        "supportsOpenaiResponses": { "type": "boolean" },
+        "baseUrl": { "type": "string" },
+        "websiteUrl": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        },
+        "maskedApiKey": { "type": "string" },
+        "extraKeyCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "appTypes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "syncStatus": {
+          "type": "string",
+          "enum": ["new", "match_builtin", "update", "synced"]
+        },
+        "matchedVendorId": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        },
+        "matchedVendorName": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        },
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExternalCandidateModelDto" }
+        }
+      },
+      "required": [
+        "candidateId",
+        "name",
+        "providerType",
+        "apiProtocol",
+        "supportsOpenaiResponses",
+        "baseUrl",
+        "websiteUrl",
+        "maskedApiKey",
+        "extraKeyCount",
+        "sources",
+        "appTypes",
+        "syncStatus",
+        "matchedVendorId",
+        "matchedVendorName",
+        "models"
+      ],
+      "additionalProperties": false
+    },
+    "ExternalLlmScanReport": {
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "autoScanSupported": { "type": "boolean" },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExternalScannedSourceInfo" }
+        },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExternalVendorCandidateDto" }
+        },
+        "skippedProxyCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "skippedNoKeyCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "sessionId",
+        "autoScanSupported",
+        "sources",
+        "candidates",
+        "skippedProxyCount",
+        "skippedNoKeyCount"
+      ],
+      "additionalProperties": false
+    },
+    "ExternalVendorImportSelection": {
+      "type": "object",
+      "properties": {
+        "candidateId": { "type": "string" },
+        "selectedModelIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            { "type": "null" }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": ["candidateId"],
+      "additionalProperties": false
+    },
+    "ExternalLlmImportResult": {
+      "type": "object",
+      "properties": {
+        "importedVendorCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "updatedVendorCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "importedModelCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "assignedSlotCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "vendorIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [
+        "importedVendorCount",
+        "updatedVendorCount",
+        "importedModelCount",
+        "assignedSlotCount",
+        "warnings",
+        "vendorIds"
+      ],
+      "additionalProperties": false
     }
   }
 }

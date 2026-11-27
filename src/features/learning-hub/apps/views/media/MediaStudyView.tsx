@@ -44,7 +44,7 @@ import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isWebUiShell } from '@/utils/platform';
-import { isTauriEnvironment } from '@/utils/urlOpener';
+import { isTauriEnvironment, openUrl } from '@/utils/urlOpener';
 import {
   isSupportedSubtitleFileName,
   normalizeSubtitleFileForImport,
@@ -66,7 +66,6 @@ import { fileManager, saveAndroidStagedFile, usesAndroidSaf } from '@/utils/file
 import { abortStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import { uploadAttachmentBlob } from '@/features/chat/context/vfsRefApi';
-import { openUrl } from '@/utils/urlOpener';
 import { AudioPlayer } from './AudioPlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { BilibiliEmbedPlayer } from './BilibiliEmbedPlayer';
@@ -1161,8 +1160,14 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       <div
         role="toolbar"
         aria-label={t('learningHub:mediaTranscript.toolbarLabel')}
-        className="flex h-11 shrink-0 items-center gap-1 border-b border-border/35 bg-background/80 backdrop-blur-sm px-2.5 [@media(pointer:coarse)]:h-14"
+        className="flex h-11 shrink-0 items-center gap-1 border-b border-border/35 bg-background px-2.5 [@media(pointer:coarse)]:h-14"
       >
+        {companion ? (
+          <div
+            data-media-study-toolbar-leading=""
+            className="flex min-w-0 max-w-[42%] shrink items-center gap-1.5 pr-1 empty:hidden"
+          />
+        ) : null}
         {showTranscribeButton && (
           <DsButton
             variant="ghost"
@@ -1233,9 +1238,6 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           >
             <TreeStructure size={14} aria-hidden="true" />
             <span className="max-sm:hidden">{t('mediaStudio:interop.auto_excerpt')}</span>
-            {autoExcerptActive && (
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-            )}
           </DsButton>
         )}
 

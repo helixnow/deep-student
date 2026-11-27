@@ -173,11 +173,6 @@ export const QBankAgentDiffBar: React.FC<QBankAgentDiffBarProps> = ({
     >
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            data-testid="qbank-diff-status-dot"
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-            aria-hidden="true"
-          />
           <span className="truncate text-xs font-medium text-foreground">
             {t('exam_sheet:agentDiff.title', { defaultValue: 'AI 已修改题目，请核对变更' })}
           </span>
@@ -193,7 +188,7 @@ export const QBankAgentDiffBar: React.FC<QBankAgentDiffBarProps> = ({
               data-testid="qbank-diff-question-pill"
               onClick={() => onFocusQuestion?.(currentEntry.questionId)}
               title={t('exam_sheet:agentDiff.focusQuestion', { defaultValue: '定位题目' })}
-              className="rounded border border-border/35 bg-background/70 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+              className="rounded border border-border/35 bg-background/70 px-1.5 py-0.5 font-mono text-2xs tabular-nums text-muted-foreground transition-colors hover:text-foreground"
             >
               {currentQuestionBadge}
             </button>
@@ -319,7 +314,7 @@ export const QBankAgentDiffBar: React.FC<QBankAgentDiffBarProps> = ({
               data-testid={`qbank-diff-field-${change.field}`}
               className="space-y-1 rounded-md border border-border/35 bg-background/60 p-2 text-xs"
             >
-              <div className="text-[11px] font-medium text-muted-foreground">
+              <div className="text-2xs font-medium text-muted-foreground">
                 {t(`exam_sheet:agentDiff.fields.${change.field}`)}
               </div>
               <div

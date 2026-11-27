@@ -169,7 +169,7 @@ export function AutomationTemplatePicker({ onSelect, disabled }: {
     <div
       role="group"
       aria-label={t('todo:automation.templates.title')}
-      className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+      className="divide-y divide-[color:var(--border-soft)] border-y border-[color:var(--border-soft)]"
     >
       {AUTOMATION_TEMPLATES.map((template) => {
         const badge = scheduleBadgeText(template.draft.schedule, t as (key: string, options?: Record<string, unknown>) => string);
@@ -183,26 +183,30 @@ export function AutomationTemplatePicker({ onSelect, disabled }: {
               name: t(template.nameKey),
               prompt: t(template.promptKey),
             })}
-            className="group flex min-w-0 flex-col items-start gap-1.5 rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated,hsl(var(--card)))] px-3 py-2.5 text-left transition-[border-color,transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-[color:hsl(var(--primary)/0.45)] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            className="group flex w-full min-w-0 items-start gap-3 px-2 py-2.5 text-left transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
           >
-            <span className="flex w-full min-w-0 items-center gap-2 text-sm font-medium text-foreground">
-              <span
-                aria-hidden
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[color:hsl(var(--primary)/0.1)] text-[color:hsl(var(--primary))] transition-colors duration-150 group-hover:bg-[color:hsl(var(--primary)/0.16)] motion-reduce:transition-none"
-              >
-                {template.icon}
-              </span>
-              <span className="truncate">{t(template.nameKey)}</span>
+            <span
+              aria-hidden
+              className="mt-0.5 shrink-0 text-muted-foreground transition-colors duration-150 group-hover:text-foreground motion-reduce:transition-none"
+            >
+              {template.icon}
             </span>
-            <span className="line-clamp-2 w-full text-xs leading-relaxed text-muted-foreground">
-              {t(template.descriptionKey)}
-            </span>
-            {badge ? (
-              <span className="mt-auto inline-flex max-w-full items-center gap-1 rounded-full border border-[color:var(--border-soft)] px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
-                <Clock size={10} aria-hidden className="shrink-0" />
-                <span className="truncate">{badge}</span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {t(template.nameKey)}
+                </span>
+                {badge ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-2xs tabular-nums text-muted-foreground">
+                    <Clock size={11} aria-hidden className="shrink-0" />
+                    <span>{badge}</span>
+                  </span>
+                ) : null}
               </span>
-            ) : null}
+              <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                {t(template.descriptionKey)}
+              </span>
+            </span>
           </button>
         );
       })}

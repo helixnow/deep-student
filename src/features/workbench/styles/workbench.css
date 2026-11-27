@@ -794,25 +794,6 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   color: var(--text-secondary, hsl(var(--muted-foreground)));
 }
 
-.wb-empty-hint-arrow {
-  margin-top: 10px;
-  color: var(--text-muted, hsl(var(--muted-foreground)));
-  /* 时长走 O1 breathe token：minimal / reduced-motion 下归零 */
-  animation: wb-empty-bounce var(--wb-motion-breathe, 2200ms) var(--wb-ease) infinite;
-}
-
-@keyframes wb-empty-bounce {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: translateY(0);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(4px);
-  }
-}
-
 /* ==========================================================================
  * 动效兜底降级
  * --------------------------------------------------------------------------
@@ -831,15 +812,6 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
     --wb-snap-fade-duration: 0ms;
     --wb-dock-item-hover-scale: 1;
   }
-
-  .wb-empty-hint-arrow {
-    animation: none;
-  }
-}
-
-/* minimal 档：token 已把 --wb-motion-breathe 归零，再显式关停避免 0ms infinite 空转 */
-:root[data-wb-material='minimal'] .wb-empty-hint-arrow {
-  animation: none;
 }
 
 /* ==========================================================================

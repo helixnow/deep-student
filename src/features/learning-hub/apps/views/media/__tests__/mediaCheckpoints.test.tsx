@@ -64,8 +64,8 @@ describe('checkpoint helpers', () => {
     expect(findCrossedCheckpoint(list, 101, 100.5, new Set())).toBeNull();
   });
 
-  it('shows media anchors in explanations as play labels', () => {
-    expect(readableExplanation('见 [媒体@file_lec:12:30] 与 [媒体@file_lec:1:02:03]')).toBe('见 ▶ 12:30 与 ▶ 1:02:03');
+  it('shows media anchors in explanations as clean timestamp labels', () => {
+    expect(readableExplanation('见 [媒体@file_lec:12:30] 与 [媒体@file_lec:1:02:03]')).toBe('见 12:30 与 1:02:03');
   });
 });
 
@@ -91,7 +91,7 @@ describe('MediaCheckpointCard', () => {
     });
     await waitFor(() => expect(screen.getByText('答错了')).toBeInTheDocument());
     expect(handlers.onAnswered).toHaveBeenCalledWith('q1', false);
-    expect(screen.getByText(/惩罚项让模型更平滑\s+▶ 12:30/)).toBeInTheDocument();
+    expect(screen.getByText(/惩罚项让模型更平滑\s+12:30/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /回看这一段/ }));
     expect(handlers.onSeek).toHaveBeenCalledWith(735);
   });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { X } from '@phosphor-icons/react';
 import { ChatMessage } from '../types';
 import { getUnifiedSummaryPrompt } from '../utils/summaryPrompt';
 import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
@@ -53,15 +54,14 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
     }
   }, [summaryStreamContent, summaryStreamComplete, summaryRequested]);
 
-  // 🎯 新增：当父组件传入的总结内容发生变化时，重置内部状态 - 配合保活机制
+  // 当父组件传入的总结内容发生变化时，重置内部状态 - 配合保活机制
   useEffect(() => {
     // 当切换到不同错题时，重置总结请求状态
     // 这确保了在保活模式下，SummaryBox能正确响应新错题的总结状态
     if (summaryStreamContent === '' && summaryRequested) {
-      console.log('🔄 [SummaryBox] 检测到新错题无总结内容，重置请求状态');
       setSummaryRequested(false);
     }
-  }, [summaryStreamContent, summaryStreamComplete]);
+  }, [summaryStreamContent, summaryStreamComplete, summaryRequested]);
 
   // 监听生成状态
   useEffect(() => {
@@ -81,14 +81,13 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
     }
 
     if (!onGenerateSummary) {
-      console.warn('⚠️ onGenerateSummary回调未提供');
+      console.warn('[SummaryBox] onGenerateSummary回调未提供');
       return;
     }
 
     // 统一提示词（不内联对话记录；对话历史由API另行提供）
     const summaryPrompt = getUnifiedSummaryPrompt();
 
-    console.log('📝 准备通过回调生成总结，提示词长度:', summaryPrompt.length);
     setSummaryRequested(true);
     onGenerateSummary(summaryPrompt);
   };
@@ -101,7 +100,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
       countBadge={summaryContent ? (
         <Badge
           variant="outline"
-          className="summary-badge text-[10px] px-2 py-[2px] rounded-full"
+          className="summary-badge text-xs px-2 py-0.5 rounded-full"
         >
           {t('summaryBox.generated')}
         </Badge>
@@ -112,7 +111,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="sb-btn sb-btn-ghost [@media(pointer:coarse)]:!min-h-11"
+              className="sb-btn sb-btn-ghost"
               onClick={(e) => { e.stopPropagation(); generateSummary(); }}
               title={t('summaryBox.generateSummary')}
             >
@@ -122,13 +121,14 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
           {onClose && (
             <DsButton
               variant="ghost"
-              size="sm"
-              className="sb-btn sb-btn-icon [@media(pointer:coarse)]:!min-h-11"
+              size="icon"
+              iconOnly
+              className="sb-btn sb-btn-icon"
               onClick={(e) => { e.stopPropagation(); onClose(); }}
               title={t('summaryBox.closeSummary')}
               aria-label={t('summaryBox.closeSummary')}
             >
-              ✕
+              <X size={16} aria-hidden="true" />
             </DsButton>
           )}
         </div>

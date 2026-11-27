@@ -6,23 +6,54 @@
 
 ---
 
-## 1. Grounded AI Chat & First-Time API Setup
+## 1. Grounded AI Chat, Unified T3 Selector & In-Place Continuation
 
-**What you want to do**: Ask questions grounded in your PDFs, notes, and lectures without wrestling with prompts or setup errors.
+**What you want to do**: Ask questions grounded in your PDFs, notes, and lectures — switch models, local coding CLIs, reasoning effort, and permissions from one compact popover, and continue interrupted replies cleanly in place.
 
-1. **Connect a model if you haven't yet**: If no model is set up, the chat composer displays a clear inline banner: *"No AI model is configured yet. Connect a provider to start chatting."* Click **Configure AI Model** to pick one of the **15 built-in providers** (or local Ollama). If you hit `Enter` before adding a key, DeepStudent gently highlights the banner and keeps your typed draft intact.
-2. **Attach your material or choose a search scope**:
+1. **Connect a model if you haven't yet**: If no model is set up, the chat composer displays a clear inline banner: *"No AI model is configured yet. Connect a provider to start chatting."* Click **Configure AI Model** to configure one of the **15 built-in providers**, click **Add Provider** for OpenRouter / xAI (Grok) / keyless local Ollama, or use **Import Tools** (CC Switch, Magpie, OpenCode, Claude Code, Codex, or `ccswitch://` links). If you hit `Enter` before adding a key, DeepStudent gently highlights the banner and keeps your typed draft intact.
+2. **Use the streamlined `+` menu & attach study materials**:
    - Drag in PDFs, images, or notes directly, or click **Read alongside chat** from any open document to keep the source visible right beside the conversation.
-   - Use the `+` menu's **Choose retrieval scope (course / folder)** to restrict knowledge-base search to a single course folder (**Only search: Folder**) or search all materials.
-3. **Ask, compare, and turn answers into study artifacts**:
-   - Switch models or reasoning effort right from the composer when a problem needs deeper step-by-step math or code derivations.
+   - Click `+` (**Add & session options**) to access four focused entries: **Add file**, **Knowledge base** (defaults to **`Scope: all materials`**, or pick **Choose retrieval scope (course / folder)** → **Only search: Folder**), **Skills** (also triggered with `/`), and **Connectors** (MCP / external tools).
+3. **Switch models, CLIs, reasoning & permissions in the T3 Unified Selector**:
+   - Open the model button in the composer to launch the compact **T3 unified selector**:
+     - **Left icon rail**: Jump between **Favorites** (star any model on hover), each configured cloud provider, and **Local Coding CLI** (Desktop).
+     - **Search & `⌘1`–`⌘9` quick pick**: Filter immediately via **Search models…** or press `⌘1`–`⌘9` to pick a model without touching the mouse.
+     - **Per-CLI model drill-down**: Inside **Local Coding CLI**, drill into any installed CLI to choose **Follow CLI Default**, pick a curated model, or type a custom model ID.
+     - **Reasoning Effort**: Select the active model's **Reasoning Effort** directly from the inline radio list (adapts automatically to models that support configurable reasoning depth).
+     - **Bottom footer bar**: Toggle **`Web`** (web search), **`Compare`** (multi-select parallel answers), **`Params`** (temperature / sampling controls), and the active **permission preset** (**Cautious / Relaxed / Full access / Danger full access**) in one row.
+4. **Continue cut-off or stopped answers in place**:
+   - If a long answer stops because it hit the output length limit (*"This response may have been cut off before finishing"*) or because you clicked **Stop** (*"Generation stopped — you can continue from here"*), an inline banner appears directly under the reply.
+   - Click **`Continue generating`** to resume seamlessly right inside the same assistant message — appending directly onto the existing reply without inserting an extra user turn.
+5. **Turn answers into study artifacts**:
    - AI can reply with clean interactive study cards, tables, diagrams, or runnable previews alongside normal Markdown — and you can turn any explanation directly into a note, mind map, flashcard batch, or draft question set.
 
-**What you get**: Answers anchored to your own textbook pages and notes with clickable citations, rather than generic internet summaries.
+**What you get**: Answers anchored to your own textbook pages and notes with clickable citations, fast one-popover model and reasoning control, and zero-clutter continuation when long derivations stop mid-stream.
 
 ---
 
-## 2. Organize by Course with Study Spaces
+## 2. Local Coding CLI Collaboration (Desktop)
+
+**What you want to do**: Work with locally installed command-line coding agents directly inside DeepStudent Chat — on a real project folder, with inline approvals, instant turn revert, and optional access to your study context.
+
+1. **Detect built-in CLIs or register custom ones**:
+   - Open **Settings → Tools & extensions → Coding CLI**. DeepStudent auto-detects **6 built-in CLIs**: **Claude Code**, **Codex CLI**, **OpenCode**, **Pi Agent**, **Antigravity CLI**, and **DeepSeek Harness**.
+   - Click **Configure** on any CLI to override its executable path (**Browse…**) or add extra launch arguments, then click **Save & Test**. You can also add your own **Custom CLI Tools** (**Add Tool**) with a custom `@handle` ID, display name, executable command/path, and default arguments.
+2. **Invoke CLIs inline in Chat**:
+   - Select an installed CLI from the T3 selector's **Local Coding CLI** rail, or mention it directly with `@handle` (`@claude`, `@codex`, `@opencode`, `@all`, etc.).
+   - Use `/swarm` to coordinate multiple collaborating agents in parallel and `/handoff` to pass work and changed files cleanly between agents.
+3. **Bind a local project folder safely**:
+   - Click **Select Project Folder** (**Link Local Project Folder**) in the composer to choose your working directory.
+   - By default, CLIs **collaborate in-place** with **non-invasive hidden snapshots** before each turn so you can undo changes instantly without polluting your Git history; toggle **Use isolated Git worktree** whenever you prefer branch isolation.
+4. **Approve tools, review diffs, and revert in one click**:
+   - When a CLI requests a shell command or file write, an inline approval bar appears directly in the timeline with **Allow Once**, **Allow in Session**, and **Deny**.
+   - Completed edits show a compact diff strip (**View Changes**, **`Revert Turn`** to restore the pre-turn snapshot immediately, and **`Summarize Changes`** to extract key takeaways into notes or flashcards).
+   - Under **Collaboration & Safety** in **Coding CLI** settings, enable **Concurrent file conflict locks** (path-level write leases when multiple CLIs edit the same folder) and optionally **Share study session context** so coding CLIs can read notes and material excerpts linked to the current chat.
+
+**What you get**: Seamless side-by-side coding and studying in one conversation timeline — with safe approvals, file leases, and reversible edits.
+
+---
+
+## 3. Organize by Course with Study Spaces
 
 **What you want to do**: Keep Linear Algebra, Organic Chemistry, and IELTS Prep completely organized — each with its own materials, exam countdown, memory boundary, and window layout.
 
@@ -36,9 +67,9 @@
 
 ---
 
-## 3. Memory v2: Rules, Learner Profile & Dual-Zone Workbench
+## 4. Memory v2: Rules, Learner Profile & Dual-Zone Workbench
 
-DeepStudent v0.20.9 upgrades AI memory into a transparent **Dual-Zone Memory Workbench** under **Settings → Memory** (and accessible via **AI Memory** in Files):
+DeepStudent provides a transparent **Dual-Zone Memory Workbench** under **Settings → Memory** (and accessible via **AI Memory** in Files):
 
 - **Top zone — Long-Term Memory Kernel**: Compact, structured memory that is **automatically applied on Turn 1 of every new session** and stays consistent throughout the conversation. It holds your **Interaction Hard Rules**, **Active Weak Points**, and **Learning Goals**.
 - **Bottom zone — Searchable Memory Archive** *(optional)*: Longer background notes stored as regular Markdown notes in your chosen folder (**My Memories** by default). You can create subfolders right on the page and move archive memories between folders anytime.
@@ -72,7 +103,7 @@ As you review flashcards, practice Question Sets, or grade essays, DeepStudent a
 
 ---
 
-## 4. See & Edit What AI Remembered on Every Answer (Attribution Pill)
+## 5. See & Edit What AI Remembered on Every Answer (Attribution Pill)
 
 **What you want to do**: Check *why* AI answered in a particular style or focused on a specific weak topic — and immediately remove an outdated rule without leaving chat.
 
@@ -87,7 +118,7 @@ As you review flashcards, practice Question Sets, or grade essays, DeepStudent a
 
 ---
 
-## 5. History, 10-Version Rollback & Dialectic Reflection
+## 6. History, 10-Version Rollback & Dialectic Reflection
 
 **What you want to do**: Undo an unwanted memory update or let DeepStudent tidy up conflicting rules and recurring mistakes automatically.
 
@@ -124,4 +155,4 @@ On Turn 1 of a new session, DeepStudent compiles your active L1 Hard Rules and L
 - Connect PDF highlights, split-pane notes, lectures, and translation → [03 · PDF Reading, Notes, Lectures & Translation](./03-pdf-notes-media-study-loop.md)
 - Turn weak points and chat explanations into FSRS-6 flashcards and daily exam sprints → [04 · Flashcards, FSRS-6, Exam Sprint & Question Sets](./04-flashcards-exams-fsrs.md)
 
-<!-- Baseline: DeepStudent v0.20.9 -->
+<!-- Baseline: DeepStudent v0.20.10 -->

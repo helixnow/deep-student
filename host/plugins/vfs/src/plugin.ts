@@ -82,6 +82,7 @@ import { buildNumberedSources } from './tools/retrieval-sources.ts';
 import { uploadAttachmentCommand, type VfsUploadAttachmentParamsExt } from './upload-attachment.ts';
 import { uploadFileCommand, type FileUploadDeps, type PlainTextCodeExtensions, type SettingsReader,
   type VfsUploadFileParams } from './upload-file.ts';
+import { updateFileContentCommand, type VfsUpdateFileContentParams } from './update-file-content.ts';
 import { downloadPaperCommand, type VfsDownloadPaperParams } from './download-paper.ts';
 import { createPaperLibrary } from './paper-library.ts';
 import type { UnitBuilderService } from '../../vfs-index/api.ts';
@@ -189,7 +190,7 @@ export function createVfsPlugin(options: VfsPluginOptions = {}): HostPlugin {
       'dstu_parse_path', 'dstu_watch', 'dstu_unwatch',
       ...folderCommands, ...locationCommands, ...listCommands, ...contentCommands, ...crudCommands,
       ...trashCommands, ...exportCommands,
-      'vfs_upload_attachment', 'vfs_upload_file', 'vfs_download_paper',
+      'vfs_upload_attachment', 'vfs_upload_file', 'vfs_update_file_content', 'vfs_download_paper',
     ],
     provides: ['vfsDatabase', 'vfs', 'dstu', 'dstuUpload', 'paperLibrary'],
   },
@@ -328,6 +329,17 @@ export function createVfsPlugin(options: VfsPluginOptions = {}): HostPlugin {
       log: ctx.logger,
     });
     ctx.commands.register<{ params: VfsUploadFileParams }>('vfs_upload_file', ({ params }) => uploadFileCommand(fileUploadDeps(), params));
+    ctx.commands.register<{ params: VfsUpdateFileContentParams }>('vfs_update_file_content', ({ params }) => updateFileContentCommand({
+      conn: () => database.getConnSafe(),
+      blobsDir: () => database.blobsDir(),
+      repos: ctx.vfsRepo,
+      unitBuilder: () => ctx.get('vfsUnitBuilder') as UnitBuilderService | undefined,
+      docs: () => ctx.get('docs') as PlainTextCodeExtensions | undefined,
+      createSaga: upload.createSaga,
+      withSavepoint: upload.withSavepoint,
+      locationDeps,
+      log: ctx.logger,
+    }, params));
     // dstu_executor.rs:685/363 consult VfsAttachmentRepo statics; :724 calls the same vfs_upload_file handler.
     // The Rust context only locates managed state (window_ref), which this host resolves from ctx.
     ctx.provide('dstuUpload', {

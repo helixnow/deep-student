@@ -3,6 +3,7 @@
  * 单独成模块，单应用演示不必为了模板拉整份对话剧本。
  */
 import type { CustomAnkiTemplate } from '@/types';
+import { tr } from './lang';
 
 const DEMO_TEMPLATE_BASE = {
   author: 'Deep Student',
@@ -18,8 +19,8 @@ export const DEMO_ANKI_TEMPLATES: CustomAnkiTemplate[] = [
   {
     ...DEMO_TEMPLATE_BASE,
     id: 'tpl_demo_basic',
-    name: '问答题',
-    description: '标准问答卡：正面问题，背面答案',
+    name: tr('问答题', 'Q&A Card'),
+    description: tr('标准问答卡：正面问题，背面答案', 'Standard Q&A card: question on the front, answer on the back'),
     note_type: 'Basic',
     fields: ['Front', 'Back'],
     front_template:
@@ -35,8 +36,8 @@ export const DEMO_ANKI_TEMPLATES: CustomAnkiTemplate[] = [
       '.qa-back { white-space: pre-wrap; } ' +
       'hr#answer { border: none; border-top: 1px dashed currentColor; opacity: 0.3; margin: 10px 0; }',
     field_extraction_rules: {
-      Front: { field_type: 'text', is_required: true, description: '问题' },
-      Back: { field_type: 'text', is_required: true, description: '答案' },
+      Front: { field_type: 'text', is_required: true, description: tr('问题', 'Question') },
+      Back: { field_type: 'text', is_required: true, description: tr('答案', 'Answer') },
     },
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -44,8 +45,8 @@ export const DEMO_ANKI_TEMPLATES: CustomAnkiTemplate[] = [
   {
     ...DEMO_TEMPLATE_BASE,
     id: 'tpl_demo_cloze',
-    name: '填空题',
-    description: '挖空卡：{{c1::答案}} 背诵模式',
+    name: tr('填空题', 'Cloze Deletion'),
+    description: tr('挖空卡：{{c1::答案}} 背诵模式', 'Cloze card: {{c1::answer}} recall format'),
     note_type: 'Cloze',
     fields: ['Text'],
     front_template:
@@ -59,7 +60,7 @@ export const DEMO_ANKI_TEMPLATES: CustomAnkiTemplate[] = [
       '.cloze { font-weight: 700; border-bottom: 1.5px dashed currentColor; padding: 0 2px; } ' +
       '.cloze-revealed { font-weight: 700; border-bottom: 1.5px solid currentColor; padding: 0 2px; }',
     field_extraction_rules: {
-      Text: { field_type: 'text', is_required: true, description: '挖空文本' },
+      Text: { field_type: 'text', is_required: true, description: tr('挖空文本', 'Cloze text') },
     },
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',

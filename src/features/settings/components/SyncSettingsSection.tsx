@@ -402,7 +402,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <span>{t('data:sync_settings.sync_status')}</span>
               {/* 与数据治理面板 SyncTab 的同款入口保持一致：实验版徽章 + 备份提示 */}
               <span
-                className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+                className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
                 title={t('sync:experimentalBadgeTooltip')}
               >
                 {t('data:governance.experimental_badge')}
@@ -640,9 +640,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {/* 阶段指示器 */}
                   <div className="flex items-center gap-2">
                     {syncProgress.phase === 'completed' ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-success" />
                     ) : syncProgress.phase === 'failed' ? (
-                      <Warning className="h-4 w-4 text-red-500" />
+                      <Warning className="h-4 w-4 text-destructive" />
                     ) : (
                       <CircleNotch className="h-4 w-4 animate-spin text-primary" />
                     )}

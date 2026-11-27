@@ -10,10 +10,12 @@
  * 今日统计、热力图和评分分布都跟着变；只存在内存里，刷新页面回到初始状态。
  */
 
+import { pick, tr } from './lang';
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
-const DECK = '高等数学 · 错题本';
+const DECK = tr('高等数学 · 错题本', 'Calculus · Mistake Deck');
 const LEARN_AHEAD_MINUTES = 20;
 
 /** FSRS 卡片状态：0 新卡 / 1 学习中 / 2 复习 / 3 重学 */
@@ -176,64 +178,124 @@ interface ReviewLog {
 }
 
 /** 旧卡：按评分序列模拟出来的真实复习历史，最后一次的到期时间对齐 dueInDays */
-const SEED: Array<{ front: string; back: string; tags: string[]; dueInDays: number; ratings: Rating[] }> = [
-  {
-    front: '洛必达法则使用前要先确认什么？',
-    back: '先确认是 0/0 或 ∞/∞ 型未定式，分子分母在去心邻域内可导且分母导数不为 0。\n求导后的极限存在（或为 ∞），结论才成立。',
-    tags: ['高等数学', '极限'],
-    dueInDays: -0.2,
-    ratings: [3, 3, 3, 1, 3],
-  },
-  {
-    front: 'eˣ 在 x = 0 处的三阶麦克劳林展开是什么？',
-    back: 'eˣ = 1 + x + x²/2 + x³/6 + o(x³)。',
-    tags: ['高等数学', '泰勒公式'],
-    dueInDays: -0.1,
-    ratings: [3, 3, 2],
-  },
-  {
-    front: '分部积分求 ∫ x·eˣ dx 时，u 和 dv 怎么选？',
-    back: '取 u = x、dv = eˣ dx（「反对幂三指」里幂函数排在指数函数前面）。\n∫ x·eˣ dx = x·eˣ − ∫ eˣ dx = (x − 1)eˣ + C。',
-    tags: ['高等数学', '不定积分'],
-    dueInDays: -0.05,
-    ratings: [1, 3, 3, 2],
-  },
-  {
-    front: 'p 级数 Σ 1/nᵖ 什么时候收敛？',
-    back: 'p > 1 时收敛，p ≤ 1 时发散；p = 1 就是调和级数。',
-    tags: ['高等数学', '级数'],
-    dueInDays: 2,
-    ratings: [3, 3, 3],
-  },
-  {
-    front: '函数在一点可导和连续是什么关系？',
-    back: '可导必连续，连续不一定可导。\n反例：f(x) = |x| 在 x = 0 处连续但不可导。',
-    tags: ['高等数学', '导数'],
-    dueInDays: 3,
-    ratings: [3, 3, 3, 2],
-  },
-  {
-    front: 'f 是奇函数时，∫₋ₐᵃ f(x) dx 等于多少？',
-    back: '等于 0。\nf 是偶函数时等于 2∫₀ᵃ f(x) dx。',
-    tags: ['高等数学', '定积分'],
-    dueInDays: 5,
-    ratings: [3, 3, 3, 3],
-  },
-  {
-    front: '曲线 y = f(x) 在 x₀ 处的切线方程怎么写？',
-    back: 'y − f(x₀) = f′(x₀)(x − x₀)。',
-    tags: ['高等数学', '导数'],
-    dueInDays: 8,
-    ratings: [4, 3, 1, 3, 3],
-  },
-  {
-    front: 'lim(x→∞) (1 + 1/x)ˣ 等于多少？',
-    back: '等于 e，这是第二个重要极限。\n变形 lim(x→0) (1 + x)^(1/x) = e 同样常用。',
-    tags: ['高等数学', '极限'],
-    dueInDays: 12,
-    ratings: [4, 3],
-  },
-];
+const SEED: Array<{ front: string; back: string; tags: string[]; dueInDays: number; ratings: Rating[] }> = pick(
+  [
+    {
+      front: '洛必达法则使用前要先确认什么？',
+      back: '先确认是 0/0 或 ∞/∞ 型未定式，分子分母在去心邻域内可导且分母导数不为 0。\n求导后的极限存在（或为 ∞），结论才成立。',
+      tags: ['高等数学', '极限'],
+      dueInDays: -0.2,
+      ratings: [3, 3, 3, 1, 3],
+    },
+    {
+      front: 'eˣ 在 x = 0 处的三阶麦克劳林展开是什么？',
+      back: 'eˣ = 1 + x + x²/2 + x³/6 + o(x³)。',
+      tags: ['高等数学', '泰勒公式'],
+      dueInDays: -0.1,
+      ratings: [3, 3, 2],
+    },
+    {
+      front: '分部积分求 ∫ x·eˣ dx 时，u 和 dv 怎么选？',
+      back: '取 u = x、dv = eˣ dx（「反对幂三指」里幂函数排在指数函数前面）。\n∫ x·eˣ dx = x·eˣ − ∫ eˣ dx = (x − 1)eˣ + C。',
+      tags: ['高等数学', '不定积分'],
+      dueInDays: -0.05,
+      ratings: [1, 3, 3, 2],
+    },
+    {
+      front: 'p 级数 Σ 1/nᵖ 什么时候收敛？',
+      back: 'p > 1 时收敛，p ≤ 1 时发散；p = 1 就是调和级数。',
+      tags: ['高等数学', '级数'],
+      dueInDays: 2,
+      ratings: [3, 3, 3],
+    },
+    {
+      front: '函数在一点可导和连续是什么关系？',
+      back: '可导必连续，连续不一定可导。\n反例：f(x) = |x| 在 x = 0 处连续但不可导。',
+      tags: ['高等数学', '导数'],
+      dueInDays: 3,
+      ratings: [3, 3, 3, 2],
+    },
+    {
+      front: 'f 是奇函数时，∫₋ₐᵃ f(x) dx 等于多少？',
+      back: '等于 0。\nf 是偶函数时等于 2∫₀ᵃ f(x) dx。',
+      tags: ['高等数学', '定积分'],
+      dueInDays: 5,
+      ratings: [3, 3, 3, 3],
+    },
+    {
+      front: '曲线 y = f(x) 在 x₀ 处的切线方程怎么写？',
+      back: 'y − f(x₀) = f′(x₀)(x − x₀)。',
+      tags: ['高等数学', '导数'],
+      dueInDays: 8,
+      ratings: [4, 3, 1, 3, 3],
+    },
+    {
+      front: 'lim(x→∞) (1 + 1/x)ˣ 等于多少？',
+      back: '等于 e，这是第二个重要极限。\n变形 lim(x→0) (1 + x)^(1/x) = e 同样常用。',
+      tags: ['高等数学', '极限'],
+      dueInDays: 12,
+      ratings: [4, 3],
+    },
+  ],
+  [
+    {
+      front: 'What conditions must be checked before applying L’Hôpital’s Rule?',
+      back: 'Confirm a 0/0 or ∞/∞ indeterminate form, both numerator and denominator are differentiable on a punctured neighborhood with nonzero denominator derivative, and the resulting derivative limit exists (or is ∞).',
+      tags: ['Calculus', 'Limits'],
+      dueInDays: -0.2,
+      ratings: [3, 3, 3, 1, 3],
+    },
+    {
+      front: 'What is the 3rd-order Maclaurin expansion of eˣ around x = 0?',
+      back: 'eˣ = 1 + x + x²/2 + x³/6 + o(x³).',
+      tags: ['Calculus', 'Taylor Series'],
+      dueInDays: -0.1,
+      ratings: [3, 3, 2],
+    },
+    {
+      front: 'How should you choose u and dv when integrating ∫ x·eˣ dx by parts?',
+      back: 'Choose u = x and dv = eˣ dx (by LIATE, algebraic precedes exponential).\n∫ x·eˣ dx = x·eˣ − ∫ eˣ dx = (x − 1)eˣ + C.',
+      tags: ['Calculus', 'Integration'],
+      dueInDays: -0.05,
+      ratings: [1, 3, 3, 2],
+    },
+    {
+      front: 'When does the p-series Σ 1/nᵖ converge?',
+      back: 'Converges for p > 1 and diverges for p ≤ 1; p = 1 is the harmonic series.',
+      tags: ['Calculus', 'Series'],
+      dueInDays: 2,
+      ratings: [3, 3, 3],
+    },
+    {
+      front: 'How are differentiability and continuity related at a point?',
+      back: 'Differentiability implies continuity, but continuity does not imply differentiability.\nCounterexample: f(x) = |x| is continuous at x = 0 but not differentiable there.',
+      tags: ['Calculus', 'Derivatives'],
+      dueInDays: 3,
+      ratings: [3, 3, 3, 2],
+    },
+    {
+      front: 'If f is an odd function, what is ∫₋ₐᵃ f(x) dx?',
+      back: 'It equals 0.\nIf f is even, it equals 2∫₀ᵃ f(x) dx.',
+      tags: ['Calculus', 'Definite Integrals'],
+      dueInDays: 5,
+      ratings: [3, 3, 3, 3],
+    },
+    {
+      front: 'What is the tangent line equation to y = f(x) at x₀?',
+      back: 'y − f(x₀) = f′(x₀)(x − x₀).',
+      tags: ['Calculus', 'Derivatives'],
+      dueInDays: 8,
+      ratings: [4, 3, 1, 3, 3],
+    },
+    {
+      front: 'What is lim(x→∞) (1 + 1/x)ˣ?',
+      back: 'It equals e.\nThe equivalent form lim(x→0) (1 + x)^(1/x) = e is equally common.',
+      tags: ['Calculus', 'Limits'],
+      dueInDays: 12,
+      ratings: [4, 3],
+    },
+  ],
+);
 
 const now0 = Date.now();
 let logSeq = 1;
@@ -477,7 +539,7 @@ export function handleDemoFlashcards(cmd: string, args: Record<string, unknown>)
     case 'fsrs_rate': {
       const card = cards.find((c) => c.id === args.cardStateId);
       const rating = Number(args.rating) as Rating;
-      if (!card || ![1, 2, 3, 4].includes(rating)) throw new Error('这张卡片已不在复习队列里。');
+      if (!card || ![1, 2, 3, 4].includes(rating)) throw new Error(tr('这张卡片已不在复习队列里。', 'This card is no longer in the review queue.'));
       const before = { ...card };
       const next = schedule(card, rating, now);
       const logId = `demo-log-${logSeq++}`;
@@ -539,7 +601,7 @@ export function handleDemoFlashcards(cmd: string, args: Record<string, unknown>)
     }
     case 'fsrs_suspend_card':
     case 'fsrs_unsuspend_card':
-      throw new Error('请在桌面版中暂停或恢复卡片。');
+      throw new Error(tr('请在桌面版中暂停或恢复卡片。', 'Suspend or unsuspend cards in the desktop app.'));
     case 'fsrs_get_review_statistics': {
       const today = logs.filter((log) => dayKey(log.reviewedAt) === dayKey(now));
       const dailyReviews = [

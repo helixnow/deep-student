@@ -272,8 +272,8 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                     'flex min-h-[44px] w-full items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left text-sm transition-all duration-150 ease-standard active:scale-[0.985] active:opacity-90 disabled:cursor-default disabled:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100',
                     !revealed && !isSelected && 'border-border/35 bg-background/50 hover:bg-muted/50',
                     !revealed && isSelected && 'border-primary/50 bg-primary/[0.08] text-foreground',
-                    isCorrectOption && 'border-emerald-500/40 bg-emerald-500/10 text-foreground',
-                    isWrongSelection && 'border-rose-500/40 bg-rose-500/10 text-foreground',
+                    isCorrectOption && 'border-success/40 bg-success/10 text-foreground',
+                    isWrongSelection && 'border-destructive/40 bg-destructive/10 text-foreground',
                     revealed && !isCorrectOption && !isWrongSelection && 'border-border/35 opacity-75',
                   )}
                 >
@@ -281,9 +281,9 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                     className={cn(
                       'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border font-mono text-xs tabular-nums',
                       isCorrectOption
-                        ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        ? 'border-success/50 bg-success/15 text-success'
                         : isWrongSelection
-                          ? 'border-rose-500/50 bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          ? 'border-destructive/50 bg-destructive/15 text-destructive'
                           : isSelected
                             ? 'border-primary/50 bg-primary/15 text-primary'
                             : 'border-border/35 bg-muted/40 text-muted-foreground',
@@ -298,14 +298,14 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                     <Check
                       size={16}
                       weight="bold"
-                      className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                      className="mt-0.5 shrink-0 text-success"
                       aria-hidden="true"
                     />
                   ) : revealed && isWrongSelection ? (
                     <X
                       size={16}
                       weight="bold"
-                      className="mt-0.5 shrink-0 text-rose-600 dark:text-rose-400"
+                      className="mt-0.5 shrink-0 text-destructive"
                       aria-hidden="true"
                     />
                   ) : null}
@@ -353,17 +353,15 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                 className={cn(
                   'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium',
                   objectiveMatched
-                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+                    ? 'border-success/25 bg-success/10 text-success'
+                    : 'border-destructive/25 bg-destructive/10 text-destructive',
                 )}
               >
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    objectiveMatched ? 'bg-emerald-500' : 'bg-rose-500',
-                  )}
-                  aria-hidden="true"
-                />
+                {objectiveMatched ? (
+                  <Check size={14} weight="bold" className="shrink-0" aria-hidden="true" />
+                ) : (
+                  <X size={14} weight="bold" className="shrink-0" aria-hidden="true" />
+                )}
                 <span>
                   {objectiveMatched
                     ? t('examSprint.player.suggestedGood')

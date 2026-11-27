@@ -70,7 +70,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
     <div
       className={cn(
         'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
-        'bg-amber-500/10 border border-amber-500/30',
+        'bg-warning/10 border border-warning/30',
         'text-sm transition-colors',
         disabled && 'opacity-60',
         className
@@ -78,7 +78,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
       title={tooltipText}
     >
       {/* 文件夹图标 */}
-      <Folder size={14} className="text-amber-500 flex-shrink-0" />
+      <Folder size={14} className="text-warning flex-shrink-0" />
 
       {/* 文件夹名称 */}
       <span className="max-w-[120px] truncate text-foreground/90">
@@ -90,7 +90,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
         <span
           className={cn(
             'px-1.5 py-0.5 rounded-full text-xs font-medium',
-            'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+            'bg-warning/20 text-warning'
           )}
         >
           {resourceCount}
@@ -98,7 +98,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
       )}
 
       {/* 删除按钮 */}
-      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']" aria-label={t('common:actions.remove')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !min-h-0 !min-w-0 !p-0 !rounded-full hover:bg-warning/20 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']" aria-label={t('common:actions.remove')}>
         <X size={14} className="text-muted-foreground hover:text-foreground" />
       </DsButton>
     </div>

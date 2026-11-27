@@ -6,9 +6,9 @@ import {
   Check,
   Compass,
   GearSix,
+  GraduationCap,
   Lightning,
   PuzzlePiece,
-  Sparkle,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
@@ -47,7 +47,7 @@ function renderCategoryIcon(item: SkillSlashSuggestion): React.ReactNode {
     case 'control':
       return <GearSix size={14} weight="bold" />;
     case 'study':
-      return <Sparkle size={14} weight="fill" />;
+      return <GraduationCap size={14} weight="bold" />;
     case 'plugin':
       return <PuzzlePiece size={14} weight="bold" />;
     case 'skill':
@@ -225,7 +225,7 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
                   className={cn(
                     'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
                     skill.category === 'study'
-                      ? 'bg-amber-500/12 text-amber-600 dark:text-amber-400'
+                      ? 'bg-warning/12 text-warning'
                       : 'bg-primary/10 text-primary',
                   )}
                 >

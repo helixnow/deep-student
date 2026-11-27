@@ -57,6 +57,10 @@ node web/server/main.ts --prod --host 0.0.0.0 --port 8080
 | `DS_WEB_NO_AUTH` | 未设置 | 设为 `1` 关闭令牌鉴权（等价 `--no-auth`），仅限可信本机环境 |
 | `DS_APP_DATA_DIR` | 系统默认应用数据目录 | 自定义数据目录（暂存与导出目录也建在其下），用于与桌面端并行隔离 |
 | `DS_WEB_TRUST_PROXY` | 未设置 | 设为 `1` 时采信反向代理写入的 `X-Forwarded-Host` / `X-Forwarded-Proto` / `X-Forwarded-For`；未设置时仅对回环来源采信 |
+| `DS_WEB_PROD` | 未设置 | 设为 `1` 以生产模式启动（直接提供 `dist-web/` 静态产物与 PWA，等价 `--prod`） |
+| `DS_WEB_SAFE_MODE` | 未设置 | 设为 `1` 以安全模式启动（暂停社区插件与外部自定义 MCP 自动连接，便于排障） |
+| `DS_WEB_DATA_DIR` | 未设置 | WebUI 专用数据目录覆盖项（优先级高于 `DS_APP_DATA_DIR`） |
+| `DS_WEB_DIST_DIR` | `<repoRoot>/dist-web` | 自定义生产模式静态前端构建产物的读取目录 |
 
 </details>
 
@@ -150,7 +154,7 @@ server {
 
 - **需要保持与自托管服务连通**：PWA 仅缓存界面外壳，断网或停止后端服务后无法读写资料库与对话。
 - **不含桌面操作系统原生外壳能力**：WebUI 不提供桌面内置原生浏览器 / 浏览器自动化、操作系统级多窗口、全局系统快捷键（快速学习小窗）与应用内自动更新。
-- **备份恢复方式**：数据治理「恢复」页中隐藏 A/B 槽位切换，请直接使用本地备份列表（含恢复前自动留存的 `pre_restore` 安全快照）与加密 ZIP 导入导出。
+- **备份恢复方式**：「数据治理与同步 → 恢复」页中隐藏 A/B 槽位切换，请直接使用本地备份列表（含恢复前自动留存的 `pre_restore` 安全快照）与加密 ZIP 导入导出。
 
 ## 常见问题
 
@@ -172,4 +176,4 @@ A：可以！用电脑宽屏浏览器打开 WebUI 默认就会进入窗口化 **
 
 - [WebUI 与 PWA 架构与技术规格（WEBUI-AND-PWA.md）](../WEBUI-AND-PWA.md)
 
-<!-- 基于 v0.20.9 代码核对，2026-11-25：与第 18 章保持 100% 一致（宽屏桌面浏览器默认学习桌面，手机窄屏自动切换移动壳）；补充 360px 窄屏程序坞自动收起与居中唤出把手、打字避让、窄窗文档流导航条；补充 WebUI .apkg 内嵌媒体、Memory v2 / Plugin v2 / 安全模式与 pre_restore 安全快照；精炼反代与环境变量到折叠栏以提升学习者可读性 -->
+<!-- 基于 v0.20.10 代码核对，2026-11-27：补充可选次级环境变量 DS_WEB_PROD / DS_WEB_SAFE_MODE / DS_WEB_DATA_DIR / DS_WEB_DIST_DIR（对照 web/server/main.ts 与 web/server/gateway.ts 核实） -->

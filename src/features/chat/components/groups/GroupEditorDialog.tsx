@@ -971,13 +971,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     >
       {/* Unified Header with 1px border-border/35 divider & Segmented Navigation */}
       <div className="shrink-0 border-b border-border/35 px-5 py-3.5 md:px-6">
-        <div className="flex items-center justify-between gap-3">
+        <div className={cn('flex items-center justify-between gap-3', !embeddedInDialog && 'max-md:hidden')}>
           <div className="flex min-w-0 items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
-              style={color ? { backgroundColor: color } : undefined}
-            />
             <HeaderIconComp
               size={16}
               className="shrink-0 text-muted-foreground"
@@ -1018,7 +1013,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className={cn('mt-3', !embeddedInDialog && 'max-md:mt-0')}>
           <SegmentedControl
             ariaLabel={t('studySpace.title')}
             value={activeTab}
@@ -1111,7 +1106,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                           title={colorName}
                           aria-label={colorName}
                           aria-pressed={selected}
-                          className="h-6 w-6 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 rounded-full transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          className="h-6 w-6 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 rounded-full transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                           style={{
                             backgroundColor: value,
                             boxShadow: selected
@@ -1452,15 +1447,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {countdownPreview ? (
                     <span
                       data-testid="exam-countdown-preview"
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-[var(--surface-elevated)] px-2.5 py-1 font-mono text-xs tabular-nums text-foreground"
+                      className="inline-flex items-center rounded-md border border-border/35 bg-[var(--surface-elevated)] px-2.5 py-1 font-mono text-xs tabular-nums text-foreground"
                     >
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          countdownPreview.dotColorClass,
-                        )}
-                      />
                       <span>{countdownPreview.label}</span>
                     </span>
                   ) : null}
@@ -1631,13 +1619,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         )}
                       >
                         <div className="flex min-w-0 items-center gap-2">
-                          <span
-                            aria-hidden="true"
-                            className={cn(
-                              'h-1.5 w-1.5 shrink-0 rounded-full',
-                              selected ? 'bg-foreground' : 'bg-muted-foreground/40',
-                            )}
-                          />
                           <span className="truncate">
                             {t(`studySpace.presets.${presetId}`)}
                           </span>

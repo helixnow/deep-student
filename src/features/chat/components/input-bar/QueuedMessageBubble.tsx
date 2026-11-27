@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowBendDownRight, ArrowCircleRight, Trash } from '@phosphor-icons/react';
+import { ArrowBendDownRight, ArrowCircleRight, Trash, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { QueuedMessage } from '../../core/types/queue';
@@ -17,7 +17,7 @@ interface Props {
  * - 点击气泡正文 → 召回为草稿（由父级处理）。
  * - 「引导」按钮 → 立即打断当前回复并优先发送（仅 allowSteer 时显示）。
  * - 垃圾桶 → 删除此条。
- * - 失败态：红色边框 + 红点指示，hover tooltip 显示错误。
+ * - 失败态：红色边框 + 告警图标，hover tooltip 显示错误。
  */
 export const QueuedMessageBubble: React.FC<Props> = React.memo(({
   item, allowSteer, onClick, onSteer, onDelete,
@@ -41,10 +41,10 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       }}
       className={cn(
         'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-        'bg-neutral-100 dark:bg-neutral-800/80 border border-transparent',
+        'bg-muted/70 border border-transparent',
         'transition-colors duration-200',
         'ui-rise-in',
-        'hover:bg-neutral-200/60 dark:hover:bg-neutral-700/80',
+        'hover:bg-muted',
         failed && 'border-danger/40',
       )}
       title={tooltip}
@@ -53,8 +53,9 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       <ArrowBendDownRight size={14} className="shrink-0 text-muted-foreground" weight="regular" />
       <div className="flex-1 min-w-0 line-clamp-2 text-sm text-foreground/90 break-words">
         {failed && (
-          <span
-            className="inline-block w-1.5 h-1.5 rounded-full bg-danger mr-1.5 align-middle"
+          <WarningCircle
+            size={13}
+            className="inline-block shrink-0 text-destructive mr-1 align-middle"
             aria-hidden="true"
           />
         )}

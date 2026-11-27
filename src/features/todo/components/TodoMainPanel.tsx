@@ -266,9 +266,28 @@ interface TodoMainPanelProps {
    * 提供时工具栏整体迁入窗口标题栏，页内不再重复渲染一条顶栏。
    */
   titlebarPortalTarget?: HTMLElement | null;
+  /**
+   * 移动端：工具栏操作已收进全局 UnifiedMobileHeader（搜索 + 更多菜单），
+   * 隐藏页内冗余的 .study-shell-toolbar 顶栏行，仅在搜索开启时展开内联搜索框。
+   */
+  hideMobileToolbar?: boolean;
+  /** 移动端受控搜索展开态（由 TodoContentView 顶栏搜索按钮驱动） */
+  mobileSearchOpen?: boolean;
+  onMobileSearchOpenChange?: (open: boolean) => void;
+  /** 移动端受控批量多选态（由 TodoContentView 顶栏「更多」菜单驱动） */
+  checkMode?: boolean;
+  onCheckModeChange?: (active: boolean) => void;
 }
 
-export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubView, titlebarPortalTarget }) => {
+export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
+  onOpenPomodoroSubView,
+  titlebarPortalTarget,
+  hideMobileToolbar = false,
+  mobileSearchOpen: mobileSearchOpenProp,
+  onMobileSearchOpenChange,
+  checkMode: checkModeProp,
+  onCheckModeChange,
+}) => {
   const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
   // workbench 窗口标题栏槽位优先；其次 legacy 壳标题栏。两者互斥（壳模式二选一）
@@ -310,8 +329,17 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 
-  // 窄屏：搜索折叠为图标，点击后在工具栏下方展开内联输入行
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // 窄屏：搜索折叠为图标（或由全局顶栏触发），开启后在顶部展开内联输入行
+  const [internalMobileSearchOpen, setInternalMobileSearchOpen] = useState(false);
+  const mobileSearchOpen = mobileSearchOpenProp ?? internalMobileSearchOpen;
+  const setMobileSearchOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === 'function' ? next(mobileSearchOpen) : next;
+      if (onMobileSearchOpenChange) onMobileSearchOpenChange(resolved);
+      else setInternalMobileSearchOpen(resolved);
+    },
+    [mobileSearchOpen, onMobileSearchOpenChange],
+  );
 
   // 批量多选（Cmd/Ctrl 点选 + Shift 范围选）；非空时工具栏下方出现内联批量操作条
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
@@ -324,13 +352,21 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
   }, []);
 
-  // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏「选择」开关进入，
+  // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏/顶栏「选择」开关进入，
   // 进入后行首显示复选框、点行即勾选（不打开详情）。行内左右滑手势暂停避免误触。
-  const [checkMode, setCheckMode] = useState(false);
+  const [internalCheckMode, setInternalCheckMode] = useState(false);
+  const checkMode = checkModeProp ?? internalCheckMode;
+  const setCheckMode = useCallback(
+    (active: boolean) => {
+      if (onCheckModeChange) onCheckModeChange(active);
+      else setInternalCheckMode(active);
+    },
+    [onCheckModeChange],
+  );
   const exitCheckMode = useCallback(() => {
     setCheckMode(false);
     clearChecked();
-  }, [clearChecked]);
+  }, [setCheckMode, clearChecked]);
 
   // 多选模式下 Android 返回键 = 退出多选（先于导航返回）
   useEffect(() => {
@@ -1017,7 +1053,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* 顶部工具栏：桌面端 portal 进全局顶栏；移动端页内内联 */}
+        {/* 顶部工具栏：桌面端 portal 进全局顶栏；移动端操作已上移至 UnifiedMobileHeader，隐藏冗余内联顶栏 */}
         {toolbarPortalTarget ? (
           createPortal(
             <div className="pointer-events-none flex h-full min-w-0 items-center gap-3 px-2">
@@ -1025,6 +1061,42 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             </div>,
             toolbarPortalTarget,
           )
+        ) : isSmallScreen && hideMobileToolbar ? (
+          mobileSearchOpen ? (
+            <div className="ui-rise-in flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--shell-workspace-border)] px-4 py-2">
+              <div className="relative min-w-0 flex-1">
+                <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={15} />
+                <Input
+                  type="search"
+                  autoFocus
+                  value={filter.search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearch('');
+                      setMobileSearchOpen(false);
+                    }
+                  }}
+                  placeholder={t('todo:actions.search')}
+                  data-todo-search
+                  className="h-10 w-full pl-9 pr-3 text-base [@media(pointer:coarse)]:h-11"
+                />
+              </div>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => {
+                  setSearch('');
+                  setMobileSearchOpen(false);
+                }}
+                aria-label={t('common:actions.close', '关闭')}
+                className="flex-shrink-0"
+              >
+                <X size={16} />
+              </DsButton>
+            </div>
+          ) : null
         ) : (
           <div className="study-shell-toolbar flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
             {toolbarClusters}
@@ -1046,7 +1118,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   }}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-10 w-full pl-9 pr-3 text-sm [@media(pointer:coarse)]:h-11"
+                  className="h-10 w-full pl-9 pr-3 text-base [@media(pointer:coarse)]:h-11"
                 />
               </div>
               <DsButton
@@ -1058,7 +1130,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   setMobileSearchOpen(false);
                 }}
                 aria-label={t('common:actions.close', '关闭')}
-                className="!h-11 !w-11 flex-shrink-0"
+                className="flex-shrink-0"
               >
                 <X size={16} />
               </DsButton>
@@ -1141,7 +1213,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                       '!text-[color:hsl(var(--success))] todo-celebrate-pop motion-reduce:animate-none',
                   )}
                 >
-                  <emptyState.icon size={24} weight={emptyState.celebratory ? 'fill' : 'regular'} />
+                  <emptyState.icon size={28} weight={emptyState.celebratory ? 'fill' : 'regular'} aria-hidden="true" />
                 </div>
                 <h3 className="study-shell-empty-state__title">{emptyState.title}</h3>
                 {filter.view === 'all' && !filter.search.trim() && (

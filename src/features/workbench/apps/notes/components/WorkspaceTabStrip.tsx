@@ -320,7 +320,12 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
         })}
       </div>
       {tabs.length > 0 && (
-        <div className="notes-tabs-overflow" ref={overflowRef}>
+        <div
+          className="notes-tabs-overflow"
+          ref={overflowRef}
+          onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
           <IconButton
             label={t('notesWorkspace.tabs.showAll', 'Show all open files')}
             aria-haspopup="menu"
@@ -400,6 +405,15 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           )}
         </div>
       )}
+      {actionsSlotRef && (
+        <div
+          ref={actionsSlotRef}
+          className="notes-tab-actions-slot notes-titlebar-actions"
+          data-tab-actions-slot
+          onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        />
+      )}
       {onToggleBacklinks && (
         <button
           type="button"
@@ -408,13 +422,14 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           aria-pressed={Boolean(backlinksOpen)}
           aria-label={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
           title={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+          onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
           onClick={onToggleBacklinks}
         >
-          <LinkSimple size={14} aria-hidden />
-          <span>{t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}</span>
+          <LinkSimple size={15} aria-hidden />
+          <span>{t('notesWorkspace.backlinks.title', 'Links')}</span>
         </button>
       )}
-      {actionsSlotRef && <div ref={actionsSlotRef} className="notes-tab-actions-slot notes-titlebar-actions" data-tab-actions-slot />}
     </div>
   );
 };

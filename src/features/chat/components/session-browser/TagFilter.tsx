@@ -5,10 +5,11 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tag, X, Plus, CaretDown } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24, coarseHitClassFor28 } from '@/components/ui/coarseHit';
 
 interface TagInfo {
   tag: string;
@@ -52,7 +53,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
-          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs [@media(pointer:coarse)]:!h-11">
+          <DsButton variant="ghost" size="sm" onClick={onClear} className={cn('!h-6 !min-h-0 px-1.5 text-2xs', coarseHitClassFor24)}>
             {t('tags.clearFilter')}
           </DsButton>
         )}
@@ -63,10 +64,11 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           return (
             <button
               key={tag}
+              type="button"
               onClick={() => onToggleTag(tag)}
               className={cn(
-                // min-h-7 桌面紧凑；coarse 指针下抬到 44px 触控目标
-                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
+                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-2xs border transition-colors',
+                coarseHitClassFor28,
                 isSelected
                   ? 'bg-primary/10 border-primary/50 text-primary'
                   : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-[var(--interactive-hover)]'
@@ -80,9 +82,12 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
       </div>
       {allTags.length > 12 && (
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
-          // min-h 保证触屏可点（coarse 下达到 44px 触控目标）
-          className="flex items-center gap-1 min-h-7 text-2xs text-muted-foreground/60 hover:text-muted-foreground [@media(pointer:coarse)]:min-h-11"
+          className={cn(
+            'flex items-center gap-1 min-h-7 text-2xs text-muted-foreground/60 hover:text-muted-foreground',
+            coarseHitClassFor28
+          )}
         >
           <CaretDown size={12} className={cn('transition-transform', expanded && 'rotate-180')} />
           {expanded ? t('tags.showLess') : t('tags.showMore', { count: allTags.length - 12 })}

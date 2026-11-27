@@ -2,7 +2,7 @@
 
 每个改动界面的 PR 都跑一遍。“规则”列是执行它的 lint；没有规则的靠人看。lint 为 `warn` 的项，新代码同样不允许新增。
 
-先跑：`npm run lint`、`npm run lint:css`、`npm run typecheck`、`npm run check:i18n`。
+先跑：`npm run lint`、`npm run check:lint-ratchet`、`npm run lint:css`、`npm run typecheck`、`npm run check:frontend-layers`、`npm run check:i18n`。
 
 ## 组件
 
@@ -21,11 +21,11 @@
 
 - [ ] 没有 `text-[Npx]`；字号用 `text-2xs/xs/sm/caption/ui/base/md/lg/xl/2xl/3xl`。[§](./design-tokens.md#typography) · `ds-components/no-arbitrary-font-size`（`src/components/ui/**` error，其余 warn）
 - [ ] 移动端没有 `text-xs`（11px）及更小的正文；输入框 ≥ 16px。[§](./design-tokens.md#typography)
-- [ ] 没有 hex / `rgb()` / Tailwind 原色板（`bg-gray-*`、`text-blue-*`、`bg-white`、`text-black`）；用语义 token。[§](./design-tokens.md#color)
+- [ ] 没有 hex / `rgb()` / `hsl()` / `bg-[#…]` 或 Tailwind 原色板（`bg-gray-*`、`text-blue-*`、`bg-white`、`text-black`）；用语义 token。[§](./design-tokens.md#color) · `ds-components/no-hardcoded-color`（warn，棘轮冻结；仅检查 hex / `rgb()` / `hsl()` / `bg-[#…]`，Tailwind 原色板类需人工评审）
 - [ ] 基础层 token 包了 `hsl()`，语义层 token 没有重复包。[§](./design-tokens.md#color)
 - [ ] 红色用 `destructive`；没有 `bg-brand-primary` / `text-brand-primary`。[§](./design-tokens.md#semantic)
 - [ ] 圆角、阴影用 token（`rounded-control/toolbar/dialog/pill`、`shadow-floating` 等），暗色没有另写 `box-shadow`。[§](./design-tokens.md#radius) [§](./design-tokens.md#shadow)
-- [ ] z-index 用 `Z_INDEX.*` 或 `z-modal` 等 token 类，没有新的 `z-[N]`，portal 层没有用 `z-50`。[§](./design-tokens.md#z-index)
+- [ ] z-index 用 `Z_INDEX.*` 或 `z-modal` 等 token 类，没有新的 `z-[N]` 或数字 `style.zIndex`，portal 层没有用 `z-50`。[§](./design-tokens.md#z-index) · `ds-components/no-arbitrary-z-index`（warn，棘轮冻结）
 - [ ] 断点判断用 `useIsMobile` / `isSmallScreen`；CSS 写 `max-width: 767.98px`。[§](./design-tokens.md#breakpoints)
 - [ ] 内联 `style` 只放运行时计算值。[§](./README.md#debt)
 - [ ] 新 CSS 不用 `!important`、嵌套 ≤ 3 层、类名 kebab-case。· stylelint `declaration-no-important`、`max-nesting-depth`、`selector-max-specificity`

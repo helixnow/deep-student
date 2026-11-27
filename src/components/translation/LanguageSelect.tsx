@@ -12,8 +12,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
-import { CaretDown, ClockCounterClockwise, Globe, Sparkle } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { CaretDown, ClockCounterClockwise, Globe } from '@phosphor-icons/react';
+import { cn } from '@/utils/cn';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -221,7 +221,7 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
   const autoItem = (
     <AppMenuItem
       key="auto"
-      icon={<Sparkle size={15} />}
+      icon={<Globe size={15} />}
       checked={value === 'auto'}
       onClick={() => handleSelect('auto')}
     >

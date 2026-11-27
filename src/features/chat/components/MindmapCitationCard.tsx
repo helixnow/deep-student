@@ -140,10 +140,10 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
       onClick={handleClick}
       className={cn(
         '!inline-flex !h-auto !px-1.5 !py-0.5 mx-0.5',
-        'bg-violet-500/10 hover:bg-violet-500/20',
-        'text-violet-600 dark:text-violet-400',
+        'bg-primary/10 hover:bg-primary/20',
+        'text-primary',
         'text-sm font-medium',
-        'border border-violet-500/20 hover:border-violet-500/40',
+        'border border-primary/20 hover:border-primary/40',
         className
       )}
       title={t('mindmapCitation.mindmapTitle', { title: title || mindmapId })}

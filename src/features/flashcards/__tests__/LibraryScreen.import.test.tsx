@@ -105,6 +105,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
   it('opens inline .apkg import dropzone with visible file input when clicking import .apkg', () => {
     render(<LibraryScreen />);
 
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
     fireEvent.click(screen.getByTestId('fc-lib-import-apkg'));
     expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
     const apkgInput = screen.getByTestId('fc-lib-apkg-file-input') as HTMLInputElement;
@@ -120,6 +121,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
 
     render(<LibraryScreen />);
 
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
     fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
     expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
 
@@ -169,6 +171,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
   it('allows cancelling pending CSV import preview without saving cards', async () => {
     render(<LibraryScreen />);
 
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
     fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
     const csvInput = screen.getByTestId('fc-lib-csv-file-input') as HTMLInputElement;
     const csvFile = {
@@ -253,6 +256,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
 
     render(<LibraryScreen />);
 
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
     fireEvent.click(screen.getByTestId('fc-lib-import-apkg'));
     const apkgInput = screen.getByTestId('fc-lib-apkg-file-input') as HTMLInputElement;
     const apkgFile = new File(['PK\x03\x04dummy'], 'real-media-science-deck.apkg', {
@@ -294,6 +298,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
     expect(screen.queryByTestId('fc-lib-apkg-import-summary')).not.toBeInTheDocument();
 
     // Re-import and verify manual dismiss button hides banner.
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
     fireEvent.click(screen.getByTestId('fc-lib-import-apkg'));
     await act(async () => {
       fireEvent.change(screen.getByTestId('fc-lib-apkg-file-input'), { target: { files: [apkgFile] } });

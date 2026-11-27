@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition, SkillPackageFile, SkillPackageSource, SkillTrustStatus } from '@/features/chat/skills/types';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '@/features/chat/skills/packageMetadata';
@@ -206,7 +207,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
                   void handleTrustToggle();
                 }}
                 title={t('skills:package.trust_effect_trusted')}
-                className="!h-auto !rounded-full border-primary/40 bg-primary/10 !px-2 !py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-[32px]"
+                className={cn("!h-auto !rounded-full border-primary/40 bg-primary/10 !px-2 !py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20", coarseHitClassFor24)}
               >
                 {t('skills:package.trust_enable')}
               </DsButton>
@@ -225,7 +226,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
               void handleTrustToggle();
             }}
             title={t('skills:package.trust_effect_untrusted')}
-            className="!h-auto !rounded-full !px-2 !py-0.5 text-[10px] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-[32px]"
+            className={cn("!h-auto !rounded-full !px-2 !py-0.5 text-[10px] text-muted-foreground hover:text-foreground", coarseHitClassFor24)}
           >
             {t('skills:package.trust_trusted')}
           </DsButton>
@@ -286,7 +287,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             disabled={isTrustUpdating}
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_trusted')}
-            className="!h-auto !rounded-full border-primary/40 bg-primary/12 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium text-primary hover:bg-primary/20"
+            className={cn("!h-auto !rounded-full border-primary/40 bg-primary/12 !px-2.5 !py-1 text-xs font-medium text-primary hover:bg-primary/20", coarseHitClassFor24)}
           >
             {t('skills:package.trust_enable')}
           </DsButton>
@@ -299,7 +300,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             disabled={isTrustUpdating}
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_untrusted')}
-            className="!h-auto !rounded-full border-border/60 bg-background/50 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground"
+            className={cn("!h-auto !rounded-full border-border/60 bg-background/50 !px-2.5 !py-1 text-xs text-muted-foreground hover:text-foreground", coarseHitClassFor24)}
           >
             {t('skills:package.trust_revoke')}
           </DsButton>

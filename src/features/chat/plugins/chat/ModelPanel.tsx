@@ -10,7 +10,7 @@ import { pinnedVendorRank } from '@/utils/modelSorting';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { Star, PushPin, Sparkle } from '@phosphor-icons/react';
+import { Star, PushPin, Cpu } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -354,7 +354,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             showTooltip={false}
           />
           {option.isFavorite ? (
-            <Star size={12} weight="fill" className="shrink-0 text-amber-500" aria-hidden="true" />
+            <Star size={12} weight="fill" className="shrink-0 text-warning" aria-hidden="true" />
           ) : null}
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
@@ -392,7 +392,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     // Root 需撑满才能让内部 flex-1 滚动区生效（与 McpPanel/SkillSelector 对齐）
     <ComposerPanel.Root fillHeight>
       <ComposerPanel.Header
-        icon={Sparkle}
+        icon={Cpu}
         title={t('chat_host:model_panel.title')}
         subtitle={subtitle}
         onClose={onClose}
@@ -447,7 +447,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             })
           ) : (
             <ComposerPanel.Empty
-              icon={Sparkle}
+              icon={Cpu}
               description={
                 searchTerm
                   ? t('chat_host:model_panel.no_matches')

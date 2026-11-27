@@ -217,57 +217,14 @@
   pointer-events: none;
 }
 
-/* 状态徽标内的脉冲圆点 */
-.wb-at-pulse-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: hsl(var(--info));
-  flex-shrink: 0;
-  animation: wb-at-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes wb-at-pulse {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 hsl(var(--info) / 0.45);
-  }
-  50% {
-    opacity: 0.55;
-    box-shadow: 0 0 0 3px hsl(var(--info) / 0);
-  }
-}
-
 /* ==== 进度条 ==== */
 
 .wb-at-progress-fill {
   transition: width 500ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
-/* 运行中：轨道叠加流动光带（伪元素，不干扰分段宽度） */
 .wb-at-progress-track {
   position: relative;
-}
-
-.wb-at-progress-active::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    hsl(var(--info) / 0.28) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: wb-at-shimmer 1.8s linear infinite;
-  pointer-events: none;
-}
-
-@keyframes wb-at-shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
 }
 
 /* ==== 图表 ==== */
@@ -348,11 +305,6 @@ svg:hover .wb-at-donut-seg:not(:hover) {
 /* ==== 降级动效 ==== */
 
 @media (prefers-reduced-motion: reduce) {
-  .wb-at-pulse-dot,
-  .wb-at-progress-active::after {
-    animation: none;
-  }
-
   .wb-at-progress-fill,
   .wb-at-donut-seg,
   .wb-at-bar-fill {

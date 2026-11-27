@@ -173,7 +173,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
 
       {showAgainRescue ? (
         <div
-          className="flex w-full max-w-[22rem] flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3 text-left"
+          className="flex w-full max-w-[22rem] flex-col gap-2 rounded-xl border border-warning/30 bg-warning/[0.06] p-3 text-left"
           data-testid="fc-summary-again-rescue"
         >
           <p className="text-xs font-medium text-foreground">

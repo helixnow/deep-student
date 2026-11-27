@@ -1014,7 +1014,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           ].map((e, i) => ({ ...e, priority: i }));
 
           await invoke('save_available_ocr_models', { models: merged });
-          console.log('📝 已合并保存 OCR 模型配置（保留自定义引擎）:', merged);
+          console.log('已合并保存 OCR 模型配置（保留自定义引擎）:', merged);
         } catch (e: unknown) {
           console.warn('保存 OCR 模型配置失败:', e);
         }
@@ -1052,9 +1052,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     apiKeyStatus === 'error'
       ? 'text-destructive'
       : apiKeyStatus === 'saved'
-        ? 'text-green-600 dark:text-green-400'
+        ? 'text-success'
         : apiKeyStatus === 'dirty'
-          ? 'text-amber-600 dark:text-amber-400'
+          ? 'text-warning'
           : 'text-muted-foreground';
 
   const quickBody = (
@@ -1129,7 +1129,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
             'flex items-start gap-2 text-xs ui-drop-in',
             dimensionSetupResult.tone === 'error'
               ? 'text-destructive'
-              : 'text-green-600 dark:text-green-400'
+              : 'text-success'
           )}
           aria-live="polite"
         >

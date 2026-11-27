@@ -184,7 +184,7 @@ const studyUiButtonSizeIconClassName =
 const studyUiSendButtonSizeClass =
   'native-touch-target h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]';
 const studyUiBlackActionButtonClass =
-  '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
+  '!border-foreground !bg-foreground hover:!bg-foreground/90 active:!bg-foreground/85 !text-background';
 const studyUiSendButtonEmptyStateClass =
   '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
 
@@ -298,7 +298,7 @@ function ContextWindowUsageRing({
           usageLevel === 'danger'
             ? 'text-destructive'
             : usageLevel === 'warn'
-              ? 'text-amber-500 dark:text-amber-400'
+              ? 'text-warning'
               : 'text-[color:var(--text-secondary)]',
         )}
       >
@@ -374,7 +374,6 @@ export interface ComposerToolbarProps {
   hasLoadedSkills: boolean;
   renderMcpPanel?: () => React.ReactNode;
   onOpenMcpPanel?: () => void;
-  mcpEnabled: boolean;
   selectedMcpServerCount: number;
   renderAdvancedPanel?: (options?: { embedded?: boolean; onClose?: () => void }) => React.ReactNode;
   advancedPanelRequested?: boolean;
@@ -470,7 +469,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   hasLoadedSkills,
   renderMcpPanel,
   onOpenMcpPanel,
-  mcpEnabled,
   selectedMcpServerCount,
   renderAdvancedPanel,
   advancedPanelRequested = false,
@@ -693,7 +691,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           hasLoadedSkills={hasLoadedSkills}
           renderMcpPanel={renderMcpPanel}
           onOpenMcpPanel={onOpenMcpPanel}
-          mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
           onOpenAdvancedPanel={onOpenAdvancedPanel}
           pluginWorkshopActive={pluginWorkshopActive}

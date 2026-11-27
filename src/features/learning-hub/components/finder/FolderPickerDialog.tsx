@@ -145,7 +145,7 @@ function FolderNode({
         )}
         <Folder size={16} className={cn(
           'shrink-0 transition-colors duration-150',
-          isSelected ? 'text-primary' : 'text-amber-500'
+          isSelected ? 'text-primary' : 'text-warning'
         )} />
           <span className="min-w-0 flex-1 truncate text-sm" title={node.folder.title}>{node.folder.title}</span>
         </div>

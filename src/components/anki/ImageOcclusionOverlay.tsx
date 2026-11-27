@@ -30,8 +30,8 @@ const maskStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: 'rgba(59, 130, 246, 0.92)',
-  border: '1.5px solid rgba(29, 78, 216, 0.9)',
+  backgroundColor: 'hsl(var(--primary) / 0.92)',
+  border: '1.5px solid hsl(var(--primary))',
   borderRadius: 4,
   cursor: 'pointer',
   overflow: 'hidden',
@@ -40,10 +40,10 @@ const maskStyle: React.CSSProperties = {
 
 const revealedStyle: React.CSSProperties = {
   ...maskStyle,
-  backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  border: '1.5px dashed rgba(29, 78, 216, 0.6)',
+  backgroundColor: 'hsl(var(--card) / 0.88)',
+  border: '1.5px dashed hsl(var(--primary) / 0.6)',
   cursor: 'default',
-  color: '#1e3a5f',
+  color: 'hsl(var(--foreground))',
   fontSize: 12,
   lineHeight: 1.3,
 };

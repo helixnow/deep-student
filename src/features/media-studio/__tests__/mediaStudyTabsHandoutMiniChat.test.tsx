@@ -268,13 +268,15 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     );
   });
 
-  it('7. preserves existing MediaAskTab quick ask buttons (data-media-ask and data-media-ask-moment)', async () => {
+  it('7. unifies Ask tab around MediaCompanionQaCard without duplicated start-chat or quick-prompt cards below', async () => {
     const ctx = createMockContext({ getCurrentTime: () => 110 });
     render(<MediaAskTab ctx={ctx} meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }} />);
 
-    const askMomentBtn = document.querySelector('[data-media-ask-moment]') as HTMLElement;
-    expect(askMomentBtn).toBeTruthy();
-    fireEvent.click(askMomentBtn);
+    expect(document.querySelector('[data-media-ask]')).toBeNull();
+    expect(document.querySelector('[data-media-ask-moment]')).toBeNull();
+
+    // Promoting with no messages sends the recent-moment prompt to main chat via the unified card header action
+    fireEvent.click(screen.getByTestId('promote-to-main-chat-btn'));
 
     await waitFor(() => {
       expect(startMediaChatMock).toHaveBeenCalledWith(
@@ -348,9 +350,9 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     // Must not tell a configured user to migrate to main chat
     expect(msgList.textContent).not.toContain('迁入主会话');
 
-    // Clickable ▶ 01:35 citation seeks the player directly to 95s
+    // Clickable 01:35 citation with Play SVG icon seeks the player directly to 95s
     const citationBtn = screen.getByRole('button', { name: '跳转到 01:35' });
-    expect(citationBtn.textContent).toContain('▶');
+    expect(citationBtn.querySelector('svg')).toBeTruthy();
     expect(citationBtn.textContent).toContain('01:35');
     fireEvent.click(citationBtn);
     expect(seekTo).toHaveBeenCalledWith(95);
@@ -426,7 +428,7 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     expect(parsedDoc?.sections[1].heading).toBe('实对称矩阵正交对角化');
 
     const ctx = createMockContext({ getCurrentTime: () => 110 });
-    const { container, rerender } = render(
+    const { rerender } = render(
       <MediaAskTab
         ctx={ctx}
         meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }}
@@ -438,12 +440,6 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     expect(miniChat).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '伴读提问输入框' })).toBeVisible();
     expect(screen.getByRole('button', { name: '发送伴读提问' })).toBeVisible();
-
-    // Ensure ContextualMiniChat sits in the very first section above quick-ask cards so 360px mobile sees the input immediately
-    const askMarker = container.querySelector('[data-media-ask]') as HTMLElement;
-    expect(
-      Boolean(miniChat.compareDocumentPosition(askMarker) & Node.DOCUMENT_POSITION_FOLLOWING),
-    ).toBe(true);
 
     // Minimizing then switching tab away and back re-expands ContextualMiniChat so input is never hidden
     fireEvent.click(screen.getByRole('button', { name: '最小化伴读小窗' }));

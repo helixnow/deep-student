@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Flask, DotsThree, Sparkle, Key } from '@phosphor-icons/react';
+import { ArrowClockwise, Broom, Flask, DotsThree, Key } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -47,7 +47,7 @@ export function ActionMenu({
         {t('settings:mcp.health_check')}
       </DsButton>
       <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
-        <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
+        <Broom className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.clear_cache')}
       </DsButton>
       <div className="my-1 border-t border-border/50" />

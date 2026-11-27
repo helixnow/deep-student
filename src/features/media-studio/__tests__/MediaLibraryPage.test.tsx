@@ -71,16 +71,16 @@ function importer(usesFileInput: boolean): MediaImportController {
 afterEach(() => cleanup());
 
 describe('MediaLibraryPage', () => {
-  it('empty library explains the three capabilities and offers import (desktop)', () => {
+  it('empty library shows restrained title, hint, and import actions (desktop)', () => {
     const imp = importer(false);
     render(<MediaLibraryPage library={library([])} importer={imp} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={null} />);
     const empty = document.querySelector('[data-media-library-empty]') as HTMLElement;
-    expect(within(empty).getByText('mediaStudio:empty.transcribe')).toBeTruthy();
-    expect(within(empty).getByText('mediaStudio:empty.ask')).toBeTruthy();
-    expect(within(empty).getByText('mediaStudio:empty.review')).toBeTruthy();
+    expect(within(empty).getByText('mediaStudio:empty.title')).toBeTruthy();
     expect(within(empty).getByText('mediaStudio:empty.subtitleNote')).toBeTruthy();
+    expect(within(empty).queryByText('mediaStudio:empty.transcribe')).toBeNull();
     fireEvent.click(within(empty).getByRole('button', { name: /mediaStudio:import.button/ }));
     expect(imp.pick).toHaveBeenCalled();
+    expect(within(empty).getByRole('button', { name: /mediaStudio:import.bilibili/ })).toBeTruthy();
     expect(screen.getByTestId('dropzone').dataset.enabled).toBe('true');
     expect(document.querySelector('[data-media-import-bar]')).toBeNull();
   });
@@ -134,14 +134,15 @@ describe('MediaLibraryPage', () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'done' }));
   });
 
-  it('phone: import pinned at the bottom, system picker accepts audio/video MIME first, no drag zone', () => {
+  it('phone: collapses import into compact menu without redundant bottom bar, system picker accepts audio/video MIME first, no drag zone', () => {
     const imp = importer(true);
     render(<MediaLibraryPage library={library([item('a')])} importer={imp} onOpen={vi.fn()} isSmallScreen titlebarTarget={null} />);
-    const bar = document.querySelector('[data-media-import-bar]') as HTMLElement;
-    expect(bar).toBeTruthy();
-    fireEvent.click(within(bar).getByRole('button', { name: /mediaStudio:import.button/ }));
+    expect(document.querySelector('[data-media-import-bar]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /mediaStudio:import.button/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /mediaStudio:import.button/ }));
     expect(imp.pick).toHaveBeenCalled();
-    expect(within(bar).getByRole('button', { name: /mediaStudio:import.bilibili/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /mediaStudio:import.button/ }));
+    expect(screen.getByRole('menuitem', { name: /mediaStudio:import.bilibili/ })).toBeTruthy();
     const input = document.querySelector('[data-media-import-input]') as HTMLInputElement;
     expect(input.multiple).toBe(true);
     expect(input.accept.startsWith('audio/*,video/*')).toBe(true);

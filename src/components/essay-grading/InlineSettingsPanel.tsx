@@ -765,17 +765,17 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
           data-testid="essay-stale-rubric-banner"
           role="status"
           aria-live="polite"
-          className="mx-3 mt-2.5 mb-1 sm:mx-4 shrink-0 rounded-lg border border-amber-500/75 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-950/55 px-3.5 py-2.5 shadow-sm"
+          className="mx-3 mt-2.5 mb-1 sm:mx-4 shrink-0 rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 shadow-sm"
         >
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex min-w-0 flex-1 items-start gap-2">
               <WarningCircle
                 size={16}
                 weight="fill"
-                className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+                className="mt-0.5 shrink-0 text-warning"
                 aria-hidden="true"
               />
-              <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-amber-950 dark:text-amber-100 break-words">
+              <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-foreground break-words">
                 {staleBannerMessage}
               </p>
             </div>

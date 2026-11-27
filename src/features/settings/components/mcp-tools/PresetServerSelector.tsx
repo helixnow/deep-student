@@ -180,10 +180,6 @@ export function PresetServerSelector({
                           isAdded && 'opacity-50 bg-muted/30'
                         )}
                       >
-                        <span className={cn(
-                          'w-2 h-2 rounded-full flex-shrink-0 mt-2',
-                          isAdded ? 'bg-success' : 'bg-muted-foreground/30'
-                        )} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-foreground">{preset.name}</span>
@@ -196,7 +192,7 @@ export function PresetServerSelector({
                               </span>
                             )}
                             {preset.source === 'community' && (
-                              <span className="text-2xs px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-success/10 text-success font-medium">
                                 {t('settings:mcp_presets.community')}
                               </span>
                             )}
@@ -207,7 +203,7 @@ export function PresetServerSelector({
                               </span>
                             )}
                             {oauthSupported && isOAuthCapablePreset(preset) && (
-                              <span className="text-2xs px-1 py-0.5 rounded bg-violet-500/10 text-violet-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-primary/10 text-primary font-medium">
                                 OAuth
                               </span>
                             )}

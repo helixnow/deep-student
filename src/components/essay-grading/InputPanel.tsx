@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/shad/Textarea';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  coarseHitClassFor24,
+  coarseHitClassFor28,
+  coarseHitClassForBadge16,
+} from '@/components/ui/coarseHit';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -20,13 +25,12 @@ import {
   CaretUp,
   ClipboardText,
   UploadSimple,
-  Sparkle,
   Plus,
 } from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
-import { GRADING_PHASE_ORDER, type GradingPhase } from '@/essay-grading/gradingPhase';
+import type { GradingPhase } from '@/essay-grading/gradingPhase';
 import { getModeDisplayName } from '@/essay-grading/modeI18n';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
@@ -39,17 +43,9 @@ export const ESSAY_MAX_CHARS = 50000;
 
 export type GradingPhaseId = GradingPhase;
 
-/** 触屏命中区扩展：28px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
-const COARSE_HIT =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
-
-/** 同上，但适配 24px（h-6）图标钮：-inset-2.5 扩到 ≥44px（平板等 sm+ coarse 设备可见的小钮） */
-const COARSE_HIT_SM =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
-
-/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ≥44px */
-const COARSE_HIT_BADGE =
-  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']";
+const COARSE_HIT = coarseHitClassFor28;
+const COARSE_HIT_SM = coarseHitClassFor24;
+const COARSE_HIT_BADGE = coarseHitClassForBadge16;
 
 /** Unicode 字符计数（避免 UTF-16 length 偏差，与父级统计口径一致） */
 const getUnicodeCharCount = (text: string): number => Array.from(text).length;
@@ -120,29 +116,29 @@ const OcrStatusBadge: React.FC<{ img: UploadedImage }> = ({ img }) => {
   if (img.ocrStatus === 'pending' || img.ocrStatus === 'processing') {
     return (
       <div
-        className="absolute inset-0 flex items-center justify-center bg-black/35 rounded-md"
+        className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-md"
         role="status"
         aria-label={t('essay_grading:ocr_status.processing')}
       >
-        <CircleNotch size={16} className="text-white animate-spin motion-reduce:animate-none" />
+        <CircleNotch size={16} className="text-primary animate-spin motion-reduce:animate-none" />
       </div>
     );
   }
   if (img.ocrStatus === 'retrying') {
     return (
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 rounded-md"
+        className="absolute inset-0 flex flex-col items-center justify-center bg-background/85 rounded-md"
         role="status"
         aria-label={t('essay_grading:ocr_status.retrying')}
       >
-        <CircleNotch size={13} className="text-amber-300 animate-spin motion-reduce:animate-none" />
-        <span className="text-2xs text-amber-300 mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
+        <CircleNotch size={13} className="text-warning animate-spin motion-reduce:animate-none" />
+        <span className="text-2xs text-warning mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
       </div>
     );
   }
   if (img.ocrStatus === 'timeout') {
     return (
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-amber-500/85 text-2xs text-white text-center leading-tight rounded-b-md px-0.5">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-warning/90 text-2xs text-warning-foreground text-center leading-tight rounded-b-md px-0.5">
         {t('essay_grading:ocr_status.timeout')}
       </div>
     );
@@ -379,13 +375,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             <div className="min-w-0">
               <AppSelect
                 value={modeId}
-                onValueChange={(nextValue) => {
-                  if (nextValue === '__manage_custom_rubric__') {
-                    onOpenCustomRubric?.();
-                    return;
-                  }
-                  setModeId(nextValue);
-                }}
+                onValueChange={setModeId}
                 width={248}
                 variant="ghost"
                 size="sm"
@@ -393,34 +383,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 triggerIcon={<GraduationCap size={14} className="shrink-0 text-muted-foreground" />}
                 className="max-w-full rounded-full bg-foreground/[0.03] px-2.5 text-sm text-foreground/85 hover:text-foreground hover:bg-foreground/[0.06] transition-colors duration-150"
                 placeholder={t('essay_grading:mode.select')}
-                {...(onOpenCustomRubric
-                  ? {
-                      groups: [
-                        {
-                          options: modes.map((mode) => ({
-                            value: mode.id,
-                            label: getModeDisplayName(mode, t),
-                            description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
-                          })),
-                        },
-                        {
-                          options: [
-                            {
-                              value: '__manage_custom_rubric__',
-                              label: t('essay_grading:mode.manage_custom_rubric'),
-                              icon: <Plus size={14} className="text-primary" />,
-                            },
-                          ],
-                        },
-                      ],
-                    }
-                  : {
-                      options: modes.map((mode) => ({
-                        value: mode.id,
-                        label: getModeDisplayName(mode, t),
-                        description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
-                      })),
-                    })}
+                options={modes.map((mode) => ({
+                  value: mode.id,
+                  label: getModeDisplayName(mode, t),
+                  description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
+                }))}
               />
             </div>
             {onOpenCustomRubric && (
@@ -456,6 +423,22 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
         {/* 右侧：操作按钮组 - 桌面端不收缩；移动端允许收缩以防溢出（统计文本可截断） */}
         <div className="flex min-w-0 items-center gap-1 sm:shrink-0">
+          {/* 折叠态题目入口收入主工具栏，避免默认多叠一条次级栏 */}
+          {setTopicText && !showTopicSection && !hasTopicContent && (
+            <CommonTooltip content={t('essay_grading:topic.toggle_label')}>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTopicSection(true)}
+                disabled={isGrading}
+                aria-label={t('essay_grading:topic.toggle_label')}
+                className={cn(COARSE_HIT, 'flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150')}
+              >
+                <FileText size={14} />
+                <span className="essay-secondary-label text-xs hidden xl:inline">{t('essay_grading:topic.toggle_label')}</span>
+              </DsButton>
+            </CommonTooltip>
+          )}
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
             <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className={cn(COARSE_HIT, "flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150")}>
               <Image size={14} />
@@ -636,8 +619,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       )}
 
-      {/* ★ 题目元数据折叠区：有激活题目时在折叠头展示摘要与一键清除，防止隐形题干误绑定 */}
-      {setTopicText && (
+      {/* ★ 题目元数据折叠区：默认收入主工具栏；展开或已有题目时呈现摘要与编辑区 */}
+      {setTopicText && (showTopicSection || hasTopicContent) && (
         <div className="border-b border-border/30">
           <div className="flex items-center w-full">
             <button
@@ -769,35 +752,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               <span className="tabular-nums whitespace-nowrap text-primary/80">
                 {t(`essay_grading:progress.phase_${gradingPhase}`)}
               </span>
-              <span className="hidden sm:flex items-center gap-1" aria-hidden="true">
-                {GRADING_PHASE_ORDER.map((phase, idx) => {
-                  const currentIdx = GRADING_PHASE_ORDER.indexOf(gradingPhase);
-                  return (
-                    <span
-                      key={phase}
-                      className={cn(
-                        'h-1 w-1 rounded-full transition-colors duration-300 motion-reduce:transition-none',
-                        idx < currentIdx
-                          ? 'bg-primary/50'
-                          : idx === currentIdx
-                            ? 'bg-primary scale-125'
-                            : 'bg-muted-foreground/25'
-                      )}
-                    />
-                  );
-                })}
-              </span>
             </span>
           )}
-          <DsButton
-            variant="ghost"
-            size="sm"
-            data-testid="essay-cancel-grading-inline"
-            onClick={onCancelGrading}
-            className="h-6 shrink-0 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            {t('essay_grading:actions.cancel_grading')}
-          </DsButton>
         </div>
       )}
 
@@ -814,9 +770,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {showEmptyState && (
             <div className="ui-rise-in motion-reduce:animate-none absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none px-6">
               <div className="text-center space-y-3 max-w-sm">
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-border/45 bg-muted/25 text-muted-foreground/75">
-                  <PenNib size={18} aria-hidden="true" />
-                </div>
+                <PenNib size={20} className="mx-auto text-muted-foreground/50" aria-hidden="true" />
                 <div>
                   <h3 className="text-sm font-medium text-foreground/85 leading-normal">{t('essay_grading:empty_state.title')}</h3>
                   <p className="text-xs text-muted-foreground/80 mt-1 max-w-[280px] mx-auto leading-relaxed">{t('essay_grading:empty_state.description')}</p>
@@ -840,12 +794,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </span>
                 </div>
                 <div className="flex items-center justify-center gap-2 flex-wrap pt-0.5">
-                  <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-foreground/80 hover:text-foreground">
-                    <Image size={14} />
-                    {t('essay_grading:empty_state.ocr_hint')}
-                  </DsButton>
                   <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary hover:text-primary hover:bg-primary/10 border border-primary/30 transition-colors duration-150 motion-reduce:transition-none">
-                    <Sparkle size={14} />
+                    <FileText size={14} />
                     {t('essay_grading:workbench.sample.fill_button')}
                   </DsButton>
                 </div>
@@ -939,11 +889,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           <div className="hidden md:flex items-center gap-2 shrink-0">
             {isGrading ? (
               desktopCancelConfirm.armed ? (
-                <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 motion-reduce:transition-none">
+                <DsButton variant="destructive" size="sm" data-testid="essay-cancel-grading-footer" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 motion-reduce:transition-none">
                   {t('essay_grading:confirm.cancel')}
                 </DsButton>
               ) : (
-                <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none">
+                <DsButton variant="ghost" size="sm" data-testid="essay-cancel-grading-footer" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none">
                   <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                   {t('common:cancel')}
                 </DsButton>

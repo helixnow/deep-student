@@ -277,19 +277,19 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     </span>
                     
                     {engine.isFree && (
-                      <span className="text-2xs text-green-600/80 dark:text-green-400/80 shrink-0">
+                      <span className="text-2xs text-success shrink-0">
                         {t('settings:ocr.free')}
                       </span>
                     )}
 
                     {engine.engineType === 'system_ocr' && (
-                      <span className="text-2xs text-purple-600/80 dark:text-purple-400/80 shrink-0">
+                      <span className="text-2xs text-primary/80 shrink-0">
                         {t('settings:ocr.offline')}
                       </span>
                     )}
                     
                     {engine.supportsGrounding && (
-                      <span className="text-2xs text-blue-600/80 dark:text-blue-400/80 shrink-0">
+                      <span className="text-2xs text-info shrink-0">
                         {t('settings:ocr.coordinate_positioning')}
                       </span>
                     )}
@@ -320,7 +320,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     <CaretDown size={12} weight="bold" />
                   </DsButton>
                   {engine.engineType !== 'system_ocr' && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/30 hover:text-destructive ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
                       <X size={12} weight="bold" />
                     </DsButton>
                   )}
@@ -330,7 +330,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           ) : (
             <div className="mx-1 my-1.5 py-3 px-2">
               <p className="text-xs text-muted-foreground/60">{t('settings:ocr.no_engines')}</p>
-              <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">
+              <p className="text-xs text-warning mt-1">
                 {t('settings:ocr.siliconflow_hint')}
               </p>
             </div>
@@ -394,7 +394,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium">{t('settings:ocr.select_multimodal_model')}</span>
               <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
-                ✕
+                <X size={12} weight="bold" />
               </DsButton>
             </div>
             <UnifiedModelSelector

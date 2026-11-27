@@ -16,6 +16,7 @@ import {
   Table as TableIcon,
   Sparkle,
   DotsSixVertical,
+  WarningCircle,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
@@ -224,15 +225,122 @@ export const ExamHeaderAndTabs: React.FC<ExamHeaderAndTabsProps> = ({
     tabs[next]?.focus();
   }, []);
 
-  return (
-    <>
-      {/* 断点续导：importing 状态横幅 */}
-      {isImportingSession && (
+  const showTaskOrDraftSlot = !readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list');
+
+  // 单一优先级横幅槽：confirm > error > interrupted import > task > draft（严禁多条横幅同时堆叠）
+  const activeBanner: React.ReactNode = (() => {
+    if (pendingReviewExitView !== null) {
+      return (
+        <div
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
+          role="alert"
+          aria-label={t('review:session.exitTitle')}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <WarningCircle size={14} className="shrink-0 text-warning" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('review:session.exitTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('review:session.exitDescription')}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs" onClick={onCancelReviewExit}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs" onClick={onConfirmReviewExit}>
+                {t('review:session.exitConfirm')}
+              </DsButton>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (pendingPracticeExitView !== null) {
+      return (
+        <div
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
+          role="alert"
+          aria-label={t('practice:session.exitTitle')}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <WarningCircle size={14} className="shrink-0 text-warning" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('practice:session.exitTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('practice:session.exitDescription')}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs" onClick={onCancelPracticeExit}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs" onClick={onConfirmPracticeExit}>
+                {t('practice:session.exitConfirm')}
+              </DsButton>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (pendingDraftNavigation !== null) {
+      return (
+        <div
+          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
+          role="alert"
+          aria-label={t('editor.discardDraftTitle')}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <WarningCircle size={14} className="shrink-0 text-destructive" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-foreground">{t('editor.discardDraftTitle')}</span>
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span className="text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-1.5 ml-auto">
+              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs" onClick={onCancelDiscardDraft}>
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="danger" size="sm" className="!h-7 px-2.5 text-xs" onClick={onConfirmDiscardDraft}>
+                {t('common:actions.discard')}
+              </DsButton>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-border/40 bg-muted/50" role="alert">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <WarningCircle size={14} className="shrink-0 text-destructive" aria-hidden="true" />
+              <span className="text-xs text-foreground/85 truncate" title={error}>
+                {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
+              </span>
+            </div>
+            <DsButton variant="ghost" size="sm" onClick={onRetryQuestions} className="h-7 gap-1.5 px-2.5 text-xs">
+              <ArrowClockwise size={13} />
+              {t('common:actions.retry')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (isImportingSession) {
+      return (
         <div className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4">
-          {/* flex-wrap：375px 下右侧「恢复导入」按钮组换行到第二行，避免把提示文案挤到不可读 */}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
+              <WarningCircle size={14} className="shrink-0 text-warning" aria-hidden="true" />
               <span className="truncate text-xs text-foreground/85">
                 {t('exam_sheet:uploader.import_interrupted', { count: questionsCount })}
               </span>
@@ -251,7 +359,7 @@ export const ExamHeaderAndTabs: React.FC<ExamHeaderAndTabsProps> = ({
                 className="h-7 gap-1.5 px-2.5 text-xs text-foreground hover:bg-foreground/[0.05]"
               >
                 {isResuming ? (
-                  <CircleNotch size={13} className="animate-spin" />
+                  <CircleNotch size={13} className="animate-spin motion-reduce:animate-none" />
                 ) : (
                   <RotateCw size={13} />
                 )}
@@ -263,27 +371,103 @@ export const ExamHeaderAndTabs: React.FC<ExamHeaderAndTabsProps> = ({
             </div>
           </div>
         </div>
-      )}
+      );
+    }
 
-      {error && (
-        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-border/40 bg-muted/50" role="alert">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
-              <span className="text-xs text-foreground/85 truncate" title={error}>
-                {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
+    if (showTaskOrDraftSlot && activeGenerationTask) {
+      return (
+        <div
+          data-testid="exam-active-ai-generation-banner"
+          className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
+          role="status"
+        >
+          <CircleNotch size={14} className="shrink-0 animate-spin motion-reduce:animate-none text-primary" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-xs text-foreground">
+            {t('exam_sheet:aiGeneration.backgroundRunningBanner', {
+              defaultValue: 'AI 正在后台生成题目，完成后将提示您审阅并确认入库',
+            })}
+          </span>
+          <DsButton
+            size="sm"
+            variant="ghost"
+            className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]"
+            onClick={onOpenGenerationProgress}
+          >
+            <Sparkle size={14} />
+            <span>{t('exam_sheet:aiGeneration.viewProgress', { defaultValue: '查看进度' })}</span>
+          </DsButton>
+        </div>
+      );
+    }
+
+    if (showTaskOrDraftSlot && pendingAuthoringDrafts.length > 0) {
+      const primaryDraft = pendingAuthoringDrafts[0];
+      const isAiDraft = primaryDraft.origin === 'ai_generation';
+      const isConfirming = confirmingDraftJobId === primaryDraft.job_id;
+      return (
+        <div
+          data-testid="exam-pending-drafts-banner"
+          className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
+          role="status"
+        >
+          {isAiDraft ? (
+            <Sparkle size={14} className="shrink-0 text-primary" aria-hidden="true" />
+          ) : (
+            <Scan size={14} className="shrink-0 text-primary" aria-hidden="true" />
+          )}
+          <span className="min-w-0 flex-1 text-xs text-foreground tabular-nums">
+            {isAiDraft
+              ? t('exam_sheet:aiGeneration.pendingDraftAttributed', {
+                  count: primaryDraft.question_count,
+                  source: primaryDraft.sourceLabel,
+                  defaultValue: `有 ${primaryDraft.question_count} 道 AI 生成待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                })
+              : t('exam_sheet:uploader.pendingDraftAttributed', {
+                  count: primaryDraft.question_count,
+                  source: primaryDraft.sourceLabel,
+                  defaultValue: `有 ${primaryDraft.question_count} 道待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                })}
+            {pendingAuthoringDrafts.length > 1
+              ? ` · 共 ${pendingAuthoringDrafts.length} 批待确认`
+              : ''}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <DsButton
+              size="sm"
+              variant="primary"
+              disabled={confirmingDraftJobId !== null}
+              className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs"
+              onClick={() => onConfirmPendingDraft(primaryDraft)}
+            >
+              {isConfirming ? <CircleNotch size={13} className="animate-spin motion-reduce:animate-none" /> : <CheckCircle size={13} />}
+              <span className="tabular-nums">
+                {t('exam_sheet:aiGeneration.confirmImportNow', {
+                  count: primaryDraft.question_count,
+                  defaultValue: `确认入库 (${primaryDraft.question_count})`,
+                })}
               </span>
-            </div>
-            <DsButton variant="ghost" size="sm" onClick={onRetryQuestions} className="h-7 gap-1.5 px-2.5 text-xs">
-              <ArrowClockwise size={13} />
-              {t('common:actions.retry')}
+            </DsButton>
+            <DsButton
+              size="sm"
+              variant="ghost"
+              disabled={isConfirming}
+              className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]"
+              onClick={() => onReviewPendingDraft(primaryDraft)}
+            >
+              <span>{t('exam_sheet:uploader.review_pending_draft', { defaultValue: '逐题审阅' })}</span>
             </DsButton>
           </div>
         </div>
-      )}
+      );
+    }
 
+    return null;
+  })();
+
+  return (
+    <>
       {/* Tab 栏：收敛为干净的 min-h-11 单行导航；整卷练习（BatchPracticeWorkspace）激活时隐藏右侧管理/导出噪点 */}
-      <div className="flex-shrink-0 min-h-11 px-3 py-1 sm:py-0 sm:h-11 sm:px-4 border-b border-border/35 bg-background/95 backdrop-blur-sm flex items-center">
+      <div className="flex-shrink-0 min-h-11 px-3 py-1 sm:py-0 sm:h-11 sm:px-4 border-b border-border/35 bg-background flex items-center">
         <div className="flex w-full items-center justify-between gap-2">
           {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多；方向键在一级入口间移动焦点 */}
           <div
@@ -569,170 +753,7 @@ export const ExamHeaderAndTabs: React.FC<ExamHeaderAndTabsProps> = ({
         </div>
       </div>
 
-      {/* 行内确认条：退出复习 / 退出练习 / 丢弃草稿 */}
-      {pendingReviewExitView !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('review:session.exitTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('review:session.exitTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('review:session.exitDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onCancelReviewExit}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onConfirmReviewExit}>
-                {t('review:session.exitConfirm')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingPracticeExitView !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('practice:session.exitTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('practice:session.exitTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('practice:session.exitDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onCancelPracticeExit}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onConfirmPracticeExit}>
-                {t('practice:session.exitConfirm')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingDraftNavigation !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('editor.discardDraftTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('editor.discardDraftTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onCancelDiscardDraft}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="danger" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onConfirmDiscardDraft}>
-                {t('common:actions.discard')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && activeGenerationTask && (
-        <div
-          data-testid="exam-active-ai-generation-banner"
-          className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
-          role="status"
-        >
-          <CircleNotch size={14} className="shrink-0 animate-spin text-primary" aria-hidden="true" />
-          <span className="min-w-0 flex-1 text-xs text-foreground">
-            {t('exam_sheet:aiGeneration.backgroundRunningBanner', {
-              defaultValue: 'AI 正在后台生成题目，完成后将提示您审阅并确认入库',
-            })}
-          </span>
-          <DsButton
-            size="sm"
-            variant="ghost"
-            className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]"
-            onClick={onOpenGenerationProgress}
-          >
-            <Sparkle size={14} />
-            <span>{t('exam_sheet:aiGeneration.viewProgress', { defaultValue: '查看进度' })}</span>
-          </DsButton>
-        </div>
-      )}
-
-      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && pendingAuthoringDrafts.length > 0 && (() => {
-        const primaryDraft = pendingAuthoringDrafts[0];
-        const isAiDraft = primaryDraft.origin === 'ai_generation';
-        const isConfirming = confirmingDraftJobId === primaryDraft.job_id;
-        return (
-          <div
-            data-testid="exam-pending-drafts-banner"
-            className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
-            role="status"
-          >
-            {isAiDraft ? (
-              <Sparkle size={14} className="shrink-0 text-primary" aria-hidden="true" />
-            ) : (
-              <Scan size={14} className="shrink-0 text-primary" aria-hidden="true" />
-            )}
-            <span className="min-w-0 flex-1 text-xs text-foreground tabular-nums">
-              {isAiDraft
-                ? t('exam_sheet:aiGeneration.pendingDraftAttributed', {
-                    count: primaryDraft.question_count,
-                    source: primaryDraft.sourceLabel,
-                    defaultValue: `有 ${primaryDraft.question_count} 道 AI 生成待确认题目（来源：${primaryDraft.sourceLabel}）`,
-                  })
-                : t('exam_sheet:uploader.pendingDraftAttributed', {
-                    count: primaryDraft.question_count,
-                    source: primaryDraft.sourceLabel,
-                    defaultValue: `有 ${primaryDraft.question_count} 道待确认题目（来源：${primaryDraft.sourceLabel}）`,
-                  })}
-              {pendingAuthoringDrafts.length > 1
-                ? ` · 共 ${pendingAuthoringDrafts.length} 批待确认`
-                : ''}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <DsButton
-                size="sm"
-                variant="primary"
-                disabled={confirmingDraftJobId !== null}
-                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs"
-                onClick={() => onConfirmPendingDraft(primaryDraft)}
-              >
-                {isConfirming ? <CircleNotch size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                <span className="tabular-nums">
-                  {t('exam_sheet:aiGeneration.confirmImportNow', {
-                    count: primaryDraft.question_count,
-                    defaultValue: `确认入库 (${primaryDraft.question_count})`,
-                  })}
-                </span>
-              </DsButton>
-              <DsButton
-                size="sm"
-                variant="ghost"
-                disabled={isConfirming}
-                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]"
-                onClick={() => onReviewPendingDraft(primaryDraft)}
-              >
-                <span>{t('exam_sheet:uploader.review_pending_draft', { defaultValue: '逐题审阅' })}</span>
-              </DsButton>
-            </div>
-          </div>
-        );
-      })()}
+      {activeBanner}
 
       {!readOnly && viewMode !== 'upload' && (
         <QBankAgentDiffBar

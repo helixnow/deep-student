@@ -18,6 +18,14 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuTrigger,
+  AppMenuContent,
+  AppMenuGroup,
+  AppMenuItem,
+  AppMenuSeparator,
+} from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   X,
@@ -33,11 +41,11 @@ import {
   Check,
   CaretUp,
   CaretDown,
+  DotsThree,
 } from '@phosphor-icons/react';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
@@ -397,8 +405,6 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   className,
 }) => {
   const { t } = useTranslation(['common', 'chatV2']);
-  // ★ 低-14：小屏时搜索框改为弹性宽度，不再固定 90px
-  const { isSmallScreen } = useBreakpoint();
   const title = titleProp || t('chatV2:documentViewer.defaultTitle');
   const ext = getExtension(fileName || titleProp);
   const isHighlightable = Boolean(resolvePrismLanguage(ext));
@@ -567,8 +573,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
         !expanded && className
       )}
     >
-      {/* 工具栏（小屏空间不足时允许换行，避免横向溢出） */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border bg-muted/50 px-3 py-2">
+      {/* 单行顶栏：标题 + 搜索 + 高频操作，次要操作（缩放重置/换行/下载）收进更多菜单 */}
+      <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2">
         {/* 标题 + 扩展名徽标 */}
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {ext && (
@@ -581,10 +587,10 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           </span>
         </div>
 
-        {/* 搜索：真实匹配计数 + 上一处/下一处 */}
-        <div className={cn('flex items-center gap-1', isSmallScreen && 'min-w-0 flex-1')}>
-          <div className={cn('flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1', isSmallScreen && 'min-w-0 flex-1')}>
-            <MagnifyingGlass size={14} className="text-muted-foreground" />
+        {/* 搜索：真实匹配计数 + 上一处/下一处（有查询时展开跳转按钮，避免空搜占宽） */}
+        <div className="flex shrink-0 items-center gap-1">
+          <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1">
+            <MagnifyingGlass size={14} className="shrink-0 text-muted-foreground" />
             <Input
               type="search"
               placeholder={t('chatV2:documentViewer.search')}
@@ -594,15 +600,12 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
                 setActiveMatch(0);
               }}
               onKeyDown={handleSearchKeyDown}
-              className={cn(
-                'bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-11',
-                isSmallScreen ? 'min-w-[120px] flex-1' : 'w-[90px]'
-              )}
+              className="w-[88px] sm:w-[120px] bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground [@media(pointer:coarse)]:min-h-11"
             />
             {hasQuery && (
               <span
                 className={cn(
-                  'min-w-[36px] text-center text-[11px] tabular-nums',
+                  'min-w-[36px] text-center text-2xs font-mono tabular-nums',
                   matches.length === 0 ? 'text-destructive' : 'text-muted-foreground'
                 )}
               >
@@ -612,46 +615,70 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
               </span>
             )}
           </div>
-          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:messageList.search.previous')} title={t('chatV2:messageList.search.previous')}>
-            <CaretUp size={14} />
-          </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:messageList.search.next')} title={t('chatV2:messageList.search.next')}>
-            <CaretDown size={14} />
-          </DsButton>
+          {hasQuery && (
+            <>
+              <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:messageList.search.previous')} title={t('chatV2:messageList.search.previous')}>
+                <CaretUp size={14} />
+              </DsButton>
+              <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:messageList.search.next')} title={t('chatV2:messageList.search.next')}>
+                <CaretDown size={14} />
+              </DsButton>
+            </>
+          )}
         </div>
 
-        {/* 字号 / 换行 */}
-        <div className="flex items-center gap-1">
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+        {/* 字号快捷缩放（桌面可见，窄屏可经由更多菜单操作） */}
+        <div className="hidden md:flex shrink-0 items-center gap-1">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
             <MagnifyingGlassMinus size={15} />
           </DsButton>
-          <span className="min-w-[42px] rounded-md bg-muted px-1.5 py-1 text-center text-xs font-medium text-muted-foreground">
+          <span className="min-w-[42px] rounded-md bg-muted px-1.5 py-1 text-center font-mono text-xs font-medium tabular-nums text-muted-foreground">
             {Math.round(fontScale * 100)}%
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
             <MagnifyingGlassPlus size={15} />
-          </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale(1)} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
-            <House size={15} />
-          </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]', '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} aria-label={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')} title={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')}>
-            <TextIndent size={15} />
           </DsButton>
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-1">
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
+        {/* 主操作 + 更多菜单 + 关闭 */}
+        <div className="flex shrink-0 items-center gap-1">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
           </DsButton>
           {/* RUST-FIX(RF-W09-inline-viewer-in-app-expand): Rust 版用 window.open(blob:) 开新窗口，Electron 窗口策略禁止，移动端会把整个应用替换掉 */}
-          <DsButton data-testid="inline-document-viewer-expand" variant="ghost" size="icon" iconOnly onClick={() => setExpanded((v) => !v)} className={cn(expanded ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]', '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} aria-pressed={expanded} aria-label={expandLabel} title={expandLabel}>
+          <DsButton data-testid="inline-document-viewer-expand" variant="ghost" size="icon" iconOnly onClick={() => setExpanded((v) => !v)} className={cn(expanded ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]')} aria-pressed={expanded} aria-label={expandLabel} title={expandLabel}>
             {expanded ? <ArrowsIn size={15} /> : <ArrowsOut size={15} />}
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
-            <Download size={15} />
-          </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <DsButton variant="ghost" size="icon" iconOnly className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.more')} title={t('common:actions.more')}>
+                <DotsThree size={16} />
+              </DsButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={200}>
+              <AppMenuGroup>
+                <AppMenuItem icon={<MagnifyingGlassPlus size={15} />} onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))}>
+                  {t('common:imageViewer.zoomIn')}
+                </AppMenuItem>
+                <AppMenuItem icon={<MagnifyingGlassMinus size={15} />} onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))}>
+                  {t('common:imageViewer.zoomOut')}
+                </AppMenuItem>
+                <AppMenuItem icon={<House size={15} />} onClick={() => setFontScale(1)}>
+                  {t('common:imageViewer.reset')} ({Math.round(fontScale * 100)}%)
+                </AppMenuItem>
+              </AppMenuGroup>
+              <AppMenuSeparator />
+              <AppMenuGroup>
+                <AppMenuItem icon={<TextIndent size={15} />} onClick={() => setWrap((w) => !w)}>
+                  {wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')}
+                </AppMenuItem>
+                <AppMenuItem icon={<Download size={15} />} onClick={handleDownload}>
+                  {t('common:actions.download')}
+                </AppMenuItem>
+              </AppMenuGroup>
+            </AppMenuContent>
+          </AppMenu>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
             <X size={15} />
           </DsButton>
         </div>
@@ -705,7 +732,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       </CustomScrollArea>
 
       {/* 快捷键提示 */}
-      <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+      <div className="border-t border-border px-3 py-1.5 text-2xs text-muted-foreground">
         {t('chatV2:documentViewer.previewHint')}
       </div>
     </div>

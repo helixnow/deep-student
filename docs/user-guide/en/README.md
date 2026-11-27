@@ -1,6 +1,6 @@
 # DeepStudent User Guide (English)
 
-> A practical, jargon-free handbook for learners using **DeepStudent v0.20.9** across Desktop (Windows / macOS / Linux), Android, and self-hosted WebUI / PWA.
+> A practical, jargon-free handbook for learners using **DeepStudent v0.20.10** across Desktop (Windows / macOS / Linux), Android, and self-hosted WebUI / PWA.
 >
 > Looking for the full 21-chapter Chinese edition? See the [Chinese User Guide (`docs/user-guide/README.md`)](../README.md).
 
@@ -21,11 +21,11 @@ If you just opened DeepStudent for the first time, jump straight into **[01 · Q
 
 | Guide | What You Will Learn |
 |---|---|
-| **[01 · Quickstart & Three-Minute Workflows](./01-quickstart.md)** | Zero-jargon 3-step welcome flow, inline missing-API-key banner, Study Desktop basics, keyboard shortcuts, and all three 3-minute scenario quickstarts |
-| **[02 · AI Chat, Study Spaces & Memory v2](./02-chat-and-memory-v2.md)** | Grounded chat, Study Spaces, Long-Term Memory Kernel, Interaction Hard Rules, per-message Memory Attribution pills, 10-version rollback, and Dialectic Reflection |
+| **[01 · Quickstart & Three-Minute Workflows](./01-quickstart.md)** | Zero-jargon 3-step welcome flow, External Tool Import (CC Switch / Magpie / OpenCode / Claude Code / Codex & `ccswitch://` links), inline missing-API-key banner, Study Desktop basics, keyboard shortcuts, and all three 3-minute scenario quickstarts |
+| **[02 · AI Chat, Study Spaces & Memory v2](./02-chat-and-memory-v2.md)** | Grounded chat, T3 unified model/CLI/reasoning/permission selector, Local Coding CLI collaboration (Desktop), in-place continuation, Study Spaces, Long-Term Memory Kernel, Interaction Hard Rules, per-message Memory Attribution pills, 10-version rollback, and Dialectic Reflection |
 | **[03 · PDF Reading, Notes, Lectures & Translation](./03-pdf-notes-media-study-loop.md)** | 5-color PDF highlights, rotated & encrypted annotated PDF export, 460px split-pane PDF-to-Notes jump-back, smart shared-prefix tab disambiguation, Media Studio Companion Q&A with clickable `mm:ss` timestamps, and Translation tone/version rollback |
 | **[04 · Flashcards, FSRS-6, Exam Sprint & Question Sets](./04-flashcards-exams-fsrs.md)** | FSRS-6 local-midnight scheduling, Unified Daily Sprint, 5,000-card library session memory, `⌘/Ctrl+K` deep jump into cards & notes, `.apkg` WebUI media parity, AnkiConnect v6, and Question Sets with draft-first confirmation |
-| **[05 · Plugins v2, Study Packs & Safe Mode Rescue](./05-plugins-v2-and-safe-mode.md)** | Zero-code `.dspack` Study Packs, AI Plugin Workshop & `✦ Refine with AI`, plain-English permissions, Safe Mode self-rescue, corrupted `user.profile.json` recovery, and automatic MCP pause |
+| **[05 · Plugins v2, Study Packs & Safe Mode Rescue](./05-plugins-v2-and-safe-mode.md)** | Zero-code `.dspack` Study Packs, AI Plugin Workshop & **Refine with AI**, plain-English permissions, Safe Mode self-rescue, corrupted `user.profile.json` recovery, and automatic MCP pause |
 | **[06 · Backups, Cloud Sync, Mobile & WebUI / PWA](./06-sync-backup-mobile-webui.md)** | Tiered local backups with automatic `pre_restore` safety snapshots, WebDAV & S3 end-to-end encrypted sync, credential masking, weak-network lock recovery, full-screenshot QR pairing + 3-way fallback, 360px mobile dock ergonomics, and self-hosted WebUI / PWA |
 
 ### Deep-Dive Reference
@@ -57,4 +57,4 @@ If you just opened DeepStudent for the first time, jump straight into **[01 · Q
 
 Spotted an outdated label or want a workflow added to the English guide? Open an issue on [GitHub Issues](https://github.com/helixnow/deep-student/issues).
 
-<!-- Baseline: DeepStudent v0.20.9 -->
+<!-- Baseline: DeepStudent v0.20.10 -->

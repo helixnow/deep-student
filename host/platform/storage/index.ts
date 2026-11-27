@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { definePlugin, CommandError } from '../../kernel/api.ts';
 import { AppError } from '../errors/api.ts';
-import type { ExactInjectionBudgetService, FeatureFlagsService, FileManagerPathsService, ImageQualityService, LlmUsageService, NoteAssetsService, VirtualFilePolicyService } from './api.ts';
+import type { ExactInjectionBudgetService, ExternalLlmConfigsService, FeatureFlagsService, FileManagerPathsService, ImageQualityService, LlmUsageService, NoteAssetsService, VirtualFilePolicyService } from './api.ts';
 import type {} from '../log/api.ts';
 import type {} from '../secrets/api.ts';
 import type {} from '../../../electron/api.ts';
@@ -18,6 +18,7 @@ import { setStorageLogger, storageLog } from './logging.ts';
 import { abort, append, beginIn, maxBytesForName, parseAppendRequest, stageFromReader, stagingDir } from './staged-upload.ts';
 import { copyFileVerified, denyHiddenLocalPath, openReadStream } from './unified-file-manager.ts';
 import { extractFileName, isVirtualUri, rejectDoubleEncodedVirtualUri } from './file-names.ts';
+import { createExternalLlmConfigsService } from './external-llm-configs.ts';
 import { buildStartupRecoveryReport, exportIncidentZip, removeStagedRecoveryExport, startupRecoveryExportStagingPath } from './recovery-export.ts';
 import {
   FeatureFlagManager,
@@ -74,7 +75,7 @@ function stagedMessage(error: unknown): string {
 
 export default definePlugin<Pick<StorageServiceOptions, 'migrationsDir' | 'dataLocalDir'>>({
   meta: {
-    id: 'dstu.platform.storage', lane: 'F3-storage', provides: ['storage', 'dataSpace', 'featureFlags', 'injectionBudget', 'noteAssets', 'imageQuality', 'llmUsage', 'fileManagerPaths', 'virtualFilePolicy'],
+    id: 'dstu.platform.storage', lane: 'F3-storage', provides: ['storage', 'dataSpace', 'featureFlags', 'injectionBudget', 'noteAssets', 'imageQuality', 'llmUsage', 'fileManagerPaths', 'virtualFilePolicy', 'externalLlmConfigs'],
     commands: ['get_data_space_info', 'get_slot_directory', 'get_test_slot_info', 'clear_test_slots',
       'mark_data_space_pending_switch_to_inactive', 'purge_all_database_files', 'purge_active_data_dir_now',
       'get_startup_recovery_status', 'retry_startup_recovery_preflight', 'list_startup_recovery_incidents',
@@ -134,6 +135,8 @@ export default definePlugin<Pick<StorageServiceOptions, 'migrationsDir' | 'dataL
     ctx.reflect.provide('imageQuality', imageQuality);
     const virtualFilePolicy: VirtualFilePolicyService = { isVirtualUri };
     ctx.reflect.provide('virtualFilePolicy', virtualFilePolicy);
+    const externalLlmConfigs: ExternalLlmConfigsService = createExternalLlmConfigsService(ctx.paths);
+    ctx.reflect.provide('externalLlmConfigs', externalLlmConfigs);
     await startup.start();
     // F2 在 Electron main 解析资源目录（打包 `Resources/migrations` / 开发态仓库目录）
     // 并通过 `DS_MIGRATIONS_DIR` 交给 Host 进程；profile 未显式配置时以它为准。

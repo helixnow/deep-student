@@ -264,9 +264,9 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     saveStatus === 'error'
       ? 'text-destructive'
       : saveStatus === 'saved'
-        ? 'text-green-600 dark:text-green-400'
+        ? 'text-success'
         : saveStatus === 'dirty'
-          ? 'text-amber-600 dark:text-amber-400'
+          ? 'text-warning'
           : 'text-muted-foreground';
 
   return (
@@ -305,7 +305,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         className={['flex items-center gap-2 text-xs transition-colors', statusToneClassName].join(' ')}
         aria-live="polite"
       >
-        {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
+        {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />}
         {saveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
         {saveStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
         <span>{saveStatus === 'dirty' && pasted ? t('settings:vendor_panel.api_key_pasted_ready') : statusText}</span>

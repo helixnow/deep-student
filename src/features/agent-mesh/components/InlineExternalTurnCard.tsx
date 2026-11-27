@@ -8,8 +8,8 @@ import {
   CircleNotch,
   HandPalm,
   LockKey,
+  NotePencil,
   ShieldWarning,
-  Sparkle,
   StopCircle,
   TerminalWindow,
   TreeStructure,
@@ -474,7 +474,7 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
               onClick={handleExplainChangesInChat}
               className="!h-6 !px-1.5 !py-0 gap-1 text-caption font-normal text-muted-foreground/70 hover:text-foreground"
             >
-              <Sparkle size={12} />
+              <NotePencil size={12} aria-hidden="true" />
               <span>{t('agentMesh:inlineCard.explainChanges', { defaultValue: '让主代理总结改动' })}</span>
             </DsButton>
           )}

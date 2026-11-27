@@ -1,7 +1,7 @@
 // RUST-FIX(RF-P6-manager-cards): 详情抽屉的正文——它增加了什么、健康、信任与权限（人话）、设置、版本与改动、技术信息。
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowCounterClockwise, ArrowSquareOut, Export, Play, Power, ShieldCheck, Sparkle, Trash } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, ArrowSquareOut, Export, PencilSimple, Play, Power, ShieldCheck, Trash } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -148,7 +148,7 @@ export function PluginDetail({
           ) : null}
           {canModify && onModify ? (
             <DsButton variant="outline" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} onClick={onModify}>
-              <Sparkle className="size-4" aria-hidden="true" />{t('manager.modify')}
+              <PencilSimple className="size-4" aria-hidden="true" />{t('manager.modify')}
             </DsButton>
           ) : null}
           {canExport && onExport ? (

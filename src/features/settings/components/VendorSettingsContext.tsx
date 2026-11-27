@@ -64,6 +64,8 @@ export interface VendorSettingsContextValue {
   onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   /** 保存 API Key 后自动获取模型 + 自动分配 */
   triggerPostSaveAutoFlow?: (vendor: VendorConfig) => Promise<void>;
+  /** 展开顶部内联外部工具导入面板 */
+  onOpenExternalImport?: () => void;
 }
 
 const VendorSettingsContext = createContext<VendorSettingsContextValue | null>(null);

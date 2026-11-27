@@ -1,6 +1,6 @@
 # 插件 SDK 指南（社区开发者）
 
-本指南面向**官方 `host/plugins` 之外的社区插件**。一个社区插件是一个包：`package.json#deepStudent` 清单（v1）、
+本指南面向**官方 `host/plugins` 之外的社区插件**。一个社区插件是一个包：`package.json#deepStudent` 清单（支持 v1 与 v2，v2 三层模型与声明式包见 [PLUGIN-V2.md](PLUGIN-V2.md)）、
 Host 半（Cordis 插件，跑在 Host 进程里），以及可选的 UI 半（跑在渲染进程的 UI 内核里）。Host 半的服务、监听都在
 `apply(ctx)` 里登记，卸载时自动撤销。
 
@@ -44,7 +44,7 @@ Host 半（Cordis 插件，跑在 Host 进程里），以及可选的 UI 半（�
 
 ## 1. 最小插件
 
-`package.json`（契约 `contracts/plugin-manifest/v1.schema.json`，字段说明见 `examples/README.md`）：
+`package.json`（v1 契约 `contracts/plugin-manifest/v1.schema.json`，v2 契约 `contracts/plugin-manifest/v2.schema.json`，字段说明见 `examples/README.md` 与 [PLUGIN-V2.md](PLUGIN-V2.md)）：
 
 ```json
 {
@@ -105,8 +105,8 @@ export default definePlugin<AliceGreeterConfig>({
 - `inject` 里每一项都是**必需**依赖（Cordis 4 没有可选 inject）。社区插件的 `inject` 必须 ⊆ 清单 `permissions` 里的
   `service:<服务名>` ∪ `log`，否则 `PERMISSION_UNDECLARED`（`host/kernel/manifest.ts` `grantedServices`）。可选发现用
   `ctx.get(name)`，它同样按声明拦截：社区包按名字只能拿到 `inject`、`service:*` 声明或自己提供的服务，其余抛 `PERMISSION_UNDECLARED`。
-- `permissions` 的 kind 是封闭集合：`service:<服务名>`（注入服务）、`net:<主机名>`（智能体工具联网读取，§3.4）、`agent:tools`
-  （新增智能体工具，§3.4）。别的 kind 以 `PERMISSION_UNKNOWN_KIND` 拒绝装载。
+- `permissions` 的 kind 是封闭集合（`host/kernel/manifest.ts` `PERMISSION_KINDS`）：`service:<服务名>`（注入服务）、`net:<主机名>`（只读 HTTPS 联网，v1 仅用于智能体工具，§3.4；v2 清单另支持高风险网络权限 `net:write:<主机名>` 与 `net:local:<端口>`，见 [PLUGIN-V2.md](PLUGIN-V2.md)）、`agent:tools`（新增智能体工具，§3.4）。别的 kind 以 `PERMISSION_UNKNOWN_KIND` 拒绝装载。
+- v2 清单（`manifestVersion: 2`）另支持零代码 `declarative` 声明式包（批改标准、技能、卡片模板、工作流），无需编写 Host 或 UI 代码（[PLUGIN-V2.md](PLUGIN-V2.md)）。
 - `Config` 不合法 → `CONFIG_INVALID`；schema 里有凭据字段（`role('secret')`，或 `apiKey`、`token`、`password` 等字段名）→
   `CONFIG_CREDENTIAL`（`host/kernel/plugin-config.ts` `resolvePluginConfig`）。凭据走 §7.1 的安全存储。
 - 社区插件不写 `meta.commands`（§2）。
@@ -115,8 +115,8 @@ export default definePlugin<AliceGreeterConfig>({
 
 ## 2. 命令与 UI 调用
 
-IPC 命令（`ctx.commands.register`）是**官方前端的线缆**：命令名必须存在于 `contracts/ipc/*.json`（从 Rust 的
-`#[tauri::command]` 抽取），同一个命令只能有一个插件注册，而这些命令都已由官方插件注册。社区插件不注册命令，也不能发明新命令。
+IPC 命令（`ctx.commands.register`）是**官方前端的线缆**：命令名与入参/出参结构以 `contracts/ipc/` 为单一事实源
+（更新契约后执行 `npm run contracts:generate` 生成前后端类型与校验表），同一个命令只能有一个插件注册，而这些命令都已由官方插件注册。社区插件不注册命令，也不能发明新命令。
 
 社区插件的 UI 半调用 Host 半走内核通道 `plugin:host|call`（`host/kernel/API.md` §15）：
 
@@ -537,8 +537,9 @@ export default definePlugin({
 - 同一个任务不会并发；任务抛错只记日志，下次照常；`run.signal` 在插件卸载时中止。上次运行时间存在应用设置里，重启后接着算
   （`host/plugins/plugin-services/src/schedule.ts` `PluginScheduler`）。
 - 应用事件（`host/plugins/plugin-services/api.ts` `StudyEvents`）：`study/note-saved`（笔记新建或保存）、`study/card-reviewed`（复习
-  打了分）、`study/answer-finished`（学习助手答完一轮，带问题与回答正文）、`study/cards-created`（新卡片存进卡片库）。事件在动作
-  完成后异步送达，监听器抛错不影响应用。
+  打了分）、`study/answer-finished`（学习助手答完一轮，带问题与回答正文）、`study/cards-created`（新卡片存进卡片库）、
+  `study/essay-graded`（作文批改完成并落库）、`study/question-answered`（题库作答或判分完成）。事件在动作完成后异步送达，
+  监听器抛错不影响应用。
 
 可运行的完整例子是工坊配方 `resources/dstu-workshop/recipes/nightly-summary/`：每晚读当天改过的笔记、让模型写总结、存成笔记并通知。
 
@@ -672,7 +673,7 @@ UI 半是 `@deepstudent/ui` 的 `definePlugin`，`meta.host: true` 表示与同 
 | `ctx.ui.host.on(event, handler)` | 已开放 | Host 插件通过 `ctx.uiEvents.emit` 向自己的 UI 半推事件；形状见 §5，study-goal 展示已挂载界面更新 |
 
 完整 API 见 `src/ui-sdk/README.md`，导出见 `src/ui-sdk/index.ts`。构建（在插件目录里 `npm run build:ui`，即应用仓库的
-`examples/scripts/build-ui.mjs`：经典 JSX、四个共享模块 external）与组件约定见 `examples/README.md`。
+`examples/scripts/build-ui.mjs`：经典 JSX、16 个共享模块 external，含 `react`、`react-dom`、`@deepstudent/ui`、`i18next` 与 12 个 `@milkdown/kit/*` 入口）与组件约定见 `examples/README.md`。
 
 ## 5. 事件
 
@@ -844,9 +845,9 @@ describe('alice.greeter', () => {
 | 对象 | 兼容规则 |
 |---|---|
 | 插件 id | 发布后不变；改名等于新插件 |
-| `engines.deepStudent` | 针对应用版本（根 `package.json#version`）；0.x 阶段 `^0.11` 不包含 0.12.0；预发布版本的应用不满足任何范围 |
-| `engines.deepStudentPluginApi` | 可选的独立插件 API 主版本，当前支持字符串 `"1"`。应用升级与发版验收见 [UPGRADES.md](UPGRADES.md) |
-| `manifestVersion` | v1 固定为 1；更高的版本被旧应用以 `MANIFEST_VERSION_UNSUPPORTED` 拒绝 |
+| `engines.deepStudent` | 针对应用版本（根 `package.json#version`）；0.x 阶段常规语义化范围按次版本划分，`host/kernel/manifest.ts` `satisfiesAppEngine` 在 0.20+ 额外兼容旧 `0.11` 线范围以及旧工坊托管项目的默认 `^0.20`；预发布版本的应用在严格校验下不满足范围 |
+| `engines.deepStudentPluginApi` | 可选的独立插件 API 主版本，当前支持 `"1"` 与 `"2"`（`host/kernel/manifest.ts` `SUPPORTED_PLUGIN_APIS`）。应用升级与发版验收见 [UPGRADES.md](UPGRADES.md) |
+| `manifestVersion` | 同时支持 `1` 与 `2`（`host/kernel/manifest.ts` `SUPPORTED_MANIFEST_VERSION` = 2；v2 新增 `tier`、`kind`、`declarative` 与细粒度网络权限，见 [PLUGIN-V2.md](PLUGIN-V2.md)）；更高的版本以 `MANIFEST_VERSION_UNSUPPORTED` 拒绝 |
 | 服务名 | 由 id 派生；版本由 `api.ts` 导出的描述对象声明，破坏性变更换新名字，旧服务保留一个发布周期 |
 | 服务方法 | 只能新增可选参数或方法；删除、改语义、改错误类型都算不兼容 |
 | 事件名与载荷 | 新增兼容；删除或改载荷不兼容 |
@@ -859,9 +860,9 @@ Host 用 Node 原生类型擦除运行 TypeScript，只能用**可擦除的语�
 
 ## 11. 提交前检查清单
 
-- [ ] 清单通过 `contracts/plugin-manifest/v1.schema.json`；`id`、`version` 与 Host 半、UI 半的 `meta` 一致。
+- [ ] 清单通过 `contracts/plugin-manifest/v1.schema.json` 或 `contracts/plugin-manifest/v2.schema.json`；`id`、`version` 与 Host 半、UI 半的 `meta` 一致。
 - [ ] `meta.provides` 都在自己的服务名空间里，且与实际提供的服务完全一致；`inject` 都在 `permissions` 里。
-- [ ] Host 半只从 kernel `api.ts`、其他插件 `api.ts`（类型）导入；UI 半只导入四个共享模块。
+- [ ] Host 半只从 kernel `api.ts`、其他插件 `api.ts`（类型）导入；UI 半只导入 16 个共享模块（`react`、`react-dom`、`@deepstudent/ui`、`i18next` 与 12 个 `@milkdown/kit/*` 入口）。
 - [ ] 没有 `console.*`、空 catch、`void e` 规避；日志走 `ctx.logger`。
 - [ ] 远程方法都列在 `meta.remote`，错误用 `CommandError`。
 - [ ] 声明了 `agentTools` 时：每个工具在主服务上有同名方法，返回纯 JSON；联网只用 `tool.fetch`，主机都写成 `net:<主机名>`；

@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FilmStrip, MusicNotes, Television } from '@phosphor-icons/react';
+import { CheckSquare, CircleNotch, FilmStrip, MusicNotes, Television, UploadSimple } from '@phosphor-icons/react';
 import { stripBilibiliExtension } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import { useMobileHeader } from '@/components/layout/MobileHeaderContext';
 import { MobileSlidingLayout } from '@/components/layout/MobileSlidingLayout';
@@ -20,7 +20,15 @@ import {
   mobileDrawerRowTitleClassName,
   mobileDrawerSectionLabelClassName,
 } from '@/components/layout/mobileDrawerStyles';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { DsButton } from '@/components/ui/DsButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
+import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { BACK_PRIORITY, registerVisibilityGuardedBackHandler } from '@/app/navigation/androidBackCoordinator';
@@ -61,6 +69,8 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [studyTitle, setStudyTitle] = useState<string | null>(null);
+  const [librarySelectMode, setLibrarySelectMode] = useState(false);
+  const [bilibiliRequestSeq, setBilibiliRequestSeq] = useState(0);
   const activeResourceId = useMediaStudioNavStore((s) => s.activeResourceId);
   const openStudy = useMediaStudioNavStore((s) => s.openStudy);
   const closeStudy = useMediaStudioNavStore((s) => s.closeStudy);
@@ -88,8 +98,75 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
   const title = inStudy ? studyTitle ?? t('mediaStudio:title') : t('mediaStudio:title');
 
   useEffect(() => {
+    if (inStudy || library.items.length === 0) {
+      setLibrarySelectMode(false);
+    }
+  }, [inStudy, library.items.length]);
+
+  useEffect(() => {
     onTitleChange?.(inStudy ? studyTitle : null);
   }, [inStudy, onTitleChange, studyTitle]);
+
+  const hasLibraryItems = library.items.length > 0;
+  const hasLibraryError = Boolean(library.error);
+  const mobileLibraryRightActions = useMemo(() => {
+    if (inStudy || (!hasLibraryItems && !hasLibraryError)) return undefined;
+    return (
+      <>
+        {hasLibraryItems ? (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            onClick={() => setLibrarySelectMode((prev) => !prev)}
+            aria-pressed={librarySelectMode}
+            aria-label={t('mediaStudio:select.toggle')}
+            title={t('mediaStudio:select.toggle')}
+            data-media-select-toggle=""
+            className={cn(
+              shellIconButtonClassName,
+              librarySelectMode && 'bg-primary/10 text-primary hover:bg-primary/15',
+            )}
+          >
+            <CheckSquare size={19} aria-hidden="true" />
+          </DsButton>
+        ) : null}
+        {!librarySelectMode ? (
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                disabled={importer.importing}
+                aria-label={t('mediaStudio:import.button')}
+                title={t('mediaStudio:import.button')}
+                data-media-import=""
+                className={shellIconButtonClassName}
+              >
+                {importer.importing
+                  ? <CircleNotch size={19} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  : <UploadSimple size={19} aria-hidden="true" />}
+              </DsButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={200}>
+              <AppMenuItem
+                icon={<UploadSimple size={15} aria-hidden="true" />}
+                onClick={importer.pick}
+                disabled={importer.importing}
+              >
+                {t('mediaStudio:import.button')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<Television size={15} aria-hidden="true" />}
+                onClick={() => setBilibiliRequestSeq((seq) => seq + 1)}
+              >
+                {t('mediaStudio:import.bilibili')}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
+        ) : null}
+      </>
+    );
+  }, [hasLibraryError, hasLibraryItems, importer.importing, importer.pick, inStudy, librarySelectMode, t]);
 
   useMobileHeader('media', {
     title,
@@ -97,7 +174,8 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
     showMenu: !inStudy,
     showBackArrow: inStudy,
     onMenuClick: inStudy ? handleBack : () => setDrawerOpen((open) => !open),
-  }, [title, inStudy, handleBack, t, isActive], isActive && !embedded);
+    rightActions: mobileLibraryRightActions,
+  }, [title, inStudy, handleBack, mobileLibraryRightActions, t, isActive], isActive && !embedded);
 
   // Android 返回：学习页 → 库页（菜单 / 弹窗以 overlay 档先行处理）
   useEffect(() => {
@@ -131,6 +209,10 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
       onOpenId={openStudy}
       isSmallScreen={isSmallScreen}
       titlebarTarget={titlebarTarget}
+      selectMode={librarySelectMode}
+      onSelectModeChange={setLibrarySelectMode}
+      bilibiliRequestSeq={bilibiliRequestSeq}
+      mobileHeaderActionsActive={isSmallScreen && !embedded}
     />
   );
 

@@ -1833,7 +1833,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           saveStates={saveStates}
           actionsSlotRef={setNotesChromeSlot}
           backlinksOpen={backlinksOpen}
-          onToggleBacklinks={() => setBacklinksOpen((open) => !open)}
+          onToggleBacklinks={focusMode ? undefined : () => setBacklinksOpen((open) => !open)}
         />,
         titlebarTarget,
       ) : null}
@@ -1971,9 +1971,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                       data-active={backlinksOpen ? 'true' : undefined}
                       aria-pressed={backlinksOpen}
                       aria-label={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+                      title={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
                       onClick={() => setBacklinksOpen((open) => !open)}
                     >
-                      <span>{t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}</span>
+                      <span>{t('notesWorkspace.backlinks.title', 'Links')}</span>
                     </button>
                   )}
                   {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}

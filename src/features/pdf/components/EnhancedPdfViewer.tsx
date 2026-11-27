@@ -115,6 +115,8 @@ import {
   ArrowUUpRight,
   Crosshair,
   TreeStructure,
+  FileText,
+  Scales,
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -5400,10 +5402,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     <span>{t('pdf:toolbar.highlight')}</span>
                   </DsButton>
                 )}
-                <DsButton variant="ghost" size="sm" className={`ds-more-item ${regionCaptureActive ? 'active' : ''}`} disabled={numPages === 0} onClick={() => { setRegionCaptureActive(prev => !prev); setShowMoreMenu(false); }}>
-                  <Crop size={14} />
-                  <span>{t('pdf:toolbar.capture_ask')}</span>
-                </DsButton>
+                {!showStudyShortcuts && (
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${regionCaptureActive ? 'active' : ''}`} disabled={numPages === 0} onClick={() => { setRegionCaptureActive(prev => !prev); setShowMoreMenu(false); }}>
+                    <Crop size={14} />
+                    <span>{t('pdf:toolbar.capture_ask')}</span>
+                  </DsButton>
+                )}
                 {interopResourceId && (
                   <DsButton
                     variant="ghost"
@@ -5416,9 +5420,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   >
                     <TreeStructure size={14} />
                     <span>{t('pdf:interop.auto_excerpt')}</span>
-                    {autoExcerptActive && (
-                      <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-                    )}
                   </DsButton>
                 )}
                 {!showStudyShortcuts && (
@@ -5429,10 +5430,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       <BookOpenText size={16} />
                       <span>{t('pdf:paperGuide.attach_for_comparison')}</span>
                     </DsButton>
-                    {(['overview', 'current_page', 'methodology', 'critique'] as const).map(mode => (
+                    {([
+                      ['overview', BookOpen],
+                      ['current_page', FileText],
+                      ['methodology', TreeStructure],
+                      ['critique', Scales],
+                    ] as const).map(([mode, ModeIcon]) => (
                       <DsButton key={mode} variant="ghost" size="sm" className="ds-more-item"
                         disabled={numPages === 0} onClick={() => void handlePaperGuideAction(mode)}>
-                        <Sparkle size={14} />
+                        <ModeIcon size={14} />
                         <span>{t(`pdf:paperGuide.${mode}`, { page: currentPage })}</span>
                       </DsButton>
                     ))}
@@ -5447,10 +5453,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotateCcw(); setShowMoreMenu(false); }}>
                   <ArrowCounterClockwise size={14} />
                   <span>{t('pdf:toolbar.rotate_ccw')}</span>
-                </DsButton>
-                <DsButton variant="ghost" size="sm" className={`ds-more-item ${trimMargins ? 'active' : ''}`} onClick={() => { setTrimMargins(prev => !prev); setShowMoreMenu(false); }}>
-                  <ArrowsOut size={14} />
-                  <span>{t('pdf:toolbar.trim_margins')}</span>
                 </DsButton>
                 <DsButton variant="ghost" size="sm" className={`ds-more-item ${isDarkReading ? 'active' : ''}`} onClick={() => { handleToggleDarkReading(); setShowMoreMenu(false); }}>
                   {isDarkReading ? <Sun size={14} /> : <Moon size={14} />}

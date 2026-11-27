@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DsButton } from '@/components/ui/DsButton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { invoke } from './runtime';
 
 /** MCP OAuth 登录 / 重新授权 / 注销 */
@@ -105,34 +105,29 @@ export function McpOAuthControls({
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-medium text-foreground">{t('settings:mcp.oauth.title')}</div>
-          <div className="text-xs text-muted-foreground">
+          <div className={cn('text-xs', authorized ? 'text-success' : 'text-muted-foreground')}>
             {authorized
               ? t('settings:mcp.oauth.status_authorized')
               : t('settings:mcp.oauth.status_none')}
           </div>
         </div>
-        <span className={cn(
-          'w-2 h-2 rounded-full flex-shrink-0',
-          authorized ? 'bg-green-500' : 'bg-muted-foreground/40',
-        )} />
       </div>
       <div className="flex flex-wrap gap-2 max-md:justify-end">
         <DsButton
           size="sm"
           variant="primary"
-          className="[@media(pointer:coarse)]:!min-h-11"
           disabled={busy || hasApiKey || !resourceUrl.trim()}
           onClick={() => void startOauth()}
         >
           {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
         </DsButton>
         {busy && (
-          <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void cancelOauth()}>
+          <DsButton size="sm" variant="ghost" onClick={() => void cancelOauth()}>
             {t('settings:mcp.oauth.cancel')}
           </DsButton>
         )}
         {authorized && (
-          <DsButton size="sm" variant="outline" className="!text-destructive [@media(pointer:coarse)]:!min-h-11" disabled={busy} onClick={() => void revokeOauth()}>
+          <DsButton size="sm" variant="outline" className="!text-destructive" disabled={busy} onClick={() => void revokeOauth()}>
             {t('settings:mcp.oauth.logout')}
           </DsButton>
         )}

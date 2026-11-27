@@ -716,8 +716,9 @@ export async function excelBufferToUniverWorkbook(
 /** Extract plain text or primitive value from a Univer cell (including multiline `p.body.dataStream`). */
 export function extractUniverCellPlainText(cell: Nullable<ICellData>): string {
   if (!cell) return '';
-  if (cell.p?.body?.dataStream) {
-    return cell.p.body.dataStream.replace(/\r\n$/, '');
+  const richDoc = cell.p ?? undefined;
+  if (richDoc && richDoc.body?.dataStream) {
+    return richDoc.body.dataStream.replace(/\r\n$/, '');
   }
   if (cell.v === null || cell.v === undefined) return '';
   if (cell.t === CellValueType.BOOLEAN) {
@@ -731,7 +732,7 @@ function resolveStyleObject(
   stylesMap: Record<string, Nullable<IStyleData>>,
 ): IStyleData | null {
   if (!styleRef) return null;
-  if (typeof styleRef === 'string') return stylesMap[styleRef] ?? null;
+  if (typeof styleRef === 'string') return (stylesMap[styleRef] || null) as IStyleData | null;
   return styleRef;
 }
 
@@ -746,11 +747,13 @@ function applyUniverStyleToExcelCell(target: ExcelJS.Cell, style: IStyleData | n
   if (style.it === BooleanNumber.TRUE) { font.italic = true; hasFont = true; }
   if (style.ul?.s === BooleanNumber.TRUE) { font.underline = true; hasFont = true; }
   if (style.st?.s === BooleanNumber.TRUE) { font.strike = true; hasFont = true; }
-  const fontArgb = hexToArgb(style.cl?.rgb);
+  const fontColor = style.cl || undefined;
+  const fontArgb = hexToArgb(fontColor?.rgb || undefined);
   if (fontArgb) { font.color = { argb: fontArgb }; hasFont = true; }
   if (hasFont) target.font = { ...(target.font ?? {}), ...font };
 
-  const fillArgb = hexToArgb(style.bg?.rgb);
+  const fillColor = style.bg || undefined;
+  const fillArgb = hexToArgb(fillColor?.rgb || undefined);
   if (fillArgb) {
     target.fill = {
       type: 'pattern',
@@ -766,7 +769,8 @@ function applyUniverStyleToExcelCell(target: ExcelJS.Cell, style: IStyleData | n
       if (!edge) return undefined;
       const mapped = mapUniverBorderStyle(edge.s);
       if (!mapped) return undefined;
-      const argb = hexToArgb(edge.cl?.rgb);
+      const edgeColor = edge.cl || undefined;
+      const argb = hexToArgb(edgeColor?.rgb || undefined);
       return argb ? { style: mapped, color: { argb } } : { style: mapped };
     };
     const top = toEdge(style.bd.t);
@@ -799,8 +803,9 @@ function applyUniverStyleToExcelCell(target: ExcelJS.Cell, style: IStyleData | n
   }
   if (hasAlign) target.alignment = { ...(target.alignment ?? {}), ...alignment };
 
-  if (style.n?.pattern) {
-    target.numFmt = style.n.pattern;
+  const numFmt = style.n || undefined;
+  if (numFmt?.pattern) {
+    target.numFmt = numFmt.pattern;
   }
 }
 
@@ -917,14 +922,16 @@ export async function univerWorkbookToExcelBytes(
       if (!Number.isInteger(rIdx) || rIdx < 0 || !rowCells) continue;
       const excelRow = ws.getRow(rIdx + 1);
 
-      for (const [colKey, cellData] of Object.entries(rowCells)) {
+      for (const [colKey, rawCellData] of Object.entries(rowCells as Record<string, Nullable<ICellData>>)) {
         const cIdx = Number(colKey);
+        const cellData = rawCellData || undefined;
         if (!Number.isInteger(cIdx) || cIdx < 0 || !cellData) continue;
         const excelCell = excelRow.getCell(cIdx + 1);
 
         const rawFormula = typeof cellData.f === 'string' && cellData.f.trim() !== ''
           ? cellData.f.trim().replace(/^=/, '')
           : null;
+        const richCellDoc = cellData.p || undefined;
 
         if (rawFormula) {
           let cachedResult: string | number | boolean | undefined;
@@ -938,8 +945,8 @@ export async function univerWorkbookToExcelBytes(
           excelCell.value = cachedResult !== undefined
             ? { formula: rawFormula, result: cachedResult }
             : { formula: rawFormula };
-        } else if (cellData.p?.body?.dataStream) {
-          excelCell.value = cellData.p.body.dataStream.replace(/\r\n$/, '');
+        } else if (richCellDoc?.body?.dataStream) {
+          excelCell.value = richCellDoc.body.dataStream.replace(/\r\n$/, '');
         } else if (cellData.v !== null && cellData.v !== undefined) {
           if (cellData.t === CellValueType.BOOLEAN) {
             excelCell.value = cellData.v === true || cellData.v === 1 || cellData.v === '1';
@@ -950,7 +957,7 @@ export async function univerWorkbookToExcelBytes(
             excelCell.value = String(cellData.v);
             excelCell.numFmt = '@';
           } else {
-            excelCell.value = cellData.v;
+            excelCell.value = cellData.v as ExcelJS.CellValue;
           }
         }
 

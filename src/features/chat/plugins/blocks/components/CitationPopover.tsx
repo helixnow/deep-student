@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import {
   FileText,
   Globe,
@@ -516,7 +517,9 @@ export interface CitationBadgeProps {
 /**
  * CitationBadge - 引用标记组件
  *
- * 用于在正文中显示引用标记 [1]、[2] 等
+ * 用于在正文中显示紧凑数字引用气泡（1、2、忆2 等）。
+ * 触屏（pointer: coarse）下使用 coarseHitClassFor24 伪元素扩区保证可点击热区，
+ * 避免实体撑高 44px 破坏正文行高。
  */
 export const CitationBadge: React.FC<CitationBadgeProps> = ({
   index,
@@ -534,15 +537,15 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
       onFocus={onFocus}
       onBlur={onBlur}
       className={cn(
-        '!inline-flex !min-w-[1.25rem] !h-5 !px-1 mx-0.5',
-        'text-xs font-medium',
+        '!inline-flex !h-5 !min-h-0 !min-w-5 !px-1.5 mx-0.5 align-baseline',
+        '!rounded-full !text-xs font-medium leading-none tabular-nums',
         'bg-primary/10 text-primary',
         'hover:bg-primary/20',
-        '[@media(pointer:coarse)]:!min-h-11',
+        coarseHitClassFor24,
         className
       )}
     >
-      [{prefix}{index + 1}]
+      {prefix}{index + 1}
     </DsButton>
   );
 };
@@ -674,13 +677,13 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
         title={orphanTooltip}
         aria-label={orphanTooltip}
         className={cn(
-          'inline-flex items-center justify-center align-baseline min-w-[1.25rem] h-5 px-1 mx-0.5',
-          'rounded text-xs font-medium select-none',
+          'inline-flex items-center justify-center align-baseline min-w-5 h-5 px-1.5 mx-0.5',
+          'rounded-full text-xs font-medium leading-none tabular-nums select-none',
           'bg-muted/80 text-muted-foreground border border-border/60',
           className,
         )}
       >
-        [{citationIndex}]
+        {citationIndex}
       </span>
     );
   }

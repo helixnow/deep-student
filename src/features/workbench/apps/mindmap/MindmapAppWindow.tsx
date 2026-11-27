@@ -34,6 +34,7 @@ import { extractDisplayFileName, fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import type { AppWindowProps } from '../../core/types';
+import { setWindowDirty } from '../../core/windowCloseGuard';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import { ContentEmptyState } from '../content/ContentEmptyState';
 import { ContentSkeleton } from '../content/ContentSkeleton';
@@ -416,33 +417,21 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   useResizeSettle(hostRef, contentRef, hasResource);
   useDragRenderPause(hostRef, renderThrottleMs);
 
-  // B-9：独立窗口的窗口级保存指示——dirty/saving 时窗口标题追加 ●，
-  // 与 Notes 标签条圆点语义对齐（AppWindowProps 无专用保存通道，经标题透出）。
-  const lastTitleRef = useRef('');
-  const saveStateRef = useRef<'saved' | 'saving' | 'dirty'>('saved');
-
-  const emitTitle = useCallback(() => {
-    const title = lastTitleRef.current;
-    const showMarker = saveStateRef.current !== 'saved';
-    onTitleChange(showMarker && title ? `● ${title}` : title);
-  }, [onTitleChange]);
+  // 窗口级保存指示经 setWindowDirty 通知壳层（WindowTitleBar 渲染 dirty 态），标题保持纯文本。
+  useEffect(() => () => setWindowDirty(windowId, false), [windowId]);
 
   const handleTitleChange = useCallback(
     (title: string) => {
-      lastTitleRef.current = title;
-      emitTitle();
+      onTitleChange(title);
     },
-    [emitTitle],
+    [onTitleChange],
   );
 
   const handleSaveStateChange = useCallback(
     (state: 'saved' | 'saving' | 'dirty') => {
-      const wasMarked = saveStateRef.current !== 'saved';
-      saveStateRef.current = state;
-      const isMarked = state !== 'saved';
-      if (wasMarked !== isMarked) emitTitle();
+      setWindowDirty(windowId, state !== 'saved');
     },
-    [emitTitle],
+    [windowId],
   );
 
   const handleContentReady = useCallback(() => markReady(), [markReady]);

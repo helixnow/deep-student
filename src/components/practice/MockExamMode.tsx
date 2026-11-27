@@ -87,6 +87,8 @@ interface MockExamModeProps {
   markedQuestionIds?: ReadonlySet<string>;
   /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
   isActive?: boolean;
+  /** 嵌入 PracticeLauncher 等自带顶栏的容器时省略内部重复标题 */
+  embedded?: boolean;
   className?: string;
 }
 
@@ -114,6 +116,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   currentQuestionId,
   markedQuestionIds,
   isActive,
+  embedded = false,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -393,7 +396,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 <span className="text-base text-muted-foreground">%</span>
               </span>
               <span className="text-xs text-muted-foreground">{t('mockExam.correctRateLabel')}</span>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-2xs text-muted-foreground tabular-nums">
                 {score.correct_count}/{score.total_count}
               </span>
             </div>
@@ -494,13 +497,15 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   if (!activeSession) {
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="px-0 pb-4 sm:px-6">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileText size={18} className="text-primary" />
-            {t('mockExam.title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6 px-0 sm:px-6">
+        {!embedded && (
+          <CardHeader className="px-0 pb-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText size={18} className="text-primary" />
+              {t('mockExam.title')}
+            </CardTitle>
+          </CardHeader>
+        )}
+        <CardContent className={cn('space-y-6 px-0 sm:px-6', embedded && 'pt-1')}>
           {/* 基本配置 */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -749,7 +754,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
         {/* 时间不足警告 */}
         {examRemainingSeconds > 0 && examRemainingSeconds < 60 && (
           <div className="ui-rise-in flex items-center gap-2 rounded-md bg-destructive/10 p-2.5 text-destructive">
-            <WarningCircle size={16} className="animate-pulse" />
+            <WarningCircle size={16} className="animate-pulse motion-reduce:animate-none" />
             <span className="text-sm font-medium">{t('mockExam.timeWarning')}</span>
           </div>
         )}

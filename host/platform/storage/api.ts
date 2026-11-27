@@ -711,6 +711,39 @@ export interface VirtualFilePolicyService {
   isVirtualUri(path: string): boolean;
 }
 
+export type ExternalConfigSourceId =
+  | 'magpie'
+  | 'cc-switch'
+  | 'opencode'
+  | 'claude-code'
+  | 'codex'
+  | 'custom-file';
+
+export type ExternalConfigFileKind = 'json' | 'toml' | 'sql' | 'sqlite-rows' | 'env';
+
+export interface ExternalSqliteTables {
+  readonly providers: readonly Record<string, unknown>[];
+  readonly universalProviders: readonly Record<string, unknown>[];
+}
+
+export interface ExternalConfigRawSource {
+  readonly source: ExternalConfigSourceId;
+  readonly kind: ExternalConfigFileKind;
+  readonly pathLabel: string;
+  readonly text: string | null;
+  readonly companionText: string | null;
+  readonly sqliteTables: ExternalSqliteTables | null;
+  readonly error: string | null;
+}
+
+export interface ExternalLlmConfigsService {
+  scanDefaultSources(): Promise<{
+    readonly supported: boolean;
+    readonly sources: readonly ExternalConfigRawSource[];
+  }>;
+  readExternalFile(filePath: string): Promise<ExternalConfigRawSource>;
+}
+
 // ------------------------------------------------------------------ ctx 增强
 
 declare module '@deepseek-ai/cordis' {
@@ -726,5 +759,6 @@ declare module '@deepseek-ai/cordis' {
     llmUsage: LlmUsageService;
     fileManagerPaths: FileManagerPathsService;
     virtualFilePolicy: VirtualFilePolicyService;
+    externalLlmConfigs: ExternalLlmConfigsService;
   }
 }

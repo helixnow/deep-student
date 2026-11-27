@@ -526,6 +526,7 @@ describe('Wave-3 Flashcards UI fixes (G16 Slice 3 + SOTA S5)', () => {
       expect(screen.getByTestId('library-page-jump-btn').textContent).toBe('Go');
 
       // Open CSV import panel
+      fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
       fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
       expect(libView.container.textContent).not.toMatch(CJK_RE);
       libView.unmount();

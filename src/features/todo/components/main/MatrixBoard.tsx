@@ -35,14 +35,6 @@ import { EISENHOWER_QUADRANTS, localToday } from '../../types';
 import { TodoItemRow } from './TodoItemRow';
 import '../../styles/todo-motion.css';
 
-/** 象限头部 6px 语义微圆点（替代整条彩色底纹，保持 Things 3 / Linear 极简克制） */
-const QUADRANT_DOTS: Record<EisenhowerQuadrant, string> = {
-  urgentImportant: 'bg-[color:hsl(var(--destructive))]',
-  importantNotUrgent: 'bg-[color:hsl(var(--warning))]',
-  urgentNotImportant: 'bg-[color:hsl(var(--info))]',
-  neither: 'bg-muted-foreground/45',
-};
-
 /** 拖到目标象限时需要落库的字段变更；已在该象限则返回 null */
 export function quadrantDropChanges(
   item: TodoItem,
@@ -127,10 +119,6 @@ const MatrixMoveMenu: React.FC<{
                 }}
                 className="w-full justify-start gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs font-normal text-foreground"
               >
-                <span
-                  aria-hidden="true"
-                  className={cn('h-2 w-2 shrink-0 rounded-full', QUADRANT_DOTS[target])}
-                />
                 <span className="flex-1 truncate">{t(`todo:matrix.${target}`)}</span>
                 {isCurrent && (
                   <Check size={13} className="shrink-0 text-[color:hsl(var(--primary))]" />
@@ -208,10 +196,6 @@ const QuadrantCell: React.FC<{
       )}
     >
       <div className="flex shrink-0 items-center gap-2 px-4 py-2">
-        <span
-          aria-hidden="true"
-          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', QUADRANT_DOTS[quadrant])}
-        />
         <span className="text-xs font-medium text-foreground/85">
           {t(`todo:matrix.${quadrant}`)}
         </span>

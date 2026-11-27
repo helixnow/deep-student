@@ -365,8 +365,9 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     </div>
   ) : null;
 
-  // ★ 窄窗溢出菜单：新建文件夹 / 刷新 / 排序 收进一个 … 菜单
-  const overflowMenu = (onNewFolder || onSortChange) ? (
+  // ★ 窄窗溢出菜单：新建文件夹（仅在无统一创建菜单时） / 排序 收进一个 … 菜单
+  const showStandaloneNewFolder = Boolean(onNewFolder && !createMenuItems);
+  const overflowMenu = (showStandaloneNewFolder || onSortChange) ? (
     <AppMenu open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
       <AppMenuTrigger asChild>
         <DsButton
@@ -382,12 +383,12 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={190}>
-        {onNewFolder && (
+        {showStandaloneNewFolder && onNewFolder && (
           <AppMenuItem icon={<FolderPlus size={14} />} onClick={onNewFolder}>
             {t('finder.toolbar.newFolder')}
           </AppMenuItem>
         )}
-        {sortMenuEntries && (onNewFolder) && <AppMenuSeparator />}
+        {sortMenuEntries && showStandaloneNewFolder && <AppMenuSeparator />}
         {sortMenuEntries}
       </AppMenuContent>
     </AppMenu>
@@ -444,7 +445,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         </AppMenu>
       )}
 
-      {onNewFolder && (
+      {showStandaloneNewFolder && onNewFolder && (
         <DsButton
           variant="ghost"
           size="icon"

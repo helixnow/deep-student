@@ -72,7 +72,6 @@ function renderToolbar(overrides: Partial<ComposerToolbarProps> = {}) {
     knowledgeBaseProactive: false,
     activeSkillCount: 0,
     hasLoadedSkills: true,
-    mcpEnabled: false,
     selectedMcpServerCount: 0,
     sendShortcut: 'enter',
     isComposerEmpty: false,

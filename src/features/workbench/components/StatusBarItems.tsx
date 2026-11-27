@@ -177,7 +177,7 @@ const PomodoroStatusItem: React.FC = () => {
       type="button"
       className={cn(
         'wb-menubar-item',
-        paused ? 'bg-muted/40' : isBreak ? 'bg-emerald-500/10' : 'bg-primary/10',
+        paused ? 'bg-muted/40' : isBreak ? 'bg-success/10' : 'bg-primary/10',
       )}
       data-testid="wb-menubar-pomodoro"
       data-wb-status-item="pomodoro"
@@ -278,7 +278,7 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
       {dueCount > 0 ? (
         <button
           type="button"
-          className="wb-menubar-item bg-amber-500/10"
+          className="wb-menubar-item bg-warning/10"
           data-testid="wb-menubar-flashcards"
           data-wb-status-item="flashcards"
           aria-label={flashcardsLabel}

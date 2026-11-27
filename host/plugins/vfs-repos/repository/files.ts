@@ -7,6 +7,8 @@ import {
   VfsRepositoryError,
   type FileRepository,
   type JsonValue,
+  type ReplaceFileContentOutcome,
+  type ReplaceFileContentParams,
   type VfsFile,
 } from '../api.ts';
 import { BlobRepo } from './blobs.ts';
@@ -896,5 +898,68 @@ export class FileRepo implements FileRepository {
   getResourceIdByFileId(conn: SqlExecutor, fileId: string): string | null {
     return databaseResult(() => conn.pluck<string | null>(
       'SELECT resource_id FROM files WHERE id = ?1', [fileId]) ?? null);
+  }
+
+  replaceFileContentWithConn(conn: SqlExecutor, fileId: string,
+    params: ReplaceFileContentParams): ReplaceFileContentOutcome {
+    return databaseResult(() => withSavepoint(conn, 'replace_file_content', () => {
+      const current = this.getFile(conn, fileId);
+      if (current === null || current.deletedAt !== undefined || current.status !== 'active') {
+        throw notFound(fileId);
+      }
+      const previousBlobHash = current.blobHash ?? null;
+      if (previousBlobHash !== null) {
+        this.blobs.decrementRef(conn, previousBlobHash);
+      }
+
+      const shaTaken = conn.get('SELECT 1 FROM files WHERE sha256 = ?1 AND id != ?2',
+        [params.sha256, fileId]) !== undefined;
+      const effectiveSha256 = shaTaken ? `${params.sha256}_edit_${nanoid(8)}` : params.sha256;
+
+      const existingContentHash = conn.pluck<string | null>(
+        'SELECT content_hash FROM files WHERE id = ?1', [fileId]) ?? null;
+      let effectiveContentHash: string | null = null;
+      if (existingContentHash !== null) {
+        const contentHashTaken = conn.get(
+          'SELECT 1 FROM files WHERE content_hash = ?1 AND deleted_at IS NULL AND id != ?2',
+          [params.sha256, fileId]) !== undefined;
+        effectiveContentHash = contentHashTaken ? `${params.sha256}_edit_${nanoid(8)}` : params.sha256;
+      }
+
+      const currentMs = Date.parse(current.updatedAt);
+      const nextMs = Math.max(Date.now(), Number.isNaN(currentMs) ? 0 : currentMs + 1);
+      const updatedAt = new Date(nextMs).toISOString();
+
+      if (current.resourceId !== undefined) {
+        const resHashTaken = conn.get('SELECT 1 FROM resources WHERE hash = ?1 AND id != ?2',
+          [params.sha256, current.resourceId]) !== undefined;
+        const effectiveResHash = resHashTaken
+          ? `${params.sha256}_res_${nanoid(8)}`
+          : params.sha256;
+        conn.run(`UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3,
+            index_state = 'pending', index_error = NULL,
+            index_retry_count = 0, index_next_retry_at = 0
+          WHERE id = ?4`, [params.extractedText ?? '', effectiveResHash, nextMs, current.resourceId]);
+      }
+
+      conn.run(`UPDATE files SET blob_hash = ?1, sha256 = ?2, size = ?3,
+          page_count = ?4, extracted_text = ?5, ocr_pages_json = ?6,
+          content_hash = ?7, updated_at = ?8
+        WHERE id = ?9`, [
+        params.blobHash,
+        effectiveSha256,
+        params.size,
+        params.pageCount,
+        params.extractedText,
+        params.ocrPagesJson,
+        effectiveContentHash,
+        updatedAt,
+        fileId,
+      ]);
+
+      const updated = this.getFile(conn, fileId);
+      if (updated === null) throw databaseMessage(`File ${fileId} not found after content update`);
+      return { file: updated, previousBlobHash };
+    }));
   }
 }

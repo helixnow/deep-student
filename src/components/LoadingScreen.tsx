@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Check, CircleNotch, Database, Layout } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import './LoadingScreen.css';
 
@@ -85,28 +86,8 @@ const stepVariants = {
 // Animated spinner component
 const AnimatedSpinner: React.FC = () => {
   return (
-    <div className="spinner">
-      <motion.div
-        className="spinner-ring"
-        animate={{ rotate: 360 }}
-        transition={{
-          duration: 1.2,
-          ease: 'linear',
-          repeat: Infinity
-        }}
-      />
-      <motion.div
-        className="spinner-pulse"
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.6, 0.3]
-        }}
-        transition={{
-          duration: 1.5,
-          ease: 'easeInOut',
-          repeat: Infinity
-        }}
-      />
+    <div className="spinner flex items-center justify-center text-primary">
+      <CircleNotch size={32} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
     </div>
   );
 };
@@ -117,6 +98,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
   progress
 }) => {
   const { t } = useTranslation('common');
+  const shouldReduceMotion = useReducedMotion();
   const [dots, setDots] = useState('');
   const [activeStep, setActiveStep] = useState(0);
 
@@ -147,9 +129,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
   }, [isLoading]);
 
   const loadingSteps = useMemo(() => [
-    { icon: '✓', text: t('loadingScreen.step_config') },
-    { icon: '⚡', text: t('loadingScreen.step_database') },
-    { icon: '🚀', text: t('loadingScreen.step_ui') }
+    { icon: <Check size={14} aria-hidden="true" />, text: t('loadingScreen.step_config') },
+    { icon: <Database size={14} aria-hidden="true" />, text: t('loadingScreen.step_database') },
+    { icon: <Layout size={14} aria-hidden="true" />, text: t('loadingScreen.step_ui') }
   ], [t]);
 
   return (
@@ -157,43 +139,33 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
       {isLoading && (
         <motion.div
           className="loading-screen"
-          variants={containerVariants}
-          initial="hidden"
+          variants={shouldReduceMotion ? undefined : containerVariants}
+          initial={shouldReduceMotion ? false : 'hidden'}
           animate="visible"
-          exit="exit"
+          exit={shouldReduceMotion ? undefined : 'exit'}
         >
-          <motion.div className="loading-content" variants={containerVariants}>
+          <motion.div
+            className="loading-content"
+            variants={shouldReduceMotion ? undefined : containerVariants}
+          >
             {/* Logo */}
-            <motion.div className="loading-logo" variants={logoVariants}>
-              <motion.div
-                className="logo-icon"
-                animate={{
-                  y: [0, -6, 0]
-                }}
-                transition={{
-                  duration: 2,
-                  ease: 'easeInOut',
-                  repeat: Infinity
-                }}
-              >
-                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="32" cy="32" r="30" fill="url(#gradient)" />
-                  <path d="M20 28h24v8H20z" fill="white" opacity="0.9" />
-                  <path d="M24 20h16v4H24z" fill="white" opacity="0.7" />
-                  <path d="M24 40h16v4H24z" fill="white" opacity="0.7" />
-                  <defs>
-                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#1d4ed8" />
-                    </linearGradient>
-                  </defs>
+            <motion.div
+              className="loading-logo"
+              variants={shouldReduceMotion ? undefined : logoVariants}
+            >
+              <div className="logo-icon">
+                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <circle cx="32" cy="32" r="30" fill="hsl(var(--primary))" />
+                  <path d="M20 28h24v8H20z" fill="hsl(var(--primary-foreground))" opacity="0.9" />
+                  <path d="M24 20h16v4H24z" fill="hsl(var(--primary-foreground))" opacity="0.7" />
+                  <path d="M24 40h16v4H24z" fill="hsl(var(--primary-foreground))" opacity="0.7" />
                 </svg>
-              </motion.div>
+              </div>
               <motion.h1
                 className="app-title"
-                initial={{ opacity: 0, y: 10 }}
+                initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.4 }}
+                transition={shouldReduceMotion ? { duration: 0 } : { delay: 0.2, duration: 0.4 }}
               >
                 {t('app.name')}
               </motion.h1>
@@ -202,7 +174,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
             {/* Loading Animation */}
             <motion.div
               className="loading-animation"
-              variants={spinnerVariants}
+              variants={shouldReduceMotion ? undefined : spinnerVariants}
             >
               <AnimatedSpinner />
             </motion.div>
@@ -210,13 +182,13 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
             {/* Loading Text */}
             <motion.div
               className="loading-text"
-              variants={itemVariants}
+              variants={shouldReduceMotion ? undefined : itemVariants}
             >
               <motion.span
                 key={displayText}
-                initial={{ opacity: 0 }}
+                initial={shouldReduceMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
+                transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.3 }}
               >
                 {displayText}{dots}
               </motion.span>
@@ -226,26 +198,26 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
             {progress !== undefined && (
               <motion.div
                 className="progress-container"
-                variants={itemVariants}
+                variants={shouldReduceMotion ? undefined : itemVariants}
               >
                 <div className="progress-bar">
                   <motion.div
                     className="progress-fill"
-                    initial={{ width: 0 }}
+                    initial={shouldReduceMotion ? false : { width: 0 }}
                     animate={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 100,
-                      damping: 20
-                    }}
+                    transition={
+                      shouldReduceMotion
+                        ? { duration: 0 }
+                        : { type: 'spring', stiffness: 100, damping: 20 }
+                    }
                   />
                 </div>
                 <motion.span
                   className="progress-text"
                   key={Math.round(progress)}
-                  initial={{ opacity: 0, y: 5 }}
+                  initial={shouldReduceMotion ? false : { opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.2 }}
                 >
                   {Math.round(progress)}%
                 </motion.span>
@@ -255,25 +227,18 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
             {/* Loading Steps */}
             <motion.div
               className="loading-steps"
-              variants={itemVariants}
+              variants={shouldReduceMotion ? undefined : itemVariants}
             >
               {loadingSteps.map((step, index) => (
                 <motion.div
                   key={index}
                   className={`step ${index <= activeStep ? 'active' : ''}`}
                   custom={index}
-                  variants={stepVariants}
-                  whileHover={{ scale: 1.05 }}
+                  variants={shouldReduceMotion ? undefined : stepVariants}
                 >
-                  <motion.div
-                    className="step-icon"
-                    animate={index <= activeStep ? {
-                      scale: [1, 1.2, 1],
-                      transition: { duration: 0.3 }
-                    } : {}}
-                  >
+                  <div className="step-icon">
                     {step.icon}
-                  </motion.div>
+                  </div>
                   <span>{step.text}</span>
                 </motion.div>
               ))}

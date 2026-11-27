@@ -13,11 +13,10 @@
   border-radius: 8px;
   border: 2px solid hsl(var(--border));
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, opacity 0.2s ease;
 }
 
 .preview-image:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
+  opacity: 0.92;
   border-color: hsl(var(--primary));
 }

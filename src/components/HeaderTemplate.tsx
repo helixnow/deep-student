@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { DownloadSimple } from '@phosphor-icons/react';
+import { CircleNotch, DownloadSimple } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 
 /** Generic icon component type compatible with both Phosphor and Lucide icons */
@@ -32,7 +32,7 @@ interface HeaderTemplateProps {
 
 export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
   icon: Icon,
-  iconColor = '#6366f1',
+  iconColor = 'currentColor',
   iconSize = 32,
   title,
   subtitle,
@@ -55,19 +55,19 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
       >
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <Icon size={iconSize} color={iconColor} />
+            <Icon size={iconSize} color={iconColor} className="text-foreground shrink-0" />
             <div>
-              <h1 className="m-0 text-2xl font-semibold text-[hsl(var(--card-foreground))] leading-tight">
+              <h1 className="m-0 text-2xl font-semibold text-card-foreground leading-tight">
                 {title}
               </h1>
               {subtitle && (
-                <p className="m-0 text-sm text-[hsl(var(--muted-foreground))]">{subtitle}</p>
+                <p className="m-0 text-sm text-muted-foreground">{subtitle}</p>
               )}
             </div>
           </div>
           {isRefreshing && (
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+              <CircleNotch size={14} className="animate-spin motion-reduce:animate-none text-primary" aria-hidden="true" />
               <span>{displayRefreshingText}</span>
             </div>
           )}

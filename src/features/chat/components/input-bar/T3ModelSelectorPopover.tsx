@@ -1522,7 +1522,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
                             className={cn(
                               'flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
                               isFavorite
-                                ? 'opacity-100 text-amber-500'
+                                ? 'opacity-100 text-warning'
                                 : 'hidden group-hover:flex focus-visible:flex [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:opacity-70',
                             )}
                           >

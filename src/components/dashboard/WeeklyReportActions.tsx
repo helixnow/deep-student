@@ -11,6 +11,8 @@ import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/shad/Dialog';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
+import { cn } from '@/utils/cn';
 import type { WeeklyReportData } from '@/features/learning-today/weeklyReport';
 
 type WeeklyReportTodoPriority = 'high' | 'medium' | 'low';
@@ -119,8 +121,10 @@ async function buildReport(t: (key: string, options?: Record<string, unknown>) =
   return { title: weeklyReportTitle(data, t), markdown: buildWeeklyReportMarkdown(data, t), data };
 }
 
-const linkClass =
-  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground disabled:opacity-50 max-md:min-h-9 max-md:px-2 [@media(pointer:coarse)]:min-h-11';
+const linkClass = cn(
+  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground disabled:opacity-50 max-md:min-h-9 max-md:px-2',
+  coarseHitClassFor28,
+);
 
 /** compact：只留「本周周报」一个入口（预览里仍可与 AI 复盘 / 存为笔记 / 一键生成明日待办），给对话首页用 */
 export const WeeklyReportActions: React.FC<{ compact?: boolean }> = ({ compact = false }) => {

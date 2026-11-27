@@ -221,20 +221,20 @@ function statusTone(status: LegacyCardStatus | ReparseItemStatus): string {
   switch (status) {
     case 'matched':
     case 'unchanged':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'bg-success/10 text-success border-success/25';
     case 'unmatched':
     case 'new':
     case 'unmapped':
-      return 'bg-sky-50 text-sky-700 border-sky-200';
+      return 'bg-info/10 text-info border-info/25';
     case 'changed':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'bg-warning/10 text-warning border-warning/25';
     case 'ambiguous':
-      return 'bg-orange-50 text-orange-700 border-orange-200';
+      return 'bg-warning/10 text-warning border-warning/25';
     case 'deleted':
     case 'suppressed_canonical':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+      return 'bg-destructive/10 text-destructive border-destructive/25';
     default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+      return 'bg-muted text-muted-foreground border-border';
   }
 }
 
@@ -423,12 +423,12 @@ export function QuestionImportAuditPanel({
       data-testid="question-import-audit-panel"
       aria-label={tr('legacyAudit.title', '历史导入审计与重解析复核')}
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">
+          <h3 className="text-base font-semibold text-foreground">
             {tr('legacyAudit.title', '历史导入审计与重解析复核')}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {tr(
               'legacyAudit.subtitle',
               '仅按 card_id/id 建立身份映射；不会猜测语义对应，也不会覆盖已有正式题目。',
@@ -438,13 +438,13 @@ export function QuestionImportAuditPanel({
       </header>
 
       {loading && (
-        <p className="py-4 text-sm text-slate-500" data-testid="legacy-audit-loading">
+        <p className="py-4 text-sm text-muted-foreground" data-testid="legacy-audit-loading">
           {tr('legacyAudit.loading', '正在读取历史导入审计…')}
         </p>
       )}
       {error && (
         <div
-          className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+          className="mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           data-testid="legacy-audit-error"
           role="alert"
         >
@@ -454,24 +454,24 @@ export function QuestionImportAuditPanel({
 
       {audit && (
         <div className="mt-3 space-y-3">
-          <div className="flex flex-wrap gap-1.5 text-xs" data-testid="legacy-audit-summary">
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+          <div className="flex flex-wrap gap-1.5 text-xs text-foreground" data-testid="legacy-audit-summary">
+            <span className="rounded-full border border-border bg-card px-2 py-0.5">
               {tr('legacyAudit.total', '预览卡片')}: {audit.cards.length}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5" data-testid="audit-matched-count">
+            <span className="rounded-full border border-border bg-card px-2 py-0.5" data-testid="audit-matched-count">
               {tr('legacyAudit.matched', '已映射')}: {audit.matched_count}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5" data-testid="audit-unmatched-count">
+            <span className="rounded-full border border-border bg-card px-2 py-0.5" data-testid="audit-unmatched-count">
               {tr('legacyAudit.unmatched', '待迁移')}: {audit.unmatched_count}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5" data-testid="audit-ambiguous-count">
+            <span className="rounded-full border border-border bg-card px-2 py-0.5" data-testid="audit-ambiguous-count">
               {tr('legacyAudit.ambiguous', '歧义')}: {audit.ambiguous_count}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5" data-testid="audit-deleted-count">
+            <span className="rounded-full border border-border bg-card px-2 py-0.5" data-testid="audit-deleted-count">
               {tr('legacyAudit.deleted', '已删除')}: {audit.deleted_count}
             </span>
             {audit.suppressed_count > 0 && (
-              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5" data-testid="audit-suppressed-count">
+              <span className="rounded-full border border-border bg-card px-2 py-0.5" data-testid="audit-suppressed-count">
                 {tr('legacyAudit.suppressed', '受规范化标记保护')}: {audit.suppressed_count}
               </span>
             )}
@@ -479,7 +479,7 @@ export function QuestionImportAuditPanel({
 
           {canonicalAllDeleted && (
             <div
-              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              className="rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning"
               data-testid="canonical-all-deleted-warning"
               role="status"
             >
@@ -491,10 +491,10 @@ export function QuestionImportAuditPanel({
           )}
 
           <div
-            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+            className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
             data-testid="audit-page-assets"
           >
-            <div className="font-medium text-slate-700">
+            <div className="font-medium text-foreground">
               {tr('legacyAudit.pageAssets', '原始页面资产（仅审计，不修改）')}
             </div>
             <ul className="mt-1 space-y-0.5">
@@ -508,8 +508,8 @@ export function QuestionImportAuditPanel({
             </ul>
           </div>
 
-          <div className="overflow-hidden rounded-md border border-slate-200">
-            <div className="flex items-center justify-between bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="overflow-hidden rounded-md border border-border">
+            <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -539,7 +539,7 @@ export function QuestionImportAuditPanel({
                     })}
               </DsButton>
             </div>
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-border/60">
               {audit.cards.map((card, index) => {
                 const key = `${card.card_id ?? 'missing'}-${card.page_index}-${card.card_index}`;
                 const canSelect =
@@ -563,11 +563,11 @@ export function QuestionImportAuditPanel({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-slate-800">
+                        <span className="font-mono text-xs text-foreground">
                           {card.card_id ?? '—'}
                         </span>
                         {card.question_label && (
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-muted-foreground">
                             {card.question_label}
                           </span>
                         )}
@@ -577,20 +577,20 @@ export function QuestionImportAuditPanel({
                         >
                           {card.status}
                         </span>
-                        <span className="text-2xs text-slate-400">
+                        <span className="text-2xs text-muted-foreground/80">
                           p{card.page_index} / #{card.card_index}
                         </span>
                       </div>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                         {card.preview_text || '—'}
                       </p>
                       {card.formal_question_id && (
-                        <p className="mt-0.5 text-2xs text-slate-400">
+                        <p className="mt-0.5 text-2xs text-muted-foreground/80">
                           → {card.formal_question_id}
                         </p>
                       )}
                       {card.reason && (
-                        <p className="mt-0.5 text-2xs text-rose-600">
+                        <p className="mt-0.5 text-2xs text-destructive">
                           {card.reason}
                         </p>
                       )}
@@ -603,7 +603,7 @@ export function QuestionImportAuditPanel({
 
           {receipt && (
             <div
-              className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+              className="rounded-md border border-success/25 bg-success/10 px-3 py-2 text-sm text-success"
               data-testid="legacy-migration-receipt"
             >
               {tr('legacyAudit.migrated', '已迁移 {{count}} 张卡片', {
@@ -617,13 +617,13 @@ export function QuestionImportAuditPanel({
         </div>
       )}
 
-      <div className="mt-6 border-t border-slate-200 pt-4" data-testid="reparse-section">
+      <div className="mt-6 border-t border-border pt-4" data-testid="reparse-section">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-semibold text-slate-900">
+            <h4 className="text-sm font-semibold text-foreground">
               {tr('legacyAudit.reparseTitle', '重解析差异复核')}
             </h4>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               {tr(
                 'legacyAudit.reparseSubtitle',
                 '按规范化来源槽比较草稿与正式题目；保留 / 导入为新题 / 替换均需明确选择。',
@@ -646,7 +646,7 @@ export function QuestionImportAuditPanel({
 
         {reparseError && (
           <div
-            className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+            className="mt-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
             data-testid="reparse-error"
             role="alert"
           >
@@ -654,13 +654,13 @@ export function QuestionImportAuditPanel({
           </div>
         )}
         {!reparse && !reparseError && (
-          <p className="mt-2 text-sm text-slate-500" data-testid="reparse-empty">
+          <p className="mt-2 text-sm text-muted-foreground" data-testid="reparse-empty">
             {tr('legacyAudit.noDraft', '当前题目集没有可复核的导入草稿。')}
           </p>
         )}
         {reparse && (
           <div className="mt-2 space-y-2">
-            <div className="text-xs text-slate-500" data-testid="reparse-summary">
+            <div className="text-xs text-muted-foreground" data-testid="reparse-summary">
               job {reparse.job_id} · v{reparse.job_version} · {tr('legacyAudit.changed', '内容变化')}:{' '}
               {reparse.changed_count} · {tr('legacyAudit.new', '新增')}: {reparse.new_count} ·{' '}
               {tr('legacyAudit.deleted', '已删除')}: {reparse.deleted_count}
@@ -674,11 +674,11 @@ export function QuestionImportAuditPanel({
                 return (
                   <li
                     key={item.local_id}
-                    className="rounded-md border border-slate-200 px-3 py-2"
+                    className="rounded-md border border-border px-3 py-2"
                     data-testid={`reparse-item-${item.local_id}`}
                   >
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-mono text-xs text-slate-800">
+                      <span className="font-mono text-xs text-foreground">
                         {item.local_id}
                       </span>
                       <span
@@ -688,12 +688,12 @@ export function QuestionImportAuditPanel({
                         {item.status}
                       </span>
                       {item.canonical_question_id && (
-                        <span className="text-2xs text-slate-400">
+                        <span className="text-2xs text-muted-foreground/80">
                           → {item.canonical_question_id}
                         </span>
                       )}
                       <select
-                        className="ml-auto rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                        className="ml-auto rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
                         aria-label={tr('legacyAudit.action', '复核操作')}
                         value={choice.action}
                         disabled={reparse.resolved || resolving || item.allowed_actions.length === 0}
@@ -715,15 +715,15 @@ export function QuestionImportAuditPanel({
                       </select>
                     </div>
                     {item.reason && (
-                      <p className="mt-1 text-2xs text-rose-600">
+                      <p className="mt-1 text-2xs text-destructive">
                         {item.reason}
                       </p>
                     )}
                     {item.changes.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-2xs text-slate-600">
+                      <ul className="mt-1 space-y-0.5 text-2xs text-muted-foreground">
                         {item.changes.map((change) => (
                           <li key={change.field} data-testid={`reparse-change-${item.local_id}-${change.field}`}>
-                            <span className="font-medium">{change.field}</span>:{' '}
+                            <span className="font-medium text-foreground">{change.field}</span>:{' '}
                             {JSON.stringify(change.before)} →{' '}
                             {JSON.stringify(change.after)}
                           </li>
@@ -738,7 +738,7 @@ export function QuestionImportAuditPanel({
         )}
         {resolveReceipt && (
           <div
-            className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+            className="mt-2 rounded-md border border-success/25 bg-success/10 px-3 py-2 text-sm text-success"
             data-testid="reparse-receipt"
           >
             {tr('legacyAudit.reparseApplied', '已应用复核选择')} ·{' '}

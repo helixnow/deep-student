@@ -15,7 +15,7 @@
 | 学习桌面 | `src/features/workbench`（多窗口），激活时隐藏桌面壳侧栏 | — |
 | 对话框 | 居中卡片 | DsDialog 自动变底部 sheet |
 
-移动端验收的五条规范（`docs/dev/mobile-uiux-unify/README.md`）：
+移动端验收的五条规范：
 
 1. 全局顶栏唯一，通过 `useMobileHeader` 注册。
 2. 左侧按钮：主入口页呼出侧栏，子页为返回；页内不再放第二套返回。
@@ -35,13 +35,13 @@
 1. **用体系组件**：DsButton、Input、SelectTrigger、Tabs、SegmentedControl、Checkbox、Switch、Sheet 关闭钮都已内建 coarse 44px（`src/components/ui/buttonPrimitiveContract.ts` 等）。调用点什么都不用加。
 2. **非 button 热区**：`TouchTarget`（或 `touchTargetCoarseClassName`）。
 3. **自定义容器**：`min-h-[var(--touch-target-size)]`。
-4. **逃生舱**：只有实体撑高会破坏硬布局时，用 `coarseHitClassFor*`，并在 `eslint-rules/coarse-touch-target.allowlist.json` 登记理由。
+4. **逃生舱**：只有实体撑高会破坏硬布局时，用 `coarseHitClassFor*`，并在 `scripts/lint/eslint-rules/coarse-touch-target.allowlist.json` 登记理由。
 
 禁止（`ds-components/coarse-touch-target`，全局 warn，`src/features/chat/components/input-bar/**` error）：业务组件里写 `[@media(pointer:coarse)]:!min-h-11` / `!min-w-11` / `!h-11` / `!min-h-[44px]`，以及裸 `after:-inset-*` / `before:-inset-*` 扩区。`src/components/ui/**` 是体系本体，规则在该目录关闭。
 
 其他：
 
-- 触屏按压反馈用 `.ui-press-coarse`（DsButton 已挂，`--m-press-scale` 0.97）。`docs/CODE_STYLE.md` §5.3 里的“最小点击区域 32px”“`active:scale-95 active:opacity-80`”已过时，以本节为准。
+- 触屏按压反馈用 `.ui-press-coarse`（DsButton 已挂，`--m-press-scale` 0.97），避免手写 `active:scale-95 active:opacity-80`。
 - `responsive-utilities.css` 里的 `.touch-target`、`.touch-row` 类当前没有消费方，不要用。
 - 触屏没有可靠 hover：`native-feel/interaction.css` 在 coarse 下强制显示 `group-hover:opacity-100` 的元素、中和 `hover:scale-*`。不要设计只能 hover 才出现的操作。
 

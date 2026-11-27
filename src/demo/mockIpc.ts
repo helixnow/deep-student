@@ -360,7 +360,7 @@ export function createDemoIpcHandler(options: DemoIpcOptions = {}): (cmd: string
           const path = String(args.path ?? '');
           const id = path.replace(/^\//, '');
           if (id === DEMO_QBANK_ID || id === DEMO_MINDMAP_ID) {
-            return { id, path: `/${id}`, name: id === DEMO_QBANK_ID ? '数据并行训练' : demoMindmap.title,
+            return { id, path: `/${id}`, name: id === DEMO_QBANK_ID ? tr('数据并行训练', 'Data-Parallel Training') : demoMindmap.title,
               type: id === DEMO_QBANK_ID ? 'exam' : 'mindmap', sourceId: id,
               createdAt: Date.parse(DEMO_MINDMAP_META.createdAt), updatedAt: Date.now(), metadata: {} };
           }
@@ -605,8 +605,11 @@ export function createDemoIpcHandler(options: DemoIpcOptions = {}): (cmd: string
           if (!firstPlay && request.sessionId === 'demo-qbank' && continuation?.id === 'saved') {
             const saved = getDemoQuestions();
             followUp = [{ type: 'content', status: 'success', streaming: true, content: saved.length
-              ? saved.map((q, i) => `### ${i + 1}. ${q.content}\n\n参考答案：${q.answer}\n\n${q.explanation}`).join('\n\n')
-              : '先在上方题目草稿中勾选题目，点击「加入所选」，再通过这条提问查看收录结果。' }];
+              ? saved.map((q, i) => `### ${i + 1}. ${q.content}\n\n${tr('参考答案：', 'Reference answer: ')}${q.answer}\n\n${q.explanation}`).join('\n\n')
+              : tr(
+                  '先在上方题目草稿中勾选题目，点击「加入所选」，再通过这条提问查看收录结果。',
+                  'Select questions from the drafts above, click "Add Selected", and then ask again to view the saved items.',
+                ) }];
           }
           // 异步播放，立即返回 assistantMessageId（与真实后端一致）
           void playReplyScript({
@@ -687,7 +690,7 @@ export function createDemoIpcHandler(options: DemoIpcOptions = {}): (cmd: string
               return {
                 id: 'plugin-workshop-dev',
                 name: 'plugin-workshop-dev',
-                title: 'AI 插件工坊开发技能',
+                title: tr('AI 插件工坊开发技能', 'AI Plugin Workshop Dev Skill'),
                 description: 'Build DeepStudent .dstuplugin extensions',
                 markdown: '---\nname: plugin-workshop-dev\ndescription: Build DeepStudent .dstuplugin extensions\n---\n\n# Plugin Workshop\n',
               };

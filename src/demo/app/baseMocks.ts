@@ -8,6 +8,7 @@
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import type { DemoAppPack, DemoArgs } from './types';
 import { handleAnkiTemplates } from './shared';
+import { tr } from '../lang';
 
 const LOG = '[demo-app-ipc]';
 
@@ -91,7 +92,7 @@ export function installDemoAppMocks(pack: DemoAppPack): void {
               return {
                 id: 'plugin-workshop-dev',
                 name: 'plugin-workshop-dev',
-                title: 'AI 插件工坊开发技能',
+                title: tr('AI 插件工坊开发技能', 'AI Plugin Workshop Dev Skill'),
                 description: 'Build DeepStudent .dstuplugin extensions',
                 markdown: '---\nname: plugin-workshop-dev\ndescription: Build DeepStudent .dstuplugin extensions\n---\n\n# Plugin Workshop\n',
               };

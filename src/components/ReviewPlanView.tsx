@@ -27,8 +27,6 @@ import {
   Fire as Flame,
   Trophy as Award,
   ArrowsClockwise as ArrowClockwise,
-  Sparkle,
-  Star,
   WarningCircle,
   Info,
   Pause,
@@ -231,35 +229,12 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
 
 const AllDoneState: React.FC<{
   masteredCount: number;
-  onViewCalendar?: () => void;
-}> = ({ masteredCount, onViewCalendar }) => {
+}> = ({ masteredCount }) => {
   const { t } = useTranslation(['review']);
 
   return (
     <div className="ui-rise-in flex flex-col items-center justify-center rounded-lg border border-border/50 bg-muted/10 px-6 py-14 text-center">
-      {/* 同心圆 + 对勾 + 星点插画 */}
-      <div className="relative mb-6 h-24 w-24" aria-hidden="true">
-        <div className="absolute inset-0 rounded-full bg-success/10" />
-        <div className="absolute inset-3 rounded-full bg-success/15" />
-        <div className="absolute inset-6 flex items-center justify-center rounded-full bg-success/20">
-          <CheckCircle size={36} weight="fill" className="text-success" />
-        </div>
-        <Sparkle
-          size={15}
-          weight="fill"
-          className="absolute -top-1 right-3 text-warning motion-safe:animate-pulse"
-        />
-        <Star
-          size={11}
-          weight="fill"
-          className="absolute bottom-2 -left-2 text-primary/60 motion-safe:animate-pulse [animation-delay:400ms]"
-        />
-        <Sparkle
-          size={11}
-          weight="fill"
-          className="absolute top-8 -right-3 text-success/70 motion-safe:animate-pulse [animation-delay:800ms]"
-        />
-      </div>
+      <CheckCircle size={28} className="mb-3 text-success/80" aria-hidden="true" />
 
       <h3 className="mb-1.5 text-base font-semibold text-foreground">
         {t('review:empty.title')}
@@ -268,25 +243,14 @@ const AllDoneState: React.FC<{
         {t('review:empty.description')}
       </p>
 
-      <div className="mt-5 flex items-center gap-3">
-        {masteredCount > 0 && (
+      {masteredCount > 0 && (
+        <div className="mt-4 flex items-center justify-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-success/20 bg-success/10 px-3 py-1 text-xs font-medium text-success">
             <Award size={13} weight="fill" />
             {t('review:empty.masteredChip', { count: masteredCount })}
           </span>
-        )}
-        {onViewCalendar && (
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={onViewCalendar}
-            className="[@media(pointer:coarse)]:!min-h-11 gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
-          >
-            <Calendar size={14} />
-            {t('review:empty.viewCalendar')}
-          </DsButton>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -536,17 +500,19 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             {t('review:subtitle')}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={onViewCalendar}
-            className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] gap-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
-          >
-            <Calendar size={14} />
-            {t('review:calendar.title')}
-          </DsButton>
-        </div>
+        {onViewCalendar && (
+          <div className="flex shrink-0 items-center gap-1">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={onViewCalendar}
+              className="gap-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            >
+              <Calendar size={14} />
+              {t('review:calendar.title')}
+            </DsButton>
+          </div>
+        )}
       </div>
 
       {/* 紧凑微指标条 */}
@@ -647,7 +613,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               variant="primary"
               size="sm"
               onClick={handleStartReview}
-              className="min-h-9 [@media(pointer:coarse)]:!min-h-11 gap-1.5 px-3.5"
+              className="gap-1.5 px-3.5"
             >
               <Play size={14} weight="fill" />
               {t('review:startReview')}
@@ -679,26 +645,22 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               </span>
             </div>
             <Progress value={progressPercent} className="h-1" />
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-2xs text-muted-foreground">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                <span className="flex items-center gap-1">
                   {t('review:status.new')}
                   <span className="font-mono tabular-nums text-foreground/80">{stats.new_count}</span>
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                <span className="flex items-center gap-1">
                   {t('review:status.learning')}
                   <span className="font-mono tabular-nums text-foreground/80">{stats.learning_count}</span>
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                <span className="flex items-center gap-1">
                   {t('review:status.reviewing')}
                   <span className="font-mono tabular-nums text-foreground/80">{stats.reviewing_count}</span>
                 </span>
               </div>
-              <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+              <span className="flex items-center gap-1">
                 {t('review:status.graduated')}
                 <span className="font-mono tabular-nums text-foreground/80">{stats.graduated_count}</span>
               </span>
@@ -714,7 +676,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t('review:queue.title')}
             </h3>
-            <span className="text-[11px] text-muted-foreground/70">
+            <span className="text-2xs text-muted-foreground/70">
               {t('review:queue.sortedByDue')}
             </span>
           </div>
@@ -776,9 +738,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       {!hasDue && !isLoading && (
         examId && stats && stats.total_plans === 0 ? (
           <div className="ui-rise-in flex flex-col items-center gap-3 rounded-lg border border-dashed border-border/60 bg-muted/10 p-8 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-              <ListPlus size={20} className="text-primary" />
-            </div>
+            <ListPlus size={22} className="text-muted-foreground" aria-hidden="true" />
             <div>
               <h3 className="text-sm font-semibold text-foreground">
                 {t('review:setup.title')}
@@ -792,11 +752,11 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               size="sm"
               onClick={() => void handleCreatePlansForExam()}
               disabled={isCreatingPlans}
-              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 gap-2"
+              className="gap-2"
             >
               <ArrowClockwise
                 size={14}
-                className={cn(isCreatingPlans ? 'animate-spin' : 'hidden')}
+                className={cn(isCreatingPlans ? 'animate-spin motion-reduce:animate-none' : 'hidden')}
               />
               {!isCreatingPlans && <Play size={14} weight="fill" />}
               {t('review:setup.createAll')}
@@ -805,7 +765,6 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         ) : (
           <AllDoneState
             masteredCount={stats?.graduated_count || 0}
-            onViewCalendar={onViewCalendar}
           />
         )
       )}

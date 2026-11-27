@@ -503,13 +503,9 @@ html.dark {
 .ft-inline-code {
   font-size: 0.75rem;
   font-weight: normal;
-  background-color: #f4f4f5;
+  background-color: hsl(var(--muted));
   padding: 0.125rem 0.25rem;
   border-radius: 0.375rem;
-}
-
-html.dark .ft-inline-code {
-  background-color: #27272a;
 }
 
 .ft-code-container {
@@ -523,25 +519,16 @@ html.dark .ft-inline-code {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #f4f4f5;
+  background-color: hsl(var(--muted));
   padding: 0.25rem;
   border-radius: 0.75rem 0.75rem 0 0;
-  border: 1px solid #e4e4e7;
+  border: 1px solid hsl(var(--border));
   border-bottom: none;
-}
-
-html.dark .ft-code-header {
-  background-color: #27272a;
-  border-color: #3f3f46;
 }
 
 .ft-code-language {
   font-size: 0.75rem;
-  color: #18181b;
-}
-
-html.dark .ft-code-language {
-  color: #fafafa;
+  color: hsl(var(--foreground));
 }
 
 .ft-copy-button {
@@ -558,11 +545,7 @@ html.dark .ft-code-language {
 }
 
 .ft-copy-button:hover {
-  background-color: #e4e4e7;
-}
-
-html.dark .ft-copy-button:hover {
-  background-color: #3f3f46;
+  background-color: hsl(var(--accent));
 }
 
 .ft-copy-icon {
@@ -572,26 +555,18 @@ html.dark .ft-copy-button:hover {
 }
 
 .ft-copy-icon-default {
-  color: #71717a;
-}
-
-html.dark .ft-copy-icon-default {
-  color: #a1a1aa;
+  color: hsl(var(--muted-foreground));
 }
 
 .ft-copy-icon-success {
-  color: #22c55e;
+  color: hsl(var(--success));
 }
 
 .ft-code-content {
-  border: 1px solid #e4e4e7;
+  border: 1px solid hsl(var(--border));
   border-radius: 0 0 0.75rem 0.75rem;
+  background-color: hsl(var(--card));
   max-width: 100%;
   min-width: 0;
   overflow-x: auto;
-}
-
-html.dark .ft-code-content {
-  border-color: #3f3f46;
-  background-color: #0c0a09;
 }

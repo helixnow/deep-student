@@ -1,6 +1,6 @@
 # 前端 UI / 视觉规范
 
-写 UI、评审 UI PR、或让 AI 代理改界面时，先查这里。这里记录的是代码**今天实际怎么做**，以及**新代码必须怎么做**。所有 token 名、文件路径、组件名、数值都对照源码核实过（基线提交 `04932be8`）。文档与代码冲突时以代码为准，并回头修正文档。
+写 UI、评审 UI PR、或让 AI 代理改界面时，先查这里。这里记录的是代码**今天实际怎么做**，以及**新代码必须怎么做**。所有 token 名、文件路径、组件名、数值都对照源码核实过（基线提交 `04932be8`，其中棘轮计数已同步当前 `scripts/lint/lint-ratchet-baseline.json`）。文档与代码冲突时以代码为准，并回头修正文档。
 
 ## 文档索引
 
@@ -16,33 +16,34 @@
 
 ## 优先级
 
-1. **Lint 规则**（`eslint.config.js` + `eslint-rules/*`、`.stylelintrc.json`）。机器能拦的以机器为准。
+1. **Lint 规则**（`eslint.config.js` + `scripts/lint/eslint-rules/*`、`.stylelintrc.json`）。机器能拦的以机器为准。
 2. **本目录文档**。
-3. **`docs/CODE_STYLE.md`**：较早的通用约定。其中与本目录冲突的部分（滚动组件、移动端点击区域与按压反馈数值）以本目录为准，冲突点列在 [components.md §滚动](./components.md#scroll) 和 [patterns.md §触控目标](./patterns.md#touch)。
+3. **`docs/CODE_STYLE.md`**：通用代码风格规范；涉及前端 UI / 视觉细则时以本目录为准（详见 [components.md §滚动](./components.md#scroll) 和 [patterns.md §触控目标](./patterns.md#touch)）。
 
 规则在本目录写了“必须”，但 lint 只给 `warn`（例如原生 `<button>`、`text-[Npx]`）：新代码按“必须”执行，不允许新增 warning。
 
 <a id="debt"></a>
 ## 现有欠账（不要再加）
 
-以下是基线提交上的存量问题。本目录不要求顺手修，但**新代码不得增加计数**。计数口径：`src/**/*.tsx|ts`，排除测试、`__tests__`、`src/mcp-debug`。
+以下是当前棘轮基线与白名单中的存量问题。本目录不要求顺手修，但**新代码不得增加计数**。受棘轮约束的 ESLint 规则由 `npm run check:lint-ratchet`（基线文件 `scripts/lint/lint-ratchet-baseline.json`）按 `(规则, 模块)` 冻结，只减不增。
 
-| 欠账 | 约数 | 对应规则 |
+| 欠账 | 存量 | 对应规则 |
 |---|---|---|
-| `text-[Npx]` 等硬编码字号（不随界面字号缩放） | 790 | `ds-components/no-arbitrary-font-size`（全局 warn，`src/components/ui/**` error） |
-| TSX 里的 hex 颜色字面量 | 590（44 个文件） | 无 lint；见 [design-tokens.md §颜色](./design-tokens.md#color) |
+| `text-[Npx]` 等硬编码字号（不随界面字号缩放） | 816（棘轮基线） | `ds-components/no-arbitrary-font-size`（全局 warn，`src/components/ui/**` error；`npm run check:lint-ratchet` 冻结） |
+| JSX `className` / `style` 中的硬编码颜色（hex、`rgb()`/`hsl()` 字面量、`bg-[#…]` 等） | 22（棘轮基线） | `ds-components/no-hardcoded-color`（warn；`npm run check:lint-ratchet` 冻结）；见 [design-tokens.md §颜色](./design-tokens.md#color) |
+| `z-[N]` 与内联 `style.zIndex` 数字魔数 | 28（棘轮基线） | `ds-components/no-arbitrary-z-index`（warn；`npm run check:lint-ratchet` 冻结）；见 [design-tokens.md §z-index](./design-tokens.md#z-index) |
 | Tailwind 原色板类（`bg-gray-100`、`text-blue-500`、`bg-white` 等） | 2400+ | 无 lint |
 | 内联 `style={{…}}` 对象 | 1000 | 无 lint；仅允许运行时计算值 |
-| 原生 `<button>`（lint 生效范围内） | 745 | `ds-components/no-native-button`（warn） |
-| `CommonTooltip` 调用点 | 45 个文件 | `ds-components/no-legacy-tooltip`（error，存量按 `eslint-rules/common-tooltip.allowlist.json` 豁免） |
-| `CustomScrollArea`（已 `@deprecated`）调用点 | 207 个文件 | 无 lint |
-| coarse 触控散点覆盖 | 见 allowlist | `ds-components/coarse-touch-target`（全局 warn，`input-bar` error） |
+| 原生 `<button>`（lint 生效范围内） | 754（棘轮基线） | `ds-components/no-native-button`（warn；`npm run check:lint-ratchet` 冻结） |
+| `CommonTooltip` 调用点 | 44 个文件 | `ds-components/no-legacy-tooltip`（error，存量按 `scripts/lint/eslint-rules/common-tooltip.allowlist.json` 豁免） |
+| `CustomScrollArea`（已 `@deprecated`）调用点 | 228 个文件 | 无 lint |
+| coarse 触控散点覆盖 | 1515（棘轮基线，另豁免 7 个文件） | `ds-components/coarse-touch-target`（全局 warn，`input-bar` error；`npm run check:lint-ratchet` 冻结，白名单见 `scripts/lint/eslint-rules/coarse-touch-target.allowlist.json`） |
 
 ## 其他参考
 
-- 移动端五条验收规范：`docs/dev/mobile-uiux-unify/README.md`；页面标题与动作层级：`docs/dev/mobile-uiux-unify/page-chrome-standard.md`。
-- Workbench 无障碍清单：`docs/dev/workbench-a11y-checklist.md`。
-- 对外文案口径（品牌用语，不含视觉）：`docs/brand/messaging.md`。
+- 通用代码与后端规范：[docs/CODE_STYLE.md](../CODE_STYLE.md)
+- 前端插件扩展规范：[docs/plugins/FRONTEND.md](../plugins/FRONTEND.md)
+- WebUI / PWA 适配说明：[docs/WEBUI-AND-PWA.md](../WEBUI-AND-PWA.md)
 
 ## 维护
 

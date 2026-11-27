@@ -220,7 +220,6 @@ export const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) 
       aria-label={t('exam.shell.statsSummary')}
     >
       <span className="inline-flex items-center gap-1 leading-none" title={`${t('exam.shell.mastery')} ${stats.mastered}/${stats.total}`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
         <span>{t('exam.shell.mastery')}</span>
         <span className="font-mono font-medium tabular-nums text-foreground">{masteryPercent}%</span>
       </span>

@@ -42,7 +42,6 @@ export function ServerListItem({
   onEditInPanel?: () => void;
 }) {
   const { t } = useTranslation(['settings']);
-  const isConnected = isBuiltin ? true : (status?.connected ?? false);
   const displayName = server.name || server.id || t('settings:status_labels.unnamed_mcp');
 
   const transportLabel = useMemo(() => {
@@ -95,7 +94,6 @@ export function ServerListItem({
             <DsButton
               size="sm"
               variant="ghost"
-              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('settings:mcp_server_edit.cancel')}
@@ -103,7 +101,6 @@ export function ServerListItem({
             <DsButton
               size="sm"
               variant="danger"
-              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={deleting}
               onClick={async () => {
                 if (deleting) return;
@@ -149,12 +146,6 @@ export function ServerListItem({
       >
         {/* 主要内容 */}
         <div className="flex items-start gap-4">
-          {/* 状态指示点 */}
-          <span className={cn(
-            'w-2 h-2 rounded-full flex-shrink-0 mt-1.5',
-            isConnected ? 'bg-success' : 'bg-muted-foreground/30'
-          )} />
-
           {/* 服务器信息 */}
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
@@ -249,14 +240,14 @@ export function ServerListItem({
               {!isBuiltin && (
                 <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" title={t('settings:mcp_descriptions.action_test')} aria-label={t('settings:mcp_descriptions.action_test')}>
                   {isTesting ? (
-                    <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
+                    <ArrowClockwise className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
                   ) : (
                     <Flask className="w-3.5 h-3.5" />
                   )}
                 </DsButton>
               )}
               {isTesting && testStepLabel && (
-                <span className="text-2xs text-muted-foreground whitespace-nowrap animate-pulse">
+                <span className="text-2xs text-muted-foreground whitespace-nowrap">
                   {testStepLabel}
                 </span>
               )}

@@ -105,7 +105,8 @@ describe('ReviewSessionScreen template-aware editing', () => {
     });
 
     const view = render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '编辑卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(screen.getByTestId('fc-review-edit'));
     fireEvent.change(screen.getByLabelText('正面'), { target: { value: 'Unsaved draft' } });
 
     templateState.lab = { ...labTemplate };
@@ -136,7 +137,8 @@ describe('ReviewSessionScreen template-aware editing', () => {
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '编辑卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(screen.getByTestId('fc-review-edit'));
     const front = screen.getByLabelText('正面');
     const back = screen.getByLabelText('背面');
     expect(front).toHaveValue('Actual question');
@@ -187,7 +189,8 @@ describe('ReviewSessionScreen template-aware editing', () => {
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '编辑卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(screen.getByTestId('fc-review-edit'));
     expect(screen.getByLabelText('背面')).toHaveValue('');
     const save = screen.getByRole('button', { name: '保存' });
     expect(save).toBeEnabled();
@@ -219,7 +222,8 @@ describe('ReviewSessionScreen template-aware editing', () => {
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '编辑卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(screen.getByTestId('fc-review-edit'));
     const front = screen.getByLabelText('正面');
     const save = screen.getByRole('button', { name: '保存' });
     expect(front).toHaveValue('Earth {{c1::orbits}} the Sun.');

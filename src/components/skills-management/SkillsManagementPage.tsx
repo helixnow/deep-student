@@ -21,6 +21,7 @@ import {
   FolderOpen,
   Package,
   CloudArrowDown,
+  CircleNotch,
   Storefront,
   UploadSimple,
   DotsThree,
@@ -153,9 +154,9 @@ interface SkillRequiresProbeResult {
 
 /** 风险分级徽章配色（对齐 McpToolsSection 敏感等级徽章风格） */
 const RISK_BADGE_CLASSES: Record<string, string> = {
-  low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  low: 'bg-success/10 text-success',
+  medium: 'bg-warning/10 text-warning',
+  high: 'bg-destructive/10 text-destructive',
 };
 
 // ============================================================================
@@ -217,7 +218,7 @@ const InlineConfirmSection: React.FC<InlineConfirmSectionProps> = ({
 export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   className,
   workbenchWindowId,
-  windowSizeClass,
+  windowSizeClass: _windowSizeClass,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
 
@@ -252,14 +253,6 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const shellHeaderTarget = useDesktopShellHeaderPortal('skills-management');
   const toolbarPortalTarget = windowTitlebarSlot ?? shellHeaderTarget;
   const inTitlebar = Boolean(toolbarPortalTarget);
-  // 顶栏模式统一控件规格（28px / coarse 40px / text-xs，对齐 chat 与 learning-hub 既有件）
-  const titlebarSecondaryBtnCls = cn(TITLEBAR_CONTROL_CLASS, 'text-muted-foreground');
-  const inlineSecondaryBtnCls = 'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground';
-  const secondaryBtnCls = inTitlebar ? titlebarSecondaryBtnCls : inlineSecondaryBtnCls;
-  // 工具栏折叠口径：移动端 viewport、非 wide 档的 workbench 窗口，或上移到桌面顶栏槽位时
-  //（槽位约 420px，7 个带文字的动作要 645px，溢出后盖住标题、计数被挤没）
-  const collapseToolbarActions =
-    isSmallScreen || inTitlebar || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -1466,7 +1459,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {t('skills:tap.entry')}
           </AppMenuItem>
           <AppMenuItem
-            icon={<CloudArrowDown size={16} className={cn(updateChecking && 'animate-pulse')} />}
+            icon={updateChecking
+              ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
+              : <CloudArrowDown size={16} />}
             disabled={updateChecking}
             onClick={() => void handleCheckUpdates()}
           >
@@ -1507,118 +1502,106 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       />
     );
 
-    // 工具栏第一行（面包屑/计数 + 动作条）：桌面端有全局顶栏槽位时 portal 上移，
-    // 移动端已将计数合入 UnifiedMobileHeader 副标题、将「⋯」合入搜索同行，不再占独立一行
+    const locationFilterControl = (() => {
+      const visibleLocationTabs = locationTabs.filter(
+        (tab) => tab.id === 'all' || locationCounts[tab.id] > 0,
+      );
+      // 仅存在单一来源（例如只有内置技能）时隐藏来源切换条，避免移动端与下方主分类栏重复出现「全部 N」
+      if (visibleLocationTabs.length <= 2 && locationFilter === 'all') {
+        return null;
+      }
+      return (
+        <SegmentedControl<typeof locationFilter>
+          ariaLabel={t('skills:location.all')}
+          value={locationFilter}
+          onValueChange={setLocationFilter}
+          size="compact"
+          className={cn(
+            'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
+            isSmallScreen && '!border-0 !bg-transparent !p-0 gap-1.5',
+          )}
+          itemClassName={isSmallScreen
+            // 移动端降为轻盈次级芯片条，与下方「学习精选 / 全部 / 系统」主分页拉开主次层级，同时保证 ≥36px 舒适点击高度
+            ? '!h-auto !min-h-9 !rounded-full !px-3 !py-1.5 text-xs font-medium whitespace-nowrap'
+            : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
+          options={visibleLocationTabs.map((tab) => {
+            const count = locationCounts[tab.id];
+            const isActiveTab = locationFilter === tab.id;
+            return {
+              value: tab.id,
+              label: (
+                <>
+                  <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
+                    {tab.icon}
+                  </span>
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      'ml-0.5 text-2xs tabular-nums opacity-60',
+                      isActiveTab && 'opacity-100 font-bold',
+                    )}
+                  >
+                    {count}
+                  </span>
+                </>
+              ),
+            };
+          })}
+        />
+      );
+    })();
+
+    const searchInputControl = (
+      <div className="relative flex-1 min-w-0">
+        <MagnifyingGlass size={isSmallScreen ? 16 : 14} className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground/60", isSmallScreen ? "left-3" : "left-2.5")} />
+        <Input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t('skills:selector.searchPlaceholder')}
+          data-skills-search
+          className={cn(
+            'bg-[color:var(--surface-muted)] pr-3',
+            isSmallScreen
+              ? 'h-11 rounded-xl border border-border/60 pl-9 text-base shadow-none'
+              : 'h-8 border-transparent pl-8 text-xs [@media(pointer:coarse)]:!h-11',
+          )}
+        />
+      </div>
+    );
+
+    // 桌面端顶栏 portal 内容（标题/计数 + 新建 + 「更多」溢出菜单；次级操作统一收进 AppMenu）
     const toolbarPrimaryRow = (
-        <div className={cn("flex items-center gap-4 justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
-          <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
-            {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
-            <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
-            <span className="text-muted-foreground/40">/</span>
-            <span className="min-w-0 truncate">
-              {isLoading && allSkills.length === 0
-                ? t('skills:selector.loading')
-                : t('skills:management.skills_count', { count: filteredSkills.length })}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {!isSmallScreen && hiddenFileInput}
-            
-            {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
-            {!isSmallScreen && (
-              <>
-                <DsButton
-                  variant="shell"
-                  size="sm"
-                  onClick={handleCreate}
-                  className={inTitlebar
-                    ? cn(TITLEBAR_CONTROL_CLASS, 'border-transparent bg-[color:var(--button-tonal-bg)]')
-                    : 'h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs'}
-                >
-                  <Plus size={14} className="mr-1.5" />
-                  {t('skills:management.create')}
-                </DsButton>
-                <div className="w-px h-4 bg-border/40 mx-1.5" />
-              </>
-            )}
-
-            {!collapseToolbarActions ? (
-              <>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTapBrowserOpen((v) => !v)}
-                  aria-expanded={tapBrowserOpen}
-                  className={cn(
-                    secondaryBtnCls,
-                    tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
-                  )}
-                >
-                  <Storefront size={14} className="mr-1" />
-                  {t('skills:tap.entry')}
-                </DsButton>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleCheckUpdates()}
-                  disabled={updateChecking}
-                  className={secondaryBtnCls}
-                >
-                  <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
-                  {t('skills:management.check_updates')}
-                </DsButton>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleImportZipClick}
-                  className={secondaryBtnCls}
-                >
-                  <Package size={14} className="mr-1" />
-                  {t('skills:management.import_zip')}
-                </DsButton>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleImportClick}
-                  className={secondaryBtnCls}
-                >
-                  <Upload size={14} className="mr-1" />
-                  {t('skills:management.import')}
-                </DsButton>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleExportAll}
-                  disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-                  className={secondaryBtnCls}
-                >
-                  <Download size={14} className="mr-1" />
-                  {t('skills:management.export_all_short')}
-                </DsButton>
-
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleExportTap()}
-                  disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-                  className={secondaryBtnCls}
-                >
-                  <UploadSimple size={14} className="mr-1" />
-                  {t('skills:management.export_tap')}
-                </DsButton>
-              </>
-            ) : (
-              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单 */
-              mobileOverflowMenu
-            )}
-          </div>
+      <div className={cn("flex items-center gap-3 justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
+        <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
+          {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
+          <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
+          <span className="text-muted-foreground/40">/</span>
+          <span className="min-w-0 truncate">
+            {isLoading && allSkills.length === 0
+              ? t('skills:selector.loading')
+              : t('skills:management.skills_count', { count: filteredSkills.length })}
+          </span>
         </div>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {!isSmallScreen && hiddenFileInput}
+          {!isSmallScreen && (
+            <DsButton
+              variant="shell"
+              size="sm"
+              onClick={handleCreate}
+              className={inTitlebar
+                ? cn(TITLEBAR_CONTROL_CLASS, 'border-transparent bg-[color:var(--button-tonal-bg)]')
+                : 'h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs'}
+            >
+              <Plus size={14} className="mr-1.5" />
+              {t('skills:management.create')}
+            </DsButton>
+          )}
+          {mobileOverflowMenu}
+        </div>
+      </div>
     );
 
     return (
@@ -1633,80 +1616,57 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         'study-shell-toolbar flex-shrink-0',
         isSmallScreen
           ? 'px-4 py-2.5 space-y-2'
-          : cn('px-5 sm:px-8 lg:px-10', toolbarPortalTarget ? 'py-2' : 'py-3 space-y-3'),
+          : 'px-5 sm:px-8 lg:px-10 py-2.5',
       )}>
-        {!toolbarPortalTarget && !isSmallScreen && toolbarPrimaryRow}
-        {isSmallScreen && hiddenFileInput}
-        <div className={cn("flex items-center gap-2", isSmallScreen ? "flex-col items-stretch" : "gap-3")}>
-          <div className={cn("flex items-center gap-2", !isSmallScreen && "flex-1 max-w-xs")}>
-            <div className="relative flex-1 min-w-0">
-              <MagnifyingGlass size={isSmallScreen ? 16 : 14} className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground/60", isSmallScreen ? "left-3" : "left-2.5")} />
-              <Input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('skills:selector.searchPlaceholder')}
-                data-skills-search
-                className={cn(
-                  'bg-[color:var(--surface-muted)] pr-3',
-                  isSmallScreen
-                    ? 'h-11 rounded-xl border border-border/60 pl-9 text-base shadow-none'
-                    : 'h-8 border-transparent pl-8 text-xs [@media(pointer:coarse)]:!h-11',
-                )}
-              />
+        {isSmallScreen ? (
+          <>
+            {hiddenFileInput}
+            <div className="flex flex-col items-stretch gap-2">
+              <div className="flex items-center gap-2">
+                {searchInputControl}
+                {mobileOverflowMenu}
+              </div>
+              {locationFilterControl}
             </div>
-            {isSmallScreen && mobileOverflowMenu}
+          </>
+        ) : toolbarPortalTarget ? (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-1 max-w-xs">
+              {searchInputControl}
+            </div>
+            {locationFilterControl}
           </div>
-
-          {(() => {
-            const visibleLocationTabs = locationTabs.filter(
-              (tab) => tab.id === 'all' || locationCounts[tab.id] > 0,
-            );
-            // 仅存在单一来源（例如只有内置技能）时隐藏来源切换条，避免移动端与下方主分类栏重复出现「全部 N」
-            if (visibleLocationTabs.length <= 2 && locationFilter === 'all') {
-              return null;
-            }
-            return (
-              <SegmentedControl<typeof locationFilter>
-                ariaLabel={t('skills:location.all')}
-                value={locationFilter}
-                onValueChange={setLocationFilter}
-                size="compact"
-                className={cn(
-                  'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
-                  isSmallScreen && '!border-0 !bg-transparent !p-0 gap-1.5',
-                )}
-                itemClassName={isSmallScreen
-                  // 移动端降为轻盈次级芯片条，与下方「学习精选 / 全部 / 系统」主分页拉开主次层级，同时保证 ≥36px 舒适点击高度
-                  ? '!h-auto !min-h-9 !rounded-full !px-3 !py-1.5 text-xs font-medium whitespace-nowrap'
-                  : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
-                options={visibleLocationTabs.map((tab) => {
-                  const count = locationCounts[tab.id];
-                  const isActiveTab = locationFilter === tab.id;
-                  return {
-                    value: tab.id,
-                    label: (
-                      <>
-                        <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
-                          {tab.icon}
-                        </span>
-                        <span>{tab.label}</span>
-                        <span
-                          className={cn(
-                            'ml-0.5 text-2xs tabular-nums opacity-60',
-                            isActiveTab && 'opacity-100 font-bold',
-                          )}
-                        >
-                          {count}
-                        </span>
-                      </>
-                    ),
-                  };
-                })}
-              />
-            );
-          })()}
-        </div>
+        ) : (
+          /* 未 portal 桌面端：合并为单行工具栏，次级操作统一收进「更多」AppMenu */
+          <div className="flex items-center gap-3 min-w-0">
+            {hiddenFileInput}
+            <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground shrink-0">
+              <span className="font-medium text-foreground shrink-0">{t('skills:management.all_skills')}</span>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="truncate">
+                {isLoading && allSkills.length === 0
+                  ? t('skills:selector.loading')
+                  : t('skills:management.skills_count', { count: filteredSkills.length })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-1 min-w-[160px] max-w-xs">
+              {searchInputControl}
+            </div>
+            {locationFilterControl}
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              <DsButton
+                variant="shell"
+                size="sm"
+                onClick={handleCreate}
+                className="h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
+              >
+                <Plus size={14} className="mr-1.5" />
+                {t('skills:management.create')}
+              </DsButton>
+              {mobileOverflowMenu}
+            </div>
+          </div>
+        )}
       </div>
 
       <CustomScrollArea
@@ -1781,7 +1741,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         onCancel={() => {
           if (!updating) handleCancelUpdates();
         }}
-        className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+        className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
       >
         <div className="text-ui font-medium text-foreground">
           {t('skills:management.update_confirm_title')}
@@ -1815,7 +1775,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           ))}
         </div>
         <p
-          className="text-xs leading-relaxed text-amber-600 dark:text-amber-400"
+          className="text-xs leading-relaxed text-warning"
           data-testid="skill-update-retrust-hint"
         >
           {t('skills:management.update_retrust_hint')}
@@ -1860,7 +1820,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         className={cn(
           'mb-4 space-y-3 rounded-lg border p-3',
           isHighRisk
-            ? 'border-red-300/50 bg-red-50/50 dark:border-red-700/40 dark:bg-red-900/10'
+            ? 'border-destructive/35 bg-destructive/10'
             : 'border-border/60 bg-[color:var(--surface-muted)]',
         )}
       >
@@ -1910,7 +1870,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   >
                     {t('skills:management.requires_bin', { name: bin.name })}
                     {!bin.found && (
-                      <span className="text-amber-600 dark:text-amber-400">
+                      <span className="text-warning">
                         {t('skills:management.requires_missing')}
                       </span>
                     )}
@@ -1926,7 +1886,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   >
                     {t('skills:management.requires_env', { name: env.name })}
                     {!env.set && (
-                      <span className="text-amber-600 dark:text-amber-400">
+                      <span className="text-warning">
                         {t('skills:management.requires_missing')}
                       </span>
                     )}
@@ -1942,7 +1902,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   >
                     {t('skills:management.requires_python_package', { name: pkg.name })}
                     {!pkg.found && (
-                      <span className="text-amber-600 dark:text-amber-400">
+                      <span className="text-warning">
                         {t('skills:management.requires_missing')}
                       </span>
                     )}
@@ -1977,12 +1937,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               </ul>
             )}
             {isHighRisk && (
-              <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">
+              <p className="text-xs leading-relaxed text-destructive">
                 {t('skills:management.risk_high_warning')}
               </p>
             )}
             {overwrite && (
-              <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+              <p className="text-xs leading-relaxed text-warning">
                 {t('skills:management.import_confirm_overwrite_hint')}
               </p>
             )}
@@ -2027,7 +1987,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={() => {
               if (!inlineDeleting) handleCancelInlineDelete();
             }}
-            className="mb-4 space-y-2.5 rounded-lg border border-red-300/50 bg-red-50/50 p-3 dark:border-red-700/40 dark:bg-red-900/10"
+            className="mb-4 space-y-2.5 rounded-lg border border-destructive/35 bg-destructive/10 p-3"
           >
             <div className="flex items-center gap-2 text-ui font-medium text-foreground">
               <Warning size={16} className="text-destructive" />
@@ -2081,10 +2041,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={() => {
               if (!resetting) handleCancelResetToDefault();
             }}
-            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+            className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
           >
             <div className="flex items-center gap-2 text-ui font-medium text-foreground">
-              <ArrowCounterClockwise size={16} className="text-amber-600 dark:text-amber-400" />
+              <ArrowCounterClockwise size={16} className="text-warning" />
               {t('skills:management.reset_confirm_title')}
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
@@ -2121,7 +2081,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           <InlineConfirmSection
             label={t('skills:management.import_overwrite_title')}
             onCancel={handleCancelOverwrite}
-            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+            className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
           >
             <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_overwrite_title')}
@@ -2154,7 +2114,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           <InlineConfirmSection
             label={t('skills:management.import_zip_overwrite_title')}
             onCancel={handleCancelZipOverwrite}
-            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+            className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
           >
             <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_zip_overwrite_title')}

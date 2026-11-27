@@ -92,6 +92,8 @@ interface SessionBrowserProps {
   className?: string;
   /** 嵌入模式：不显示头部，由父组件控制顶栏（用于移动端） */
   embeddedMode?: boolean;
+  /** 左侧边栏已展示新建入口时隐藏重复的新建会话 CTA */
+  hideCreateAction?: boolean;
   /** 搜索查询（嵌入模式下由父组件控制） */
   externalSearchQuery?: string;
   /** 搜索查询变化回调（嵌入模式下使用） */
@@ -358,11 +360,11 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
               {sessionTitle}
             </h3>
             {session.groupName && (
-              <span className="inline-flex w-fit text-[11px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
+              <span className="inline-flex w-fit text-2xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
                 {session.groupName}
               </span>
             )}
-            {hasTaskSummary && <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            {hasTaskSummary && <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
               <span className={cn(
                 'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
                 taskSummary.status === 'running' && 'bg-info/10 text-info',
@@ -376,7 +378,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
               {taskSummary.changeCount > 0 && <span>{t('browser.taskChanges', { count: taskSummary.changeCount })}</span>}
             </div>}
             {taskSummary.lastArtifact && (
-              <p className="truncate text-[11px] text-muted-foreground" title={taskSummary.lastArtifact}>
+              <p className="truncate text-2xs text-muted-foreground" title={taskSummary.lastArtifact}>
                 {taskSummary.lastArtifact}
               </p>
             )}
@@ -450,6 +452,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   onRenameSession,
   className,
   embeddedMode = false,
+  hideCreateAction = false,
   externalSearchQuery,
   onSearchQueryChange,
 }) => {
@@ -732,7 +735,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 <button
                   onClick={() => setSearchMode('title')}
                   className={cn(
-                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-[11px] font-medium transition-colors',
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-2xs font-medium transition-colors',
                     searchMode === 'title' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
                   )}
                   title={t('search.titleMode')}
@@ -743,7 +746,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 <button
                   onClick={() => setSearchMode('content')}
                   className={cn(
-                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-[11px] font-medium transition-colors',
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-2xs font-medium transition-colors',
                     searchMode === 'content' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
                   )}
                   title={t('search.contentMode')}
@@ -766,16 +769,18 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </div>
 
             {/* 导入迁移快照 */}
-            <DsButton variant="ghost" size="sm" onClick={() => void importConversationSnapshotFromFile()} className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('browser.importSession')} title={t('browser.importSession')}>
+            <DsButton variant="ghost" size="sm" onClick={() => void importConversationSnapshotFromFile()} className="shrink-0" aria-label={t('browser.importSession')} title={t('browser.importSession')}>
               <DownloadSimple size={16} className="rotate-180" />
               <span className="hidden xs:inline">{t('browser.importSession')}</span>
             </DsButton>
 
-            {/* 新建按钮 */}
-            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-              <Plus size={16} />
-              <span className="hidden xs:inline">{t('page.newSession')}</span>
-            </DsButton>
+            {/* 新建按钮（左侧栏可见时隐藏，避免同屏重复新建入口） */}
+            {!hideCreateAction && (
+              <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
+                <Plus size={16} />
+                <span className="hidden xs:inline">{t('page.newSession')}</span>
+              </DsButton>
+            )}
           </div>
 
           {/* （原 sm:hidden 移动端搜索行为死代码：非嵌入形态仅在 ≥768px 渲染，已移除；
@@ -783,13 +788,11 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
         </div>
       )}
 
-      {/* 嵌入模式下的搜索框 + 模式切换 + 标签过滤 + 分组滑块切换
-          400px 窄屏改造：单行四组件挤压 → 拆两行。
-          第一行：搜索框（flex-1）+ 标题/内容模式切换 + 标签过滤；
-          第二行：分组滑块整行拉伸（三个 flex-1 分段，图标+文字，40px 高触控目标）。 */}
+      {/* 嵌入模式下的搜索框 + 模式切换 + 标签过滤 + 分组滑块切换：
+          sm+ 单行收紧；窄屏保持紧凑两行，减少顶部工具栏占高 */}
       {embeddedMode && (
-        <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2">
-          <div className="flex items-center gap-2">
+        <div className="flex-shrink-0 border-b border-border/35 px-3 py-2 flex flex-col gap-1.5 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <div className="relative flex-1 min-w-0">
               <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
               <Input
@@ -797,15 +800,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大；44px 触控高度
-                className="w-full h-10 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
+                // 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大；44px 触控高度
+                className="w-full h-9 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               />
             </div>
             {/* 标题/内容搜索模式切换（补齐移动端与桌面的功能对等） */}
             <button
+              type="button"
               onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
               className={cn(
-                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                'shrink-0 h-9 min-w-9 px-2.5 rounded-md text-2xs font-medium transition-colors inline-flex items-center justify-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
               )}
               title={searchMode === 'content' ? t('search.contentMode') : t('search.titleMode')}
@@ -820,7 +824,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
-                className={cn('shrink-0 !h-10 min-w-10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                className={cn('shrink-0', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
                 aria-label={t('tags.filterTitle')}
                 title={t('tags.filterTitle')}
               >
@@ -831,12 +835,13 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               </DsButton>
             )}
           </div>
-          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度（coarse 指针下 44px），图标+文字标签 */}
-          <div className="relative flex items-stretch h-10 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
+          {/* 分组滑块：窄屏整行等宽，sm+ 并入单行 */}
+          <div className="relative flex items-stretch h-9 [@media(pointer:coarse)]:h-11 sm:shrink-0 rounded-lg bg-muted/50 p-0.5">
             <button
+              type="button"
               onClick={() => setGroupMode('time')}
               className={cn(
-                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                'relative z-10 flex flex-1 sm:flex-initial sm:px-2.5 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
                 groupMode === 'time' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
               )}
               title={t('browser.groupByTime')}
@@ -847,9 +852,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               <span className="truncate">{t('browser.groupByTime')}</span>
             </button>
             <button
+              type="button"
               onClick={() => setGroupMode('group')}
               className={cn(
-                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                'relative z-10 flex flex-1 sm:flex-initial sm:px-2.5 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
                 groupMode === 'group' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
               )}
               title={t('browser.groupByGroup')}
@@ -860,9 +866,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               <span className="truncate">{t('browser.groupByGroup')}</span>
             </button>
             <button
+              type="button"
               onClick={() => setGroupMode('workspace')}
               className={cn(
-                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                'relative z-10 flex flex-1 sm:flex-initial sm:px-2.5 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
                 groupMode === 'workspace' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
               )}
               title={t('browser.groupByWorkspace')}
@@ -1000,7 +1007,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     </span>
                     {(['running', 'blocked', 'completed'] as const).map(status => (
                       summaryCounts[status] > 0 && (
-                        <span key={status} className="text-[11px] font-mono tabular-nums text-muted-foreground">
+                        <span key={status} className="text-2xs font-mono tabular-nums text-muted-foreground">
                           {t(`browser.taskStatus.${status}`)} {summaryCounts[status]}
                         </span>
                       )

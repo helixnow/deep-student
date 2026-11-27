@@ -32,9 +32,10 @@ vi.mock('@/features/learning-hub/apps/UnifiedAppPanel', () => ({
 }));
 
 vi.mock('../noteAppearance', () => ({
-  ALL_NOTE_ICONS: ['📝'],
-  NOTE_APPEARANCE_ICONS: ['📝'],
-  NOTE_ICON_GROUPS: [{ key: 'study', icons: ['📝'] }],
+  ALL_NOTE_ICONS: ['pencil-simple'],
+  NOTE_APPEARANCE_ICONS: ['pencil-simple'],
+  NOTE_ICON_GROUPS: [{ key: 'study', icons: ['pencil-simple'] }],
+  renderNoteIcon: (icon: string) => (icon ? <svg data-testid={`note-icon-${icon}`} /> : null),
   useNoteIcon: () => undefined,
   useNoteAppearance: () => ({
     value: { preset: 'default', smallText: false, fullWidth: false, font: 'default', icon: '' },

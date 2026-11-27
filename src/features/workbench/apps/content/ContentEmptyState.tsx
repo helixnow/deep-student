@@ -33,7 +33,7 @@ export const ContentEmptyState: React.FC<ContentEmptyStateProps> = ({
   return (
     <div className={cn('wb-content-empty', className)} role="region" aria-labelledby={titleId}>
       <div className="wb-content-empty__icon" aria-hidden="true">
-        {icon ?? <FileDashed size={30} weight="duotone" />}
+        {icon ?? <FileDashed size={28} weight="regular" />}
       </div>
       <h2 id={titleId} className="wb-content-empty__title">
         {title}

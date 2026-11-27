@@ -14,23 +14,36 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus } from '@phosphor-icons/react';
+import { CheckCircle, DotsThree, ListChecks, MagnifyingGlass, Plus } from '@phosphor-icons/react';
 import { APP_EVENTS, addAppEventListener } from '@/events';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuLabel,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 import { PomodoroSettingsContent, PomodoroStatsContent } from '@/features/pomodoro';
 import { registerDomainListener } from '@/features/workbench/agent/domainEvents';
 import { useTodoStore } from '../stores/useTodoStore';
 import { useAutomationStore } from '../stores/useAutomationStore';
 import { requestAutomationCreate } from '../automationCreateRequest';
+import { PRIORITY_CONFIG, type TodoPriority, type TodoSortBy } from '../types';
+import { PriorityIcon } from './main/TodoItemRow';
 import { TodoSidebar } from './TodoSidebar';
 import { TodoMainPanel, MobileDetailOverlay, type PomodoroSubView } from './TodoMainPanel';
 import { TodoTrashScreen, TodoTrashWorkspace, useTodoTrashView } from './TodoTrashDialog';
 import { TodoAutomationWorkspace } from './TodoAutomationWorkspace';
+
+const MOBILE_PRIORITY_ORDER: readonly TodoPriority[] = ['urgent', 'high', 'medium', 'low', 'none'];
+const MOBILE_SORT_ORDER: readonly TodoSortBy[] = ['manual', 'dueDate', 'priority', 'title'];
 
 interface TodoContentViewProps {
   todoListId?: string;
@@ -90,10 +103,16 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     items,
     selectedItemId,
     selectItem,
+    setSearch,
+    setPriorityFilter,
+    setSortBy,
+    setShowCompleted,
     workspaceView,
     setWorkspaceView,
   } = useTodoStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileCheckMode, setMobileCheckMode] = useState(false);
   // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）。
   // 注意：移动端回收站入口走本地 trashOpen（TodoSidebar 的 onOpenTrash 回调），
   // 与桌面端的 useTodoTrashView 共享 store 是两条独立路径——移动端需要接入
@@ -255,30 +274,104 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         };
       }
     }
+    const hasActiveMoreOption =
+      Boolean(filter.priorityFilter) || filter.showCompleted || mobileCheckMode;
+
     return {
       title: headerTitle,
       showMenu: true,
       onMenuClick: () => setSidebarOpen(true),
-      // 自动化视图：页内标题栏在移动壳下隐藏，新建收进统一顶栏右侧
-      ...(workspaceView === 'automations'
-        ? {
-          rightActions: (
-            <>
+      // 统一顶栏右侧动作（≤2 槽位）：自动化视图收「新建」；待办视图收「搜索」+「更多（筛选/排序/已完成/选择）」
+      rightActions: workspaceView === 'automations' ? (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          aria-label={t('todo:automation.new')}
+          disabled={automationCapacityFull}
+          onClick={() => requestAutomationCreate()}
+        >
+          <Plus size={18} />
+        </DsButton>
+      ) : (
+        <>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            aria-label={t('todo:actions.search')}
+            aria-expanded={mobileSearchOpen}
+            className={cn((mobileSearchOpen || filter.search.trim()) && 'text-primary')}
+            onClick={() => {
+              setMobileSearchOpen((prev) => {
+                if (prev) setSearch('');
+                return !prev;
+              });
+            }}
+          >
+            <MagnifyingGlass size={18} />
+          </DsButton>
+          <AppMenu>
+            <AppMenuTrigger asChild>
               <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                aria-label={t('todo:automation.new')}
-                disabled={automationCapacityFull}
-                onClick={() => requestAutomationCreate()}
+                aria-label={t('common:actions.more', '更多')}
+                className={cn(hasActiveMoreOption && 'text-primary')}
               >
-                <Plus size={18} />
+                <DotsThree size={20} weight="bold" />
               </DsButton>
-            </>
-          ),
-        }
-        : {}),
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={200}>
+              <AppMenuLabel>{t('todo:filters.priority')}</AppMenuLabel>
+              <AppMenuItem
+                checked={!filter.priorityFilter}
+                onClick={() => setPriorityFilter(null)}
+              >
+                {t('todo:filters.allPriorities')}
+              </AppMenuItem>
+              {MOBILE_PRIORITY_ORDER.map((priority) => (
+                <AppMenuItem
+                  key={priority}
+                  checked={filter.priorityFilter === priority}
+                  icon={<PriorityIcon priority={priority} className="h-3.5 w-3.5" />}
+                  onClick={() => setPriorityFilter(priority)}
+                >
+                  {t(PRIORITY_CONFIG[priority].labelKey)}
+                </AppMenuItem>
+              ))}
+              <AppMenuSeparator />
+              <AppMenuLabel>{t('todo:sort.label')}</AppMenuLabel>
+              {MOBILE_SORT_ORDER.map((sortBy) => (
+                <AppMenuItem
+                  key={sortBy}
+                  checked={filter.sortBy === sortBy}
+                  onClick={() => setSortBy(sortBy)}
+                >
+                  {t(`todo:sort.${sortBy}`)}
+                </AppMenuItem>
+              ))}
+              <AppMenuSeparator />
+              <AppMenuItem
+                checked={filter.showCompleted}
+                disabled={filter.view === 'completed'}
+                icon={<CheckCircle size={14} />}
+                onClick={() => setShowCompleted(!filter.showCompleted)}
+              >
+                {t('todo:filters.showCompleted')}
+              </AppMenuItem>
+              <AppMenuItem
+                checked={mobileCheckMode}
+                icon={<ListChecks size={14} />}
+                onClick={() => setMobileCheckMode((prev) => !prev)}
+              >
+                {t('todo:bulk.selectMode', '选择')}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
+        </>
+      ),
     };
   })();
 
@@ -294,6 +387,8 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen,
       mobileDetailItem?.title, inWorkbenchWindow,
       workspaceView, automationCapacityFull,
+      mobileSearchOpen, mobileCheckMode, filter.search, filter.priorityFilter,
+      filter.sortBy, filter.showCompleted, filter.view,
     ],
     inWorkbenchWindow === false,
   );
@@ -330,7 +425,16 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         >
           {workspaceView === 'automations'
             ? <TodoAutomationWorkspace hideHeader />
-            : <TodoMainPanel onOpenPomodoroSubView={setPomodoroSubView} />}
+            : (
+              <TodoMainPanel
+                onOpenPomodoroSubView={setPomodoroSubView}
+                hideMobileToolbar
+                mobileSearchOpen={mobileSearchOpen}
+                onMobileSearchOpenChange={setMobileSearchOpen}
+                checkMode={mobileCheckMode}
+                onCheckModeChange={setMobileCheckMode}
+              />
+            )}
         </MobileSlidingLayout>
 
         {/* 回收站 inline 子屏（全屏覆盖 + 系统返回键 + 顶栏返回箭头） */}

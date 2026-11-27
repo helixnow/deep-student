@@ -16,6 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -349,7 +350,10 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
                 variant="ghost"
                 size="sm"
                 onClick={openToolPermissionSettings}
-                className="mt-1.5 !h-auto !px-1.5 !py-0.5 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                className={cn(
+                  'mt-1.5 !h-auto !px-1.5 !py-0.5 text-xs text-primary hover:underline',
+                  coarseHitClassFor24,
+                )}
               >
                 <ArrowSquareOut size={11} />
                 {t('blocks.mcpTool.openRuntimeSettings')}

@@ -53,13 +53,12 @@ const PdfRelatedPanel: React.FC<{ sourceId: string }> = ({ sourceId }) => {
               <button
                 key={note.noteId}
                 type="button"
-                className={`ds-pdf-related-item border-l-2 ${note.via === 'origin' ? 'border-l-primary/70' : 'border-l-info/70'} hover:bg-foreground/[0.035] transition-colors`}
+                className="ds-pdf-related-item hover:bg-foreground/[0.035] transition-colors"
                 onClick={() => openNote(note.noteId)}
               >
                 <NotePencil size={14} aria-hidden="true" />
                 <span className="ds-pdf-related-title">{note.title}</span>
-                <span className="ds-pdf-related-meta inline-flex items-center gap-1">
-                  <span className={`h-1.5 w-1.5 rounded-full ${note.via === 'origin' ? 'bg-primary' : 'bg-info'}`} aria-hidden="true" />
+                <span className="ds-pdf-related-meta">
                   {note.via === 'origin' ? t('related.viaOrigin', { defaultValue: '摘录' }) : t('related.viaRelation', { defaultValue: '关联' })}
                 </span>
               </button>
@@ -74,7 +73,7 @@ const PdfRelatedPanel: React.FC<{ sourceId: string }> = ({ sourceId }) => {
               <button
                 key={session.sessionId}
                 type="button"
-                className="ds-pdf-related-item border-l-2 border-l-primary/50 hover:bg-foreground/[0.035] transition-colors"
+                className="ds-pdf-related-item hover:bg-foreground/[0.035] transition-colors"
                 onClick={() => openSession(session)}
               >
                 <ChatCircleText size={14} aria-hidden="true" />

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ArrowUDownLeft } from '@phosphor-icons/react';
 import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/utils/cn';
@@ -110,8 +111,9 @@ export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
         />
       </div>
       {flippable ? (
-        <div className="pointer-events-none absolute bottom-1 right-2 select-none text-2xs text-muted-foreground/60 transition-opacity">
-          {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
+        <div className="pointer-events-none absolute bottom-1 right-2 inline-flex select-none items-center gap-0.5 text-2xs text-muted-foreground/60 transition-opacity">
+          <span>{showBack ? t('chatV2.front') : t('chatV2.back')}</span>
+          <ArrowUDownLeft size={10} aria-hidden="true" />
         </div>
       ) : null}
     </div>

@@ -22,6 +22,7 @@ import {
   Link,
   LineSegment,
   MagnifyingGlassPlus,
+  Check,
   CheckCircle,
   Circle,
   Copy,
@@ -97,7 +98,7 @@ const PanelRow: React.FC<{
   >
     <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center">{icon}</span>
     <span className="flex-1 text-left">{label}</span>
-    {active && <span aria-hidden="true" className="text-[var(--mm-primary)] text-xs">✓</span>}
+    {active && <Check size={12} aria-hidden="true" className="text-[var(--mm-primary)] shrink-0" />}
   </DsButton>
 );
 

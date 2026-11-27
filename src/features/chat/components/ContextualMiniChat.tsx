@@ -5,10 +5,10 @@ import {
   ArrowsInSimple,
   ChatCircleText,
   PaperPlaneRight,
-  Sparkle,
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { cn } from '@/utils/cn';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
@@ -90,27 +90,23 @@ export const DEFAULT_MINI_CHAT_PRESETS: MiniChatPresetAction[] = [
 
 const ANCHOR_KIND_META: Record<
   MiniChatContextAnchor['kind'],
-  { badgeKey: string; defaultBadge: string; dotClass: string }
+  { badgeKey: string; defaultBadge: string }
 > = {
   pdf_page: {
     badgeKey: 'miniChat.anchorKinds.pdf_page',
     defaultBadge: 'PDF 页码',
-    dotClass: 'bg-info',
   },
   video_timestamp: {
     badgeKey: 'miniChat.anchorKinds.video_timestamp',
     defaultBadge: '视频时间点',
-    dotClass: 'bg-success',
   },
   question_id: {
     badgeKey: 'miniChat.anchorKinds.question_id',
     defaultBadge: '题目锚点',
-    dotClass: 'bg-warning',
   },
   handout_section: {
     badgeKey: 'miniChat.anchorKinds.handout_section',
     defaultBadge: '讲义章节',
-    dotClass: 'bg-primary',
   },
 };
 
@@ -335,7 +331,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
     });
   }, [messages, boundAnchor, onPromoteToMainChat]);
 
-  // 最小化态：悬浮伴读胶囊（带 6px 未读回复脉冲点）
+  // 最小化态：悬浮伴读胶囊（静态未读计数徽章）
   if (isMinimized) {
     return (
       <div
@@ -352,16 +348,9 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
           size="sm"
           onClick={() => handleToggleMinimize(false)}
           aria-label={t('miniChat.expandAria', { defaultValue: '展开伴读小窗' })}
-          className="h-auto [@media(pointer:coarse)]:min-h-11 gap-2.5 rounded-full border-border/35 bg-card px-3.5 py-2 text-foreground shadow-sm hover:bg-muted/50 active:scale-[0.98] transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+          className="h-auto [@media(pointer:coarse)]:min-h-11 gap-2 rounded-full border-border/35 bg-card px-3.5 py-2 text-foreground shadow-sm hover:bg-muted/50 active:scale-[0.98] transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
         >
-          <span
-            data-testid="mini-chat-unread-pulse"
-            className={cn(
-              'w-1.5 h-1.5 rounded-full shrink-0',
-              unreadCount > 0 ? 'bg-success animate-pulse motion-reduce:animate-none' : 'bg-primary',
-            )}
-          />
-          <ChatCircleText className="w-3.5 h-3.5 text-primary" />
+          <ChatCircleText className="w-3.5 h-3.5 text-primary shrink-0" />
           <span className="text-xs font-medium">
             {t('miniChat.pillTitle', { defaultValue: '伴读小窗' })}
           </span>
@@ -396,7 +385,6 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
       {/* 顶部标题栏与迁入主会话操作 */}
       <header className="flex shrink-0 items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 border-b border-border/35 bg-muted/20">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
           <span className="text-xs font-semibold text-foreground truncate">
             {t('miniChat.headerTitle', { defaultValue: '伴读即时问答' })}
           </span>
@@ -445,7 +433,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
       >
         {messages.length === 0 ? (
           <div className="my-auto text-center py-1 sm:py-6 px-2 flex flex-col items-center gap-1">
-            <Sparkle className="w-4 h-4 text-muted-foreground max-sm:hidden" />
+            <ChatCircleText className="w-4 h-4 text-muted-foreground max-sm:hidden" />
             <p className="text-xs text-muted-foreground">
               {t('miniChat.emptyHint', {
                 defaultValue: '已就绪，点击下方快捷指令或直接提问当前阅读内容',
@@ -465,12 +453,6 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             >
               {msg.anchor && (
                 <div className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
-                  <span
-                    className={cn(
-                      'w-1.5 h-1.5 rounded-full',
-                      ANCHOR_KIND_META[msg.anchor.kind].dotClass,
-                    )}
-                  />
                   <span>{msg.anchor.label}</span>
                 </div>
               )}
@@ -510,12 +492,6 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             className="flex items-center justify-between gap-2 px-2.5 py-1 rounded-full border border-border/35 bg-muted/30 text-xs"
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span
-                className={cn(
-                  'w-1.5 h-1.5 rounded-full shrink-0',
-                  ANCHOR_KIND_META[boundAnchor.kind].dotClass,
-                )}
-              />
               <span className="text-xs text-muted-foreground shrink-0">
                 {t(ANCHOR_KIND_META[boundAnchor.kind].badgeKey, {
                   defaultValue: ANCHOR_KIND_META[boundAnchor.kind].defaultBadge,
@@ -532,7 +508,10 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
               size="icon"
               onClick={handleClearBoundAnchor}
               aria-label={t('miniChat.clearAnchorAria', { defaultValue: '移除上下文锚点' })}
-              className="lg:h-5 lg:w-5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 transition-colors motion-reduce:transition-none"
+              className={cn(
+                '!h-6 !w-6 !min-h-0 !min-w-0 !p-0 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 transition-colors motion-reduce:transition-none',
+                coarseHitClassFor24,
+              )}
             >
               <X className="w-3 h-3" />
             </DsButton>

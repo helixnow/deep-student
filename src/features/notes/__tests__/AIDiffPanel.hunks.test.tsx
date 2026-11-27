@@ -96,7 +96,7 @@ describe('AIDiffPanel Hunk-level review & tweak flow (C4 §3.2.4)', () => {
     };
   }
 
-  it('renders font-mono tabular-nums hunk progress counter, 6px status dots, 1px border-border/35 dividers, and zero emojis', () => {
+  it('renders font-mono tabular-nums hunk progress counter, flat divide-border/35 dividers, zero decorative dots, and zero emojis', () => {
     const state = makeMultiHunkState();
     const { container } = render(
       <AIDiffPanel
@@ -114,11 +114,12 @@ describe('AIDiffPanel Hunk-level review & tweak flow (C4 §3.2.4)', () => {
     expect(counter.className).toContain('tabular-nums');
 
     const card0 = screen.getByTestId('ai-diff-hunk-card-0');
-    expect(card0.className).toContain('border-border/35');
+    expect(card0.parentElement?.className).toContain('divide-y');
+    expect(card0.parentElement?.className).toContain('divide-border/35');
     expect(within(card0).getByText('1 / 3').className).toContain('tabular-nums');
 
     const dots = container.querySelectorAll('.h-1\\.5.w-1\\.5.rounded-full');
-    expect(dots.length).toBeGreaterThanOrEqual(4);
+    expect(dots.length).toBe(0);
 
     expect(EMOJI_RE.test(container.textContent ?? '')).toBe(false);
   });

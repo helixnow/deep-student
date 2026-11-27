@@ -25,8 +25,8 @@ import {
   Check,
   CircleNotch,
   DotsSixVertical,
+  ListPlus,
   Plus,
-  Sparkle,
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -398,7 +398,7 @@ export const SubtaskSection: React.FC<{
           disabled={aiBreaking}
           title={t('todo:subtasks.aiBreakdownHint')}
         >
-          {aiBreaking ? <CircleNotch size={12} className="animate-spin" /> : <Sparkle size={12} />}
+          {aiBreaking ? <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" /> : <ListPlus size={12} />}
           {aiBreaking ? t('todo:subtasks.aiBreaking') : t('todo:subtasks.aiBreakdown')}
         </DsButton>
       </div>

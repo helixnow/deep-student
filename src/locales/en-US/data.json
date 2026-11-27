@@ -833,7 +833,7 @@
         "ocr_text": "OCR results",
         "ocr_text_desc": "OCR will rerun when needed",
         "vector_index": "Vector index data",
-        "vector_index_desc": "⚠️ You must rebuild vector indexes for all resources"
+        "vector_index_desc": "You must rebuild vector indexes for all resources"
       }
     },
     "feature_coming_soon": "This feature is coming soon",

@@ -597,7 +597,7 @@
    V2 Thinking Block — 思考块（block plugin）
    ============================================================================
    与 markdown.css 中的 .chain-of-thought（legacy <thinking> tag 内联解析）分离。
-   视觉策略：左品牌色 accent bar + 卡片容器，层次高出普通助手消息。
+   视觉策略：统一 1px 中性描边卡片容器，层次高出普通助手消息。
    动画：transitions-dev 双域协同 —
          • chevron 旋转走 --icon-swap-* 域（200ms ease-in-out）
          • content 入场走 --panel-* 域（translateY + opacity + blur，
@@ -607,9 +607,6 @@
 
 .think-block {
   border: 1px solid var(--chat-thinking-border);
-
-  /* --brand-primary 是裸 HSL 分量，必须包 hsl() 才是合法颜色 */
-  border-left: 2px solid hsl(var(--brand-primary));
   border-radius: var(--radius-shell-toolbar);
   background: var(--chat-thinking-surface);
   overflow: hidden;
@@ -618,17 +615,12 @@
 }
 
 .think-block--expanded {
-  border-left-color: hsl(var(--primary) / 0.9);
   box-shadow: var(--shadow-shell-soft);
 }
 
 .dark .think-block {
   background: var(--chat-thinking-surface);
   border-color: var(--chat-thinking-border);
-}
-
-.dark .think-block--expanded {
-  border-left-color: hsl(var(--primary));
 }
 
 /* ─── Header ──────────────────────────────────────────────────────────────── */

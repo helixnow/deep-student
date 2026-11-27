@@ -59,9 +59,9 @@ const PRESET_TAPS: Array<{ label: string; url: string }> = [
 ];
 
 const RISK_BADGE_CLASSES: Record<string, string> = {
-  low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  low: 'bg-success/10 text-success',
+  medium: 'bg-warning/10 text-warning',
+  high: 'bg-destructive/10 text-destructive',
 };
 
 type SourceTab = 'github' | 'market';
@@ -434,12 +434,12 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             </ul>
           )}
           {isHighRisk && (
-            <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">
+            <p className="text-xs leading-relaxed text-destructive">
               {t('skills:management.risk_high_warning')}
             </p>
           )}
           {overwrite && (
-            <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+            <p className="text-xs leading-relaxed text-warning">
               {t('skills:management.import_confirm_overwrite_hint')}
             </p>
           )}
@@ -556,7 +556,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
       )}
 
       {error && (
-        <p className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
+        <p className="break-all text-xs leading-relaxed text-destructive">{error}</p>
       )}
 
       {catalog && catalog.skills.length > 0 && (
@@ -610,7 +610,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                         t('skills:tap.scanning')
                       ) : installed ? (
                         <>
-                          <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
+                          <CheckCircle size={13} className="mr-1 text-success" />
                           {t('skills:tap.reinstall')}
                         </>
                       ) : (
@@ -719,7 +719,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
       {(marketStatus === 'rate_limited' || marketStatus === 'network_error') && marketErrorMessage && (
         <p
-          className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400"
+          className="break-all text-xs leading-relaxed text-destructive"
           role="alert"
           aria-live="assertive"
           data-testid={marketStatus === 'rate_limited' ? 'skill-market-rate-limited' : 'skill-market-network-error'}
@@ -785,7 +785,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                       t('skills:tap.market.scanning')
                     ) : installed ? (
                       <>
-                        <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
+                        <CheckCircle size={13} className="mr-1 text-success" />
                         {t('skills:tap.market.reinstall')}
                       </>
                     ) : (

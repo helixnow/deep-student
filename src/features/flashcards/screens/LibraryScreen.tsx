@@ -1328,7 +1328,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           />
         </label>
         {draftClozeInvalid ? (
-          <p role="status" className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <p role="status" className="flex items-center gap-1.5 text-xs text-warning">
             <Warning size={13} aria-hidden="true" />
             {t('session.invalidClozeEdit')}
           </p>
@@ -1436,64 +1436,59 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <ImageSquare size={18} />
         {!isSmallScreen && translate('occlusion.newCardButton')}
       </DsButton>
-      <DsButton
-        type="button"
-        variant="default"
-        iconOnly={isSmallScreen}
-        aria-label={importing ? translate('library.import.running') : translate('library.import.apkg')}
-        aria-expanded={importPanelMode === 'apkg'}
-        disabled={importing}
-        onClick={handleImportApkg}
-        title={translate('library.import.hint')}
-        className="fc-lib-create-cta text-sm"
-        data-testid="fc-lib-import-apkg"
-      >
-        <UploadSimple size={18} />
-        {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.apkg'))}
-      </DsButton>
-      <DsButton
-        type="button"
-        variant="default"
-        iconOnly={isSmallScreen}
-        aria-label={importing ? translate('library.import.running') : translate('library.import.csv')}
-        aria-expanded={importPanelMode === 'csv'}
-        disabled={importing}
-        onClick={handleImportCsv}
-        title={translate('library.import.csvHint')}
-        className="fc-lib-create-cta text-sm"
-        data-testid="fc-lib-import-csv"
-      >
-        <UploadSimple size={18} />
-        {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.csv'))}
-      </DsButton>
-      <DsButton
-        type="button"
-        variant="default"
-        iconOnly={isSmallScreen}
-        aria-label={exportLabel}
-        disabled={exporting}
-        onClick={() => void handleExportApkg()}
-        title={translate('library.export.hint', { defaultValue: "Export as an Anki deck (.apkg) keeping each card's template and styling; exports the whole library when nothing is selected" })}
-        className="fc-lib-create-cta text-sm"
-        data-testid="fc-lib-export-apkg"
-      >
-        <DownloadSimple size={18} />
-        {!isSmallScreen && exportLabel}
-      </DsButton>
-      <DsButton
-        type="button"
-        variant="default"
-        iconOnly={isSmallScreen}
-        aria-label={exportCsvLabel}
-        disabled={exporting}
-        onClick={() => void handleExportCsv()}
-        title={translate('library.export.csvHint')}
-        className="fc-lib-create-cta text-sm"
-        data-testid="fc-lib-export-csv"
-      >
-        <DownloadSimple size={18} />
-        {!isSmallScreen && exportCsvLabel}
-      </DsButton>
+      <AppMenu>
+        <AppMenuTrigger asChild>
+          <DsButton
+            type="button"
+            variant="default"
+            iconOnly
+            aria-label={translate('common:more', { defaultValue: 'More' })}
+            title={translate('common:more', { defaultValue: 'More' })}
+            className="fc-lib-create-cta text-sm"
+            data-testid="fc-lib-more-actions"
+          >
+            <DotsThree size={18} />
+          </DsButton>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={220}>
+          <AppMenuItem
+            icon={<UploadSimple size={16} />}
+            disabled={importing}
+            onClick={handleImportApkg}
+            title={translate('library.import.hint')}
+            data-testid="fc-lib-import-apkg"
+          >
+            {importing ? translate('library.import.running') : translate('library.import.apkg')}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<UploadSimple size={16} />}
+            disabled={importing}
+            onClick={handleImportCsv}
+            title={translate('library.import.csvHint')}
+            data-testid="fc-lib-import-csv"
+          >
+            {importing ? translate('library.import.running') : translate('library.import.csv')}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<DownloadSimple size={16} />}
+            disabled={exporting}
+            onClick={() => void handleExportApkg()}
+            title={translate('library.export.hint', { defaultValue: "Export as an Anki deck (.apkg) keeping each card's template and styling; exports the whole library when nothing is selected" })}
+            data-testid="fc-lib-export-apkg"
+          >
+            {exportLabel}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<DownloadSimple size={16} />}
+            disabled={exporting}
+            onClick={() => void handleExportCsv()}
+            title={translate('library.export.csvHint')}
+            data-testid="fc-lib-export-csv"
+          >
+            {exportCsvLabel}
+          </AppMenuItem>
+        </AppMenuContent>
+      </AppMenu>
     </>
   );
   const listBody = loadError ? (
@@ -1533,43 +1528,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           {translate('library.clearFilters')}
         </DsButton>
       ) : (
-        <>
-          <p className="max-w-md text-xs text-muted-foreground">
-            {translate('library.emptyHint')}
-          </p>
-          {!mobileChrome && <div className="fc-lib-empty-actions">
-            <DsButton
-              type="button"
-              variant="primary"
-              onClick={() => setComposerOpen(true)}
-              className="fc-lib-create-cta text-sm"
-            >
-              <Plus size={15} />
-              {translate('library.create.new')}
-            </DsButton>
-            <DsButton
-              type="button"
-              variant="default"
-              disabled={importing}
-              onClick={handleImportApkg}
-              className="fc-lib-create-cta text-sm"
-            >
-              <UploadSimple size={15} />
-              {importing ? translate('library.import.running') : translate('library.import.apkg')}
-            </DsButton>
-            <DsButton
-              type="button"
-              variant="default"
-              disabled={importing}
-              onClick={handleImportCsv}
-              className="fc-lib-create-cta text-sm"
-              data-testid="fc-lib-empty-import-csv"
-            >
-              <UploadSimple size={15} />
-              {importing ? translate('library.import.running') : translate('library.import.csv')}
-            </DsButton>
-          </div>}
-        </>
+        <p className="max-w-md text-xs text-muted-foreground">
+          {translate('library.emptyHint')}
+        </p>
       )}
     </div>
   ) : visibleItems.length === 0 ? (
@@ -1673,19 +1634,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   const content = (
     <div className="wb-fc-screen fc-lib-screen">
-      {!mobileChrome && <header className="wb-fc-header" data-align="end">
-        <div className="fc-lib-heading min-w-0">
-          <h2 className="wb-fc-title">
-            {t('library.title')}
-          </h2>
-          <p className="wb-fc-subtitle font-mono tabular-nums">
-            {loading
-              ? t('library.loading')
-              : totalLabel}
-          </p>
-        </div>
-      </header>}
-
       <div className="wb-fc-toolbar">
         <LibrarySearchBar
           storeQuery={query}
@@ -1719,14 +1667,14 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             defaultValue: 'Anki deck import summary',
           })}
           data-testid="fc-lib-apkg-import-summary"
-          className="flex flex-col gap-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-3.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-xl border border-success/35 bg-success/10 p-3.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex min-w-0 items-start gap-2.5">
             <CheckCircle
               size={20}
               weight="duotone"
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              className="mt-0.5 shrink-0 text-success"
             />
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -2143,7 +2091,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
           {draftClozeInvalid ? (
-            <p role="status" className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <p role="status" className="flex items-center gap-1.5 text-xs text-warning">
               <Warning size={13} aria-hidden="true" />
               {t('session.invalidClozeEdit')}
             </p>
@@ -2230,14 +2178,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         >
           {FILTER_OPTIONS.map((option) => {
             const count = filterCounts.get(option) ?? 0;
-            const dotTone =
-              option === 'due'
-                ? 'bg-emerald-500'
-                : option === 'new'
-                  ? 'bg-primary'
-                  : option === 'learning'
-                    ? 'bg-amber-500'
-                    : null;
             return (
               <button
                 key={option}
@@ -2247,12 +2187,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 aria-pressed={statusFilter === option}
                 onClick={() => handleSetStatusFilter(option)}
               >
-                {dotTone && count > 0 ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotTone)}
-                  />
-                ) : null}
                 {translate(`library.filter.${option}`)}
                 {option !== 'all' && count > 0 ? (
                   <span className="fc-lib-chip-count font-mono tabular-nums">{count}</span>

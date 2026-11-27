@@ -407,7 +407,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                             style={{ filter: 'grayscale(1)', opacity: 0.3 }}
                           />
                           <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
-                          <Check className="h-3.5 w-3.5 text-green-500/40 shrink-0" />
+                          <Check className="h-3.5 w-3.5 text-success/50 shrink-0" />
                         </div>
                       ))}
                     </div>

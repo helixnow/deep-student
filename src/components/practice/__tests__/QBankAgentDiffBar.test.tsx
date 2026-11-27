@@ -303,11 +303,7 @@ describe('QBankAgentDiffBar component', () => {
     const bar = screen.getByTestId('qbank-agent-diff-bar');
     expect(bar.className).toContain('border-border/35');
     expect(EMOJI_RE.test(container.textContent ?? '')).toBe(false);
-
-    const dot = screen.getByTestId('qbank-diff-status-dot');
-    expect(dot.className).toContain('h-1.5');
-    expect(dot.className).toContain('w-1.5');
-    expect(dot.className).toContain('bg-primary');
+    expect(screen.queryByTestId('qbank-diff-status-dot')).toBeNull();
 
     const counter = screen.getByTestId('qbank-diff-counter');
     expect(counter.textContent).toBe('1 / 2');

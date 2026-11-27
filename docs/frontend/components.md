@@ -7,7 +7,7 @@
 
 | 需求 | 标准组件（导入路径） | 旧实现 / 不要用 |
 |---|---|---|
-| 按钮、图标按钮 | `DsButton`（`@/components/ui/DsButton`，426 文件） | `@/components/ui/shad/Button`（lint error）、原生 `<button>`（lint warn，745 处） |
+| 按钮、图标按钮 | `DsButton`（`@/components/ui/DsButton`，426 文件） | `@/components/ui/shad/Button`（lint error）、原生 `<button>`（lint warn，754 处） |
 | 模态对话框 | `DsDialog` + `DsDialogHeader/Title/Description/Body/Footer`（`@/components/ui/DsDialog`，49 文件） | `@/components/ui/shad/Dialog`（3 文件） |
 | 确认框 | `DsAlertDialog`（同上） | `window.confirm`、`window.alert`（`no-alert` error） |
 | 侧栏抽屉 | `@/components/ui/unified-sidebar`（`UnifiedSidebar`、`SidebarSheet`、`SidebarDrawer`、`MobileSidebarLayout`） | — |
@@ -196,11 +196,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/To
 <a id="tabs"></a>
 ## 7. Tabs
 
-`shad/Tabs` 是自研实现（非 Radix）：`Tabs`（`value` / `defaultValue` / `onValueChange`）、`TabsList`、`TabsTrigger`（`value`，`variant`: `default|bare`）、`TabsContent`（`value`）。
+`shad/Tabs` 是自研实现（非 Radix）：`Tabs`（`value` / `defaultValue` / `onValueChange`）、`TabsList`、`TabsTrigger`（`value`，`variant`: `default|bare`）、`TabsContent`（`value`，`forceMount?: boolean`）。
 
-- 未激活的 `TabsContent` **直接卸载**，状态不保留；需要保活时自己管理显隐。
-- 激活面板挂 `.ui-rise-in`。
-- `TabsList` / `TabsTrigger` 当前没有 `role="tablist"` / `role="tab"` / `aria-selected` 与方向键导航（`TabsContent` 有 `role="tabpanel"`）。对键盘与读屏有要求的视图切换，用 `SegmentedControl`。
+- 未激活的 `TabsContent` 默认**直接卸载**；需要保留内部状态（如表单草稿）时显式传 `forceMount`，此时保留 DOM 子树并以 `hidden` 隐藏。
+- 激活面板挂 `.ui-rise-in`，并带有 `role="tabpanel"` 与 `aria-labelledby`。
+- `TabsList` 提供 `role="tablist"` 与键盘导航（水平方向 `ArrowLeft` / `ArrowRight`，`aria-orientation="vertical"` 时为 `ArrowUp` / `ArrowDown`，以及 `Home` / `End`）；`TabsTrigger` 提供 `role="tab"`、`aria-selected`、`aria-controls` 及 roving `tabIndex`。
 
 <a id="scroll"></a>
 ## 8. 滚动区域
@@ -217,7 +217,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/To
 
 使用约束：父容器必须有确定高度（flex 子项加 `min-h-0`）；不要包 CodeMirror、Crepe/Milkdown/ProseMirror 编辑器、思维导图画布；对话框里用 `DsDialogBody` 的原生滚动。滚动条外观统一在 `native-feel/scrollbars.css`，不要再写 `::-webkit-scrollbar`；隐藏滚动条只用 `.scrollbar-none`。
 
-`CustomScrollArea` 是 `@deprecated` 的兼容层（`hideTrackWhenIdle`、`trackOffsetTop/…`、`fullHeight` 等旧 prop 翻译到 `ScrollArea`）。`docs/CODE_STYLE.md` §5.1 仍以它为例，以本节为准：新代码导入 `ScrollArea`。
+`CustomScrollArea` 是 `@deprecated` 的兼容层（`hideTrackWhenIdle`、`trackOffsetTop/…`、`fullHeight` 等旧 prop 翻译到 `ScrollArea`），新代码统一导入 `ScrollArea`。
 
 <a id="feedback"></a>
 ## 9. 通知、状态与反馈
@@ -251,7 +251,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/To
 | 组件 | 用途 |
 |---|---|
 | `TouchTarget`（`asChild?`）与 `touchTargetClassName` / `touchTargetCoarseClassName` | 非 `<button>` 的可交互热区（Radix trigger 的 span、链接、第三方组件外壳）在 coarse 下撑到 44×44。不要包 DsButton |
-| `coarseHitClassFor36/32/28/24`、`coarseHitClassForBadge16`（`@/components/ui/coarseHit`） | 伪元素扩区逃生舱，只在实体撑高会破坏硬布局时用，并登记到 `eslint-rules/coarse-touch-target.allowlist.json` |
+| `coarseHitClassFor36/32/28/24`、`coarseHitClassForBadge16`（`@/components/ui/coarseHit`） | 伪元素扩区逃生舱，只在实体撑高会破坏硬布局时用，并登记到 `scripts/lint/eslint-rules/coarse-touch-target.allowlist.json` |
 
 <a id="presence"></a>
 - `UiPresence`（`open`、`inClass`、`outClass`、`exitMs` 默认 150、`enter`）：非 Radix 浮层挂 `ui-*-in` / `ui-*-out` 类并在退场动画后卸载。底层 hook 是 `useMotionPresence(open, { exitMs, enter })`，退场时长用 `readCssDurationMs('--dropdown-close-dur', 150)` 读 CSS token。

@@ -520,7 +520,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       <span className={mobileDrawerSectionLabelClassName}>{label}</span>
     ) : (
       <div className="px-3">
-        <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{label}</p>
+        <p className="text-2xs font-normal text-[color:var(--sidebar-muted)]">{label}</p>
       </div>
     );
 
@@ -606,15 +606,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 />
               </span>
             ) : (
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
-                  style={group?.color ? { backgroundColor: group.color } : undefined}
-                />
+              <span className="inline-flex shrink-0 items-center">
                 <FolderSimple
                   size={16}
                   className="h-4 w-4 shrink-0 text-[color:var(--sidebar-foreground)]"
+                  style={group?.color ? { color: group.color } : undefined}
                 />
               </span>
             )}
@@ -623,12 +619,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               {countdown ? (
                 <span
                   data-testid={group ? `space-countdown-${group.id}` : undefined}
-                  className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]"
+                  className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 font-mono text-2xs tabular-nums text-[var(--text-secondary)]"
                 >
-                  <span
-                    aria-hidden="true"
-                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', countdown.dotColorClass)}
-                  />
                   <span>{countdown.label}</span>
                 </span>
               ) : null}
@@ -680,12 +672,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={200}>
                   <AppMenuGroup>
-                    <AppMenuItem
-                      icon={<Plus size={16} />}
-                      onClick={() => handleCreateSessionInFolder(group.id)}
-                    >
-                      {t('page.newSession')}
-                    </AppMenuItem>
                     <AppMenuItem
                       icon={<PencilSimple size={16} />}
                       onClick={() => onRenameGroup(group)}

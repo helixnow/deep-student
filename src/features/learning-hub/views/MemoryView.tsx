@@ -27,7 +27,9 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { fileManager } from '@/utils/fileManager';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { coarseHitClassFor24, coarseHitClassFor28 } from '@/components/ui/coarseHit';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   MagnifyingGlass,
@@ -153,6 +155,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [loadingFolders, setLoadingFolders] = useState(false);
   // ★ 内联根目录选择面板（原为模态框）
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [pickerFilter, setPickerFilter] = useState('');
 
   // ★ 画像状态
@@ -1328,8 +1331,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 渲染：主视图 ==========
   return (
     <div className={cn('flex h-full min-h-0 flex-col overflow-hidden bg-background', className)}>
-      {/* 顶部单层控制栏：紧凑 h-10 搜索与核心动作 */}
-      <div data-wb-blur-surface className="flex flex-wrap items-center gap-1.5 gap-y-1 px-3 py-1.5 min-h-[40px] border-b border-border/35 bg-background/95 backdrop-blur-sm">
+      {/* 单行顶部控制栏：搜索、视图切换、工具与记忆设置弹层 */}
+      <div className="flex flex-wrap items-center gap-1.5 gap-y-1 px-3 py-1.5 min-h-[40px] border-b border-border/50 bg-background">
         {/* 搜索框：保留最小可用宽度 */}
         <div className="flex-1 min-w-[9rem] relative">
           <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
@@ -1346,9 +1349,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             className="w-full h-7 pl-8 pr-7 text-xs bg-foreground/[0.035] border-border/35 rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
           />
           {isSearching ? (
-            <CircleNotch size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/60" />
+            <CircleNotch size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin motion-reduce:animate-none text-muted-foreground/60" />
           ) : searchQuery ? (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.clear_search')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className={cn('absolute right-2.5 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground', coarseHitClassFor24)} aria-label={t('memory.aria.clear_search')}>
               ×
             </DsButton>
           ) : null}
@@ -1358,7 +1361,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
-          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', viewMode === 'tree' && 'text-primary bg-primary/10')}
+          className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
           aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
@@ -1371,22 +1374,22 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); setConfirmingBatchDelete(false); }}
-          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', batchMode && 'text-primary bg-primary/10')}
+          className={cn(batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
           <CheckSquare size={15} />
         </DsButton>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.export')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} aria-label={t('memory.aria.export')}>
           <Download size={15} />
         </DsButton>
 
         <div className="w-px h-3.5 bg-border/35" />
 
-        {/* 面板 */}
+        {/* 面板与设置弹层 */}
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
-          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', showProfile && 'text-primary bg-primary/10')}
+          className={cn(showProfile && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.profile')}
         >
           <MemoryIcon size={15} />
@@ -1394,18 +1397,127 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
-          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', showAuditLog && 'text-primary bg-primary/10')}
+          className={cn(showAuditLog && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.audit_log')}
           title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={15} />
         </DsButton>
+
+        {/* 根目录与自动提取设置收纳到单一弹层，消除双层顶栏 */}
+        <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
+          <PopoverTrigger asChild>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={cn((settingsPopoverOpen || isPickerOpen || showCreateSubfolderForm) && 'text-primary bg-primary/10')}
+              aria-label={t('memory.root_folder')}
+              title={t('memory.root_folder')}
+            >
+              <Gear size={15} />
+            </DsButton>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-3 space-y-3 text-xs">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <FolderOpen size={13} className="shrink-0" />
+                <span>{t('memory.root_folder')}</span>
+                <span className="ml-auto font-medium text-foreground max-w-[140px] truncate">
+                  {config.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : t('memory.defaultRootTitle')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsPopoverOpen(false);
+                    handleOpenRootPicker();
+                  }}
+                  disabled={loadingFolders}
+                  className={cn('!h-7 !px-2 text-xs', coarseHitClassFor28, isPickerOpen && 'bg-primary/10 text-primary')}
+                >
+                  {loadingFolders ? (
+                    <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Gear size={12} />
+                  )}
+                  {t('memory.change')}
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  data-testid="memory-new-subfolder-btn"
+                  onClick={() => {
+                    setSettingsPopoverOpen(false);
+                    setShowCreateSubfolderForm((v) => !v);
+                  }}
+                  className={cn('!h-7 !px-2 text-xs text-primary hover:bg-primary/10', coarseHitClassFor28, showCreateSubfolderForm && 'bg-primary/10 text-primary')}
+                >
+                  <Plus size={12} />
+                  {t('learningHub:memory.new_subfolder', { defaultValue: '新建分组' })}
+                </DsButton>
+              </div>
+            </div>
+
+            <div className="border-t border-border/50 pt-2.5 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Lightning size={13} className="shrink-0" />
+                <span>{t('memory.auto_extract')}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {([
+                  { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
+                  { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
+                  { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={opt.desc}
+                    aria-pressed={config.autoExtractFrequency === opt.value}
+                    onClick={() => handleFrequencyChange(opt.value)}
+                    className={cn(
+                      'px-2 py-1 rounded text-xs transition-colors',
+                      coarseHitClassFor28,
+                      config.autoExtractFrequency === opt.value
+                        ? 'bg-primary/15 text-primary font-medium'
+                        : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {memories.length > 0 && !isSearchMode && (
+              <div className="border-t border-border/50 pt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-2xs font-mono tabular-nums text-muted-foreground">
+                <span className="font-medium text-foreground">{t('memory.count', { count: memories.length })}</span>
+                {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
+                  <span key={key} className="inline-flex items-center gap-1 text-muted-foreground">
+                    <span>{purposeLabel(t, key)}</span>
+                    <span>{count}</span>
+                  </span>
+                ))}
+                {memoryStats.importantCount > 0 && (
+                  <span className="inline-flex items-center gap-0.5 text-warning">
+                    <Star size={10} weight="fill" />
+                    {memoryStats.importantCount}
+                  </span>
+                )}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+
         {!batchMode && (
           <>
             <DsButton
               variant="ghost" size="sm"
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
-              className={cn('text-success hover:bg-success/10 [@media(pointer:coarse)]:!min-h-11', isBatchImporting && 'bg-success/10')}
+              className={cn('text-success hover:bg-success/10', isBatchImporting && 'bg-success/10')}
             >
               <ListPlus size={15} />
               {t('memory.batch_import')}
@@ -1413,7 +1525,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={isCreatingInline ? handleCancelCreate : handleOpenCreate}
-              className={cn('text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11', isCreatingInline && 'bg-primary/10')}
+              className={cn('text-primary hover:bg-primary/10', isCreatingInline && 'bg-primary/10')}
             >
               <Plus size={15} />
               {t('memory.new')}
@@ -1425,7 +1537,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={handleToggleSelectAll}
-              className="text-muted-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
             >
               {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
             </DsButton>
@@ -1456,11 +1568,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   onClick={handleBatchDelete}
                   disabled={isMutating}
                   className={cn(
-                    'text-danger hover:bg-danger/10 font-mono tabular-nums transition-colors [@media(pointer:coarse)]:!min-h-11',
+                    'text-danger hover:bg-danger/10 font-mono tabular-nums transition-colors',
                     confirmingBatchDelete && 'bg-danger/15 font-medium'
                   )}
                 >
-                  {isMutating ? <CircleNotch size={15} className="animate-spin" /> : <Trash size={15} />}
+                  {isMutating ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" /> : <Trash size={15} />}
                   {confirmingBatchDelete
                     ? t('memory.confirm_delete')
                     : t('memory.batch_delete', { count: selectedIds.size })}
@@ -1471,92 +1583,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         )}
       </div>
 
-      {/* 单行高定筛选与元数据轨：禁止多行折行（overflow-x-auto scrollbar-none flex-nowrap），用 6px 语义微圆点替代彩色胶囊 */}
-      <div className="px-3 py-1 text-xs text-muted-foreground border-b border-border/35">
-        <div className="flex items-center gap-3 overflow-x-auto scrollbar-none flex-nowrap whitespace-nowrap">
-          <div className="flex items-center gap-1.5 shrink-0">
-            <FolderOpen size={13} className="shrink-0" />
-            <span>{t('memory.root_folder')}:</span>
-            <span className="font-medium text-foreground max-w-[140px] truncate">{config.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : t('memory.defaultRootTitle')}</span>
-            <DsButton
-              variant="ghost" size="sm"
-              onClick={handleOpenRootPicker}
-              disabled={loadingFolders}
-              className={cn('!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', isPickerOpen && 'bg-primary/10 text-primary')}
-            >
-              {loadingFolders ? (
-                <CircleNotch size={12} className="animate-spin" />
-              ) : (
-                <Gear size={12} />
-              )}
-              {t('memory.change')}
-            </DsButton>
-            <DsButton
-              variant="ghost" size="sm"
-              data-testid="memory-new-subfolder-btn"
-              onClick={() => setShowCreateSubfolderForm((v) => !v)}
-              className={cn('!h-auto !px-1.5 !py-0.5 text-primary/90 hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', showCreateSubfolderForm && 'bg-primary/10 text-primary')}
-            >
-              <Plus size={12} />
-              {t('learningHub:memory.new_subfolder', { defaultValue: '新建分组' })}
-            </DsButton>
-          </div>
-
-          <span className="h-3 w-px bg-border/35 shrink-0" aria-hidden="true" />
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Lightning size={13} className="shrink-0" />
-            <span>{t('memory.auto_extract')}:</span>
-            <div className="flex items-center gap-0.5">
-              {([
-                { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
-                { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
-                { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
-              ]).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  title={opt.desc}
-                  aria-pressed={config.autoExtractFrequency === opt.value}
-                  onClick={() => handleFrequencyChange(opt.value)}
-                  className={cn(
-                    'px-1.5 py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
-                    config.autoExtractFrequency === opt.value
-                      ? 'bg-primary/15 text-primary font-medium'
-                      : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {memories.length > 0 && !isSearchMode && (
-            <div className="ml-auto flex items-center gap-2.5 shrink-0 text-2xs font-mono tabular-nums text-muted-foreground/80">
-              <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
-              {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
-                <span key={key} className="inline-flex items-center gap-1 text-muted-foreground">
-                  <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[key] || 'bg-muted-foreground/50')} aria-hidden="true" />
-                  <span>{purposeLabel(t, key)}</span>
-                  <span>{count}</span>
-                </span>
-              ))}
-              {memoryStats.importantCount > 0 && (
-                <span className="inline-flex items-center gap-0.5">
-                  <Star size={10} className="text-amber-500" weight="fill" />
-                  {memoryStats.importantCount}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
+      {/* 按需展开的新建分组与根目录选择器 */}
+      {(showCreateSubfolderForm || isPickerOpen) && (
+        <div className="px-3 py-1.5 border-b border-border/35 bg-background">
         {/* ★ 页内新建分组 / 子目录表单 (Memory v2 M3-tail) */}
         <AnimatePresence initial={false}>
           {showCreateSubfolderForm && (
             <motion.div key="create-subfolder-form" {...disclosureMotion} className="overflow-hidden">
-              <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-border/40 bg-card/60 px-2.5 py-2">
+              <div className="mt-1 flex items-center gap-2 rounded-lg border border-border/40 bg-card/60 px-2.5 py-2">
                 <Folder size={13} className="text-primary shrink-0" />
                 <Input
                   data-testid="memory-new-subfolder-input"
@@ -1582,9 +1616,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   data-testid="memory-new-subfolder-submit"
                   disabled={isMutating || !newSubfolderTitle.trim()}
                   onClick={() => void handleCreateSubfolder()}
-                  className="!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+                  className="text-xs"
                 >
-                  {isMutating ? <CircleNotch size={12} className="animate-spin" /> : null}
+                  {isMutating ? <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" /> : null}
                   {t('common:create')}
                 </DsButton>
                 <DsButton
@@ -1592,7 +1626,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   size="icon"
                   iconOnly
                   onClick={() => { setShowCreateSubfolderForm(false); setNewSubfolderTitle(''); }}
-                  className="!h-6 !w-6"
+                  className={cn('!h-6 !w-6', coarseHitClassFor24)}
                   aria-label={t('common:cancel')}
                 >
                   <X size={12} />
@@ -1620,7 +1654,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       className="w-full h-6 px-2 text-xs bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
                     />
                   </div>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('common:cancel')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className={cn('!h-5 !w-5 !p-0', coarseHitClassFor24)} aria-label={t('common:cancel')}>
                     <X size={12} />
                   </DsButton>
                 </div>
@@ -1635,12 +1669,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         key={folder.id}
                         variant="ghost" size="sm"
                         className={cn(
-                          'w-full !justify-start !px-2.5 !py-1.5 text-xs [@media(pointer:coarse)]:!min-h-11',
+                          'w-full !justify-start !px-2.5 !py-1.5 text-xs',
                           folder.id === config.memoryRootFolderId && 'bg-primary/10 text-primary'
                         )}
                         onClick={() => handleSelectRootFolder(folder.id)}
                       >
-                        <FolderOpen size={14} className={cn('shrink-0', folder.id === config.memoryRootFolderId ? 'text-primary' : 'text-amber-500')} />
+                        <FolderOpen size={14} className={cn('shrink-0', folder.id === config.memoryRootFolderId ? 'text-primary' : 'text-warning')} />
                         <span className="truncate">{folder.title}</span>
                         {folder.id === config.memoryRootFolderId && (
                           <CheckCircle size={12} className="ml-auto shrink-0" />
@@ -1653,7 +1687,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+        </div>
+      )}
 
       {/* 记忆列表 */}
       <CustomScrollArea className="min-h-0 flex-1">
@@ -2243,36 +2278,32 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium truncate">{memory.title}</span>
                           {memory.memoryType === 'fact' && (
-                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
-                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" aria-hidden="true" />
+                            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-2xs text-muted-foreground flex-shrink-0">
                               {t('memory.type_fact')}
                             </span>
                           )}
                           {memory.memoryType === 'note' && (
-                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
-                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" aria-hidden="true" />
+                            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-2xs text-muted-foreground flex-shrink-0">
                               {t('memory.type_note')}
                             </span>
                           )}
                           {memory.memoryType === 'study' && (
-                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
+                            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-2xs text-muted-foreground flex-shrink-0">
                               {t('memory.type_study')}
                             </span>
                           )}
                           {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (
-                            <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
-                              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[memory.memoryPurpose] || 'bg-muted-foreground/50')} aria-hidden="true" />
+                            <span className="text-2xs text-muted-foreground flex-shrink-0">
                               {purposeLabel(t, memory.memoryPurpose)}
                             </span>
                           )}
                           {memory.isImportant && (
-                            <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
+                            <Star size={12} className="text-warning flex-shrink-0" weight="fill" />
                           )}
                           {memory.isStale && !memory.isArchived && (
                             <DsButton
                               variant="ghost" size="sm"
-                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
+                              className={cn('!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0', coarseHitClassFor24)}
                               title={t('memory.stale_tooltip')}
                               onClick={(event) => { event.stopPropagation(); handleRestoreStale(memory.id); }}
                               aria-label={t('memory.restore_stale')}
@@ -2284,7 +2315,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {memory.isArchived && (
                             <DsButton
                               variant="ghost" size="sm"
-                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
+                              className={cn('!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0', coarseHitClassFor24)}
                               title={t('memory.archived_tooltip')}
                               onClick={(event) => { event.stopPropagation(); handleRestoreArchived(memory.id); }}
                               aria-label={t('memory.restore_archived')}
@@ -2298,7 +2329,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                               className="inline-flex items-center gap-1 text-warning text-2xs font-medium flex-shrink-0"
                               title={t('memory.needs_dedup_review_tooltip')}
                             >
-                              <span className="h-1.5 w-1.5 rounded-full bg-warning shrink-0" aria-hidden="true" />
                               {t('memory.needs_dedup_review')}
                             </span>
                           )}
@@ -2451,7 +2481,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
             'w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0',
             isFolderExpanded && 'rotate-90'
           )} />
-          <Folder size={14} className="text-amber-500 flex-shrink-0" />
+          <Folder size={14} className="text-warning flex-shrink-0" />
           <span className="text-sm font-medium truncate">{localizeMemoryFolderTitle(node.folder.title, t)}</span>
           {hasChildren && (
             <span className="text-2xs font-mono tabular-nums text-muted-foreground/50 ml-auto">
@@ -2526,13 +2556,12 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     <FileText size={14} className="text-muted-foreground flex-shrink-0" />
                     <span className="text-sm truncate flex-1">{noteTitle}</span>
                     {meta?.memoryPurpose && meta.memoryPurpose !== 'memorized' && (
-                      <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground flex-shrink-0">
-                        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', PURPOSE_DOT_COLORS[meta.memoryPurpose] || 'bg-muted-foreground/50')} aria-hidden="true" />
+                      <span className="text-2xs text-muted-foreground flex-shrink-0">
                         {purposeLabel(t, meta.memoryPurpose)}
                       </span>
                     )}
                     {meta?.isImportant && (
-                      <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
+                      <Star size={12} className="text-warning flex-shrink-0" weight="fill" />
                     )}
                     {isConfirmingDelete ? (
                       <DsButton
@@ -2769,19 +2798,12 @@ function purposeLabel(t: (key: string) => string, purpose: string): string {
   return key ? t(key) : purpose;
 }
 
-const PURPOSE_DOT_COLORS: Record<string, string> = {
-  memorized: 'bg-primary',
-  internalized: 'bg-violet-500',
-  supplementary: 'bg-teal-500',
-  systemic: 'bg-slate-500',
-};
-
 const SOURCE_META: Record<string, { labelKey: string; icon: React.ReactNode; color: string }> = {
-  tool_call: { labelKey: 'memory.audit_source_tool', icon: <Robot size={12} />, color: 'text-blue-500' },
-  auto_extract: { labelKey: 'memory.audit_source_auto', icon: <Lightning className="w-3 h-3" />, color: 'text-amber-500' },
-  handler: { labelKey: 'memory.audit_source_handler', icon: <User size={12} />, color: 'text-emerald-500' },
-  evolution: { labelKey: 'memory.audit_source_evolution', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-purple-500' },
-  semantic_dedup: { labelKey: 'memory.audit_source_semantic_dedup', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-teal-500' },
+  tool_call: { labelKey: 'memory.audit_source_tool', icon: <Robot size={12} />, color: 'text-info' },
+  auto_extract: { labelKey: 'memory.audit_source_auto', icon: <Lightning className="w-3 h-3" />, color: 'text-warning' },
+  handler: { labelKey: 'memory.audit_source_handler', icon: <User size={12} />, color: 'text-success' },
+  evolution: { labelKey: 'memory.audit_source_evolution', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-primary' },
+  semantic_dedup: { labelKey: 'memory.audit_source_semantic_dedup', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-muted-foreground' },
 };
 
 const OPERATION_I18N_KEYS: Record<string, string> = {
@@ -2802,19 +2824,19 @@ const OPERATION_I18N_KEYS: Record<string, string> = {
   semantic_merge: 'memory.operation.semantic_merge',
 };
 
-const EVENT_DOT_COLORS: Record<string, string> = {
-  ADD: 'bg-success',
-  UPDATE: 'bg-blue-500',
-  APPEND: 'bg-sky-500',
-  DELETE: 'bg-danger',
-  NONE: 'bg-muted-foreground/50',
-  FILTERED: 'bg-warning',
-  SKIPPED: 'bg-muted-foreground/50',
-  STALE_DEMOTE: 'bg-warning',
-  STALE_RESTORE: 'bg-success',
-  ARCHIVE: 'bg-warning',
-  ARCHIVE_RESTORE: 'bg-success',
-  SEMANTIC_MERGE: 'bg-blue-500',
+const EVENT_TEXT_COLORS: Record<string, string> = {
+  ADD: 'text-success',
+  UPDATE: 'text-info',
+  APPEND: 'text-info',
+  DELETE: 'text-danger',
+  NONE: 'text-muted-foreground',
+  FILTERED: 'text-warning',
+  SKIPPED: 'text-muted-foreground',
+  STALE_DEMOTE: 'text-warning',
+  STALE_RESTORE: 'text-success',
+  ARCHIVE: 'text-warning',
+  ARCHIVE_RESTORE: 'text-success',
+  SEMANTIC_MERGE: 'text-info',
 };
 
 const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) => {
@@ -2869,10 +2891,9 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         {/* 操作 */}
         <span className="text-2xs text-muted-foreground flex-shrink-0">{operationLabel}</span>
 
-        {/* 事件标签：6px 语义圆点 + 纯文本 */}
+        {/* 事件标签 */}
         {log.event && (
-          <span className="inline-flex items-center gap-1 text-2xs font-mono text-muted-foreground flex-shrink-0">
-            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', EVENT_DOT_COLORS[log.event] ?? 'bg-muted-foreground/50')} aria-hidden="true" />
+          <span className={cn('text-2xs font-mono flex-shrink-0', EVENT_TEXT_COLORS[log.event] ?? 'text-muted-foreground')}>
             {log.event}
           </span>
         )}

@@ -4,9 +4,10 @@
  */
 import type { DemoAppPack } from '../types';
 import { handleDemoFlashcards } from '../../flashcards';
+import { tr } from '../../lang';
 
 const pack: DemoAppPack = {
-  title: '闪卡',
+  title: tr('闪卡', 'Flashcards'),
   load: () => import('@/features/workbench/apps/system/FlashcardsAppWindow').then((m) => m.default),
   handle: handleDemoFlashcards,
   namespaces: ['flashcards', 'workbench', 'app_menu', 'sidebar'],

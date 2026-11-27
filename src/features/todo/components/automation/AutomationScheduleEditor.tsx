@@ -9,7 +9,6 @@ import {
   MagnifyingGlass,
   Minus,
   Plus,
-  Sparkle,
   X,
 } from '@phosphor-icons/react';
 
@@ -683,7 +682,7 @@ export function AutomationScheduleEditor({
                               : 'text-foreground hover:bg-[color:var(--surface-muted)]',
                           )}
                         >
-                          {pinned && <Sparkle size={11} aria-hidden="true" className="shrink-0 text-muted-foreground" />}
+                          {pinned && <GlobeHemisphereEast size={11} aria-hidden="true" className="shrink-0 text-muted-foreground" />}
                           <span className="truncate">{tz}</span>
                           {tz === systemTimeZone && (
                             <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
@@ -706,7 +705,7 @@ export function AutomationScheduleEditor({
       {/* Inline validation errors — never block typing */}
       <div aria-live="polite" className={cn(errors.length === 0 && 'sr-only')}>
         {errors.map((message) => (
-          <p key={message} className="text-xs text-red-500">
+          <p key={message} className="text-xs text-destructive">
             {message}
           </p>
         ))}
@@ -729,19 +728,10 @@ export function AutomationScheduleEditor({
               <li
                 key={run.getTime()}
                 className={cn(
-                  'flex items-center gap-2 text-sm tabular-nums',
+                  'text-sm tabular-nums',
                   index === 0 ? 'font-medium text-foreground' : 'text-foreground/75',
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    index === 0
-                      ? 'bg-[color:hsl(var(--primary))]'
-                      : 'bg-[color:hsl(var(--primary)/0.35)]',
-                  )}
-                />
                 {formatRun(run)}
               </li>
             ))}

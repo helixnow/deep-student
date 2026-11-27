@@ -1023,16 +1023,16 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                      <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
                         {t(`exam_sheet:questionTypes.${draft.question_type}`, draft.question_type)}
                       </span>
                       {draft.difficulty && (
-                        <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
                           {t(`exam_sheet:questionBank.difficulty.${draft.difficulty}`, draft.difficulty)}
                         </span>
                       )}
                       {draft.tags?.slice(0, 3).map((tag) => (
-                        <span key={tag} className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        <span key={tag} className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
                           {tag}
                         </span>
                       ))}

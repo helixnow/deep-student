@@ -1312,7 +1312,7 @@
     "groupName": "Group name",
     "groupNamePlaceholder": "Describe the task in one sentence",
     "groupIcon": "Group icon",
-    "groupIconPlaceholder": "e.g. 📁 or folder",
+    "groupIconPlaceholder": "e.g. book or folder",
     "groupColor": "Group color",
     "groupDescription": "Description",
     "groupDescriptionPlaceholder": "Optional, describe this group",

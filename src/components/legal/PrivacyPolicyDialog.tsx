@@ -55,43 +55,43 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
 
   const sections = [
     {
-      icon: <Eye size={16} className="text-blue-500" weight="regular" />,
+      icon: <Eye size={16} className="text-muted-foreground" weight="regular" />,
       key: 'overview',
     },
     {
-      icon: <HardDrive size={16} className="text-emerald-500" weight="regular" />,
+      icon: <HardDrive size={16} className="text-muted-foreground" weight="regular" />,
       key: 'localStorage',
     },
     {
-      icon: <PaperPlaneTilt size={16} className="text-blue-500" weight="regular" />,
+      icon: <PaperPlaneTilt size={16} className="text-muted-foreground" weight="regular" />,
       key: 'llmApi',
     },
     {
-      icon: <Bug size={16} className="text-orange-500" weight="regular" />,
+      icon: <Bug size={16} className="text-muted-foreground" weight="regular" />,
       key: 'errorReporting',
     },
     {
-      icon: <Cloud size={16} className="text-sky-500" weight="regular" />,
+      icon: <Cloud size={16} className="text-muted-foreground" weight="regular" />,
       key: 'cloudSync',
     },
     {
-      icon: <UserMinus size={16} className="text-purple-500" weight="regular" />,
+      icon: <UserMinus size={16} className="text-muted-foreground" weight="regular" />,
       key: 'noTracking',
     },
     {
-      icon: <ShieldCheck size={16} className="text-emerald-500" weight="regular" />,
+      icon: <ShieldCheck size={16} className="text-muted-foreground" weight="regular" />,
       key: 'dataRights',
     },
     {
-      icon: <ShieldCheck size={16} className="text-blue-500" weight="regular" />,
+      icon: <ShieldCheck size={16} className="text-muted-foreground" weight="regular" />,
       key: 'security',
     },
     {
-      icon: <Globe size={16} className="text-amber-500" weight="regular" />,
+      icon: <Globe size={16} className="text-muted-foreground" weight="regular" />,
       key: 'crossBorder',
     },
     {
-      icon: <Baby size={16} className="text-pink-500" weight="regular" />,
+      icon: <Baby size={16} className="text-muted-foreground" weight="regular" />,
       key: 'children',
     },
     {
@@ -126,7 +126,7 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
           <DsButton
             variant="default"
             size="sm"
-            className="w-full justify-center [@media(pointer:coarse)]:!min-h-11"
+            className="w-full justify-center"
             onClick={() => onOpenChange(false)}
           >
             {t('actions.close')}

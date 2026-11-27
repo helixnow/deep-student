@@ -15,6 +15,7 @@ import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  BookOpen,
   Brain,
   Cards,
   ChatDots,
@@ -25,7 +26,6 @@ import {
   Info,
   Lightning,
   Question,
-  Sparkle,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
@@ -312,7 +312,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
       {card.kind === 'btw' && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Sparkle size={15} weight="fill" className="shrink-0 text-amber-500" />
+            <ChatDots size={15} weight="bold" className="shrink-0 text-primary" />
             <span className="text-xs font-semibold text-foreground">
               {t('chatV2:slashCommands.btw.cardTitle')}
             </span>
@@ -454,7 +454,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
               {t('chatV2:slashCommands.memory.cardTitle')}
             </span>
             {memPrivacy && (
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-2xs text-amber-600 dark:text-amber-400">
+              <span className="rounded-full bg-warning/15 px-2 py-0.5 text-2xs text-warning">
                 {t('chatV2:slashCommands.memory.privacyActiveBadge')}
               </span>
             )}
@@ -623,14 +623,14 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
                   className="flex items-start gap-2 rounded-lg bg-muted/40 px-2.5 py-1.5"
                 >
                   {item.ok && !item.warn ? (
-                    <CheckCircle size={15} weight="fill" className="mt-0.5 shrink-0 text-emerald-500" />
+                    <CheckCircle size={15} weight="fill" className="mt-0.5 shrink-0 text-success" />
                   ) : (
                     <WarningCircle
                       size={15}
                       weight="fill"
                       className={cn(
                         'mt-0.5 shrink-0',
-                        item.ok ? 'text-amber-500' : 'text-destructive',
+                        item.ok ? 'text-warning' : 'text-destructive',
                       )}
                     />
                   )}
@@ -692,7 +692,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
             </div>
             <div>
               <div className="mb-1 flex items-center gap-1 font-semibold text-muted-foreground">
-                <Sparkle size={12} weight="fill" className="text-amber-500" />
+                <BookOpen size={12} weight="bold" />
                 <span>{t('chatV2:inputBar.slashCommand.groupStudy')}</span>
               </div>
               <div className="flex flex-wrap gap-1">

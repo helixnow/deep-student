@@ -34,7 +34,14 @@ import './DesktopAgendaWidget.css';
 
 const CALENDAR_DAY_COUNT = 42;
 const MAX_AGENDA_ITEMS = 4;
-const FALLBACK_COLORS = ['#ef4444', '#0ea5e9', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899'];
+const FALLBACK_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--info))',
+  'hsl(var(--success))',
+  'hsl(var(--warning))',
+  'hsl(var(--destructive))',
+  'hsl(var(--accent))',
+];
 
 export function formatLocalDateKey(date: Date): string {
   const year = date.getFullYear();

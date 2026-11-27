@@ -286,7 +286,6 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
               title={formatFocusTooltip(todayStat.focusSeconds, t, 'pomodoro.stats')}
               data-focus-seconds={todayStat.focusSeconds}
             >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
               {t('pomodoro.statsPopover.today', { defaultValue: '今日' })}{' '}
               {formatFocus(todayStat.focusSeconds)}
               {todayStat.completedCount > 0 && (

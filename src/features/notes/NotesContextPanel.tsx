@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { useTranslation } from "react-i18next";
 import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check, Books, ArrowsInLineVertical, ArrowsOutLineVertical } from "@phosphor-icons/react";
@@ -930,7 +931,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                     </DsButton>
                                     <DsButton
                                         variant="ghost" iconOnly size="sm"
-                                        className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        className={cn("!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6", coarseHitClassFor24)}
                                         onClick={requestRenameAcrossLibrary}
                                         disabled={isRenamingTag}
                                         title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
@@ -940,7 +941,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                     </DsButton>
                                     <DsButton
                                         variant="ghost" iconOnly size="sm"
-                                        className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        className={cn("!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6", coarseHitClassFor24)}
                                         onClick={handleCancelRenameTag}
                                         disabled={isRenamingTag}
                                         aria-label={t('notes:header.cancel_rename')}
@@ -961,7 +962,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         <>
                                             <DsButton
                                                 variant="ghost" iconOnly size="sm"
-                                                className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                className={cn("!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6", coarseHitClassFor24)}
                                                 ref={(node) => { if (node) renameTriggerRefs.current.set(tag, node); else renameTriggerRefs.current.delete(tag); }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -974,7 +975,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             </DsButton>
                                             <DsButton
                                                 variant="ghost" iconOnly size="sm"
-                                                className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                className={cn("!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6", coarseHitClassFor24)}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleRemoveTag(tag);

@@ -266,7 +266,7 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
                         className={cn(
                           'mt-0.5 truncate pl-4 font-mono text-xs leading-relaxed',
                           !agent.available && agent.probeError
-                            ? 'text-amber-600/90 dark:text-amber-400/90'
+                            ? 'text-warning'
                             : 'text-muted-foreground/70',
                         )}
                         title={detailLine}

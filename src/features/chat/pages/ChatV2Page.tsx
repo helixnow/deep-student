@@ -8,7 +8,7 @@
  */
 
 import { CHAT_PANEL_PDF_FOCUS_SCOPE } from './chatPdfFocus';
-import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour, Columns } from '@phosphor-icons/react';
@@ -31,7 +31,6 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useFinderStoreFor, FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
-import { lazy, Suspense } from 'react';
 
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
 import { useGroupManagement } from '../hooks/useGroupManagement';
@@ -1380,6 +1379,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             void createSession();
           }}
           onRenameSession={handleBrowserRenameSession}
+          hideCreateAction={!sidebarCollapsed}
           className="h-full flex-1"
         />
       ) : groupEditorOpen ? (

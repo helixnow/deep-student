@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretDown, CaretUp, Sparkle } from '@phosphor-icons/react';
+import { CalendarCheck, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import { openTodayReviewTarget, type TodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import {
@@ -102,7 +102,7 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
     >
       <WallpaperReplica hostRef={widgetRef} />
       <header className="wb-ai-briefing-header">
-        <Sparkle className="h-4 w-4 text-primary" weight="fill" aria-hidden />
+        <CalendarCheck className="h-4 w-4 text-primary" weight="duotone" aria-hidden />
         <span>{t('generativeUi:workbench.briefing_label')}</span>
         <span className="wb-ai-briefing-summary" data-testid="wb-ai-briefing-summary">
           {totalDue > 0

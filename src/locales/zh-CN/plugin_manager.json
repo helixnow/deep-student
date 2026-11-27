@@ -761,7 +761,7 @@
       }
     },
     "actions": {
-      "refineWithAi": "✦ 让 AI 优化",
+      "refineWithAi": "让 AI 优化",
       "resumeVerification": "继续验收",
       "start": "开始做",
       "install": "安装",

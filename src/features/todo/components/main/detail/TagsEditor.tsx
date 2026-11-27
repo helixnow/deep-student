@@ -1,5 +1,5 @@
 /**
- * TagsEditor — 详情面板标签编辑（自动补全 + 彩色标签点 + 键盘导航）
+ * TagsEditor — 详情面板标签编辑（自动补全 + 中性语义标签 + 键盘导航）
  *
  * - Enter / 逗号提交（含 Android 软键盘：逗号 keydown 是 229，改从输入值按 , / ， 切分）；Esc 先收建议、再取消输入（不冒泡触发面板级关闭）
  * - 空输入时 Backspace 删除最后一个标签
@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { tweenFast } from '@/styles/motion-springs';
-import { tagDotColor } from './tagColor';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { splitTagDraft } from '@/utils/tagDraft';
 
@@ -193,13 +192,8 @@ export const TagsEditor: React.FC<{
             animate={{ opacity: 1, scale: 1 }}
             exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.85 }}
             transition={prefersReducedMotion ? { duration: 0 } : tweenFast}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--surface-muted)] px-2 py-0.5 text-xs text-foreground/80"
+            className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-[color:var(--surface-muted)] px-2.5 py-0.5 text-xs text-foreground/85"
           >
-            <span
-              aria-hidden="true"
-              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-              style={{ backgroundColor: tagDotColor(tag) }}
-            />
             {tag}
             <button
               type="button"
@@ -274,11 +268,6 @@ export const TagsEditor: React.FC<{
                     highlightIndex === i && 'bg-[color:var(--interactive-hover)]',
                   )}
                 >
-                  <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                    style={{ backgroundColor: tagDotColor(s) }}
-                  />
                   <span className="min-w-0 flex-1 truncate">{s}</span>
                 </button>
               </li>

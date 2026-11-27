@@ -20,7 +20,7 @@ import { ScoreCard } from '../components/essay-grading/ScoreCard';
 import { SentenceDetailView } from '../components/essay-grading/SentenceDetailView';
 import { PolishSectionView } from '../components/essay-grading/PolishSectionView';
 import { ModelEssayView } from '../components/essay-grading/ModelEssayView';
-import { ArrowClockwise, CircleNotch, CaretDown, CaretUp, FileText, ListChecks, Sparkle, BookOpen } from '@phosphor-icons/react';
+import { ArrowClockwise, CircleNotch, CaretDown, CaretUp, FileText, ListChecks, NotePencil, BookOpen } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
@@ -224,7 +224,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     const list: { id: SectionTab; label: string; icon: React.ReactNode; show: boolean; generating?: boolean }[] = [
       { id: 'overview', label: t('essay_grading:sections.tab_overview'), icon: <FileText size={14} />, show: true },
       { id: 'details', label: t('essay_grading:sections.tab_details'), icon: <ListChecks size={14} />, show: isStreaming || effectiveHasInlineMarkers },
-      { id: 'polish', label: t('essay_grading:sections.tab_polish'), icon: <Sparkle size={14} />, show: polishDetected || hasPolish, generating: polishGenerating },
+      { id: 'polish', label: t('essay_grading:sections.tab_polish'), icon: <NotePencil size={14} />, show: polishDetected || hasPolish, generating: polishGenerating },
       { id: 'model_essay', label: t('essay_grading:sections.tab_model_essay'), icon: <BookOpen size={14} />, show: modelEssayDetected || hasModelEssay, generating: modelEssayGenerating },
     ];
     return list.filter(tab => tab.show);
@@ -412,29 +412,29 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
       {showLegend && effectiveHasInlineMarkers && activeTab === 'overview' && (
         <div className="essay-result-legend px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-red-500 line-through">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-destructive line-through">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.del_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-dashed border-amber-500/45">
+            <span className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 text-warning bg-warning/10 border border-dashed border-warning/45">
               +{t('essay_grading:markers.insert_badge')} {t('essay_grading:legend.example')}
             </span>
             <span className="text-muted-foreground">{t('essay_grading:legend.ins_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap"><span className="text-muted-foreground/70 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-amber-600 dark:text-amber-400">{t('essay_grading:legend.example_new')}</span></span>
+            <span className="shrink-0 whitespace-nowrap"><span className="text-muted-foreground/70 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-warning">{t('essay_grading:legend.example_new')}</span></span>
             <span className="text-muted-foreground">{t('essay_grading:legend.replace_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 border-b border-dashed border-amber-400/70">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-warning border-b border-dashed border-warning/70">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.note_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-emerald-700 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-400/10 border-l-2 border-emerald-400/80 pl-1 pr-0.5 rounded-r-sm">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-success bg-success/10 px-1 rounded-sm">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.good_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-red-500 underline decoration-wavy decoration-red-400/50">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-destructive underline decoration-wavy decoration-destructive/50">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.err_desc')}</span>
           </div>
         </div>

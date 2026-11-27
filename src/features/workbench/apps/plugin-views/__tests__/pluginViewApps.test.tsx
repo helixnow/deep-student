@@ -305,8 +305,8 @@ describe('plugin view apps (learning desktop)', () => {
       },
       interpolation: { escapeValue: false },
     });
-    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'en-US' })).toBe('✦ Refine with AI');
-    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'zh-CN' })).toBe('✦ 让 AI 优化');
+    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'en-US' })).toBe('Refine with AI');
+    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'zh-CN' })).toBe('让 AI 优化');
     expect(realI18n.t('plugin_manager:workshop.quickBarAriaLabel', { lng: 'en-US' })).toBe('Plugin Workshop quick bar');
     expect(realI18n.t('plugin_manager:workshop.quickBarAriaLabel', { lng: 'zh-CN' })).toBe('插件工坊快捷栏');
 
@@ -324,7 +324,7 @@ describe('plugin view apps (learning desktop)', () => {
           <PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} />
         </UiKernelProvider>,
       );
-      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('✦ Refine with AI');
+      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('Refine with AI');
 
       mockReactI18n.language = 'zh-CN';
       rerender(
@@ -332,7 +332,7 @@ describe('plugin view apps (learning desktop)', () => {
           <PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} />
         </UiKernelProvider>,
       );
-      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('✦ 让 AI 优化');
+      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('让 AI 优化');
     } finally {
       mockReactI18n.language = prevLang || 'zh-CN';
       unregister();

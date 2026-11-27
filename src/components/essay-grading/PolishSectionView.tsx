@@ -6,8 +6,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { PolishItem } from '@/essay-grading/streamingMarkerParser';
-import { ArrowRight, Sparkle, Copy, Check, Eye, EyeSlash } from '@phosphor-icons/react';
+import { ArrowRight, PencilSimple, Copy, Check, Eye, EyeSlash } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface PolishSectionViewProps {
@@ -102,7 +103,7 @@ function buildDiff(originalText: string, polishedText: string): RenderedDiff {
     .filter((op) => op.kind !== 'del')
     .map((op, idx) =>
       op.kind === 'ins' ? (
-        <span key={idx} className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-400/60 underline-offset-2 bg-emerald-500/[0.08] px-0.5 rounded-sm">
+        <span key={idx} className="text-success underline decoration-success/60 underline-offset-2 bg-success/[0.08] px-0.5 rounded-sm">
           {op.text}
         </span>
       ) : (
@@ -141,7 +142,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
   if (items.length === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-16 gap-2 select-none', className)}>
-        <Sparkle size={28} className="text-muted-foreground/30" />
+        <PencilSimple size={28} className="text-muted-foreground/30" />
         <div className="text-sm font-medium text-muted-foreground/70">
           {t('essay_grading:sections.no_polish')}
         </div>
@@ -163,7 +164,8 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
           aria-pressed={showDiff}
           onClick={() => setShowDiff((v) => !v)}
           className={cn(
-            'h-6 px-1.5 gap-1 text-xs shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5 transition-colors duration-150 motion-reduce:transition-none',
+            coarseHitClassFor24,
+            'h-6 px-1.5 gap-1 text-xs shrink-0 transition-colors duration-150 motion-reduce:transition-none',
             showDiff ? 'text-primary hover:text-primary' : 'text-muted-foreground/50 hover:text-foreground'
           )}
         >
@@ -177,7 +179,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
         return (
           <div
             key={index}
-            className="rounded-r-xl rounded-l-sm border-y border-r border-border/35 border-l-2 border-l-emerald-500/75 bg-foreground/[0.015] overflow-hidden"
+            className="rounded-xl border border-border/35 bg-foreground/[0.015] overflow-hidden"
           >
             {/* 原句（删除部分柔和删除线） */}
             <div className="px-4 py-3 border-b border-border/25">
@@ -189,7 +191,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
             {/* 润色句（新增部分微底色下划线） */}
             <div className="px-4 py-3 bg-foreground/[0.01]">
               <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                <div className="flex items-center gap-1.5 text-xs text-success">
                   <ArrowRight size={12} />
                   <span>{t('essay_grading:sections.polished')}</span>
                 </div>
@@ -200,7 +202,8 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                   aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
                   onClick={() => handleCopy(item.polished, index)}
                   className={cn(
-                    'h-6 px-1.5 gap-1 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5 transition-colors duration-200 motion-reduce:transition-none',
+                    coarseHitClassFor24,
+                    'h-6 px-1.5 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',
                     copied
                       ? 'text-success hover:text-success'
                       : 'text-muted-foreground/50 hover:text-foreground'

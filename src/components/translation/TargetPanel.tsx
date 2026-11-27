@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24, coarseHitClassFor28, coarseHitClassFor32 } from '@/components/ui/coarseHit';
+import {
+    AppMenu,
+    AppMenuContent,
+    AppMenuItem,
+    AppMenuSeparator,
+    AppMenuTrigger,
+} from '../ui/app-menu';
 import { Textarea } from '../ui/shad/Textarea';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
@@ -17,7 +25,7 @@ import {
     Columns,
     CircleNotch,
     CardsThree,
-    ArrowCounterClockwise,
+    DotsThree,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -47,8 +55,6 @@ interface TargetPanelProps {
     onCopyResult: () => void;
     onExportTranslation: () => void;
     onSaveAsFlashcard?: () => void | Promise<void>;
-    canRestorePrevious?: boolean;
-    onRestorePrevious?: () => void;
     isOutdated?: boolean;
     onRetranslate?: () => void;
     onSaveAsNewVersion?: () => void;
@@ -56,10 +62,6 @@ interface TargetPanelProps {
 }
 
 const COPY_FEEDBACK_MS = 1500;
-
-/** 触屏命中区扩展：32px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
-const COARSE_HIT =
-    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
 
 /** 同步滚动契约：把实际滚动元素标记为 data-translation-scroll="target" */
 const SCROLL_ROLE_ATTR = 'data-translation-scroll';
@@ -89,8 +91,6 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     onCopyResult,
     onExportTranslation,
     onSaveAsFlashcard,
-    canRestorePrevious = false,
-    onRestorePrevious,
     isOutdated = false,
     onRetranslate,
     onSaveAsNewVersion,
@@ -219,7 +219,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-foreground/[0.015] relative group/target">
             {/* 桌面右上轻量悬浮动作组（消除独立二级顶栏横线，空态仅保留对照切换） */}
-            <div data-wb-blur-surface className="hidden md:flex items-center gap-0.5 absolute top-2.5 right-3 z-10 rounded-full border border-border/25 bg-background/80 backdrop-blur-md px-1.5 py-0.5 shadow-xs">
+            <div className="hidden md:flex items-center gap-0.5 absolute top-2.5 right-3 z-10 rounded-full border border-border/35 bg-background px-1.5 py-0.5 shadow-xs">
                     {/* 对照切换（tooltip 带用途说明，帮助首次用户理解该视图） */}
                     <CommonTooltip content={`${t('translation:comparison.toggle')} · ${t('translation:tabs.comparison_description')}`}>
                         <DsButton
@@ -230,8 +230,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-pressed={showComparison}
                             aria-label={t('translation:comparison.toggle')}
                             className={cn(
-                                COARSE_HIT,
-                                'h-7 w-7 transition-colors',
+                                coarseHitClassFor28,
+                                'h-7 w-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 transition-colors',
                                 showComparison
                                     ? 'text-primary bg-primary/10'
                                     : 'text-muted-foreground hover:text-foreground'
@@ -250,25 +250,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             onCheckedChange={setIsSyncScroll}
                             className="data-[state=checked]:bg-primary"
                         />
-                        <Label htmlFor="target-sync-scroll" className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11">
+                        <Label htmlFor="target-sync-scroll" className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap">
                             {t('translation:sync_scroll')}
                         </Label>
                     </div>
-
-                    {canRestorePrevious && onRestorePrevious && !isTranslating && (
-                        <CommonTooltip content={t('translation:workbench_ui.restore_previous')}>
-                            <DsButton
-                                variant="ghost"
-                                size="icon"
-                                onClick={onRestorePrevious}
-                                aria-label={t('translation:workbench_ui.restore_previous')}
-                                data-testid="translation-restore-prev-btn"
-                                className={cn(COARSE_HIT, 'w-7 h-7 text-info hover:text-info hover:bg-info/10')}
-                            >
-                                <ArrowCounterClockwise size={15} />
-                            </DsButton>
-                        </CommonTooltip>
-                    )}
 
                     {translatedText && (
                         <>
@@ -280,7 +265,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onEditTranslation}
                                     disabled={isEditingTranslation || isTranslating}
                                     aria-label={t('translation:target_section.edit')}
-                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
+                                    className={cn(coarseHitClassFor28, 'w-7 h-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 text-muted-foreground hover:text-foreground')}
                                 >
                                     <PencilSimple size={15} />
                                 </DsButton>
@@ -293,12 +278,12 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     disabled={!translatedText || isEditingTranslation || isTranslating}
                                     aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
                                     className={cn(
-                                        COARSE_HIT,
-                                        'h-7 w-7 transition-colors',
+                                        coarseHitClassFor28,
+                                        'h-7 w-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 transition-colors',
                                         isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
                                     )}
                                 >
-                                    <SpeakerHigh size={15} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
+                                    <SpeakerHigh size={15} />
                                 </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}>
@@ -310,8 +295,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     aria-label={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}
                                     data-testid="translation-copy-btn"
                                     className={cn(
-                                        COARSE_HIT,
-                                        'h-7 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
+                                        coarseHitClassFor28,
+                                        'h-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
                                         justCopied
                                             ? 'w-auto px-2 gap-1 bg-success/10 text-success hover:bg-success/15 hover:text-success'
                                             : 'w-7 text-muted-foreground hover:text-foreground'
@@ -332,8 +317,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     aria-label={t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}
                                     data-testid="translation-save-flashcard-btn"
                                     className={cn(
-                                        COARSE_HIT,
-                                        'h-7 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
+                                        coarseHitClassFor28,
+                                        'h-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
                                         justSavedFlashcard
                                             ? 'w-auto px-2 gap-1 bg-success/10 text-success hover:bg-success/15 hover:text-success'
                                             : 'w-7 text-muted-foreground hover:text-foreground'
@@ -358,7 +343,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onExportTranslation}
                                     disabled={isTranslating}
                                     aria-label={t('translation:target_section.export')}
-                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
+                                    className={cn(coarseHitClassFor28, 'w-7 h-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 text-muted-foreground hover:text-foreground')}
                                 >
                                     <Download size={15} />
                                 </DsButton>
@@ -367,93 +352,85 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                     )}
             </div>
 
-            {/* 移动端操作栏 */}
+            {/* 移动端操作栏：保留高频「复制」，其余低频动作收进「更多」AppMenu 避免 7 钮拥挤 */}
             {translatedText && !isEditingTranslation && (
-                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/35 bg-background/40 shrink-0">
+                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/35 bg-background shrink-0">
                     <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                         <Translate size={13} className="shrink-0" />
                         {t('translation:target_section.title')}
                         <span className="font-mono tabular-nums text-muted-foreground/60">· {targetCharCount.toLocaleString()}</span>
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
-                        {canRestorePrevious && onRestorePrevious && !isTranslating && (
-                            <DsButton
-                                variant="ghost"
-                                size="icon"
-                                onClick={onRestorePrevious}
-                                className={cn(COARSE_HIT, 'h-8 w-8 text-info hover:bg-info/10')}
-                                aria-label={t('translation:workbench_ui.restore_previous')}
-                            >
-                                <ArrowCounterClockwise size={16} />
-                            </DsButton>
-                        )}
-                        <DsButton
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setShowComparison(!showComparison)}
-                            className={cn(COARSE_HIT, 'h-8 w-8', showComparison ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
-                            aria-pressed={showComparison}
-                            aria-label={t('translation:comparison.toggle')}
-                        >
-                            <Columns size={16} />
-                        </DsButton>
-                        <DsButton
-                            variant="ghost"
-                            size="icon"
-                            onClick={onEditTranslation}
-                            disabled={isTranslating}
-                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
-                            aria-label={t('translation:target_section.edit')}
-                        >
-                            <PencilSimple size={16} />
-                        </DsButton>
-                        <DsButton
-                            variant="ghost"
-                            size="icon"
-                            onClick={onSpeak}
-                            disabled={isTranslating}
-                            className={cn(COARSE_HIT, 'h-8 w-8', isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
-                            aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
-                        >
-                            <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
-                        </DsButton>
                         <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={handleCopy}
                             disabled={isTranslating}
-                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
+                            className={cn(coarseHitClassFor32, 'h-8 w-8 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 text-muted-foreground')}
                             aria-label={t('translation:target_section.copy')}
                         >
                             {copyIcon}
                         </DsButton>
-                        <DsButton
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => void handleSaveAsFlashcard()}
-                            disabled={isTranslating || savingFlashcard}
-                            data-testid="translation-save-flashcard-mobile-btn"
-                            className={cn(COARSE_HIT, 'h-8 w-8', justSavedFlashcard ? 'text-success bg-success/10' : 'text-muted-foreground')}
-                            aria-label={t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}
-                        >
-                            {savingFlashcard ? (
-                                <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
-                            ) : justSavedFlashcard ? (
-                                <Check size={16} className="text-success" />
-                            ) : (
-                                <CardsThree size={16} />
-                            )}
-                        </DsButton>
-                        <DsButton
-                            variant="ghost"
-                            size="icon"
-                            onClick={onExportTranslation}
-                            disabled={isTranslating}
-                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
-                            aria-label={t('translation:target_section.export')}
-                        >
-                            <Download size={16} />
-                        </DsButton>
+                        <AppMenu>
+                            <AppMenuTrigger asChild>
+                                <DsButton
+                                    variant="ghost"
+                                    size="icon"
+                                    data-testid="translation-target-more-btn"
+                                    className={cn(coarseHitClassFor32, 'h-8 w-8 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 text-muted-foreground')}
+                                    aria-label={t('common:more', { defaultValue: '更多' })}
+                                >
+                                    <DotsThree size={18} weight="bold" aria-hidden="true" />
+                                </DsButton>
+                            </AppMenuTrigger>
+                            <AppMenuContent align="end" width={200}>
+                                <AppMenuItem
+                                    icon={<Columns size={15} aria-hidden="true" />}
+                                    checked={showComparison}
+                                    onClick={() => setShowComparison(!showComparison)}
+                                >
+                                    {t('translation:comparison.toggle')}
+                                </AppMenuItem>
+                                <AppMenuItem
+                                    icon={<PencilSimple size={15} aria-hidden="true" />}
+                                    disabled={isTranslating}
+                                    onClick={onEditTranslation}
+                                >
+                                    {t('translation:target_section.edit')}
+                                </AppMenuItem>
+                                <AppMenuItem
+                                    icon={<SpeakerHigh size={15} aria-hidden="true" />}
+                                    disabled={isTranslating}
+                                    onClick={onSpeak}
+                                >
+                                    {isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
+                                </AppMenuItem>
+                                <AppMenuSeparator />
+                                <AppMenuItem
+                                    icon={
+                                        savingFlashcard ? (
+                                            <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                        ) : justSavedFlashcard ? (
+                                            <Check size={15} className="text-success" aria-hidden="true" />
+                                        ) : (
+                                            <CardsThree size={15} aria-hidden="true" />
+                                        )
+                                    }
+                                    disabled={isTranslating || savingFlashcard}
+                                    data-testid="translation-save-flashcard-mobile-btn"
+                                    onClick={() => void handleSaveAsFlashcard()}
+                                >
+                                    {t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}
+                                </AppMenuItem>
+                                <AppMenuItem
+                                    icon={<Download size={15} aria-hidden="true" />}
+                                    disabled={isTranslating}
+                                    onClick={onExportTranslation}
+                                >
+                                    {t('translation:target_section.export')}
+                                </AppMenuItem>
+                            </AppMenuContent>
+                        </AppMenu>
                     </div>
                 </div>
             )}
@@ -474,10 +451,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 {editedTranslation.length.toLocaleString()} {t('translation:stats.characters')}
                             </span>
                             <div className="flex gap-2">
-                                <DsButton variant="outline" size="sm" onClick={onCancelEdit} className="[@media(pointer:coarse)]:!min-h-11">
+                                <DsButton variant="outline" size="sm" onClick={onCancelEdit}>
                                     {t('common:cancel')}
                                 </DsButton>
-                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation} className="[@media(pointer:coarse)]:!min-h-11">
+                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation}>
                                     <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
                                 </DsButton>
@@ -510,7 +487,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="sm"
                                             data-testid="translation-outdated-save-new-version-btn"
                                             onClick={onSaveAsNewVersion}
-                                            className="!h-6 px-2 text-xs font-medium text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                            className={cn(coarseHitClassFor24, '!h-6 [@media(pointer:coarse)]:!min-h-0 px-2 text-xs font-medium text-warning hover:bg-warning/15 shrink-0')}
                                         >
                                             {t('translation:workbench_ui.save_as_new_version', { defaultValue: '另存新版本' })}
                                         </DsButton>
@@ -521,7 +498,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="sm"
                                             data-testid="translation-outdated-retranslate-btn"
                                             onClick={onRetranslate}
-                                            className="!h-6 px-2 text-xs text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                            className={cn(coarseHitClassFor24, '!h-6 [@media(pointer:coarse)]:!min-h-0 px-2 text-xs text-warning hover:bg-warning/15 shrink-0')}
                                         >
                                             {t('translation:workbench_ui.retranslate_now')}
                                         </DsButton>
@@ -532,7 +509,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="sm"
                                             data-testid="translation-outdated-keep-current-btn"
                                             onClick={onKeepCurrentTranslation}
-                                            className="!h-6 px-2 text-xs text-muted-foreground hover:bg-warning/10 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                            className={cn(coarseHitClassFor24, '!h-6 [@media(pointer:coarse)]:!min-h-0 px-2 text-xs text-muted-foreground hover:bg-warning/10 shrink-0')}
                                         >
                                             {t('translation:workbench_ui.keep_current_translation', { defaultValue: '保留当前译文' })}
                                         </DsButton>
@@ -546,7 +523,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 data-testid="translation-streaming-pill"
                                 role="status"
                                 aria-live="polite"
-                                className="pointer-events-none absolute top-3 left-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-background/85 backdrop-blur-md px-2.5 py-1 text-2xs font-medium text-primary shadow-xs"
+                                className="pointer-events-none absolute top-3 left-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-card px-2.5 py-1 text-2xs font-medium text-primary shadow-xs"
                             >
                                 <CircleNotch size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden="true" />
                                 <span className="tabular-nums">
@@ -572,7 +549,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 data-testid="translation-empty-hint"
                                 className="pointer-events-none absolute inset-x-4 bottom-5 flex justify-center"
                             >
-                                <span className="rounded-full border border-border/35 bg-background/75 backdrop-blur-sm px-3 py-1 text-2xs text-muted-foreground/80">
+                                <span className="rounded-full border border-border/35 bg-card px-3 py-1 text-2xs text-muted-foreground/80">
                                     {hasSourceText
                                         ? t('translation:target_section.ready_to_translate', { shortcut: translateShortcut })
                                         : t('translation:target_section.empty_subhint')}
@@ -583,7 +560,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         {/* 悬浮状态条：评分 + 字数 */}
                         {translatedText && !isTranslating && (
                             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-80 group-hover/target:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
-                                <div data-wb-blur-surface className="pointer-events-auto bg-background/85 backdrop-blur-md border border-border/35 rounded-full shadow-sm px-1 py-0.5 flex items-center">
+                                <div className="pointer-events-auto bg-card border border-border/35 rounded-full shadow-sm px-1 py-0.5 flex items-center">
                                     {[1, 2, 3, 4, 5].map((rating) => {
                                         const isSelected = Boolean(translationQuality && rating <= translationQuality);
                                         return (
@@ -594,7 +571,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                                 onClick={() => onRateTranslation(rating)}
                                                 aria-pressed={isSelected}
                                                 aria-label={t('translation:panel_ux.rate_star', { count: rating })}
-                                                className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                className={cn(
+                                                    coarseHitClassFor28,
+                                                    'h-7 w-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full',
+                                                )}
                                             >
                                                 <Star
                                                     weight={isSelected ? 'fill' : 'regular'}
@@ -609,7 +589,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         );
                                     })}
                                 </div>
-                                <div data-wb-blur-surface className="bg-background/85 backdrop-blur-md border border-border/35 rounded-full px-2.5 py-1 text-xs text-muted-foreground shadow-sm font-mono tabular-nums">
+                                <div className="bg-card border border-border/35 rounded-full px-2.5 py-1 text-xs text-muted-foreground shadow-sm font-mono tabular-nums">
                                     {targetCharCount.toLocaleString()} {t('translation:stats.characters')}
                                 </div>
                             </div>

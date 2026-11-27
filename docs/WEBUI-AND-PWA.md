@@ -70,16 +70,19 @@ host/ + electron/shell/             原样的 Host 与外壳运行时
 | `DS_WEB_HOST` | `127.0.0.1` | 监听地址；设为 `0.0.0.0` / `::` 时启动日志里的地址改用 `127.0.0.1` |
 | `DS_WEB_PORT` | `1428` | 监听端口 |
 | `DS_WEB_PROD` | 未设置 | `1` 等价于 `--prod` |
+| `DS_WEB_DIST_DIR` | `dist-web/` | 生产模式静态资源目录覆盖 |
 | `DS_WEB_TOKEN` | 随机生成 | 访问令牌，未设置时 `randomBytes(24).toString('hex')`（48 位十六进制） |
 | `DS_WEB_NO_AUTH` | 未设置 | `1` 关闭令牌校验（等价 `--no-auth`），仅限可信本机环境 |
-| `DS_APP_DATA_DIR` | 按 tauri identifier 解析 | 应用数据目录；暂存与导出目录建在它下面 |
-| `DS_MIGRATIONS_DIR` | `src-tauri/migrations` | Host 存储插件读取的迁移目录 |
+| `DS_WEB_DATA_DIR` | 未设置 | WebUI 应用数据目录覆盖（优先级高于 `DS_APP_DATA_DIR`） |
+| `DS_APP_DATA_DIR` | 按 `resources/app/tauri.conf.json` identifier 解析 | 应用数据目录；未设 `DS_WEB_DATA_DIR` 时生效，暂存与导出目录建在它下面 |
+| `DS_WEB_SAFE_MODE` | 未设置 | `1` 时以安全模式启动 Host 网关 |
+| `DS_MIGRATIONS_DIR` | `resources/app/migrations` | Host 存储插件读取的迁移目录 |
 | `DS_HOST_PROFILE` | 由 `resolveHostProfile` 决定 | Host profile 覆盖 |
 | `DS_WEB_TRUST_PROXY` | 未设置 | `1` 时无条件采信反向代理写入的 `X-Forwarded-Host` / `X-Forwarded-Proto` / `X-Forwarded-For`；未设置时只对回环来源采信（见 §3.2） |
 
-服务端与桥接自测：`npx vitest run -c vitest.host.config.ts web/tests/`（56 个用例，覆盖真实 Host RPC、
+服务端与桥接自测：`npx vitest run -c vitest.host.config.ts web/tests/`（18 个测试文件 / 152 个用例，覆盖真实 Host RPC、
 SQLite、二进制 `Uint8Array` IPC 与 `installTauriBridge` 链路，以及鉴权限流、`Secure` Cookie 判定、
-压缩协商、静态缓存与 404 语义）。
+压缩协商、静态缓存、Service Worker、重连、安全模式与 404 语义）。
 
 ## 3. 安全模型
 
@@ -99,7 +102,7 @@ SQLite、二进制 `Uint8Array` IPC 与 `installTauriBridge` 链路，以及鉴�
   （含 `/`、`/sw.js`）。放行的只有 `manifest.webmanifest`、`app-icon.png`、`icon-192.png`、
   `icon-512.png`、`icon-maskable-512.png`、`apple-touch-icon.png`、`favicon.ico`——iOS Safari 与
   Android Chrome 的系统级「添加到主屏幕」抓取器不带 Cookie，不提前放行就装不上。
-- 基线安全头（所有响应，含 401/403/404）：`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`、
+- 基线安全头（所有响应，含 401/403/404）：`X-Content-Type-Options: nosniff`、`Referrer-Policy: same-origin`、
   `X-Frame-Options: SAMEORIGIN`。
 - `/api/ws` 的 `Upgrade` 单独校验：先同源，再鉴权，失败分别 403 / 401。
 
@@ -119,10 +122,10 @@ SQLite、二进制 `Uint8Array` IPC 与 `installTauriBridge` 链路，以及鉴�
 
 ### 3.3 路径隔离
 
-- `FsScope`（`fs` 插件运行时）与 `assetScope`（资源协议）分别由 `deriveScopes(src-tauri/capabilities)` 和
-  `tauri.conf.json` 的 `assetScope.allow/deny` 派生，`userDataDir` 参与解析；二者是两份独立白名单。
+- `FsScope`（`fs` 插件运行时）与 `assetScope`（资源协议）分别由 `deriveScopes(resources/app/capabilities)` 和
+  `resources/app/tauri.conf.json` 的 `assetScope.allow/deny` 派生，`userDataDir` 参与解析；二者是两份独立白名单。
 - 暂存与导出目录 `<appDataDir>/web-staging`、`<appDataDir>/web-exports` 同时加入两份白名单。
-- 上传：单文件上限 `200 MB`（`MAX_STAGE_UPLOAD_BYTES`），文件名经 `sanitizeUploadFileName` 归一化后以 `wx` 写入。
+- 上传：单文件上限 `200 MiB`（`DEFAULT_MAX_STAGE_UPLOAD_BYTES`），文件名经 `sanitizeUploadFileName` 归一化后以 `wx` 写入。
 - 导出：`prepare-save` 生成 30 分钟有效的 `exportId`，下载前再校验路径仍落在 `web-exports` 下。
 - 拖放落地的每个路径逐个 `allowFile`，其余路径仍被拒绝。
 
@@ -208,34 +211,27 @@ Host 留在 Node 侧（本机或内网服务器），浏览器只缓存应用壳
 3. SQLite 用 `@sqlite.org/sqlite-wasm` 的 `opfs-sahpool` VFS：`name: 'dstu-opfs'`、
    `directory: '.deep-student'`、`initialCapacity: 32`；pool 被别的 Worker 占用时重试 7 次（累计 9.5 秒），
    仍失败则各库按“被锁定”打开并记录 `poolError`（`mobile/src/worker/sqlite-runtime.ts`）。
-4. 迁移 SQL 来自 `src-tauri/migrations/{vfs,chat_v2,mistakes,llm_usage}/*.sql`，以 `?raw` 原样注入，与桌面同源。
+4. 迁移 SQL 来自 `resources/app/migrations/{vfs,chat_v2,mistakes,llm_usage}/*.sql`，以 `?raw` 原样注入，与桌面同源。
 5. 同一来源只能有一个 Worker 持有 OPFS 同步访问句柄，所以全离线形态必须让 Host 独占一个专用 Worker。
 
 这条路径与 WebUI 的差别主要在传输层与外壳：`src/` 不变，`installTauriBridge` 的 transport 换成 MessagePort，
-不再需要 `web/server/*`。当前阻断项是可移植性，实测数据：
+不再需要 `web/server/*`。可移植性实测数据（`host/profiles/mobile.json` 全部 **37/37** 个模块通过，**0** 个运行期 Node 专有依赖）：
 
 ```
 node scripts/portability/scan.mjs --profile host/profiles/mobile.json
-profile host/profiles/mobile.json: 33 module(s), 7 reach Node-specific dependencies at runtime   （退出码 1）
+profile host/profiles/mobile.json: 37 module(s), 0 reach Node-specific dependencies at runtime
 ```
-
-26 个模块通过，7 个失败，全部追到同一批 Node 专有依赖：
-
-| 失败模块 | 触达的 Node 专有依赖 |
-|---|---|
-| `dstu.agent-orchestration`、`dstu.agent-skills`、`dstu.chat`、`dstu.chat-pipeline`、`dstu.sync`、`dstu.sync-providers`、`dstu.vfs` | `host/plugins/sync-providers/src/v5_{framed_pack,index_and_checkpoint,keyring}.ts` 的 `node:crypto` 与全局 `Buffer`；`host/plugins/sync/src/{dspair2,fractional-index,run-sync,v5-runtime-bridge,version-vector}.ts` 的 `node:crypto` / `node:buffer` 与 `Buffer` |
 
 全量（桌面插件）基线，供对照：
 
 ```
 node scripts/portability/scan.mjs
-portability: 29 plugins, 1745 production files; 1597 (91.52%) without Node-specific imports,
-1578 (90.43%) runtime-portable; effort ≈ 37.24 person-days
+portability: 31 plugins, 1845 production files; 1692 (91.71%) without Node-specific imports,
+1677 (90.89%) runtime-portable; effort ≈ 40.54 person-days
 ```
 
-也就是说，OPFS 存储与 Worker 装配已经可用，剩下的是 `host/plugins/sync`、`host/plugins/sync-providers`
-把 `node:crypto` 与 `Buffer` 换成 WebCrypto 与 `Uint8Array`，再为壳补上浏览器侧的 `files` / `net` 实现。
-7 个失败同源，命中文件只有上表列出的 8 个，没有别的 Node 依赖混在里面。
+也就是说，OPFS 存储、Worker 装配以及 `host/profiles/mobile.json` 内的全部 37 个模块已经完成浏览器运行期去 Node 化；
+后续面向纯浏览器的全离线 PWA 只需补齐独立浏览器外壳的 `files` / `net` 适配与构建入口。
 
 ## 5. 公网（WAN）路径上的延迟优化
 
@@ -249,7 +245,7 @@ WebUI 构建给 `createManualChunks` 传两个桌面构建不传的选项
 
 | 分组 | 内容 | 为什么 |
 |---|---|---|
-| `locales-zh-CN` / `locales-en-US` | `src/i18n.ts` 里 `import.meta.glob` 的延迟语言包（`common` / `sidebar` 除外） | 92 个 JSON → 2 个 chunk，切换语言不再几十个请求 |
+| `locales-zh-CN` / `locales-en-US` | `src/i18n.ts` 里 `import.meta.glob` 的延迟语言包（`common` / `sidebar` 除外） | 94 个 JSON → 2 个 chunk，切换语言不再几十个请求 |
 | `app-main` | `src/main.tsx` 的静态闭包，含 WebUI 只做一次静态转发的虚拟入口 `virtual:dstu-web-app-entry` | `import('virtual:dstu-web-app-entry')` 直接命中 `app-main.js`，首屏不再被匿名共享 chunk 挡在前面 |
 | `workbench-core` | `WorkbenchDesktop.tsx` 静态闭包，去掉 `app-main` / `vendor-*` / `ui-boot` | 桌面是默认首页，原先闭包里约 120 个共享小 chunk（大量 zustand `create()` 副作用模块）要排 20 轮 RTT；归组后这些共享模块并成 1 个 `workbench-core`，剩下的请求都是本来就必需的 vendor chunk |
 | `chat-core` | `ChatV2Page` 静态闭包，再去掉整块 workbench 闭包 | 打开聊天同样只多 1 个请求；WorkbenchDesktop 里点开聊天时 `workbench-core` 已加载 |

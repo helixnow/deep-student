@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy } from '@phosphor-icons/react';
+import { Check, CircleNotch, Copy } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { MathText } from '@/components/ui/MathText';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -21,11 +22,6 @@ interface ComparisonViewProps {
 
 /** 容器窄于该宽度时改为"原文块+译文块"纵向交错布局（双列各 <180px 时可读性崩坏） */
 const NARROW_STACK_THRESHOLD = 480;
-
-/** 触屏命中区扩展：24px（w-6 h-6）图标钮扩到 ≥44px（24 + 2×10），视觉不变
- *  （与 TranslationMain.COARSE_HIT 同款范式；此处按钮更小，inset 相应加大） */
-const COARSE_HIT =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
 
 /**
  * 双语对照视图
@@ -99,13 +95,13 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
       <div ref={setContainerRef} data-selectable="true" className="p-4 space-y-0">
         {/* 表头（窄容器合并为单行：语向 + 状态 + 段数） */}
         {isNarrow ? (
-          <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background/95 backdrop-blur-sm z-10 text-xs font-medium text-muted-foreground min-w-0">
+          <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background z-10 text-xs font-medium text-muted-foreground min-w-0">
             <span className="truncate uppercase tracking-wider">
               {srcName} → {tgtName}
             </span>
             {isTranslating && (
               <span className="inline-flex items-center gap-1 text-primary shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none" />
+                <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 {t('translation:actions.translating')}
               </span>
             )}
@@ -114,7 +110,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-4 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+          <div className="flex items-center gap-4 pt-1 pb-3 mb-1 border-b border-border/35 sticky top-0 bg-background z-10">
             <div className="w-5 shrink-0" />
             <div className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               {srcName}
@@ -124,7 +120,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
               <span className="truncate">{tgtName}</span>
               {isTranslating && (
                 <span className="inline-flex items-center gap-1 text-primary shrink-0 normal-case tracking-normal">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none" />
+                  <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   {t('translation:actions.translating')}
                 </span>
               )}
@@ -156,8 +152,8 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   : t('translation:comparison_ux.copy_segment')
               }
               className={cn(
-                COARSE_HIT,
-                'w-6 h-6 shrink-0 transition-opacity',
+                coarseHitClassFor24,
+                'w-6 h-6 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 shrink-0 transition-opacity',
                 isNarrow ? '' : 'absolute right-1 top-2.5',
                 copiedIndex === index
                   ? 'opacity-100 text-success hover:text-success'

@@ -17,7 +17,6 @@ import {
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { ShellCommandRulesSection } from './ShellCommandRulesSection';
-import { SENSITIVITY_CONFIG } from './toolPermissionTypes';
 import { useToolPermissions } from './useToolPermissions';
 import type { McpCachedTool } from './types';
 
@@ -62,8 +61,8 @@ export function ToolPermissionsSection({ toolsByServer, embedded = false }: {
 
       {isLoading ? (
         <div className="space-y-3">
-          <div className="h-16 bg-muted/30 rounded-lg animate-pulse" />
-          <div className="h-40 bg-muted/30 rounded-lg animate-pulse" />
+          <div className="h-16 bg-muted/30 rounded-lg animate-pulse motion-reduce:animate-none" />
+          <div className="h-40 bg-muted/30 rounded-lg animate-pulse motion-reduce:animate-none" />
         </div>
       ) : (
         <div className="space-y-5">
@@ -432,7 +431,6 @@ export function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                     return (
                       <div key={group} className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 hover:bg-muted/20 transition-colors">
                         <div className="flex items-center min-w-0 flex-1 gap-2">
-                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-foreground truncate" title={group}>
                               {groupMode === 'source' ? formatToolSource(group) : group}
@@ -587,10 +585,6 @@ export function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                                     aria-label={t('settings:tool_permissions.select_tool', { name: tool.display })}
                                     className="mt-0.5 relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                                   />
-                                  <span className={cn(
-                                    'mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0',
-                                    policy.level ? SENSITIVITY_CONFIG[policy.level].dot : 'bg-muted-foreground/30'
-                                  )} />
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                       <span className="text-sm text-foreground font-mono break-all" title={tool.name}>

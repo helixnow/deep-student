@@ -8,7 +8,7 @@
 - **公开仓库纯净原则**：本仓库仅存放产品源码本体与面向用户/贡献者的必要文档（CI 通过 `npm run check:public-surface` 执行根目录与文档目录白名单门禁），请勿在提交中包含个人笔记、过程草稿或运行日志。
 
 ### 开发环境
-- **Node.js**: v24（推荐，与 CI 一致；最低 v20+）
+- **Node.js**: Node.js 24+（与 CI 一致）
 - **包管理器**: npm（本项目统一使用 `npm ci --legacy-peer-deps`，请勿混用 pnpm/yarn）
 
 ### 安装与本地开发
@@ -26,24 +26,29 @@ npm run dev:electron
 # 启动 WebUI 开发服务端
 npm run web
 
-# 类型检查与 Lint
+# 类型检查、代码风格与契约 / 边界门禁
 npm run typecheck
 npm run typecheck:host
 npm run lint
+npm run lint:css
+npm run check:i18n
+npm run check:plugins
+npm run check:arch
+npm run contracts:check
+npm run check:public-surface
 
-# 运行测试与公开面门禁
+# 运行测试
 npm test
 npm run test:host
-npm run check:public-surface
 ```
 
 ### 代码风格与架构约束
-- TypeScript / React：请通过 `npm run lint`、`npm run check:frontend-layers` 检查
-- Host 与插件边界：请通过 `npm run check:arch` 与 `npm run contracts:check` 检查
+- TypeScript / React / CSS：请通过 `npm run lint`、`npm run lint:css`、`npm run check:frontend-layers` 与 `npm run check:i18n` 检查
+- Host 与插件边界：请通过 `npm run check:plugins`、`npm run check:arch` 与 `npm run contracts:check` 检查
 - 详细规范参见 [`docs/CODE_STYLE.md`](../docs/CODE_STYLE.md)、[`docs/frontend/README.md`](../docs/frontend/README.md) 与 [`host/kernel/API.md`](../host/kernel/API.md)
 
 ### CI/CD
-PR 提交时会自动运行 `.github/workflows/ci.yml` 与 `.github/workflows/host-checks.yml`（含公开仓库表面白名单检查、前端类型与构建门禁、Vitest 分片测试、Host/Electron 契约与迁移门禁、示例插件测试及 CLA 签署检查）。提交 PR 前请确保本地相关检查通过。
+PR 提交时会自动运行 `.github/workflows/ci.yml`、`.github/workflows/host-checks.yml`、`.github/workflows/node-ci.yml` 与 `.github/workflows/cla.yml`（含公开仓库表面白名单检查、前端类型与构建门禁、Vitest 分片测试、Host/Electron 契约与迁移门禁、示例插件测试及 CLA 签署检查）。提交 PR 前请确保本地相关检查通过。
 
 ### PR 指南
 - 描述变更与测试方式；关联 Issue（如有）
@@ -64,7 +69,7 @@ PR 提交时会自动运行 `.github/workflows/ci.yml` 与 `.github/workflows/ho
 1. 新增 UI 文案时，同时在 `zh-CN` 和 `en-US` 对应的 namespace JSON 中添加词条
 2. 若英文翻译不确定，可先填入中文占位，在 PR 中标注 `i18n: needs translation`
 3. 禁止在组件中硬编码用户可见的文案字符串，一律通过 `t('namespace:key')` 引用
-4. 新增 namespace 时需同步更新 `src/i18n.ts` 的 imports 和 `resources` 配置
+4. `common` 与 `sidebar` 在 `src/i18n.ts` 中同步导入供首屏使用；其余命名空间通过 `import.meta.glob('./locales/**/*.json')` 按需异步加载（移动端与演示构建通过 `src/locales/bundles/{zh-CN,en-US}.ts` 的 `import.meta.glob` 自动聚合，无需手动登记）。新增 namespace 时，只需同时添加 `src/locales/zh-CN/<ns>.json` 与 `src/locales/en-US/<ns>.json`，并在 `src/i18n.ts` 的 `ALL_NS` 数组中注册该命名空间名称，然后运行 `npm run check:i18n` 验证
 
 ### 知识产权与授权 (Intellectual Property & Licensing)
 

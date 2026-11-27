@@ -65,15 +65,22 @@ export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
       setBusy(undefined);
     }
   };
+  const inSafeMode = Boolean(state.safeMode || status?.safeMode);
+  const topIsolated = !inSafeMode && isolated.length > 0 ? isolated[0] : null;
+  const extraIsolatedCount = !inSafeMode && isolated.length > 1 ? isolated.length - 1 : 0;
   return <div className="space-y-3">
-    {isolated.map(plugin => {
+    {topIsolated ? (() => {
+      const plugin = topIsolated;
       const crashed = disabled.some(entry => entry.pluginId === plugin.id);
       const raw = plugin.degraded?.reason ?? status?.reason(plugin.id) ?? (crashed ? t('isolation.budgetExhausted') : undefined);
       // An explicit version owner (onRollback) knows its versions; otherwise ask the workshop whether one is retained.
       const canGoBack = Boolean(rollback) && (onRollback !== undefined || goBack.has(plugin.id));
       const canRepair = Boolean(workshop) && plugin.source === 'workshop';
-      return <div key={plugin.id} role="alert" data-testid="plugin-isolation" data-plugin-id={plugin.id} className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
-        <p className="font-medium">{t(crashed ? 'isolation.crashed' : 'isolation.failedStart', { name: pluginName(plugin, t) })}</p>
+      return <div role="alert" data-testid="plugin-isolation" data-plugin-id={plugin.id} className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
+        <p className="font-medium">
+          {t(crashed ? 'isolation.crashed' : 'isolation.failedStart', { name: pluginName(plugin, t) })}
+          {extraIsolatedCount > 0 ? ` (+${extraIsolatedCount})` : ''}
+        </p>
         {canGoBack || canRepair ? <div className="flex flex-wrap gap-2">
           {canGoBack ? <DsButton size="sm" variant="outline" disabled={!!busy} onClick={() => { void recover(plugin.id, false); }}>{t('isolation.rollback')}</DsButton> : null}
           {canRepair ? <DsButton size="sm" variant="outline" disabled={!!busy} onClick={() => { void recover(plugin.id, true); }}>{t('isolation.repair')}</DsButton> : null}
@@ -83,8 +90,8 @@ export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
           <p className="mt-1 break-words font-mono">{raw}</p>
         </details> : null}
       </div>;
-    })}
+    })() : null}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <PluginManagerPanel {...props} />
+    <PluginManagerPanel {...props} suppressFaultBanner={Boolean(topIsolated)} />
   </div>;
 }

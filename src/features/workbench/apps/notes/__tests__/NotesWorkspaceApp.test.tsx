@@ -1574,25 +1574,33 @@ describe('WorkspaceTabs accessibility', () => {
 
   it('renders a direct top Backlinks / Graph toggle button when onToggleBacklinks is provided', () => {
     const onToggleBacklinks = vi.fn();
+    const onParentPointerDown = vi.fn();
+    const onParentDoubleClick = vi.fn();
     render(
-      <WorkspaceTabs
-        tabs={[{ key: 'note:a', type: 'note', id: 'a', title: 'Alpha' }]}
-        activeKey="note:a"
-        rightTabKey={null}
-        onActivate={vi.fn()}
-        onClose={vi.fn()}
-        onReorder={vi.fn()}
-        onOpenContextMenu={vi.fn()}
-        contextMenuKey={null}
-        sidebarWidth="0px"
-        saveStates={new Map()}
-        backlinksOpen={false}
-        onToggleBacklinks={onToggleBacklinks}
-      />,
+      <div onPointerDown={onParentPointerDown} onDoubleClick={onParentDoubleClick}>
+        <WorkspaceTabs
+          tabs={[{ key: 'note:a', type: 'note', id: 'a', title: 'Alpha' }]}
+          activeKey="note:a"
+          rightTabKey={null}
+          onActivate={vi.fn()}
+          onClose={vi.fn()}
+          onReorder={vi.fn()}
+          onOpenContextMenu={vi.fn()}
+          contextMenuKey={null}
+          sidebarWidth="0px"
+          saveStates={new Map()}
+          backlinksOpen={false}
+          onToggleBacklinks={onToggleBacklinks}
+        />
+      </div>,
     );
 
     const toggleBtn = screen.getByRole('button', { name: /反向链接 \/ 图谱|Backlinks \/ Graph/i });
     expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.pointerDown(toggleBtn);
+    fireEvent.doubleClick(toggleBtn);
+    expect(onParentPointerDown).not.toHaveBeenCalled();
+    expect(onParentDoubleClick).not.toHaveBeenCalled();
     fireEvent.click(toggleBtn);
     expect(onToggleBacklinks).toHaveBeenCalledTimes(1);
   });

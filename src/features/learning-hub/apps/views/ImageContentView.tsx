@@ -38,7 +38,6 @@ import {
   MagnifyingGlassMinus,
   ArrowClockwise,
   ArrowCounterClockwise,
-  ArrowsIn,
   FrameCorners,
   CaretDown,
 } from '@phosphor-icons/react';
@@ -1012,7 +1011,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11"
+                  aria-current={fitMode ? 'true' : undefined}
+                  className={`flex w-full items-center px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11 ${fitMode ? 'bg-muted/70 font-medium text-foreground' : ''}`}
                   onClick={() => selectZoomPreset('fit')}
                 >
                   {t('learningHub:image.fitToWindow')}
@@ -1067,17 +1067,6 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             <MagnifyingGlassPlus size={16} />
           </DsButton>
           <div className="mx-1 h-3.5 w-px bg-border/35" aria-hidden="true" />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={enterFitMode}
-            title={t('learningHub:image.fitToWindow')}
-            aria-label={t('learningHub:image.fitToWindow')}
-            aria-pressed={fitMode}
-            className={`max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
-          >
-            <ArrowsIn size={16} />
-          </DsButton>
           <DsButton
             variant="ghost"
             size="sm"

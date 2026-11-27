@@ -271,14 +271,14 @@ export const PdfReader: React.FC = () => {
       />
 
       {error && (
-        <div className="pdf-reader-status ui-drop-in border-b border-border/35 bg-destructive/[0.04] border-l-2 border-l-destructive" role="alert">
+        <div className="pdf-reader-status ui-drop-in border-b border-destructive/25 bg-destructive/[0.04]" role="alert">
           <WarningCircle size={18} className="pdf-reader-status__icon" aria-hidden />
           <div className="pdf-reader-status__body">
             <p className="pdf-reader-status__title">{error}</p>
             {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}
           </div>
           <div className="pdf-reader-status__actions">
-            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
               <UploadSimple size={14} />
               {t('pdf:empty.select_button')}
             </DsButton>
@@ -286,7 +286,6 @@ export const PdfReader: React.FC = () => {
               variant="ghost"
               size="sm"
               iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               aria-label={t('pdf:a11y.close')}
               onClick={clearError}
             >
@@ -303,7 +302,7 @@ export const PdfReader: React.FC = () => {
           </div>
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
-          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5 [@media(pointer:coarse)]:!min-h-11">
+          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
             <UploadSimple size={16} />
             {t('pdf:empty.select_button')}
           </DsButton>

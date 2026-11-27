@@ -269,15 +269,14 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
           {activeTab === 'safety' && (
             <div className="space-y-3">
               <p>{t('legal.userAgreement.contentSafety.intro')}</p>
-              <ul className="space-y-1.5 text-foreground/70">
+              <ul className="list-disc pl-4 space-y-1.5 text-foreground/70">
                 {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-foreground/35" />
-                    <span>{t(`legal.userAgreement.contentSafety.rule${i}`)}</span>
+                  <li key={i}>
+                    {t(`legal.userAgreement.contentSafety.rule${i}`)}
                   </li>
                 ))}
               </ul>
-              <p className="rounded-md border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2 text-sm font-medium text-orange-600/90 dark:text-orange-400/90">
+              <p className="rounded-md border border-warning/25 bg-warning/[0.06] px-3 py-2 text-sm font-medium text-warning">
                 {t('legal.userAgreement.contentSafety.note')}
               </p>
             </div>

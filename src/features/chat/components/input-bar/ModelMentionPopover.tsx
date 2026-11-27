@@ -9,8 +9,9 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkle, Check, Robot, TerminalWindow, UsersThree } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { Cpu, Check, Robot, TerminalWindow, UsersThree } from '@phosphor-icons/react';
+import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { cn } from '@/utils/cn';
 import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
@@ -50,16 +51,16 @@ export interface ModelMentionPopoverProps {
 function getAgentStatusDotClass(status: AgentMentionStatus): string {
   switch (status) {
     case 'working':
-      return 'bg-primary animate-pulse';
+      return 'bg-primary animate-pulse motion-reduce:animate-none';
     case 'waiting_children':
     case 'waiting_approval':
-      return 'bg-amber-500 animate-pulse';
+      return 'bg-warning animate-pulse motion-reduce:animate-none';
     case 'parked':
     case 'offline':
       return 'bg-muted-foreground/45';
     case 'ready':
     default:
-      return 'bg-emerald-500';
+      return 'bg-success';
   }
 }
 
@@ -184,7 +185,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
         aria-label={t('chatV2:modelMention.suggestions')}
       >
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-          <Sparkle size={14} weight="bold" className="text-primary" />
+          <Cpu size={14} weight="bold" className="text-primary" />
           <span className="text-xs font-medium text-foreground/80">
             {t('chatV2:modelMention.selectModel')}
           </span>
@@ -225,7 +226,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     >
       {/* 头部 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-        <Sparkle size={14} weight="bold" className="text-primary" />
+        <Cpu size={14} weight="bold" className="text-primary" />
         <span className="text-xs font-medium text-foreground/80">
           {hasAgentsSection
             ? t('agentMesh:mention.selectTarget', { defaultValue: '选择智能体或模型' })
@@ -350,10 +351,14 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
                 <div
                   className={cn(
                     'w-7 h-7 rounded-lg flex items-center justify-center shrink-0',
-                    'bg-primary/10 text-primary',
+                    'border border-border/40 bg-muted/50 text-foreground/85',
                   )}
                 >
-                  <Sparkle size={14} weight="bold" />
+                  <ProviderIcon
+                    modelId={model.model || model.name || model.id}
+                    size={14}
+                    showTooltip={false}
+                  />
                 </div>
 
                 <div className="flex-1 min-w-0">

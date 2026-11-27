@@ -67,8 +67,18 @@ import { SettingsModelsRuntimeExecutor } from './settings_models_tool_runtime.ts
 import type { LLMManager, LlmFileManagerPaths, LlmUsageRecorder } from '../api.ts';
 import { createUnifiedModel2 } from './unified_model2.ts';
 import type {
-  ConnectionTestOutcome, TestApiConnectionCommandArgs, TestDeepseekCapabilityCommandArgs,
+  ConnectionTestOutcome,
+  ExternalCandidateModelDto,
+  ExternalLlmImportResult,
+  ExternalLlmScanReport,
+  ImportExternalLlmConfigsCommandArgs,
+  ProbeExternalLlmCandidateModelsCommandArgs,
+  ScanExternalLlmConfigsCommandArgs,
+  TestApiConnectionCommandArgs,
+  TestDeepseekCapabilityCommandArgs,
 } from '../../../../contracts/ipc/generated/L02-llm-manager.ts';
+import { ExternalLlmImportService } from './external_import_service.ts';
+import type { ExternalLlmConfigsService } from '../../../platform/storage/api.ts';
 
 export interface LlmPluginOptions {
   platforms?: readonly PluginPlatform[];
@@ -124,6 +134,7 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
         'get_injection_budget_config', 'simulate_budget_allocation', 'estimate_tokens',
         'opencode_go_get_usage', 'check_api_config_status', 'restore_default_api_configs',
         'fetch_vendor_models', 'call_llm_for_boundary', 'test_api_connection', 'test_deepseek_capability',
+        'scan_external_llm_configs', 'probe_external_llm_candidate_models', 'import_external_llm_configs',
       ],
       provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'gradingRubrics', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'pluginModel', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
@@ -530,6 +541,30 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
       });
 
       ctx.provide('llm', service);
+
+      const externalImportService = new ExternalLlmImportService({
+        store,
+        settings: ctx.settings,
+        externalConfigs: () => ctx.reflect.get('externalLlmConfigs', false) as ExternalLlmConfigsService | undefined,
+        fetch: directFetch,
+        emit: (event, payload) => ctx.backendEvents.emit(event, payload),
+      });
+
+      ctx.commands.register<ScanExternalLlmConfigsCommandArgs, ExternalLlmScanReport>(
+        'scan_external_llm_configs',
+        async (args) => asCommandError(() => externalImportService.scan(args ?? {})),
+      );
+
+      ctx.commands.register<ProbeExternalLlmCandidateModelsCommandArgs, ExternalCandidateModelDto[]>(
+        'probe_external_llm_candidate_models',
+        async ({ sessionId, candidateId }) =>
+          asCommandError(() => externalImportService.probeCandidateModels(sessionId, candidateId)),
+      );
+
+      ctx.commands.register<ImportExternalLlmConfigsCommandArgs, ExternalLlmImportResult>(
+        'import_external_llm_configs',
+        async (args) => asCommandError(() => externalImportService.importSelections(args)),
+      );
 
       ctx.inject(['agentTools', 'media'], scope => {
         const executor = new SettingsModelsRuntimeExecutor({

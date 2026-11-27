@@ -68,15 +68,15 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
   const statusVariant = !isEnabled ? 'muted' : (isConnected ? 'success' : 'danger');
   const textClass =
     statusVariant === 'success'
-      ? 'text-success-foreground'
+      ? 'text-success'
       : statusVariant === 'danger'
-        ? 'text-danger-foreground'
+        ? 'text-destructive'
         : 'text-muted-foreground';
   const Icon = !isEnabled ? Wrench : (isConnected ? CheckCircle : XCircle);
 
   if (compact) {
     return (
-      <DsButton variant="ghost" size="sm" onClick={load} title={t('mcpStatus.refreshStatus')} className={`!h-auto text-xs [@media(pointer:coarse)]:!min-h-11 ${textClass} hover:text-foreground`}>
+      <DsButton variant="ghost" size="sm" onClick={load} title={t('mcpStatus.refreshStatus')} className={`text-xs ${textClass} hover:text-foreground`}>
         <Plug size={14} className="shrink-0" />
         <Icon size={14} className="shrink-0" />
         <span className="text-left">
@@ -96,7 +96,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
           ? (isConnected ? t('mcpStatus.connectedOk') : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)
           : (status?.available ? (status?.enabled_reason || t('mcpStatus.notEnabledMcpTools')) : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)}
       </span>
-      <DsButton variant="ghost" size="sm" onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }} title={t('actions.refresh')} className="!px-2 !py-1 !h-auto text-xs [@media(pointer:coarse)]:!min-h-11 border border-border text-muted-foreground hover:bg-[var(--interactive-hover)]">
+      <DsButton variant="ghost" size="sm" onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }} title={t('actions.refresh')} className="text-xs border border-border text-muted-foreground hover:bg-[var(--interactive-hover)]">
         <ArrowCounterClockwise size={12} /> {t('actions.refresh')}
       </DsButton>
       {status?.server_info && (
@@ -106,7 +106,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
         <span className="text-xs text-muted-foreground">{t('mcpStatus.toolsCount')}: {status.tools_count}</span>
       )}
       {status?.last_error && (
-        <span className="text-xs text-amber-600">{String(status.last_error).slice(0, 120)}</span>
+        <span className="text-xs text-warning">{String(status.last_error).slice(0, 120)}</span>
       )}
     </div>
   );

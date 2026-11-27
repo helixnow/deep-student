@@ -216,15 +216,15 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
     return null;
   }
 
-  // 手机横屏优先使用 max(12px, env(safe-area-inset-left/right)) 避让刘海与圆角；
+  // 手机横屏优先使用 max(12px, var(--mobile-safe-area-left/right, env(safe-area-inset-left/right, 0px))) 避让刘海与圆角；
   // 仅 macOS 原生桌面壳拉窄（< 768，排除浏览器 WebUI）才让出红绿灯宽度；其余竖屏走标准安全区变量。
   const paddingLeft = isPhoneLandscape
-    ? 'max(12px, env(safe-area-inset-left))'
+    ? 'max(12px, var(--mobile-safe-area-left, env(safe-area-inset-left, 0px)))'
     : !isMobilePlatform() && !isWebUiShell() && isMacOS()
       ? `${DESKTOP_SHELL.macTrafficLightsSpacer}px`
       : 'calc(0.75rem + var(--mobile-safe-area-left, 0px))';
   const paddingRight = isPhoneLandscape
-    ? 'max(12px, env(safe-area-inset-right))'
+    ? 'max(12px, var(--mobile-safe-area-right, env(safe-area-inset-right, 0px)))'
     : 'calc(0.75rem + var(--mobile-safe-area-right, 0px))';
   const headerHeight = isPhoneLandscape
     ? `${MOBILE_LAYOUT.LANDSCAPE_HEADER_HEIGHT}px`
@@ -254,7 +254,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
           variant="ghost"
           size="icon"
           onClick={config.onMenuClick}
-          className={cn(shellIconButtonClassName, 'min-h-11 min-w-11')}
+          className={shellIconButtonClassName}
           data-mobile-floating-menu-button
           aria-label={t('common:mobile_header.open_sidebar')}
         >

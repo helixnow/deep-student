@@ -20,15 +20,19 @@ describe('CitationBadgeWithPopover orphan rag citations', () => {
     const orphanPill = container.querySelector('[data-citation-orphan="true"]');
     expect(orphanPill).not.toBeNull();
     expect(orphanPill?.tagName).toBe('SPAN');
-    expect(orphanPill?.textContent).toBe('[1]');
+    expect(orphanPill?.textContent).toBe('1');
     expect(orphanPill?.getAttribute('title')).toContain('[1]');
     expect(orphanPill?.getAttribute('aria-label')).toContain('[1]');
     expect(container.querySelector('button')).toBeNull();
   });
 
-  it('renders the interactive badge when the source resolves', () => {
+  it('renders the interactive badge as a compact numeric pill without brackets or coarse height stretch', () => {
     const { container } = renderBadge(() => ({ id: 's1', type: 'rag', title: '讲义', snippet: '' }) as never);
-    expect(container.querySelector('[data-citation-anchor] button')).not.toBeNull();
+    const btn = container.querySelector('[data-citation-anchor] button');
+    expect(btn).not.toBeNull();
+    expect(btn?.textContent).toBe('1');
+    expect(btn?.className).toContain('!min-h-0');
+    expect(btn?.className).not.toContain('min-h-11');
     expect(container.querySelector('[data-citation-orphan]')).toBeNull();
   });
 

@@ -137,6 +137,7 @@ describe('TargetPanel 学习者交互体验', () => {
     const saveBtn = screen.getByTestId('translation-save-flashcard-btn');
     fireEvent.click(saveBtn);
     expect(onSaveAsFlashcard).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('translation-target-more-btn'));
     expect(screen.getByTestId('translation-save-flashcard-mobile-btn')).toBeInTheDocument();
   });
 

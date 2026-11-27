@@ -52,11 +52,7 @@ export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean; noCard
 
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${config.cls}`}>
-      {group === 'active' && !paused ? (
-        <span aria-hidden className="wb-at-pulse-dot" />
-      ) : (
-        <span aria-hidden className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${config.dot}`} />
-      )}
+      <span aria-hidden className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${config.dot}`} />
       {config.text}
     </span>
   );

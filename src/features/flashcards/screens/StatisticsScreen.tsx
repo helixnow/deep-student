@@ -269,24 +269,13 @@ export const StatisticsScreen: React.FC = () => {
 
   const setScreen = useFsrsReviewStore((state) => state.setScreen);
   const backToToday = useCallback(() => setScreen('today'), [setScreen]);
-  const mobileChrome = useFlashcardsMobileChrome({
+  useFlashcardsMobileChrome({
     title: t('statistics.title'),
     onBack: backToToday,
   }, [t, backToToday]);
 
   return (
     <div className="wb-fc-screen">
-      {!mobileChrome && <header className="wb-fc-header">
-        <div className="min-w-0">
-          <h2 className="wb-fc-title">{t('statistics.title')}</h2>
-          <p className="wb-fc-subtitle">
-            {loading
-              ? t('statistics.loading')
-              : t('statistics.subtitle')}
-          </p>
-        </div>
-      </header>}
-
       {error ? (
         // 统计加载失败时调度设置必须保持可用：它读写独立的 scheduler_config
         // 后端命令，与统计数据无依赖（此前整体包在 stats 分支里被一起拖垮）。
@@ -306,7 +295,6 @@ export const StatisticsScreen: React.FC = () => {
                 variant="default"
                 size="sm"
                 onClick={() => void load()}
-                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowClockwise size={15} />
                 {t('statistics.retry')}

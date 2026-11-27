@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Brain,
   CaretLeft,
+  ChatCircleText,
   Check,
   ClipboardText,
   CopySimple,
@@ -20,7 +21,6 @@ import {
   NotePencil,
   PushPin,
   PushPinSlash,
-  Sparkle,
   SpinnerGap,
   Stack,
   Student,
@@ -85,7 +85,7 @@ const CAPTURE_LIMIT = 20_000;
 const NATIVE_GLASS = isTauriRuntime && isMacOS();
 
 const ACTION_ICONS: Record<QuickLearningAction, Icon> = {
-  ask: Sparkle,
+  ask: ChatCircleText,
   explain: Brain,
   translate: Translate,
   summarize: Stack,
@@ -649,7 +649,7 @@ export const QuickAssistantWindow: React.FC = () => {
         <section className="qa-content qa-home">
           <div className="qa-input-row">
             <div className="qa-input-shell">
-              <Sparkle size={15} className="qa-input-icon" />
+              <MagnifyingGlass size={15} className="qa-input-icon" aria-hidden="true" />
               <input
                 ref={inputRef}
                 value={input}

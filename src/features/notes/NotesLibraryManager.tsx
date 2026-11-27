@@ -157,17 +157,17 @@ export function NotesLibraryPanel({
         <TabsContent value="export" className="flex-1 mt-4 min-h-0">
           <CustomScrollArea className="h-full" viewportClassName="px-5 pb-5 space-y-5">
             {/* 导出说明 */}
-            <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground">
-              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-info" aria-hidden />
-              <span className="leading-relaxed">{t('notes:export.all_notes_hint')}</span>
-            </div>
+            <div className="space-y-3 border-b border-border/35 pb-4">
+              <div className="flex items-start gap-2.5 text-sm text-foreground">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-info" aria-hidden />
+                <span className="leading-relaxed">{t('notes:export.all_notes_hint')}</span>
+              </div>
 
-            {/* 导出格式说明 */}
-            <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-              <div className="flex items-start gap-3">
-                <FileArchive className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+              {/* 导出格式说明 */}
+              <div className="flex items-start gap-2.5">
+                <FileArchive className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" aria-hidden />
                 <div className="space-y-1">
-                  <h4 className="text-sm font-semibold text-foreground">
+                  <h4 className="text-sm font-medium text-foreground">
                     {t('notes:export.format.markdown')} (.zip)
                   </h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">
@@ -231,7 +231,7 @@ export function NotesLibraryPanel({
 
         <TabsContent value="import" className="flex-1 mt-4 min-h-0">
           <CustomScrollArea className="h-full" viewportClassName="px-5 pb-5 space-y-5">
-            <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground">
+            <div className="flex items-start gap-2.5 border-b border-border/35 pb-3 text-sm text-foreground">
               <Warning className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" aria-hidden />
               <span className="leading-relaxed">{t('notes:import.restore_warning')}</span>
             </div>
@@ -351,11 +351,11 @@ export function NotesLibraryPanel({
             )}
 
             {/* 导入说明 */}
-            <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
-              <h4 className="text-sm font-semibold text-foreground">
+            <div className="space-y-2 border-t border-border/35 pt-4">
+              <h4 className="text-sm font-medium text-foreground">
                 {t('notes:import.instructions.title')}
               </h4>
-              <ul className="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+              <ul className="space-y-1.5 text-sm text-muted-foreground list-disc list-inside">
                 <li>{t('notes:import.instructions.step1')}</li>
                 <li>{t('notes:import.instructions.step2')}</li>
                 <li>{t('notes:import.instructions.step3')}</li>

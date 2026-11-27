@@ -30,9 +30,10 @@ vi.mock('@phosphor-icons/react', async (importOriginal) => {
 
 vi.mock('../../noteAppearance', () => ({
   NOTE_APPEARANCE_PRESETS: ['standard', 'compact', 'wide'],
-  NOTE_APPEARANCE_ICONS: ['', '📄', '📚', '💡', '🧪', '📝'],
+  NOTE_APPEARANCE_ICONS: ['', 'file-text', 'book-open', 'lightbulb', 'flask', 'pencil-simple'],
   NOTE_ICON_GROUPS: [],
-  ALL_NOTE_ICONS: ['📄', '📚', '💡'],
+  ALL_NOTE_ICONS: ['file-text', 'book-open', 'lightbulb'],
+  renderNoteIcon: (icon: string) => (icon ? <svg data-testid={`note-icon-${icon}`} /> : null),
   useNoteAppearance: () => mockAppearance,
   useNoteIcon: () => mockAppearance.value.icon,
 }));

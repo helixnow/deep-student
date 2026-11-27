@@ -3,17 +3,18 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
+  BookOpen,
   CalendarBlank,
   CalendarCheck,
   CaretDown,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
+  ListPlus,
   MagicWand,
   Plus,
   Pulse,
   Robot,
-  Sparkle,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
@@ -809,7 +810,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* Step 1 — 描述：自然语言快速输入 / 模板起步 */}
                   <section aria-label={t('todo:automation.createPanel.steps.describe')} className="space-y-3">
                   <StepHeading index={1} title={t('todo:automation.createPanel.steps.describe')} hint={t('todo:automation.createPanel.steps.describeHint')} />
-                  <div className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface-muted,hsl(var(--muted)))]/40 p-3">
+                  <div className="space-y-2 pb-1">
                     <label
                       htmlFor="automation-create-nl"
                       className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground"
@@ -894,7 +895,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       onClick={() => setTemplatesOpen((value) => !value)}
                       className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
-                      <Sparkle size={13} />
+                      <BookOpen size={13} />
                       {t('todo:automation.createPanel.templatesToggle')}
                       <CaretDown
                         size={12}
@@ -995,7 +996,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* agent_turn 专属字段 */}
                   <div className="automation-collapse" data-open={draft.actionType === 'agent_turn'} aria-hidden={draft.actionType !== 'agent_turn'}>
                     <div className="automation-collapse__inner">
-                      <div className="grid gap-4 rounded-xl border border-[color:var(--border-soft)] bg-muted/20 p-3 sm:grid-cols-2">
+                      <div className="grid gap-4 border-t border-[color:var(--border-soft)] pt-4 sm:grid-cols-2">
                         <div className="space-y-1.5 text-sm sm:col-span-2">
                           <label htmlFor="automation-create-agent-prompt" className="font-medium text-foreground">
                             {t('todo:automation.createPanel.agentPrompt')}
@@ -1058,7 +1059,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   </div>
 
                   {/* 高级折叠区 */}
-                  <div className="rounded-xl border border-[color:var(--border-soft)] p-3">
+                  <div className="border-t border-[color:var(--border-soft)] pt-3">
                     <button
                       type="button"
                       aria-expanded={advancedOpen}
@@ -1156,7 +1157,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* Step 3 — 确认：草稿实时摘要 + 首次运行预览 + 提交 */}
                   <section aria-label={t('todo:automation.createPanel.steps.confirm')} className="space-y-3 border-t border-[color:var(--border-soft)] pt-4">
                     <StepHeading index={3} title={t('todo:automation.createPanel.steps.confirm')} />
-                    <div className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface-muted,hsl(var(--muted)))]/40 px-3.5 py-3">
+                    <div className="pt-1">
                       <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <dt className="font-medium uppercase tracking-wide text-muted-foreground">
@@ -1228,12 +1229,8 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                     openCreate();
                   }}
                 >
-                  <Sparkle size={15} />
+                  <ListPlus size={15} />
                   {t('todo:automation.emptyTemplate')}
-                </DsButton>
-                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
-                  <Plus size={15} />
-                  {t('todo:automation.new')}
                 </DsButton>
               </div>
             </div>

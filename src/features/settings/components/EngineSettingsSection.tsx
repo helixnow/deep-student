@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut } from '@phosphor-icons/react';
+import { ArrowSquareOut, Check, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -239,10 +239,11 @@ export const EngineSettingsSection: React.FC<{
           <div className="flex items-center gap-2 flex-shrink-0">
             {engineResults[id] && (
               <span className={cn(
-                "text-xs mr-2",
+                "inline-flex items-center gap-1 text-xs mr-2",
                 engineResults[id].ok ? 'text-success' : 'text-destructive'
               )}>
-                {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
+                {engineResults[id].ok ? <Check size={12} className="shrink-0" /> : <X size={12} className="shrink-0" />}
+                {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
               </span>
             )}
             <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="outline" className="[@media(pointer:coarse)]:!h-11">
@@ -314,9 +315,9 @@ export const EngineSettingsSection: React.FC<{
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className="truncate">{labelMap[id]}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isConfigured ? 'bg-success/80' : 'bg-muted-foreground/30')} />
-                      </div>
+                      {isConfigured && (
+                        <Check size={12} className="text-success/80 flex-shrink-0" />
+                      )}
                     </div>
                   </DsButton>
                 );

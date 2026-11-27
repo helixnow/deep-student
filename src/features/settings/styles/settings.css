@@ -454,10 +454,6 @@ body .settings-mobile-sheet-scroll-viewport {
   gap: 0.5rem;
 }
 
-.model-assignments h4::before {
-  content: '⚙️';
-}
-
 .assignment-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
@@ -531,10 +527,6 @@ body .settings-mobile-sheet-scroll-viewport {
 .model-assignments.dev-features {
   background: hsl(var(--warning-bg));
   border: 1px solid hsl(var(--warning) / 0.4);
-}
-
-.model-assignments.dev-features h4::before {
-  content: '🚧';
 }
 
 /* 复选框容器 - 适配assignment-item结构 */

@@ -15,8 +15,6 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Label } from '@/components/ui/shad/Label';
-import { Separator } from '@/components/ui/shad/Separator';
-import { Card, CardContent } from '@/components/ui/shad/Card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -140,7 +138,7 @@ function getConflictTypeInfo(
       return {
         label: t('conflict_type.schema_mismatch'),
         description: t('conflict_type.schema_mismatch_desc'),
-        color: 'bg-red-500',
+        color: 'bg-destructive/10 text-destructive border-destructive/30',
         icon: <FileX size={16} />,
         severity: 'high',
       };
@@ -148,7 +146,7 @@ function getConflictTypeInfo(
       return {
         label: t('conflict_type.data_conflict'),
         description: t('conflict_type.data_conflict_desc'),
-        color: 'bg-amber-500',
+        color: 'bg-warning/10 text-warning border-warning/30',
         icon: <Warning size={16} />,
         severity: 'medium',
       };
@@ -156,7 +154,7 @@ function getConflictTypeInfo(
       return {
         label: t('conflict_type.checksum_mismatch'),
         description: t('conflict_type.checksum_mismatch_desc'),
-        color: 'bg-orange-500',
+        color: 'bg-destructive/10 text-destructive border-destructive/30',
         icon: <WarningCircle size={16} />,
         severity: 'high',
       };
@@ -164,7 +162,7 @@ function getConflictTypeInfo(
       return {
         label: t('conflict_type.local_only'),
         description: t('conflict_type.local_only_desc'),
-        color: 'bg-blue-500',
+        color: 'bg-info/10 text-info border-info/30',
         icon: <HardDrive size={16} />,
         severity: 'low',
       };
@@ -172,7 +170,7 @@ function getConflictTypeInfo(
       return {
         label: t('conflict_type.cloud_only'),
         description: t('conflict_type.cloud_only_desc'),
-        color: 'bg-purple-500',
+        color: 'bg-primary/10 text-primary border-primary/30',
         icon: <Cloud size={16} />,
         severity: 'low',
       };
@@ -180,7 +178,7 @@ function getConflictTypeInfo(
       return {
         label: type,
         description: t('conflict_type.unknown_desc'),
-        color: 'bg-gray-500',
+        color: 'bg-muted text-muted-foreground border-border',
         icon: <WarningCircle size={16} />,
         severity: 'medium',
       };
@@ -246,9 +244,9 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
   const severity = calculateSeverity(conflicts.database_conflicts);
 
   const severityColors = {
-    low: 'bg-blue-100 text-blue-800 border-blue-200',
-    medium: 'bg-amber-100 text-amber-800 border-amber-200',
-    high: 'bg-red-100 text-red-800 border-red-200',
+    low: 'bg-info/10 text-info border-info/30',
+    medium: 'bg-warning/10 text-warning border-warning/30',
+    high: 'bg-destructive/10 text-destructive border-destructive/30',
   };
 
   const severityLabels = {
@@ -258,10 +256,10 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
   };
 
   return (
-    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
+    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <WarningCircle size={20} className="text-amber-500" />
+          <WarningCircle size={20} className="text-warning" />
           <span className="font-medium">
             {t('conflict_count', { count: totalConflicts })}
           </span>
@@ -317,8 +315,8 @@ function DatabaseConflictCard({
   const displayDbName = getDatabaseDisplayName(conflict.database_name, t);
 
   return (
-    <Card className="overflow-hidden">
-      {/* 卡片头部 */}
+    <div className="overflow-hidden">
+      {/* 行头部 */}
       <div
         className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
@@ -334,7 +332,7 @@ function DatabaseConflictCard({
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium" title={conflict.database_name}>{displayDbName}</span>
-            <Badge variant="outline" className={`${typeInfo.color} text-white text-xs`}>
+            <Badge variant="outline" className={`${typeInfo.color} text-xs`}>
               {typeInfo.icon}
               <span className="ml-1">{typeInfo.label}</span>
             </Badge>
@@ -344,7 +342,7 @@ function DatabaseConflictCard({
 
         {newerSide !== 'equal' && (
           <CommonTooltip content={t('newer_hint')}>
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
+            <Badge variant="outline" className="bg-success/10 text-success border-success/30">
               {newerSide === 'local' ? (
                 <>
                   <HardDrive size={12} className="mr-1" />
@@ -363,18 +361,17 @@ function DatabaseConflictCard({
 
       {/* 展开的详情 */}
       {isExpanded && (
-        <CardContent className="pt-0 pb-4">
-          <Separator className="mb-4" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="px-4 pb-4 pt-3 border-t border-border bg-muted/20">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-0 sm:divide-x divide-border">
             {/* 本地状态 */}
             <div
-              className={`p-3 rounded-lg border-2 ${newerSide === 'local' ? 'border-green-500 bg-green-50/50' : 'border-muted'}`}
+              className={`sm:pr-4 ${newerSide === 'local' ? 'rounded-md bg-success/5 p-3 sm:mr-3' : 'p-1'}`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <HardDrive size={16} />
                 <span className="font-medium text-sm">{t('local_version')}</span>
                 {newerSide === 'local' && (
-                  <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
                     {t('newer')}
                   </Badge>
                 )}
@@ -409,13 +406,13 @@ function DatabaseConflictCard({
 
             {/* 云端状态 */}
             <div
-              className={`p-3 rounded-lg border-2 ${newerSide === 'cloud' ? 'border-green-500 bg-green-50/50' : 'border-muted'}`}
+              className={`sm:pl-4 ${newerSide === 'cloud' ? 'rounded-md bg-success/5 p-3 sm:ml-3' : 'p-1'}`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <Cloud size={16} />
                 <span className="font-medium text-sm">{t('cloud_version')}</span>
                 {newerSide === 'cloud' && (
-                  <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
                     {t('newer')}
                   </Badge>
                 )}
@@ -448,9 +445,9 @@ function DatabaseConflictCard({
               )}
             </div>
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -559,15 +556,15 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/50 border border-amber-200" />
+          <div className="w-3 h-3 rounded bg-warning/15 border border-warning/30" />
           <span>{t('diff_modified')}</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/50 border border-blue-200" />
+          <div className="w-3 h-3 rounded bg-info/15 border border-info/30" />
           <span>{t('diff_local_only')}</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-purple-100 dark:bg-purple-900/50 border border-purple-200" />
+          <div className="w-3 h-3 rounded bg-primary/15 border border-primary/30" />
           <span>{t('diff_cloud_only')}</span>
         </div>
       </div>
@@ -604,7 +601,7 @@ function RecordConflictCard({
   });
 
   return (
-    <Card className="overflow-hidden">
+    <div className="overflow-hidden">
       <div
         className="flex flex-wrap items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
@@ -615,7 +612,7 @@ function RecordConflictCard({
           <CaretRight size={16} className="text-muted-foreground" />
         )}
 
-        <FileX size={20} className="text-amber-500" />
+        <FileX size={20} className="text-warning" />
 
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -636,7 +633,7 @@ function RecordConflictCard({
         </div>
 
         {newerSide !== 'equal' && (
-          <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+          <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
             {newerSide === 'local' ? (
               <>
                 <HardDrive size={12} className="mr-1" />
@@ -653,8 +650,7 @@ function RecordConflictCard({
       </div>
 
       {isExpanded && (
-        <CardContent className="pt-0 pb-4">
-          <Separator className="mb-4" />
+        <div className="px-4 pb-4 pt-3 border-t border-border bg-muted/20">
           <div className="space-y-4">
             {/* 版本时间对比 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -673,7 +669,7 @@ function RecordConflictCard({
             {onResolveRecord && (
               <div className="flex flex-wrap gap-2">
                 <DsButton
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   disabled={isResolving}
                   onClick={() => void onResolveRecord(conflict, 'keep_local')}
@@ -681,7 +677,7 @@ function RecordConflictCard({
                   {t('data:governance.keep_local')}
                 </DsButton>
                 <DsButton
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   disabled={isResolving}
                   onClick={() => void onResolveRecord(conflict, 'keep_cloud')}
@@ -689,7 +685,7 @@ function RecordConflictCard({
                   {t('data:governance.use_cloud')}
                 </DsButton>
                 <DsButton
-                  variant="primary"
+                  variant="default"
                   size="sm"
                   disabled={isResolving}
                   onClick={() => void onResolveRecord(conflict, 'keep_both')}
@@ -706,9 +702,9 @@ function RecordConflictCard({
               title={t('data_diff')}
             />
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -767,7 +763,7 @@ export function ConflictResolutionDialog({
     <DsDialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()} maxWidth="max-w-4xl">
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
-            <WarningCircle size={20} className="text-amber-500" />
+            <WarningCircle size={20} className="text-warning" />
             {t('conflict_resolution')}
             {hasConflicts && (
               <Badge variant="secondary" className="ml-2">
@@ -833,7 +829,7 @@ export function ConflictResolutionDialog({
                   {recordConflictsContent ? (
                     <div className="pr-2">{recordConflictsContent}</div>
                   ) : conflicts.record_conflicts.length > 0 ? (
-                    <div className="space-y-3 pr-4">
+                    <div className="rounded-lg border border-border divide-y divide-border mr-2">
                       {conflicts.record_conflicts.map((conflict) => {
                         const recordKey = `${conflict.database_name}-${conflict.table_name}-${conflict.record_id}`;
                         return (
@@ -872,7 +868,7 @@ export function ConflictResolutionDialog({
               <TabsContent value="database" className="flex-1 min-h-0 mt-4">
                 <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
                   {conflicts.database_conflicts.length > 0 ? (
-                    <div className="space-y-3 pr-4">
+                    <div className="rounded-lg border border-border divide-y divide-border mr-2">
                       {conflicts.database_conflicts.map((conflict) => (
                         <DatabaseConflictCard
                           key={conflict.database_name}
@@ -905,7 +901,7 @@ export function ConflictResolutionDialog({
 
         </DsDialogBody>
         <DsDialogFooter className="flex items-center justify-end">
-          <DsButton variant="outline" onClick={onClose} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
+          <DsButton variant="ghost" onClick={onClose} disabled={isResolving}>
             {t('common:actions.close', { defaultValue: t('cancel') })}
           </DsButton>
         </DsDialogFooter>

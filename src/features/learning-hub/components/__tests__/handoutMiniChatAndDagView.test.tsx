@@ -584,10 +584,7 @@ describe('Lane 3 三大高价值新视图组件集成测试', () => {
       const pill = screen.getByTestId('contextual-mini-chat-pill');
       expect(pill).toBeInTheDocument();
 
-      const pulseDot = screen.getByTestId('mini-chat-unread-pulse');
-      expect(pulseDot.className).toContain('w-1.5');
-      expect(pulseDot.className).toContain('h-1.5');
-
+      expect(screen.queryByTestId('mini-chat-unread-pulse')).not.toBeInTheDocument();
       expect(screen.getByTestId('mini-chat-unread-count')).toHaveTextContent('3');
 
       // 点击展开伴读小窗
@@ -707,10 +704,10 @@ describe('Lane 3 三大高价值新视图组件集成测试', () => {
       const todo3Item = screen.getByTestId(`dag-todo-item-${todo3.id}`);
 
       expect(todo1Item).toHaveAttribute('data-dag-status', 'ready');
-      expect(within(todo1Item).getByText('就绪可执行')).toBeInTheDocument();
-      expect(screen.getByTestId(`dag-todo-dot-${todo1.id}`).className).toContain(
-        'bg-success',
-      );
+      const readyBadge = within(todo1Item).getByText('就绪可执行');
+      expect(readyBadge).toBeInTheDocument();
+      expect(readyBadge.className).toContain('text-success');
+      expect(screen.queryByTestId(`dag-todo-dot-${todo1.id}`)).not.toBeInTheDocument();
 
       expect(todo2Item).toHaveAttribute('data-dag-status', 'blocked');
       expect(screen.getByTestId(`dag-blocked-badge-${todo2.id}`)).toHaveTextContent(
@@ -872,7 +869,7 @@ describe('Lane 3 三大高价值新视图组件集成测试', () => {
       expect(pill).toHaveTextContent('二、狄利克雷收敛定理');
     });
 
-    it('4.2 三大组件遵循无 Emoji、1px border-border/35 分隔线、6px 状态点与 font-mono tabular-nums 数字规范', () => {
+    it('4.2 三大组件遵循无 Emoji、无装饰状态点、1px border-border/35 分隔线与 font-mono tabular-nums 数字规范', () => {
       const { store } = createSampleDagStore();
       const { container } = render(
         <div>
@@ -891,7 +888,7 @@ describe('Lane 3 三大高价值新视图组件集成测试', () => {
       const html = container.innerHTML;
       expect(html).toContain('border-border/35');
       expect(html).toContain('font-mono tabular-nums');
-      expect(html).toContain('w-1.5 h-1.5 rounded-full');
+      expect(html).not.toContain('w-1.5 h-1.5 rounded-full');
       // 严禁包含常见 Emoji 字符
       expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     });

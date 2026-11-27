@@ -193,7 +193,7 @@ const ContextRefItem: React.FC<ContextRefItemProps> = ({
       aria-label={tooltipText}
       onClick={onClick}
     >
-      <div className="shrink-0 drop-shadow-sm mt-1 transform group-hover:scale-110 transition-transform duration-200">
+      <div className="shrink-0 drop-shadow-sm mt-1">
         <IconComponent size={32} />
       </div>
       <span className="text-2xs text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">
@@ -269,7 +269,7 @@ const FileRefItem: React.FC<FileRefItemProps> = ({ preview, onClick }) => {
       aria-label={preview.name}
       onClick={onClick}
     >
-      <div className="shrink-0 drop-shadow-sm mt-1 transform group-hover:scale-110 transition-transform duration-200">
+      <div className="shrink-0 drop-shadow-sm mt-1">
         <FileIcon size={32} />
       </div>
       <span className="text-2xs text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">

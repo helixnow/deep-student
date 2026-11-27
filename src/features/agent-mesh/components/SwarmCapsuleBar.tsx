@@ -5,8 +5,8 @@ import {
   HandPalm,
   Pause,
   Play,
-  Sparkle,
   StopCircle,
+  UsersThree,
   WarningCircle,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -207,7 +207,7 @@ export const SwarmCapsuleBar: React.FC<SwarmCapsuleBarProps> = ({ sessionId, cla
           {isTripped ? (
             <WarningCircle size={13} weight="fill" className="shrink-0 text-warning" aria-hidden="true" />
           ) : (
-            <Sparkle
+            <UsersThree
               size={13}
               weight="duotone"
               className={cn(

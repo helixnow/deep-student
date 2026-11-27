@@ -5,6 +5,7 @@ import { CaretLeft, CaretRight, Terminal, Warning } from '@phosphor-icons/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsDialog, DsDialogBody } from '@/components/ui/DsDialog';
 import { TextSwap } from '@/components/ui/TextSwap';
 import { WindowControls } from '@/components/WindowControls';
@@ -500,12 +501,12 @@ export function AppShellChrome(props: AppShellChromeProps) {
         >
           <MigrationStatusBanner />
 
-          {/* 🆕 维护模式全局横幅 */}
+          {/* 维护模式全局横幅 */}
           {maintenanceMode && (
             <div
               role="status"
               aria-live="polite"
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-warning/15 border-b border-warning/30 text-warning text-sm"
             >
               <Warning size={16} className="shrink-0" />
               <span className="font-medium shrink-0">{t('common:maintenance.banner_title')}</span>
@@ -515,7 +516,10 @@ export function AppShellChrome(props: AppShellChromeProps) {
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                className={cn(
+                  'shrink-0 text-warning hover:bg-warning/20 hover:text-warning px-2 text-xs',
+                  coarseHitClassFor24,
+                )}
                 onClick={() => {
                   if (maintenanceRequiresRestart) {
                     void (async () => {

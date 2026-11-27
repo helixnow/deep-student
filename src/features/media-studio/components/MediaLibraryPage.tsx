@@ -10,12 +10,11 @@
  * 分组：分组即媒体所在的 VFS 文件夹（与资源库一致），「按分组」视图把列表折成可收起的分区，
  * 根目录文件归「未分组」放最后；视图与收起状态记在 localStorage。
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   CaretRight,
-  ChatCircleText,
   Check,
   CheckSquare,
   CircleNotch,
@@ -27,13 +26,11 @@ import {
   ListBullets,
   MagnifyingGlass,
   Minus,
-  Notebook,
-  Subtitles,
   Television,
   Trash,
   UploadSimple,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -156,6 +153,13 @@ export interface MediaLibraryPageProps {
   isSmallScreen: boolean;
   /** 经典壳桌面顶栏槽位；null 时标题行在页内 */
   titlebarTarget: HTMLElement | null;
+  /** 受控多选态（由 MediaStudioApp 接入 UnifiedMobileHeader 时传入） */
+  selectMode?: boolean;
+  onSelectModeChange?: (next: boolean) => void;
+  /** 递增序号：由外部顶栏菜单触发打开 B 站链接导入弹窗 */
+  bilibiliRequestSeq?: number;
+  /** 移动端全局顶栏已承载导入/多选入口，避免页内重复渲染 */
+  mobileHeaderActionsActive?: boolean;
 }
 
 export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
@@ -165,6 +169,10 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   onOpenId,
   isSmallScreen,
   titlebarTarget,
+  selectMode: controlledSelectMode,
+  onSelectModeChange,
+  bilibiliRequestSeq = 0,
+  mobileHeaderActionsActive = false,
 }) => {
   const { t, i18n } = useTranslation(['mediaStudio', 'learningHub', 'common']);
   const [filter, setFilter] = useState<MediaLibraryFilter>('all');
@@ -175,12 +183,31 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const [bilibiliMode, setBilibiliMode] = useState<BilibiliLinkDialogMode | null>(null);
   const [viewMode, setViewModeState] = useState<MediaLibraryViewMode>(readViewMode);
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
-  const [selectMode, setSelectMode] = useState(false);
+  const [internalSelectMode, setInternalSelectMode] = useState(false);
+  const selectMode = controlledSelectMode ?? internalSelectMode;
+  const setSelectMode = useCallback((next: boolean) => {
+    onSelectModeChange?.(next);
+    if (controlledSelectMode === undefined) setInternalSelectMode(next);
+  }, [controlledSelectMode, onSelectModeChange]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [newGroup, setNewGroup] = useState<{ name: string } | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
+  const lastBilibiliSeqRef = useRef(bilibiliRequestSeq);
   const { items, loaded, error, refresh, removeLocal } = library;
+
+  useEffect(() => {
+    if (!selectMode) {
+      setSelected(new Set());
+    }
+  }, [selectMode]);
+
+  useEffect(() => {
+    if (bilibiliRequestSeq > lastBilibiliSeqRef.current) {
+      lastBilibiliSeqRef.current = bilibiliRequestSeq;
+      setBilibiliMode({ kind: 'create' });
+    }
+  }, [bilibiliRequestSeq]);
 
   const counts = useMemo(() => countByFilter(items), [items]);
   const visible = useMemo(() => selectLibraryItems(items, filter, query), [items, filter, query]);
@@ -314,7 +341,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const exitSelect = useCallback(() => {
     setSelectMode(false);
     setSelected(new Set());
-  }, []);
+  }, [setSelectMode]);
 
   const toggleItem = useCallback((item: MediaLibraryItem) => {
     setSelected((prev) => {
@@ -328,7 +355,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const enterSelectWith = useCallback((item: MediaLibraryItem) => {
     setSelectMode(true);
     setSelected((prev) => new Set(prev).add(item.id));
-  }, []);
+  }, [setSelectMode]);
 
   const toggleAll = useCallback(() => {
     setSelected((prev) => toggleSelectAll(visible, prev));
@@ -797,44 +824,74 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const emptyState = (
     <section
-      className="mx-auto my-auto flex w-full max-w-2xl flex-col items-center px-1 py-8 text-center sm:px-6"
+      className="mx-auto my-auto flex w-full max-w-md flex-col items-center px-4 py-10 text-center"
       data-media-library-empty=""
       aria-labelledby="media-library-empty-title"
     >
-      <div className="study-shell-empty-state__icon mb-4">
-        <FilmStrip size={25} weight="duotone" aria-hidden="true" />
-      </div>
-      <h2 id="media-library-empty-title" className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+      <FilmStrip size={28} weight="regular" className="mb-3 text-muted-foreground/70" aria-hidden="true" />
+      <h2 id="media-library-empty-title" className="text-base font-semibold text-foreground">
         {t('mediaStudio:empty.title')}
       </h2>
-      <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>
-      {!isSmallScreen ? (
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          {importButton(false)}
-          {bilibiliButton(false)}
-        </div>
-      ) : null}
-      <ul className="mt-7 grid w-full max-w-xl gap-3 border-t border-border/25 pt-4 text-left sm:grid-cols-3 sm:gap-5">
-        {([
-          ['transcribe', Subtitles],
-          ['ask', ChatCircleText],
-          ['review', Notebook],
-        ] as const).map(([key, Icon]) => (
-          <li key={key} className="flex min-w-0 items-start gap-2">
-            <Icon size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-foreground">{t(`mediaStudio:empty.${key}Title`)}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(`mediaStudio:empty.${key}`)}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-5 max-w-lg text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:empty.subtitleNote')}</p>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        {t('mediaStudio:empty.subtitleNote')}
+      </p>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={importer.pick}
+          disabled={importer.importing}
+          data-media-import=""
+          className="gap-1.5 border-transparent bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+        >
+          {importer.importing
+            ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <UploadSimple size={14} aria-hidden="true" />}
+          {t('mediaStudio:import.button')}
+        </DsButton>
+        {bilibiliButton(false)}
+      </div>
     </section>
   );
 
   const hasItems = items.length > 0;
   const showEmpty = loaded && !error && !hasItems;
+  const showToolbar = (!titlebarTarget && !isSmallScreen) || hasItems;
+  const compactMobileImportMenu = (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size="md"
+          iconOnly
+          disabled={importer.importing}
+          aria-label={t('mediaStudio:import.button')}
+          title={t('mediaStudio:import.button')}
+          data-media-import=""
+          className="shrink-0"
+        >
+          {importer.importing
+            ? <CircleNotch size={18} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <UploadSimple size={18} aria-hidden="true" />}
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" width={200}>
+        <AppMenuItem
+          icon={<UploadSimple size={15} aria-hidden="true" />}
+          onClick={importer.pick}
+          disabled={importer.importing}
+        >
+          {t('mediaStudio:import.button')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<Television size={15} aria-hidden="true" />}
+          onClick={() => setBilibiliMode({ kind: 'create' })}
+        >
+          {t('mediaStudio:import.bilibili')}
+        </AppMenuItem>
+      </AppMenuContent>
+    </AppMenu>
+  );
 
   return (
     <div className="study-shell-page flex h-full min-h-0 min-w-0 flex-col" data-media-library="">
@@ -866,73 +923,75 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         customOverlayText={t('mediaStudio:import.dropHint')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div
-          data-media-library-toolbar=""
-          className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-3 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-3')}
-        >
-          {!titlebarTarget && !isSmallScreen ? headerRow(false) : null}
-          {!showEmpty && <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>}
-          {hasItems ? (
-            <div
-              data-media-library-controls=""
-              className={cn('flex flex-wrap items-center gap-2.5 sm:gap-3', isSmallScreen && 'flex-col flex-nowrap items-stretch gap-2')}
-            >
+        {showToolbar ? (
+          <div
+            data-media-library-toolbar=""
+            className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-2.5 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-2.5')}
+          >
+            {!titlebarTarget && !isSmallScreen ? headerRow(false) : null}
+            {hasItems ? (
               <div
-                data-media-library-search-wrap=""
-                className={cn('flex min-w-0 flex-1 items-center gap-2', !isSmallScreen && 'min-w-[160px] max-w-xs')}
+                data-media-library-controls=""
+                className={cn('flex flex-wrap items-center gap-2.5 sm:gap-3', isSmallScreen && 'flex-col flex-nowrap items-stretch gap-2')}
               >
-                <div className="relative min-w-0 flex-1">
-                  <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
-                  <Input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder={t('mediaStudio:searchPlaceholder')}
-                    aria-label={t('mediaStudio:searchPlaceholder')}
-                    className={cn(
-                      'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                      isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
-                    )}
-                  />
+                <div
+                  data-media-library-search-wrap=""
+                  className={cn('flex min-w-0 flex-1 items-center gap-1.5', !isSmallScreen && 'min-w-[160px] max-w-xs')}
+                >
+                  <div className="relative min-w-0 flex-1">
+                    <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
+                    <Input
+                      type="search"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={t('mediaStudio:searchPlaceholder')}
+                      aria-label={t('mediaStudio:searchPlaceholder')}
+                      className={cn(
+                        'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
+                        isSmallScreen ? 'h-11 text-base' : 'h-8 text-xs',
+                      )}
+                    />
+                  </div>
+                  {isSmallScreen ? viewToggle : null}
+                  {isSmallScreen && !mobileHeaderActionsActive ? selectToggle('phone') : null}
+                  {isSmallScreen && !mobileHeaderActionsActive && !selectMode ? compactMobileImportMenu : null}
                 </div>
-                {isSmallScreen ? viewToggle : null}
-                {isSmallScreen ? selectToggle('phone') : null}
+                <SegmentedControl<MediaLibraryFilter>
+                  ariaLabel={t('mediaStudio:filter.aria')}
+                  value={filter}
+                  onValueChange={setFilter}
+                  options={filterOptions}
+                  size="compact"
+                  className={cn(
+                    '!flex-nowrap max-w-full overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
+                    isSmallScreen && '-mx-1 !w-auto px-1',
+                  )}
+                  itemClassName={isSmallScreen
+                    ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap'
+                    : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap'}
+                />
+                {isSmallScreen ? null : <div data-media-library-view-wrap="" className="ml-auto shrink-0">{viewToggle}</div>}
               </div>
-              <SegmentedControl<MediaLibraryFilter>
-                ariaLabel={t('mediaStudio:filter.aria')}
-                value={filter}
-                onValueChange={setFilter}
-                options={filterOptions}
-                size="compact"
-                className={cn(
-                  '!flex-nowrap max-w-full overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
-                  isSmallScreen && '-mx-1 !w-auto px-1',
-                )}
-                itemClassName={isSmallScreen
-                  ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap'
-                  : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap'}
-              />
-              {isSmallScreen ? null : <div data-media-library-view-wrap="" className="ml-auto shrink-0">{viewToggle}</div>}
-            </div>
-          ) : null}
-          {selectMode && !isSmallScreen && hasItems ? (
-            <div
-              role="toolbar"
-              aria-label={t('mediaStudio:select.barLabel')}
-              className="study-shell-secondary-card flex flex-wrap items-center gap-2 px-3 py-1.5"
-              data-media-select-bar=""
-            >
-              {selectCount}
-              {selectAllButton(false)}
-              <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {batchBusy ? <CircleNotch size={14} className="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" /> : null}
-                {moveMenu(false)}
-                {deleteSelectedButton(false)}
-                {doneButton(false)}
+            ) : null}
+            {selectMode && !isSmallScreen && hasItems ? (
+              <div
+                role="toolbar"
+                aria-label={t('mediaStudio:select.barLabel')}
+                className="study-shell-secondary-card flex flex-wrap items-center gap-2 px-3 py-1.5"
+                data-media-select-bar=""
+              >
+                {selectCount}
+                {selectAllButton(false)}
+                <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                  {batchBusy ? <CircleNotch size={14} className="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" /> : null}
+                  {moveMenu(false)}
+                  {deleteSelectedButton(false)}
+                  {doneButton(false)}
+                </div>
               </div>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <CustomScrollArea
           className="min-h-0 flex-1"
@@ -977,7 +1036,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       </UnifiedDragDropZone>
 
       {isSmallScreen && selectMode && hasItems ? (
-        // 手机多选：操作条替换底部导入条（单手可达）
+        // 手机多选：底部批量操作条（单手可达）
         <div
           role="toolbar"
           aria-label={t('mediaStudio:select.barLabel')}
@@ -993,37 +1052,6 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           <div className="flex items-center gap-2">
             {moveMenu(true)}
             {deleteSelectedButton(true)}
-          </div>
-        </div>
-      ) : isSmallScreen ? (
-        // 手机：导入固定在底部，单手可达（预留底部 Dock 避让）
-        <div
-          className="study-shell-toolbar shrink-0 border-t px-3 pt-2"
-          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px) + var(--wb-mobile-dock-clearance, var(--mobile-dock-height, var(--wb-dock-clearance, 0px))))' }}
-          data-media-import-bar=""
-        >
-          <div className="flex items-center gap-2.5">
-            <DsButton
-              variant="primary"
-              onClick={importer.pick}
-              disabled={importer.importing}
-              data-media-import=""
-              className="min-h-11 flex-1 gap-1.5 rounded-xl border-primary/40 bg-primary/15 font-medium text-primary hover:bg-primary/25 hover:text-primary"
-            >
-              {importer.importing
-                ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                : <UploadSimple size={16} aria-hidden="true" />}
-              {t('mediaStudio:import.button')}
-            </DsButton>
-            <DsButton
-              variant="outline"
-              onClick={() => setBilibiliMode({ kind: 'create' })}
-              data-media-bilibili=""
-              className="min-h-11 shrink-0 gap-1.5 rounded-xl border-border/70 bg-background/50 px-4 text-foreground hover:bg-muted/60"
-            >
-              <Television size={16} aria-hidden="true" />
-              {t('mediaStudio:import.bilibili')}
-            </DsButton>
           </div>
         </div>
       ) : null}

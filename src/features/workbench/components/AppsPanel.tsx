@@ -850,9 +850,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
             </div>
           ) : showEmpty ? (
             <div className="wb-apps-empty" data-testid="wb-apps-empty" role="status">
-              <span className="wb-apps-empty-icon" aria-hidden>
-                <MagnifyingGlass size={20} />
-              </span>
+              <MagnifyingGlass size={24} className="wb-apps-empty-icon" aria-hidden />
               <span className="wb-apps-empty-title">
                 {t('workbench:appsPanel.empty')}
               </span>

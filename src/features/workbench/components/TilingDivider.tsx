@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { AppWindow } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useWindowStore } from '../core/windowStore';
 import { recomputeLifecycles } from '../core/scheduler';
@@ -122,7 +123,7 @@ export const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: 
         className="mt-1.5 !h-6 !w-6 !p-0 rounded-full border border-border/60 bg-background/90 text-xs text-muted-foreground shadow-sm backdrop-blur-xs transition-colors hover:bg-accent hover:text-foreground"
         style={{ pointerEvents: occluded ? 'none' : 'auto' }}
       >
-        <span aria-hidden="true">◫</span>
+        <AppWindow size={13} aria-hidden="true" />
       </DsButton>
     </div>
   );

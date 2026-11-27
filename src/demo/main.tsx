@@ -13,7 +13,7 @@
  */
 
 import React from 'react';
-import { demoLang } from './lang';
+import { demoLang, tr } from './lang';
 
 const params = new URLSearchParams(window.location.search);
 const dark = params.get('theme') === 'dark';
@@ -98,6 +98,7 @@ async function main() {
   }
   await i18n.changeLanguage(demoLang);
   document.documentElement.lang = demoLang;
+  document.title = tr('Deep Student · 产品演示', 'Deep Student · Interactive Demo');
 
   // ⑤ mock 就绪后再加载 app 组件树（与 src/main.tsx 的 appTree 同构）
   const [

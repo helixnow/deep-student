@@ -9,9 +9,9 @@ import {
   Upload,
   Trash,
 } from '@phosphor-icons/react';
-import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
@@ -326,7 +326,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                           <div className="flex items-center gap-2 ui-slide-fade-in [--ui-enter-x:8px]">
                             {editing.listening ? (
                               <div className="flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-md text-primary text-xs font-medium">
-                                <Keyboard size={13} className="animate-pulse" />
+                                <Keyboard size={13} className="animate-pulse motion-reduce:animate-none" />
                                 {t('command_palette:press_shortcut')}
                               </div>
                             ) : (
@@ -335,7 +335,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                                   {editing.newShortcut ? formatShortcut(editing.newShortcut) : '—'}
                                 </span>
                                 {editing.conflict && (
-                                  <div className="flex items-center gap-1 text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
+                                  <div className="flex items-center gap-1 text-xs text-warning bg-warning/10 px-2 py-1 rounded">
                                     <Warning size={11} />
                                     <span>{editing.conflict.commands.join(', ')}</span>
                                   </div>

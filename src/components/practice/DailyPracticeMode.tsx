@@ -49,6 +49,8 @@ const CELEBRATION_BURSTS = [
 interface DailyPracticeModeProps {
   examId: string;
   onStart?: (result: DailyPracticeResult) => void;
+  /** 嵌入 PracticeLauncher 等自带顶栏的容器时省略内部重复标题 */
+  embedded?: boolean;
   className?: string;
 }
 
@@ -93,6 +95,7 @@ export function writeStoredDailyTarget(examId: string, target: number): void {
 export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   examId,
   onStart,
+  embedded = false,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -248,13 +251,15 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     <div className={cn('space-y-4', className)}>
       {/* 每日一练卡片 */}
       <Card className="bg-transparent border-transparent shadow-none">
-        <CardHeader className="px-0 pb-4 sm:px-6">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarBlank size={18} className="text-primary" />
-            {t('daily.title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6 px-0 sm:px-6">
+        {!embedded && (
+          <CardHeader className="px-0 pb-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarBlank size={18} className="text-primary" />
+              {t('daily.title')}
+            </CardTitle>
+          </CardHeader>
+        )}
+        <CardContent className={cn('space-y-6 px-0 sm:px-6', embedded && 'pt-1')}>
           {/* 连续打卡 */}
           {activeCheckInCalendar && activeCheckInCalendar.streak_days > 0 && (
             <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-4">
@@ -292,27 +297,16 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             </div>
           )}
           
-          {/* 智能推荐说明：左侧 2px 细线引导，替代整块主色底框 */}
-          <div className="border-l-2 border-border/70 pl-3.5">
-            <div className="space-y-1.5">
-              <div className="text-xs font-medium text-foreground">
-                {t('daily.smartRecommend')}
-              </div>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />
-                  <span>{t('daily.recommendMistakes')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-                  <span>{t('daily.recommendNew')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                  <span>{t('daily.recommendReview')}</span>
-                </div>
-              </div>
+          {/* 智能推荐说明 */}
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-foreground">
+              {t('daily.smartRecommend')}
             </div>
+            <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground marker:text-muted-foreground/50">
+              <li>{t('daily.recommendMistakes')}</li>
+              <li>{t('daily.recommendNew')}</li>
+              <li>{t('daily.recommendReview')}</li>
+            </ul>
           </div>
           
           {/* 目标设置 */}
@@ -387,7 +381,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               {activeDailyPractice.is_completed && (
                 <div className="relative overflow-hidden rounded-md border border-success/25 bg-success/10 px-3 py-4 text-center">
                   {/* 完成庆祝动效（纯 CSS，prefers-reduced-motion 时自动禁用） */}
-                  <div className="relative mx-auto mb-1.5 h-10 w-10">
+                  <div className="relative mx-auto mb-1.5 flex h-10 w-10 items-center justify-center">
                     <div className="practice-celebrate-burst">
                       {CELEBRATION_BURSTS.map((burst, i) => (
                         <i
@@ -401,9 +395,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
 />
                       ))}
                     </div>
-                    <div className="practice-celebrate-pop flex h-10 w-10 items-center justify-center rounded-full bg-success/15">
-                      <Trophy size={22} weight="fill" className="text-success" />
-                    </div>
+                    <Trophy size={22} weight="fill" className="practice-celebrate-pop text-success" />
                   </div>
                   <div className="text-sm font-medium text-success">{t('daily.completed')}</div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
@@ -417,15 +409,14 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             </div>
           )}
           
-          {/* 来源分布：单线分隔 + 6px 语义圆点 + tabular-nums，无三色底块 */}
+          {/* 来源分布：单线分隔 + tabular-nums，无装饰彩点与三色底块 */}
           {activeDailyPractice && (
             <div className="grid grid-cols-3 divide-x divide-border/45 border-y border-border/40 py-2.5">
               <div className="px-2 text-center">
                 <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.mistake_count}
                 </div>
-                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   {t('daily.mistakes')}
                 </div>
               </div>
@@ -433,8 +424,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.new_count}
                 </div>
-                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   {t('daily.new')}
                 </div>
               </div>
@@ -442,8 +432,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.review_count}
                 </div>
-                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   {t('daily.review')}
                 </div>
               </div>
@@ -481,7 +470,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
               {/* P2-1 B 案：达标标记按当前目标重算，明确命名，避免被当成历史目标 */}
-              <Badge variant="outline" className="border border-border font-normal text-[10px] text-muted-foreground">
+              <Badge variant="outline" className="border border-border font-normal text-2xs text-muted-foreground">
                 {t('daily.viewByCurrentTarget')}
               </Badge>
             </div>
@@ -545,7 +534,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     </span>
                     {item.checkIn && (
                       <span
-                        className="max-w-full truncate px-0.5 text-[10px] leading-none text-muted-foreground"
+                        className="max-w-full truncate px-0.5 text-2xs leading-none text-muted-foreground"
                         title={item.checkIn.study_duration_seconds >= 60
                           ? t('daily.dayFocusTitle', {
                             questions: t('daily.questionsCount', { count: item.checkIn.question_count }),

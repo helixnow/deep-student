@@ -22,6 +22,13 @@ import {
   User,
   Robot,
   Bug,
+  ClipboardText,
+  Hourglass,
+  CheckCircle,
+  Question,
+  Wrench,
+  Megaphone,
+  type Icon,
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
@@ -39,30 +46,33 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // ============================================================================
 
 // 消息类型徽章（语义 token，复用 WORKSPACE_MESSAGE_TYPE_CLASSES）
-const messageTypeConfig: Record<MessageType, { i18nKey: string; icon: string }> = {
+const messageTypeConfig: Record<
+  MessageType,
+  { i18nKey: string; icon: Icon }
+> = {
   task: {
     i18nKey: 'workspace.messageType.task',
-    icon: '📋',
+    icon: ClipboardText,
   },
   progress: {
     i18nKey: 'workspace.messageType.progress',
-    icon: '⏳',
+    icon: Hourglass,
   },
   result: {
     i18nKey: 'workspace.messageType.result',
-    icon: '✅',
+    icon: CheckCircle,
   },
   query: {
     i18nKey: 'workspace.messageType.query',
-    icon: '❓',
+    icon: Question,
   },
   correction: {
     i18nKey: 'workspace.messageType.correction',
-    icon: '🔧',
+    icon: Wrench,
   },
   broadcast: {
     i18nKey: 'workspace.messageType.broadcast',
-    icon: '📢',
+    icon: Megaphone,
   },
 };
 
@@ -77,14 +87,15 @@ interface MessageTypeBadgeProps {
 const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const config = messageTypeConfig[type];
+  const Icon = config.icon;
   return (
     <span
       className={cn(
-        'px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-0.5',
+        'px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-1',
         WORKSPACE_MESSAGE_TYPE_CLASSES[type]
       )}
     >
-      <span>{config.icon}</span>
+      <Icon size={12} className="shrink-0" aria-hidden />
       <span>{t(config.i18nKey)}</span>
     </span>
   );

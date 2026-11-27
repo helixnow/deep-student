@@ -423,7 +423,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
                 variant="secondary"
                 role="status"
                 aria-live="polite"
-                className={state === 'signed_in' ? 'text-green-700 dark:text-green-300' : undefined}
+                className={state === 'signed_in' ? 'text-success' : undefined}
               >
                 {state === 'signed_in' && <Check className="mr-1 h-3 w-3" aria-hidden="true" />}
                 {stateLabel}
@@ -525,7 +525,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
                   : translate(t, 'copy_code', 'Copy code')}
                 title={translate(t, 'copy_code', 'Copy code')}
               >
-                {codeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {codeCopied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
               </DsButton>
             </div>
           )}

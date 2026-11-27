@@ -133,7 +133,7 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
         className={cn(
           'rounded-xl border bg-card p-5 transition-[border-color,background-color,transform] duration-150 ease-standard motion-reduce:transition-none',
           !revealed && 'cursor-pointer border-border/35 hover:border-border/60 hover:bg-card/90 active:scale-[0.996] motion-reduce:active:scale-100',
-          revealed && 'border-emerald-500/25',
+          revealed && 'border-success/30',
         )}
       >
         <SprintBreadcrumbHeader
@@ -162,7 +162,7 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
           </div>
         ) : null}
 
-        <div className="rounded-lg border border-border/35 bg-primary/[0.04] px-4 py-3.5">
+        <div className="rounded-lg bg-muted/35 px-4 py-3.5">
           <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-foreground">
             {!revealed
               ? maskedSegments.map((seg, idx) =>

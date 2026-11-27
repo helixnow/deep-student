@@ -367,7 +367,7 @@
     "captureFailed": "Couldn't capture the frame",
     "captureNotReady": "The video frame hasn't loaded yet",
     "captureTainted": "This video source doesn't allow reading frames",
-    "frameTitle": "{{name}} · ▶ {{time}}",
+    "frameTitle": "{{name}} · {{time}}",
     "resumed": "Resumed from {{time}}",
     "selectMode": "Select lines",
     "selectDone": "Done selecting",

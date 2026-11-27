@@ -30,7 +30,8 @@ import {
   Check,
   X,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { fileManager } from '@/utils/fileManager';
 import { canOpenFilesExternally, canRevealInFolder, revealFileOrOpen } from '@/utils/systemFileOpener';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -821,10 +822,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 <span className="text-muted-foreground">
                   {t('exam_sheet:questionBank.export.selectedFields', { count: csvFields.size })}
                 </span>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-primary hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className={cn('!h-auto !min-h-0 !p-0 text-primary hover:underline', coarseHitClassFor24)}>
                   {t('common:contextMenu.selectAll')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-muted-foreground hover:text-foreground">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className={cn('!h-auto !min-h-0 !p-0 text-muted-foreground hover:text-foreground', coarseHitClassFor24)}>
                   {t('common:deselect_all')}
                 </DsButton>
               </div>
@@ -858,7 +859,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         {previewColumns.map((col, index) => (
           <span
             key={`${col}-${index}`}
-            className="rounded bg-background px-1.5 py-0.5 text-[11px] text-foreground shadow-sm ui-rise-in"
+            className="rounded bg-background px-1.5 py-0.5 text-2xs text-foreground shadow-sm ui-rise-in"
           >
             {col}
           </span>
@@ -871,9 +872,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   const successSection = exportOutcome && (
     <div className="space-y-4 ui-rise-in">
       <div className="space-y-2 text-center">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-success/10 ui-zoom-fade-in">
-          <CheckCircle size={22} weight="fill" className="text-success" />
-        </div>
+        <CheckCircle size={24} weight="fill" className="mx-auto text-success ui-zoom-fade-in" aria-hidden="true" />
         <h3 className="text-base font-semibold">{t('exam_sheet:questionBank.export.success')}</h3>
         <p className="text-sm text-muted-foreground">
           {t('exam_sheet:questionBank.export.exportedCount', { count: exportOutcome.count })}
@@ -889,7 +888,6 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
             variant="outline"
             size="sm"
             onClick={() => void handleRevealInFolder()}
-            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {revealSupported ? <FolderOpen size={16} className="mr-1.5" /> : <ArrowSquareOut size={16} className="mr-1.5" />}
             {t(revealSupported
@@ -906,10 +904,9 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     <DsButton
       onClick={() => void handleExport()}
       disabled={isExporting || questions.length === 0}
-      className="[@media(pointer:coarse)]:!min-h-11"
     >
       {isExporting ? (
-        <CircleNotch size={16} className="mr-2 animate-spin" />
+        <CircleNotch size={16} className="mr-2 animate-spin motion-reduce:animate-none" />
       ) : (
         <Download size={16} className="mr-2" />
       )}
@@ -986,7 +983,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 >
                   <span
                     className={cn(
-                      'flex h-4 w-4 items-center justify-center rounded-full text-[10px] tabular-nums',
+                      'flex h-4 w-4 items-center justify-center rounded-full text-2xs tabular-nums',
                       index === inlineStep
                         ? 'bg-primary text-primary-foreground'
                         : index < inlineStep
@@ -1043,7 +1040,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           }}
         >
           {exportOutcome ? (
-            <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
+            <DsButton onClick={() => onOpenChange(false)}>
               {t('exam_sheet:questionBank.export.done')}
             </DsButton>
           ) : (
@@ -1052,12 +1049,11 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 variant="ghost"
                 onClick={handleInlineBack}
                 disabled={isExporting}
-                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
               </DsButton>
               {inlineStep < 2 ? (
-                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))} className="[@media(pointer:coarse)]:!min-h-11">
+                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
                   {t('common:actions.next')}
                 </DsButton>
               ) : (
@@ -1090,7 +1086,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           onClick={() => onOpenChange(false)}
           disabled={isExporting}
           aria-label={t('common:close')}
-          className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          className="text-muted-foreground"
         >
           <X size={16} />
         </DsButton>
@@ -1117,7 +1113,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         {exportOutcome ? (
-          <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
+          <DsButton onClick={() => onOpenChange(false)}>
             {t('exam_sheet:questionBank.export.done')}
           </DsButton>
         ) : (
@@ -1126,7 +1122,6 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               variant="ghost"
               onClick={() => onOpenChange(false)}
               disabled={isExporting}
-              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('common:cancel')}
             </DsButton>

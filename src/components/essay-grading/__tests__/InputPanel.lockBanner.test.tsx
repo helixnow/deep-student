@@ -105,7 +105,7 @@ describe('InputPanel idle lock banner & cancel guard', () => {
     expect(screen.getByTestId('essay-grade-submit-mobile')).toBeDisabled();
   });
 
-  it('renders the lock banner and inline one-click cancel button while grading is active', () => {
+  it('renders the lock banner without duplicate inline cancel button and cancels via the single footer control', () => {
     const onCancelGrading = vi.fn();
     render(
       <InputPanel
@@ -120,9 +120,11 @@ describe('InputPanel idle lock banner & cancel guard', () => {
 
     const banner = screen.getByTestId('essay-grading-lock-banner');
     expect(banner).toHaveTextContent('批改进行中，输入已暂时锁定');
+    expect(screen.queryByTestId('essay-cancel-grading-inline')).toBeNull();
 
-    const cancelBtn = screen.getByTestId('essay-cancel-grading-inline');
+    const cancelBtn = screen.getByTestId('essay-cancel-grading-footer');
     fireEvent.click(cancelBtn);
+    fireEvent.click(screen.getByTestId('essay-cancel-grading-footer'));
     expect(onCancelGrading).toHaveBeenCalledTimes(1);
   });
 });

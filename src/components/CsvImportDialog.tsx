@@ -898,12 +898,10 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           onClick={handleSelectFileClick}
         >
           {isLoadingPreview ? (
-            <CircleNotch size={40} className="text-primary animate-spin" />
+            <CircleNotch size={40} className="text-primary animate-spin motion-reduce:animate-none" />
           ) : (
             <>
-              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center">
-                <Table size={32} className="text-muted-foreground" />
-              </div>
+              <Table size={32} className="text-muted-foreground" aria-hidden="true" />
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">
                   {t('exam_sheet:csv.drop_or_click')}

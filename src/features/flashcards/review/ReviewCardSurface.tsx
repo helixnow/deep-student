@@ -36,20 +36,20 @@ const SWIPE_BANDS: Record<SwipeDirection, {
   },
   down: {
     ratingLabelKey: 'session.hard',
-    strip: 'inset-x-2 bottom-1 h-1 bg-amber-500',
-    pill: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+    strip: 'inset-x-2 bottom-1 h-1 bg-warning',
+    pill: 'bg-warning/15 text-warning',
     pillPosition: 'bottom-3 left-1/2 -translate-x-1/2',
   },
   right: {
     ratingLabelKey: 'session.good',
-    strip: 'inset-y-2 right-1 w-1 bg-emerald-500',
-    pill: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+    strip: 'inset-y-2 right-1 w-1 bg-success',
+    pill: 'bg-success/15 text-success',
     pillPosition: 'right-3 top-1/2 -translate-y-1/2',
   },
   up: {
     ratingLabelKey: 'session.easy',
-    strip: 'inset-x-2 top-1 h-1 bg-sky-500',
-    pill: 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
+    strip: 'inset-x-2 top-1 h-1 bg-info',
+    pill: 'bg-info/15 text-info',
     pillPosition: 'top-3 left-1/2 -translate-x-1/2',
   },
 };
@@ -290,18 +290,12 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             'wb-fc-card relative min-h-[16rem] min-w-0 flex-1 cursor-pointer transition-[border-color,box-shadow,transform] duration-150 ease-standard motion-reduce:transition-none',
             !templateMode && 'rounded-[20px] border bg-card shadow-shell',
             !templateMode && !flipped && 'border-border/55 hover:border-border/85 active:scale-[0.996] motion-reduce:active:scale-100',
-            !templateMode && flipped && 'border-primary/25 ring-1 ring-primary/[0.08]',
+            !templateMode && flipped && 'border-border/80',
             'text-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             disabled && 'cursor-default opacity-70 active:scale-100',
           )}
         >
-          {!templateMode && flipped ? (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-10 top-0 h-0.5 rounded-full bg-primary/35 animate-chat-fade-in motion-reduce:animate-none"
-            />
-          ) : null}
           <div
             ref={contentRef}
             className={cn('wb-fc-card-content relative flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}

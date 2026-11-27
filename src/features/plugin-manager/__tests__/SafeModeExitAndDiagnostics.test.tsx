@@ -279,7 +279,7 @@ describe('S4-16 Safe Mode Exit Confirmation & Broken Plugin Troubleshooting', ()
       detail: 'PLUGIN_PACKAGE_INVALID: package.json is missing at the archive root',
       rollback: 'unchanged',
     };
-    await user.click(screen.getByTestId('plugin-safe-mode-import-shortcut'));
+    await user.click(screen.getByTestId('plugin-import'));
     let feedback = await screen.findByTestId('plugin-install-feedback');
     expect(feedback).toHaveAttribute('role', 'alert');
     expect(within(feedback).getByTestId('plugin-install-diagnostic-category')).toHaveAttribute('data-category', 'manifest');
@@ -292,7 +292,7 @@ describe('S4-16 Safe Mode Exit Confirmation & Broken Plugin Troubleshooting', ()
       detail: 'ENGINE_INCOMPATIBLE: requires app version >=9.0.0; this app is 0.11.0',
       rollback: 'unchanged',
     };
-    await user.click(screen.getByTestId('plugin-safe-mode-import-shortcut'));
+    await user.click(screen.getByTestId('plugin-import'));
     feedback = await screen.findByTestId('plugin-install-feedback');
     expect(within(feedback).getByTestId('plugin-install-diagnostic-category')).toHaveAttribute('data-category', 'compatibility');
     expect(within(feedback).getByTestId('plugin-install-diagnostic-explanation')).toHaveTextContent('>=9.0.0');
@@ -304,7 +304,7 @@ describe('S4-16 Safe Mode Exit Confirmation & Broken Plugin Troubleshooting', ()
       detail: 'PLUGIN_PACKAGE_INVALID: missing host entrypoint ./dist/index.js',
       rollback: 'unchanged',
     };
-    await user.click(screen.getByTestId('plugin-safe-mode-import-shortcut'));
+    await user.click(screen.getByTestId('plugin-import'));
     feedback = await screen.findByTestId('plugin-install-feedback');
     expect(within(feedback).getByTestId('plugin-install-diagnostic-category')).toHaveAttribute('data-category', 'manifest');
     expect(within(feedback).getByTestId('plugin-install-diagnostic-explanation')).toHaveTextContent('./dist/index.js');

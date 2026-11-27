@@ -327,10 +327,6 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
           {gNode.isBranchEntry && (
             <div className="mb-1 flex items-center justify-between gap-2 pointer-events-none">
               <span className="inline-flex items-center gap-1 text-2xs font-medium text-[var(--mm-ghost-accent)]">
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-ghost-accent)]"
-                  aria-hidden="true"
-                />
                 <span>{aiBadgeLabel}</span>
               </span>
               <BranchActionCapsule
@@ -378,10 +374,6 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
                   top: ann.y - 28,
                 }}
               >
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-ghost-accent)]"
-                  aria-hidden="true"
-                />
                 {textDiffers ? (
                   <>
                     <span className="line-through opacity-60 max-w-[120px] truncate text-[var(--mm-text)]">
@@ -449,10 +441,6 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
                     : undefined
                 }
               >
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-ghost-remove-fg)]"
-                  aria-hidden="true"
-                />
                 <span className="font-medium">{t('mindmapGhost.removeBadge')}</span>
                 {subtreeCount > 1 && (
                   <span className="font-mono tabular-nums text-2xs opacity-85">
@@ -492,10 +480,6 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
                 top: ann.y - 28,
               }}
             >
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-ghost-accent)]"
-                aria-hidden="true"
-              />
               <span className="font-medium text-[var(--mm-ghost-accent)] max-w-[180px] truncate">
                 {t('mindmapGhost.moveBadge', { target: ann.moveTargetParentText ?? '' })}
               </span>

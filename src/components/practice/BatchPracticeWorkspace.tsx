@@ -13,8 +13,9 @@ import {
   PaperPlaneRight,
   ArrowClockwise,
   PencilSimple,
-  Sparkle,
+  NotePencil,
   Star,
+  WarningCircle,
   X,
   Keyboard,
 } from '@phosphor-icons/react';
@@ -62,6 +63,7 @@ import { usePracticeShortcuts, type PracticeShortcutOptions } from './usePractic
 import { PracticeShortcutHints } from './PracticeShortcutHints';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useMobileHeader, useMobileHeaderContextSafe } from '@/components/layout/MobileHeaderContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 
@@ -108,6 +110,8 @@ export default function BatchPracticeWorkspace({
 }: BatchPracticeWorkspaceProps) {
   const { t } = useTranslation('practice');
   const { isSmallScreen } = useBreakpoint();
+  const mobileHeaderCtx = useMobileHeaderContextSafe();
+  const useShellMobileHeader = Boolean(isSmallScreen && mobileHeaderCtx && isActive !== false);
   const rootRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<PracticeDraft | null>(null);
   const draftRef = useRef<PracticeDraft | null>(null);
@@ -833,10 +837,58 @@ export default function BatchPracticeWorkspace({
     </div>
   );
 
+  useMobileHeader(
+    'learning-hub',
+    {
+      title: attempt?.title ?? draft?.title ?? '',
+      subtitle: current && question ? formatTime(elapsed) : undefined,
+      showBackArrow: true,
+      onMenuClick: () => {
+        if (!busy && !uploading) {
+          void leave();
+        }
+      },
+      rightActions:
+        current && question ? (
+          <div className="flex items-center gap-1">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('batch.answerSheet')}
+              title={t('batch.answerSheet')}
+              onClick={() => setSheetOpen((open) => !open)}
+            >
+              <ListNumbers size={18} />
+            </DsButton>
+            {!attempt && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                disabled={busy || uploading}
+                aria-label={t('batch.submit')}
+                title={t('batch.submit')}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {busy ? (
+                  <CircleNotch size={18} className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <PaperPlaneRight size={18} />
+                )}
+              </DsButton>
+            )}
+          </div>
+        ) : undefined,
+    },
+    [attempt, busy, current, draft, elapsed, leave, question, t, uploading],
+    useShellMobileHeader,
+  );
+
   if (loading)
     return (
       <div className="flex h-full items-center justify-center">
-        <CircleNotch className="animate-spin" size={24} />
+        <CircleNotch className="animate-spin motion-reduce:animate-none" size={24} />
       </div>
     );
   if (!current || !question)
@@ -852,175 +904,180 @@ export default function BatchPracticeWorkspace({
 
   return (
     <div ref={rootRef} data-practice-shortcuts className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/35 bg-background/95 px-3 py-1.5 backdrop-blur-sm">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          aria-label={t('common:back')}
-          title={t('common:back')}
-          disabled={busy || uploading}
-          onClick={() => void leave()}
-          className="!h-9 !w-9 sm:!h-7 sm:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft size={16} />
-        </DsButton>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {attempt?.title ?? draft?.title}
-        </span>
-        {attempt && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            <span
-              data-testid="batch-total-score-summary"
-              className="inline-flex items-center gap-1 font-mono font-semibold tabular-nums text-primary"
-            >
-              {hasPartialScores
-                ? t('batch.totalScoreSummaryPartial', {
-                    defaultValue: '综合得分 {{score}}分 · 得分率 {{rate}}%（满分率 {{fullRate}}%）',
-                    score: totalEarnedScorePercent,
-                    rate: totalEarnedScorePercent,
-                    fullRate: fullCorrectRatePercent,
-                  })
-                : t('batch.totalScoreSummary', {
-                    defaultValue: '得分 {{score}}分 · 准确率 {{rate}}%',
-                    score: totalEarnedScorePercent,
-                    rate: fullCorrectRatePercent,
-                  })}
-            </span>
-            <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
-              <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
-              {t('batch.correctCount', { count: correctCount })}
-            </span>
-            {partialCount > 0 && (
-              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
-                <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-                {t('batch.partialCount', { defaultValue: '部分正确 {{count}} 题', count: partialCount })}
+      {(!useShellMobileHeader || Boolean(attempt)) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/35 bg-background/95 px-3 py-1.5 backdrop-blur-sm">
+          {!useShellMobileHeader && (
+            <>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('common:back')}
+                title={t('common:back')}
+                disabled={busy || uploading}
+                onClick={() => void leave()}
+                className="!h-9 !w-9 sm:!h-7 sm:!w-7 text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft size={16} />
+              </DsButton>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                {attempt?.title ?? draft?.title}
               </span>
-            )}
-            <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
-              {t('batch.wrongCount', { count: wrongCount })}
-            </span>
-            <span className="inline-flex items-center gap-1 font-mono tabular-nums text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/35" aria-hidden="true" />
-              {t('batch.unansweredCount', { count: unansweredResultCount })}
-            </span>
-            <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
-              <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-              {t('batch.pendingCount', { count: pendingCount })}
-            </span>
-            <select
-              aria-label={t('batch.filter')}
-              value={filter}
-              onChange={(event) => {
-                const next = event.target.value;
-                setFilter(next);
-                const first = results.findIndex(
-                  (r) =>
-                    next === 'all' ||
-                    (next === 'wrong' && (r.status === 'incorrect' || r.status === 'partial')) ||
-                    (next === 'pending' && (r.status === 'pending' || r.status === 'failed')) ||
-                    (next === 'unanswered' && r.status === 'unanswered'),
-                );
-                if (first >= 0) setIndex(first);
-              }}
-              className="h-9 sm:h-7 [@media(pointer:coarse)]:h-11 rounded-md border border-border/50 bg-background px-2 text-xs text-foreground"
-            >
-              {['all', 'wrong', 'unanswered', 'pending'].map((f) => (
-                <option key={f} value={f}>
-                  {t(`batch.filters.${f}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <span
-          className={cn(
-            'rounded-md bg-foreground/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums',
-            draft?.deadline && elapsed > 0 && elapsed <= 60
-              ? 'text-destructive'
-              : draft?.deadline && elapsed > 0 && elapsed <= 300
-                ? 'text-warning'
-                : 'text-muted-foreground',
+            </>
           )}
-        >
-          {formatTime(elapsed)}
-        </span>
-        {!isSmallScreen && (
-          <Popover>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <DsButton variant="ghost" size="icon" iconOnly aria-label={t('editor.shortcuts')} className="!h-7 !w-7 text-muted-foreground hover:text-foreground">
-                    <Keyboard size={16} />
-                  </DsButton>
-                </PopoverTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{t('editor.shortcuts')}</TooltipContent>
-            </Tooltip>
-            <PopoverContent className="w-72" align="end">
-              <PracticeShortcutHints {...shortcutOptions} />
-            </PopoverContent>
-          </Popover>
-        )}
-        {!attempt && (
-          <span
-            role="status"
-            className={cn(
-              'text-xs',
-              saveState === 'error' ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
-            {t(`batch.save.${saveState}`)}
-          </span>
-        )}
-        <DsButton variant="ghost" size="sm" onClick={() => setSheetOpen(!sheetOpen)} className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs text-muted-foreground hover:text-foreground">
-          <ListNumbers size={15} />
-          {t('batch.answerSheet')}
-        </DsButton>
-        {!attempt && (
-          <DsButton size="sm" disabled={busy || uploading} onClick={() => setConfirmOpen(true)} className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs">
-            {busy ? (
-              <CircleNotch size={14} className="animate-spin" />
-            ) : (
-              <PaperPlaneRight size={14} />
-            )}
-            {t('batch.submit')}
-          </DsButton>
-        )}
-        {attempt && !readOnly && (
-          <DsButton
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs"
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const next = await practiceApi.create({
-                  id: newPracticeId(),
-                  scope_id: attempt.scope_id,
-                  title: attempt.title,
-                  mode: attempt.mode,
-                  question_ids: [],
-                  attempt_id: attempt.id,
-                  paper_id: attempt.paper_id ?? undefined,
-                  duration_seconds: attempt.duration_seconds ?? undefined,
-                });
-                installDraft(next);
-                callbackRef.current?.();
-              } catch (error) {
-                setError(getErrorMessage(error));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <ArrowClockwise size={14} />
-            {t('batch.restart')}
-          </DsButton>
-        )}
-      </div>
+          {attempt && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span
+                data-testid="batch-total-score-summary"
+                className="inline-flex items-center gap-1 font-mono font-semibold tabular-nums text-primary"
+              >
+                {hasPartialScores
+                  ? t('batch.totalScoreSummaryPartial', {
+                      defaultValue: '综合得分 {{score}}分 · 得分率 {{rate}}%（满分率 {{fullRate}}%）',
+                      score: totalEarnedScorePercent,
+                      rate: totalEarnedScorePercent,
+                      fullRate: fullCorrectRatePercent,
+                    })
+                  : t('batch.totalScoreSummary', {
+                      defaultValue: '得分 {{score}}分 · 准确率 {{rate}}%',
+                      score: totalEarnedScorePercent,
+                      rate: fullCorrectRatePercent,
+                    })}
+              </span>
+              <span className="font-mono tabular-nums text-success">
+                {t('batch.correctCount', { count: correctCount })}
+              </span>
+              {partialCount > 0 && (
+                <span className="font-mono tabular-nums text-warning">
+                  {t('batch.partialCount', { defaultValue: '部分正确 {{count}} 题', count: partialCount })}
+                </span>
+              )}
+              <span className="font-mono tabular-nums text-destructive">
+                {t('batch.wrongCount', { count: wrongCount })}
+              </span>
+              <span className="font-mono tabular-nums text-muted-foreground">
+                {t('batch.unansweredCount', { count: unansweredResultCount })}
+              </span>
+              <span className="font-mono tabular-nums text-warning">
+                {t('batch.pendingCount', { count: pendingCount })}
+              </span>
+              <select
+                aria-label={t('batch.filter')}
+                value={filter}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setFilter(next);
+                  const first = results.findIndex(
+                    (r) =>
+                      next === 'all' ||
+                      (next === 'wrong' && (r.status === 'incorrect' || r.status === 'partial')) ||
+                      (next === 'pending' && (r.status === 'pending' || r.status === 'failed')) ||
+                      (next === 'unanswered' && r.status === 'unanswered'),
+                  );
+                  if (first >= 0) setIndex(first);
+                }}
+                className="h-9 sm:h-7 rounded-md border border-border/50 bg-background px-2 text-xs text-foreground"
+              >
+                {['all', 'wrong', 'unanswered', 'pending'].map((f) => (
+                  <option key={f} value={f}>
+                    {t(`batch.filters.${f}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!useShellMobileHeader && (
+            <>
+              <span
+                className={cn(
+                  'rounded-md bg-foreground/[0.04] px-2 py-0.5 font-mono text-xs tabular-nums',
+                  draft?.deadline && elapsed > 0 && elapsed <= 60
+                    ? 'text-destructive'
+                    : draft?.deadline && elapsed > 0 && elapsed <= 300
+                      ? 'text-warning'
+                      : 'text-muted-foreground',
+                )}
+              >
+                {formatTime(elapsed)}
+              </span>
+              {!isSmallScreen && (
+                <Popover>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <PopoverTrigger asChild>
+                        <DsButton variant="ghost" size="icon" iconOnly aria-label={t('editor.shortcuts')} className="!h-7 !w-7 text-muted-foreground hover:text-foreground">
+                          <Keyboard size={16} />
+                        </DsButton>
+                      </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>{t('editor.shortcuts')}</TooltipContent>
+                  </Tooltip>
+                  <PopoverContent className="w-72" align="end">
+                    <PracticeShortcutHints {...shortcutOptions} />
+                  </PopoverContent>
+                </Popover>
+              )}
+              {!attempt && (
+                <span
+                  role="status"
+                  className={cn(
+                    'text-xs',
+                    saveState === 'error' ? 'text-destructive' : 'text-muted-foreground',
+                  )}
+                >
+                  {t(`batch.save.${saveState}`)}
+                </span>
+              )}
+              <DsButton variant="ghost" size="sm" onClick={() => setSheetOpen(!sheetOpen)} className="!h-9 sm:!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground">
+                <ListNumbers size={15} />
+                {t('batch.answerSheet')}
+              </DsButton>
+              {!attempt && (
+                <DsButton size="sm" disabled={busy || uploading} onClick={() => setConfirmOpen(true)} className="!h-9 sm:!h-7 !px-2.5 text-xs">
+                  {busy ? (
+                    <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <PaperPlaneRight size={14} />
+                  )}
+                  {t('batch.submit')}
+                </DsButton>
+              )}
+            </>
+          )}
+          {attempt && !readOnly && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              className="!h-9 sm:!h-7 !px-2.5 text-xs"
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const next = await practiceApi.create({
+                    id: newPracticeId(),
+                    scope_id: attempt.scope_id,
+                    title: attempt.title,
+                    mode: attempt.mode,
+                    question_ids: [],
+                    attempt_id: attempt.id,
+                    paper_id: attempt.paper_id ?? undefined,
+                    duration_seconds: attempt.duration_seconds ?? undefined,
+                  });
+                  installDraft(next);
+                  callbackRef.current?.();
+                } catch (error) {
+                  setError(getErrorMessage(error));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <ArrowClockwise size={14} />
+              {t('batch.restart')}
+            </DsButton>
+          )}
+        </div>
+      )}
       {/* 2px 顶部细进度线 */}
       <div className="h-0.5 flex-shrink-0 bg-border/40" aria-hidden="true">
         <div
@@ -1033,7 +1090,7 @@ export default function BatchPracticeWorkspace({
           className="flex flex-wrap items-center gap-2 border-b border-border/40 bg-muted/50 px-4 py-2 text-xs text-destructive"
           role="alert"
         >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+          <WarningCircle size={14} className="shrink-0 text-destructive" aria-hidden="true" />
           <span className="min-w-0 flex-1 break-words">{error}</span>
           {draft && (
             <DsButton variant="outline" size="sm" onClick={() => void flush().catch(() => {})} className="!h-7 !px-2.5 text-xs">
@@ -1357,7 +1414,7 @@ export default function BatchPracticeWorkspace({
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                          <Sparkle size={14} className="text-primary" aria-hidden="true" />
+                          <NotePencil size={14} className="text-primary" aria-hidden="true" />
                           {t('batch.aiGradingRationaleTitle')}
                         </h4>
                         <div className="flex items-center gap-2 font-mono text-xs tabular-nums">

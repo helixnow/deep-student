@@ -1312,7 +1312,7 @@
     "groupName": "分组名称",
     "groupNamePlaceholder": "一句话描述要完成的任务",
     "groupIcon": "分组图标",
-    "groupIconPlaceholder": "如：📁 或 folder",
+    "groupIconPlaceholder": "如：book 或 folder",
     "groupColor": "分组颜色",
     "groupDescription": "分组描述",
     "groupDescriptionPlaceholder": "可选，描述该分组用途",

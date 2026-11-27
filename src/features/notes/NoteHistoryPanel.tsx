@@ -280,7 +280,7 @@ function HistoryContent({ noteId, onRestoredCopy, beforeOverwrite, withOverwrite
             </div>}
             <DsButton variant="ghost" disabled={busy} onClick={() => void compareCurrent()}>{t('history.compare_current', '与当前笔记比较')}</DsButton>
             {showDiff && current && <pre aria-label={t('history.diff_preview', '恢复差异预览')} className="whitespace-pre-wrap break-words rounded border p-3 text-sm">
-              {diffLines(current.content_md, selectedText).map((part, index) => <span key={index} className={part.added ? 'bg-green-500/15' : part.removed ? 'bg-red-500/15 line-through' : undefined}>{part.added ? '+ ' : part.removed ? '- ' : '  '}{part.value}</span>)}
+              {diffLines(current.content_md, selectedText).map((part, index) => <span key={index} className={part.added ? 'bg-success/15' : part.removed ? 'bg-destructive/15 line-through' : undefined}>{part.added ? '+ ' : part.removed ? '- ' : '  '}{part.value}</span>)}
             </pre>}
             {selected.asset_refs.length > 0 && <details className="text-xs text-muted-foreground">
               <summary>{t('history.references', { count: selected.asset_refs.length })}</summary>

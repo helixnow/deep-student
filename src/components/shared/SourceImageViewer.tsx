@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import i18n from '@/i18n';
 import { cn } from '@/utils/cn';
@@ -489,7 +490,7 @@ export const SourceImageViewer: React.FC<SourceImageViewerProps> = ({
         URL.revokeObjectURL(createdBlobUrl);
       }
     };
-  }, [expectedDigest, inViewport, loader, parsedRef, reloadCount, scheduler]);
+  }, [expectedDigest, inViewport, loader, parsedRef, reloadCount, scheduler, t]);
 
   const handleZoomOut = useCallback(() => {
     setFitWidth(false);
@@ -553,16 +554,6 @@ export const SourceImageViewer: React.FC<SourceImageViewerProps> = ({
       )}
     >
       <div className="flex items-center gap-2 text-foreground">
-        <span
-          className={cn(
-            'w-1.5 h-1.5 rounded-full',
-            errorState
-              ? 'bg-destructive'
-              : resolvedSrc
-                ? 'bg-success'
-                : 'bg-muted-foreground/60'
-          )}
-        />
         <span
           data-testid="source-image-location-label"
           className="font-mono tabular-nums text-xs text-foreground"
@@ -642,7 +633,6 @@ export const SourceImageViewer: React.FC<SourceImageViewerProps> = ({
             data-testid="source-image-lazy-placeholder"
             className="flex items-center gap-2 py-6 text-xs text-muted-foreground"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
             <span>{t('learningHub:sourceImageViewer.lazyPlaceholder', '等待进入视口后加载原图')}</span>
           </div>
         )}
@@ -652,7 +642,7 @@ export const SourceImageViewer: React.FC<SourceImageViewerProps> = ({
             data-testid="source-image-loading"
             className="flex items-center gap-2 py-6 text-xs text-muted-foreground"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            <CircleNotch size={14} className="animate-spin motion-reduce:animate-none text-primary shrink-0" aria-hidden="true" />
             <span>{t('learningHub:sourceImageViewer.loading', '正在读取材料原图')}</span>
           </div>
         )}
@@ -664,7 +654,7 @@ export const SourceImageViewer: React.FC<SourceImageViewerProps> = ({
             className="flex flex-wrap items-center justify-between gap-3 rounded border border-border/35 bg-muted/30 px-3 py-2.5 text-xs"
           >
             <div className="flex items-center gap-2 text-foreground">
-              <span className="w-1.5 h-1.5 flex-shrink-0 rounded-full bg-destructive" />
+              <WarningCircle size={14} className="shrink-0 text-destructive" aria-hidden="true" />
               <span>{errorState.message}</span>
             </div>
             <div className="flex items-center gap-2">

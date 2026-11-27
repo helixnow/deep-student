@@ -270,6 +270,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const readyModelLabel = resolvedPreconfigured?.modelLabel ?? null;
 
   const [activeLegalDoc, setActiveLegalDoc] = useState<OnboardingLegalTab | null>(null);
+  const [byokReady, setByokReady] = useState(false);
+  const effectiveAiReady = isAiReady || byokReady;
   const [legalConsent, setLegalConsent] = useState<LegalConsentRecord | null>(() =>
     readLegalConsentRecord(),
   );
@@ -405,7 +407,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     {
       id: 'hub',
       stepNumber: 1,
-      icon: <Books size={18} weight="duotone" className="text-blue-500/80" />,
+      icon: <Books size={18} weight="duotone" className="text-foreground/75" />,
       titleZh: '1. 导入学习资料',
       titleEn: '1. Import your study materials',
       descZh: '拖入 PDF、教材或课堂笔记，整理到你本地私密的学习空间。',
@@ -414,7 +416,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     {
       id: 'chat',
       stepNumber: 2,
-      icon: <ChatCircleText size={18} weight="duotone" className="text-emerald-500/80" />,
+      icon: <ChatCircleText size={18} weight="duotone" className="text-foreground/75" />,
       titleZh: '2. 向 AI 提问与记笔记',
       titleEn: '2. Ask AI & take notes',
       descZh: '结合你的资料向 AI 提问、拆解难题，并随时沉淀学习笔记。',
@@ -423,7 +425,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     {
       id: 'anki',
       stepNumber: 3,
-      icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
+      icon: <Cards size={18} weight="duotone" className="text-foreground/75" />,
       titleZh: '3. 制作闪卡与复习',
       titleEn: '3. Make flashcards & review',
       descZh: '把重点与错题一键生成记忆闪卡，按遗忘规律自动安排复习。',
@@ -544,11 +546,9 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           {isAiReady ? (
             <div
               data-testid="welcome-ai-ready-card"
-              className="flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3.5 py-3"
+              className="flex items-start gap-3 rounded-lg border border-success/25 bg-success/[0.06] px-3.5 py-3"
             >
-              <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle size={18} weight="duotone" />
-              </span>
+              <CheckCircle size={18} weight="duotone" className="mt-0.5 flex-shrink-0 text-success" />
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-foreground/90 leading-snug">
                   {t('settings:vendor_panel.welcome_ai_ready_title', {
@@ -571,8 +571,9 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           ) : (
             <QuickByokProvisionerCard
               mode="onboarding"
+              hideFooterNavigationActions
+              onReadyStateChange={setByokReady}
               onCompleted={handleCompleteOnboarding}
-              onOpenFullSettings={onConfigure}
             />
           )}
 
@@ -644,20 +645,20 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               className="text-[13px] [@media(pointer:coarse)]:!min-h-11"
               onClick={onConfigure}
             >
-              {isAiReady
+              {effectiveAiReady
                 ? (isZh ? '管理 AI 模型' : 'Manage AI Models')
                 : (isZh ? '前往完整模型设置' : 'Open AI Settings')}
             </DsButton>
             <DsButton
-              variant={isAiReady ? 'primary' : 'ghost'}
+              variant={effectiveAiReady ? 'primary' : 'ghost'}
               size="md"
               className={cn(
                 'text-[13px] [@media(pointer:coarse)]:!min-h-11',
-                !isAiReady && 'text-foreground/55',
+                !effectiveAiReady && 'text-foreground/55',
               )}
               onClick={handleCompleteOnboarding}
             >
-              {isAiReady
+              {effectiveAiReady
                 ? t('settings:vendor_panel.welcome_ai_ready_cta_start', {
                     defaultValue: t('welcome_onboarding.cta_skip'),
                   })
@@ -672,7 +673,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             {legalConsent ? (
               <span
                 data-testid="onboarding-legal-agreed-badge"
-                className="mr-1 inline-flex items-center gap-0.5 font-medium text-emerald-600 dark:text-emerald-400"
+                className="mr-1 inline-flex items-center gap-0.5 font-medium text-success"
               >
                 <Check size={11} weight="bold" aria-hidden="true" />
                 <span>{t('legal.userAgreement.agreedBadge')}</span>

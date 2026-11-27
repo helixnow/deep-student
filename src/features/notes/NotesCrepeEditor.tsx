@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowCounterClockwise, BookOpen, CaretDown, CircleNotch, Code, CornersIn, DotsThree, ImageSquare, PencilLine, Robot, Sparkle, TreeStructure, X } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, BookOpen, CaretDown, ChatTeardropText, CircleNotch, Code, CornersIn, DotsThree, ImageSquare, PencilLine, Robot, TreeStructure, X } from '@phosphor-icons/react';
 import { editorViewCtx } from '@milkdown/kit/core';
 import type { EditorState } from '@milkdown/prose/state';
 import type { CrepeFormattingState } from '@/components/crepe/formattingState';
@@ -75,7 +75,7 @@ import { NoteFormatGate } from './NoteFormatGate';
 import { NoteHistoryPanel } from './NoteHistoryPanel';
 import { noteHostCoordinator } from './noteHostCoordinator';
 import { resolveNoteReviewScope, saveReviewAs } from './noteReviewHost';
-import { useNotesChromeSlot } from './notesChromeSlot';
+import { useNotesChromeSlot, useNotesChromeSlotVisible } from './notesChromeSlot';
 import {
   dispatchPdfCitationNavigation,
   getRememberedNoteScrollPosition,
@@ -104,8 +104,8 @@ const NoteSourceEditor = React.lazy(() =>
 const HIGHLIGHT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29a.9959.9959 0 0 0-1.41 0L15 2.25 18.75 6l1.96-1.96zM2 20h20v4H2v-4z"/></svg>';
 /** 「挖空制卡」浮条图标（24×24 填充，Material style / Cloze，Apache-2.0） */
 const CLOZE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 5h4v2H6v10h2v2H4V5zm16 0v14h-4v-2h2V7h-2V5h4zM9 11h6v2H9v-2z"/></svg>';
-/** 「问 AI」浮条图标（24×24 填充，Sparkle，Apache-2.0） */
-const ASK_AI_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2zm7 14l1 2.7L22.7 20 20 21l-1 2.7L18 21l-2.7-1 2.7-1 1-2.7z"/></svg>';
+/** 「问 AI」浮条图标（24×24 填充，对话气泡文本，Apache-2.0） */
+const ASK_AI_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12zM7 9h10v2H7V9zm0-3h10v2H7V6zm0 6h7v2H7v-2z"/></svg>';
 /** 「加入聊天」浮条图标（24×24 填充，Material add_comment，Apache-2.0） */
 const ADD_TO_CHAT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 4c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4zm-2 13.17L18.83 16H4V4h16v13.17zM13 5h-2v4H7v2h4v4h2v-4h4V9h-4z"/></svg>';
 /** 「摘录到导图」浮条图标（24×24 填充，Material account_tree，Apache-2.0） */
@@ -387,6 +387,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const mobileResourceMenu = useMobileResourceMenu();
   const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
   const notesChromeSlot = useNotesChromeSlot();
+  const notesChromeSlotVisible = useNotesChromeSlotVisible();
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
 
   useEffect(() => { setPageActionsOpen(false); }, [noteId, hasMobileResourceMenu]);
@@ -1689,7 +1690,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     />
   );
 
-  const hasPortalChromeHost = isActive && Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu;
+  const chromeSlotActive = notesChromeSlotVisible ?? isActive;
+  const hasPortalChromeHost = chromeSlotActive && Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu;
   const portalChrome = hasPortalChromeHost && !focus.focusMode;
   const chromeActions = (
     <>
@@ -2058,7 +2060,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
                   {
                     key: 'ask-ai',
                     label: t('notes:selection.askAi', '问 AI'),
-                    icon: ({ touchTarget }) => <Sparkle size={touchTarget ? 16 : 14} />,
+                    icon: ({ touchTarget }) => <ChatTeardropText size={touchTarget ? 16 : 14} />,
                     run: handleSelectionAskAi,
                   },
                   {

@@ -996,7 +996,6 @@
 .chat-v2 .chain-of-thought {
   margin: var(--chat-md-block-gap) 0;
   border: 1px solid hsl(var(--border) / 30%);
-  border-left: 2px solid hsl(var(--brand-primary));
   border-radius: var(--radius-shell-toolbar);
   background: hsl(var(--card));
   overflow: hidden;

@@ -9,8 +9,11 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { Wrench } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -368,11 +371,13 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
                 type="button"
                 aria-pressed={i === activeIdx}
                 onClick={() => setSelectedRound(i + 1)}
-                className={`px-2 py-0.5 text-2xs rounded transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${
+                className={cn(
+                  'inline-flex items-center px-2 py-0.5 text-2xs rounded transition-colors',
+                  coarseHitClassFor24,
                   i === activeIdx
                     ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground/60 hover:bg-[var(--interactive-hover)]'
-                }`}
+                    : 'text-muted-foreground/60 hover:bg-[var(--interactive-hover)]',
+                )}
                 title={rStats.toolCallMsgCount > 0
                   ? t('messageItem.rawRequest.roundTooltipWithToolCalls', {
                     round: i + 1,
@@ -385,7 +390,7 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
                   })}
               >
                 R{i + 1}
-                {rStats.toolCallMsgCount > 0 && <span className="ml-0.5 opacity-60">🔧</span>}
+                {rStats.toolCallMsgCount > 0 && <Wrench size={11} className="ml-0.5 opacity-60" aria-hidden="true" />}
               </button>
             );
           })}

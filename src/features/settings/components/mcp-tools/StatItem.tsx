@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 
 // 统计卡片组件
 export function StatItem({
@@ -12,21 +12,20 @@ export function StatItem({
   suffix?: string;
   status?: 'success' | 'warning' | 'error' | 'neutral';
 }) {
-  const statusColors = {
-    success: 'bg-success',
-    warning: 'bg-warning',
-    error: 'bg-destructive',
-    neutral: 'bg-muted-foreground'
+  const statusTextColors = {
+    success: 'text-success',
+    warning: 'text-warning',
+    error: 'text-destructive',
+    neutral: 'text-foreground',
   };
 
   return (
     <div className="p-2 transition-colors">
       <div className="text-xs text-muted-foreground mb-1">{label}</div>
-      <div className="flex items-center gap-2">
-        {status && (
-          <span className={cn('w-2 h-2 rounded-full flex-shrink-0', statusColors[status])} />
-        )}
-        <span className="text-lg font-semibold text-foreground">{value}</span>
+      <div className="flex items-baseline gap-1.5">
+        <span className={cn('text-lg font-semibold tabular-nums', status ? statusTextColors[status] : 'text-foreground')}>
+          {value}
+        </span>
         {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
       </div>
     </div>

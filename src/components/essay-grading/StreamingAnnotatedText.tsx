@@ -33,7 +33,6 @@ import {
   Check,
   Copy,
   Plus,
-  Sparkle,
   Trash,
   Warning,
   ArrowsLeftRight,
@@ -201,19 +200,19 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
     case 'del':
       return (
         <CommonTooltip
-          content={<TooltipBody title={<span className="text-red-500/90">{t('essay_grading:markers.delete')}</span>} description={marker.reason} hint={clickHint} />}
+          content={<TooltipBody title={<span className="text-destructive">{t('essay_grading:markers.delete')}</span>} description={marker.reason} hint={clickHint} />}
           position="top"
           maxWidth={320}
         >
           <span
             {...interactiveProps}
             className={cn(
-              'inline text-red-600/80 dark:text-red-400/80',
-              'line-through decoration-red-400/60 decoration-1',
+              'inline text-destructive/85',
+              'line-through decoration-destructive/60 decoration-1',
               baseInteractive,
               isActive
-                ? 'bg-red-100/80 dark:bg-red-900/40 ring-1 ring-red-400/60'
-                : 'hover:bg-red-50/50 dark:hover:bg-red-950/30'
+                ? 'bg-destructive/15 ring-1 ring-destructive/50'
+                : 'hover:bg-destructive/10'
             )}
           >
             {marker.content}
@@ -226,7 +225,7 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
         <CommonTooltip
           content={
             <TooltipBody
-              title={<span className="text-amber-500/90">{t('essay_grading:markers.insert')}</span>}
+              title={<span className="text-warning">{t('essay_grading:markers.insert')}</span>}
               description={marker.inferredInsertion ? t('essay_grading:markers.inferred_insert_hint') : undefined}
               hint={clickHint}
             />
@@ -239,22 +238,22 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
             data-marker-type="ins"
             data-inferred-insertion={marker.inferredInsertion ? 'true' : undefined}
             className={cn(
-              'inline rounded px-1 py-0.5 text-amber-800 dark:text-amber-300',
-              'bg-amber-500/10 border border-dashed border-amber-500/45',
+              'inline rounded px-1 py-0.5 text-warning',
+              'bg-warning/10 border border-dashed border-warning/45',
               baseInteractive,
               isActive
-                ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
-                : 'hover:bg-amber-500/15 dark:hover:bg-amber-900/35'
+                ? 'bg-warning/20 ring-1 ring-warning/50'
+                : 'hover:bg-warning/15'
             )}
           >
             <span
-              className="mr-1 inline-flex items-center rounded bg-amber-500/20 px-1 py-0 text-[10px] font-medium leading-4 text-amber-800 dark:text-amber-200 align-baseline select-none"
+              className="mr-1 inline-flex items-center rounded bg-warning/20 px-1 py-0 text-2xs font-medium leading-4 text-warning align-baseline select-none"
               aria-hidden="true"
             >
               [+{t('essay_grading:markers.insert_badge')}:
             </span>{' '}
             {marker.content}
-            <span className="ml-0.5 text-[10px] text-amber-700/70 dark:text-amber-300/70 select-none" aria-hidden="true">]</span>
+            <span className="ml-0.5 text-2xs text-warning/75 select-none" aria-hidden="true">]</span>
           </span>
         </CommonTooltip>
       );
@@ -262,7 +261,7 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
     case 'replace':
       return (
         <CommonTooltip
-          content={<TooltipBody title={<span className="text-amber-500/90">{t('essay_grading:markers.replace')}</span>} description={marker.reason} hint={clickHint} />}
+          content={<TooltipBody title={<span className="text-warning">{t('essay_grading:markers.replace')}</span>} description={marker.reason} hint={clickHint} />}
           position="top"
           maxWidth={320}
         >
@@ -272,13 +271,13 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
               'inline-flex max-w-full flex-wrap items-baseline gap-1 px-0.5 break-words',
               baseInteractive,
               isActive
-                ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
-                : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/30'
+                ? 'bg-warning/15 ring-1 ring-warning/50'
+                : 'hover:bg-warning/10'
             )}
           >
             <span className="max-w-full break-words text-muted-foreground/70 line-through decoration-1">{marker.oldText}</span>
             <span className="shrink-0 text-muted-foreground/50 text-xs">→</span>
-            <span className="max-w-full break-words text-amber-700 dark:text-amber-400 font-medium">{marker.newText}</span>
+            <span className="max-w-full break-words text-warning font-medium">{marker.newText}</span>
           </span>
         </CommonTooltip>
       );
@@ -286,19 +285,19 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
     case 'note':
       return (
         <CommonTooltip
-          content={<TooltipBody title={<span className="text-amber-500/90">{t('essay_grading:markers.note')}</span>} description={marker.comment} hint={clickHint} />}
+          content={<TooltipBody title={<span className="text-warning">{t('essay_grading:markers.note')}</span>} description={marker.comment} hint={clickHint} />}
           position="top"
           maxWidth={320}
         >
           <span
             {...interactiveProps}
             className={cn(
-              'inline text-amber-700 dark:text-amber-400',
-              'border-b border-dashed border-amber-400/70',
+              'inline text-warning',
+              'border-b border-dashed border-warning/70',
               baseInteractive,
               isActive
-                ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
-                : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/30'
+                ? 'bg-warning/15 ring-1 ring-warning/50'
+                : 'hover:bg-warning/10'
             )}
           >
             {marker.content}
@@ -312,8 +311,8 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
           content={
             <TooltipBody
               title={
-                <span className="inline-flex items-center gap-1 text-emerald-500/90">
-                  <Sparkle size={12} weight="fill" />
+                <span className="inline-flex items-center gap-1 text-success">
+                  <Check size={12} weight="bold" />
                   {t('essay_grading:markers.good')}
                 </span>
               }
@@ -326,13 +325,11 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
           <span
             {...interactiveProps}
             className={cn(
-              'inline text-emerald-700 dark:text-emerald-300',
-              'bg-emerald-100/50 dark:bg-emerald-400/10',
-              'border-l-2 border-emerald-400/80 rounded-l-none rounded-r-sm pl-1 pr-0.5',
+              'inline text-success bg-success/10 rounded-sm px-1',
               baseInteractive,
               isActive
-                ? 'bg-emerald-100 dark:bg-emerald-400/20 ring-1 ring-emerald-400/60'
-                : 'hover:bg-emerald-100/80 dark:hover:bg-emerald-400/15'
+                ? 'bg-success/20 ring-1 ring-success/50'
+                : 'hover:bg-success/15'
             )}
           >
             {marker.content}
@@ -347,7 +344,7 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
           content={
             <TooltipBody
               title={
-                <span className={asSuggestion ? 'text-amber-500/90' : 'text-red-500/90'}>
+                <span className={asSuggestion ? 'text-warning' : 'text-destructive'}>
                   {t(getErrorTypeKey(marker.errorType))}
                 </span>
               }
@@ -365,16 +362,16 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
               baseInteractive,
               asSuggestion
                 ? cn(
-                    'inline text-amber-700 dark:text-amber-400 decoration-amber-400/60',
+                    'inline text-warning decoration-warning/60',
                     isActive
-                      ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
-                      : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/30'
+                      ? 'bg-warning/15 ring-1 ring-warning/50'
+                      : 'hover:bg-warning/10'
                   )
                 : cn(
-                    'inline text-red-600/90 dark:text-red-400/90 decoration-red-400/50',
+                    'inline text-destructive/90 decoration-destructive/50',
                     isActive
-                      ? 'bg-red-100/80 dark:bg-red-900/40 ring-1 ring-red-400/60'
-                      : 'hover:bg-red-50/50 dark:hover:bg-red-950/30'
+                      ? 'bg-destructive/15 ring-1 ring-destructive/50'
+                      : 'hover:bg-destructive/10'
                   )
             )}
           >
@@ -396,23 +393,15 @@ const MarkerSpan = React.memo(MarkerSpanImpl);
 // ---------------------------------------------------------------------------
 
 const BADGE_ERROR_CLASS = 'bg-destructive/10 text-destructive border-destructive/20';
-const BADGE_SUGGESTION_CLASS = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
-const BADGE_HIGHLIGHT_CLASS = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
-
-const getCardLeftBorderClass = (marker: StreamingMarker): string => {
-  if (marker.type === 'good') return 'border-l-emerald-500/75';
-  if (marker.type === 'del' || (marker.type === 'err' && !isSuggestionErr(marker))) {
-    return 'border-l-destructive/75';
-  }
-  return 'border-l-amber-500/75';
-};
+const BADGE_SUGGESTION_CLASS = 'bg-warning/10 text-warning border-warning/20';
+const BADGE_HIGHLIGHT_CLASS = 'bg-success/10 text-success border-success/20';
 
 const CARD_BADGES: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; className: string }>> = {
   del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', className: BADGE_ERROR_CLASS },
   ins: { icon: Plus, i18nKey: 'essay_grading:markers.insert', className: BADGE_SUGGESTION_CLASS },
   replace: { icon: ArrowsLeftRight, i18nKey: 'essay_grading:markers.replace', className: BADGE_SUGGESTION_CLASS },
   note: { icon: ChatCircleText, i18nKey: 'essay_grading:markers.note', className: BADGE_SUGGESTION_CLASS },
-  good: { icon: Sparkle, i18nKey: 'essay_grading:markers.good', className: BADGE_HIGHLIGHT_CLASS },
+  good: { icon: Check, i18nKey: 'essay_grading:markers.good', className: BADGE_HIGHLIGHT_CLASS },
   err: { icon: Warning, i18nKey: 'essay_grading:markers.error.grammar', className: BADGE_ERROR_CLASS },
 };
 
@@ -496,18 +485,13 @@ const MarkerDetailCard: React.FC<{
   };
 
   return (
-    <div
-      className={cn(
-        'mt-2 rounded-r-lg rounded-l-sm border-y border-r border-border/35 border-l-2 bg-foreground/[0.02] px-3.5 py-3 text-sm',
-        getCardLeftBorderClass(marker)
-      )}
-    >
+    <div className="mt-2 rounded-lg border border-border/35 bg-foreground/[0.02] px-3.5 py-3 text-sm">
       {/* 类型徽章 + 批注导航 */}
       {(badge && BadgeIcon) || nav ? (
         <div className="flex items-center gap-2 mb-2">
           {badge && BadgeIcon && (
             <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border', badgeClassName)}>
-              <BadgeIcon size={12} weight={marker.type === 'good' ? 'fill' : 'regular'} />
+              <BadgeIcon size={12} weight={marker.type === 'good' ? 'bold' : 'regular'} />
               {badgeLabel}
             </span>
           )}
@@ -563,12 +547,12 @@ const MarkerDetailCard: React.FC<{
             <span
               className={cn(
                 'min-w-0 flex-1 break-words',
-                marker.type === 'del' && 'text-red-500/80 line-through',
+                marker.type === 'del' && 'text-destructive/80 line-through',
                 marker.type === 'replace' && 'text-muted-foreground/80 line-through',
                 marker.type === 'err' && (isSuggestionErr(marker)
-                  ? 'text-amber-700 dark:text-amber-400'
-                  : 'text-red-600/90 dark:text-red-400/90'),
-                marker.type === 'good' && 'text-emerald-700 dark:text-emerald-300',
+                  ? 'text-warning'
+                  : 'text-destructive/90'),
+                marker.type === 'good' && 'text-success',
                 marker.type === 'note' && 'text-foreground/85'
               )}
             >
@@ -583,7 +567,7 @@ const MarkerDetailCard: React.FC<{
             </span>
             <span className="inline-flex flex-wrap items-baseline gap-1.5 min-w-0 flex-1 break-words">
               {marker.type === 'replace' && <ArrowRight size={12} className="shrink-0 self-center text-muted-foreground/40" />}
-              <span className="min-w-0 break-words font-medium text-amber-700 dark:text-amber-400">
+              <span className="min-w-0 break-words font-medium text-warning">
                 {suggestionText}
               </span>
             </span>
@@ -603,7 +587,7 @@ const MarkerDetailCard: React.FC<{
         {applyChange && onApplySuggestion && (
           isApplied ? (
             <>
-              <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
+              <span className="inline-flex items-center gap-1 px-2 text-xs text-success select-none">
                 <Check size={12} weight="bold" />
                 {t('essay_grading:markers.applied')}
               </span>
@@ -638,7 +622,7 @@ const MarkerDetailCard: React.FC<{
             onClick={handleCopy}
             className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
-            {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
             {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
           </DsButton>
         )}

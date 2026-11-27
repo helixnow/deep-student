@@ -98,7 +98,7 @@ import {
 } from './sidebar/useSidebarChatActions';
 import { handleFinderKeyDown } from './sidebar/finderKeyboardShortcuts';
 import { SidebarMobileToolbar } from './sidebar/SidebarMobileToolbar';
-import { SidebarCanvasNavBar, SidebarCanvasToolbar } from './sidebar/SidebarCanvasBars';
+import { SidebarCanvasBar } from './sidebar/SidebarCanvasBars';
 import { SidebarFinderToolbar } from './sidebar/SidebarFinderToolbar';
 import { SidebarContentArea } from './sidebar/SidebarContentArea';
 import { SidebarContextMenu } from './sidebar/SidebarContextMenu';
@@ -136,6 +136,21 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
   const selectedSingleItem = selectedIds.size === 1
     ? displayedItems.find((item) => selectedIds.has(item.id)) ?? null
     : null;
+
+  useCommandEvents(
+    {
+      'learningHub:new-learning-note': () => {
+        setCreatingLearningNote(true);
+      },
+      'learningHub:import-markdown': () => {
+        void handleImportMarkdownNote();
+      },
+      'learningHub:new-textbook': () => {
+        void handleNewTextbook();
+      },
+    },
+    isSmallScreen && commandEventsEnabled,
+  );
 
   return (
     <div
@@ -182,8 +197,8 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
         customOverlayText={t('finder.dragDrop.overlayText')}
         className="flex-1 flex flex-col min-w-0 min-h-0"
       >
-        {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站；canvas 模式不叠渲染） */}
-        {isSmallScreen && mode !== 'canvas' && !hideToolbarAndNav && (
+        {/* 移动端按需展开条：仅在搜索展开态或回收站非空时渲染（搜索与新建已统一收敛至 UnifiedMobileHeader） */}
+        {isSmallScreen && mode !== 'canvas' && !hideToolbarAndNav && (mobileSearchExpanded || (isTrashView && items.length > 0)) && (
           <SidebarMobileToolbar
             t={t}
             mobileSearchExpanded={mobileSearchExpanded}
@@ -192,28 +207,15 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             canSearchInCurrentView={canSearchInCurrentView}
-            mobileCreateMenuOpen={mobileCreateMenuOpen}
-            setMobileCreateMenuOpen={setMobileCreateMenuOpen}
-            mobileCreateMenuTriggerRef={mobileCreateMenuTriggerRef}
-            canCreateInCurrentView={canCreateInCurrentView}
-            handleNewFolder={handleNewFolder}
-            handleNewNote={handleNewNote}
-            setCreatingLearningNote={setCreatingLearningNote}
-            handleImportMarkdownNote={handleImportMarkdownNote}
-            handleNewExam={handleNewExam}
-            handleNewTextbook={handleNewTextbook}
-            handleNewTranslation={handleNewTranslation}
-            handleNewEssay={handleNewEssay}
-            handleNewMindMap={handleNewMindMap}
             isTrashView={isTrashView}
             handleEmptyTrash={handleEmptyTrash}
             items={items}
           />
         )}
 
-        {/* ★ Canvas 模式导航栏：仅在进入子目录或存在历史记录时渲染，消除根目录双顶栏堆叠 */}
-        {mode === 'canvas' && !hideToolbarAndNav && (displayBreadcrumbs.length > 0 || historyIndex > 0 || history.length > 1) && (
-          <SidebarCanvasNavBar
+        {/* Canvas 模式合并单行顶栏：面包屑导航 / 多选状态 + 多选切换与关闭按钮 */}
+        {mode === 'canvas' && !hideToolbarAndNav && (
+          <SidebarCanvasBar
             t={t}
             isSmallScreen={isSmallScreen}
             goBack={goBack}
@@ -222,16 +224,6 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             history={history}
             jumpToBreadcrumb={jumpToBreadcrumb}
             displayBreadcrumbs={displayBreadcrumbs}
-          />
-        )}
-
-        {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮。
-            移动端聊天内嵌（hideToolbarAndNav）不渲染此条：面板完全使用全局
-            顶栏，多选切换按钮由 ChatV2Page 放到全局顶栏右上角。 */}
-        {mode === 'canvas' && !hideToolbarAndNav && (
-          <SidebarCanvasToolbar
-            t={t}
-            isSmallScreen={isSmallScreen}
             isMultiSelectMode={isMultiSelectMode}
             selectedIds={selectedIds}
             items={items}

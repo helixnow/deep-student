@@ -471,7 +471,7 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
           )}
 
           {lastRemovedRule && (
-            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1.5 text-[11px]">
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 px-2 py-1.5 text-xs">
               <span className="truncate">
                 {t('memoryAttribution.removedRuleBanner', {
                   instruction: lastRemovedRule.instruction,

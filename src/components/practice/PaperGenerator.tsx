@@ -55,18 +55,15 @@ interface PaperGeneratorProps {
   onGenerate?: (paper: GeneratedPaper) => void;
   /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
   isActive?: boolean;
+  /** 嵌入 PracticeLauncher / PaperLibrary 等自带顶栏的容器时省略内部重复标题与重复返回按钮 */
+  embedded?: boolean;
   className?: string;
 }
 
 // 组卷可配置的题型（含 2026-07 新增 true_false/numeric/matching/ordering）
 const QUESTION_TYPE_KEYS = PRACTICE_QUESTION_TYPES.filter((key) => key !== 'other');
 
-const DIFFICULTY_KEYS = [
-  { key: 'easy', dot: 'bg-success/75' },
-  { key: 'medium', dot: 'bg-warning/75' },
-  { key: 'hard', dot: 'bg-warning' },
-  { key: 'very_hard', dot: 'bg-destructive/80' },
-];
+const DIFFICULTY_KEYS = ['easy', 'medium', 'hard', 'very_hard'] as const;
 
 const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode; available: boolean }> = [
   { key: 'preview', icon: <Eye size={16} />, available: true },
@@ -80,6 +77,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   availableTags = [],
   onGenerate,
   isActive,
+  embedded = false,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -243,38 +241,36 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   if (showPreview && generatedPaper) {
     return (
       <div className={cn('ui-rise-in space-y-4', className)}>
-        <Card className="bg-transparent border-transparent shadow-none">
-          <CardHeader className="px-3 pb-4 sm:px-6">
-            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle
-                className="flex min-w-0 items-center gap-2 text-base"
-                title={generatedPaper.title}
+        <div className="flex flex-col items-stretch gap-3 px-0 pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div
+            className="flex min-w-0 items-center gap-2 text-base font-semibold text-foreground"
+            title={generatedPaper.title}
+          >
+            <FileText size={18} className="shrink-0 text-primary" />
+            <span className="truncate">{generatedPaper.title}</span>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="secondary">
+              {generatedPaper.questions.length} {t('paper.questions')}
+            </Badge>
+            {!embedded && (
+              <DsButton
+                variant="outline"
+                size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
+                onClick={() => setShowPreview(false)}
               >
-                <FileText size={18} className="shrink-0 text-primary" />
-                <span className="truncate">{generatedPaper.title}</span>
-              </CardTitle>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Badge variant="secondary">
-                  {generatedPaper.questions.length} {t('paper.questions')}
-                </Badge>
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  className="[@media(pointer:coarse)]:!min-h-11"
-                  onClick={() => setShowPreview(false)}
-                >
-                  {t('paper.back')}
-                </DsButton>
-                {exportFormat !== 'preview' && (
-                  <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleExport}>
-                    <Download size={16} className="mr-1" />
-                    {t('paper.export')}
-                  </DsButton>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
+                {t('paper.back')}
+              </DsButton>
+            )}
+            {exportFormat !== 'preview' && (
+              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleExport}>
+                <Download size={16} className="mr-1" />
+                {t('paper.export')}
+              </DsButton>
+            )}
+          </div>
+        </div>
         
         {/* 试卷内容：上限随视口走，大窗口不再浪费一半空间（原 min(60vh,520px)） */}
         <CustomScrollArea className="max-h-[min(74vh,960px)]" fullHeight={false}>
@@ -298,7 +294,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 </DsButton>
                 
                 {expandedQuestions.has(question.id) && (
-                  <div className="ui-rise-in px-4 pb-4 pt-1 space-y-3">
+                  <div className="ui-rise-in space-y-3 border-t border-border/35 px-4 pb-4 pt-3">
                     {!!question.materials?.length && <QuestionMaterialView materials={question.materials} />}
                     {/* 选项 */}
                     {question.options && question.options.length > 0 && (
@@ -312,9 +308,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                       </div>
                     )}
                     
-                    {/* 答案 */}
+                    {/* 答案：扁平化无边框浅色块，避免卡片内套描边卡片 */}
                     {includeAnswers && question.answer && (
-                      <div className="ml-0 rounded-xl border border-success/35 bg-success/[0.05] p-3 sm:ml-6">
+                      <div className="ml-0 rounded-lg bg-success/[0.06] px-3 py-2.5 sm:ml-6">
                         <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success">
                           <CheckCircle size={15} />
                           {t('paper.answer')}
@@ -323,9 +319,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                       </div>
                     )}
                     
-                    {/* 解析 */}
+                    {/* 解析：扁平化无边框浅色块 */}
                     {includeExplanations && question.explanation && (
-                      <div className="ml-0 rounded-xl border border-border/40 bg-muted/40 p-3 sm:ml-6">
+                      <div className="ml-0 rounded-lg bg-muted/40 px-3 py-2.5 sm:ml-6">
                         <div className="mb-1 text-xs font-medium text-foreground">
                           {t('paper.explanation')}
                         </div>
@@ -345,13 +341,15 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // 配置界面（与其余练习模式配置面板统一：透明背景、无边框）
   return (
     <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-      <CardHeader className="px-0 pb-4 sm:px-6">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FileText size={18} className="text-primary" />
-          {t('paper.title')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6 px-0 sm:px-6">
+      {!embedded && (
+        <CardHeader className="px-0 pb-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText size={18} className="text-primary" />
+            {t('paper.title')}
+          </CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={cn('space-y-6 px-0 sm:px-6', embedded && 'pt-1')}>
         {/* 试卷标题 */}
         <div className="space-y-2">
           <Label>{t('paper.paperTitle')}</Label>
@@ -405,19 +403,18 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             <span className="text-muted-foreground text-xs">{t('paper.noRestriction')}</span>
           </Label>
           <div className="flex flex-wrap gap-2">
-            {DIFFICULTY_KEYS.map(({ key, dot }) => (
+            {DIFFICULTY_KEYS.map((key) => (
               <DsButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => toggleDifficulty(key)}
                 className={cn(
-                  '!h-auto !rounded-lg !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium gap-1.5 border',
+                  '!h-auto !rounded-lg !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium border',
                   selectedDifficulties.includes(key)
                     ? 'border-primary/45 bg-primary/[0.06] text-foreground'
                     : 'border-border/40 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
                 )}
               >
-                <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', dot)} aria-hidden="true" />
                 {t(`difficultyLevel.${key}`)}
               </DsButton>
             ))}
@@ -490,7 +487,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 {icon}
                 <span className="text-xs">{t(`paper.format.${key}`)}</span>
                 {!available && (
-                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] leading-4">
+                  <Badge variant="secondary" className="px-1.5 py-0 text-2xs leading-4">
                     {t('paper.comingSoonBadge')}
                   </Badge>
                 )}

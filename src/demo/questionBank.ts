@@ -1,6 +1,9 @@
 import type { Question, QuestionBankStats, QuestionListResult, SubmitAnswerResult } from '@/stores/questionBankStore';
 import type { ExamSheetSessionDetail } from '@/utils/types';
 import { DEMO_QBANK_ID } from './fixtures';
+import { tr } from './lang';
+
+const DEMO_QBANK_NAME = tr('数据并行训练', 'Data-Parallel Training');
 
 const questions = new Map<string, Question>();
 const submissions = new Map<string, { questionId: string; correct: boolean | null }>();
@@ -27,7 +30,7 @@ function stats(): QuestionBankStats {
 
 function requireQuestion(id: string): Question {
   const question = questions.get(id);
-  if (!question) throw new Error('请先收录题目，再开始练习。');
+  if (!question) throw new Error(tr('请先收录题目，再开始练习。', 'Save questions first before starting practice.'));
   return question;
 }
 
@@ -37,7 +40,7 @@ export async function handleDemoQuestionBank(command: string, args: Record<strin
   switch (command) {
     case 'qbank_batch_create_questions': {
       const params = (args.paramsList ?? []) as Partial<Question>[];
-      if (params.some(q => q.exam_id !== DEMO_QBANK_ID)) throw new Error('请选择当前示例题目集。');
+      if (params.some(q => q.exam_id !== DEMO_QBANK_ID)) throw new Error(tr('请选择当前示例题目集。', 'Please select the current demo question bank.'));
       return params.map(p => {
         const now = new Date().toISOString();
         const question: Question = {
@@ -69,12 +72,12 @@ export async function handleDemoQuestionBank(command: string, args: Record<strin
     case 'qbank_refresh_stats':
       return stats();
     case 'get_exam_sheet_session_detail': {
-      if (args.request.session_id !== DEMO_QBANK_ID) throw new Error('请选择当前示例题目集。');
+      if (args.request.session_id !== DEMO_QBANK_ID) throw new Error(tr('请选择当前示例题目集。', 'Please select the current demo question bank.'));
       const detail: ExamSheetSessionDetail = {
-        summary: { id: DEMO_QBANK_ID, exam_name: '数据并行训练', mistake_id: DEMO_QBANK_ID,
+        summary: { id: DEMO_QBANK_ID, exam_name: DEMO_QBANK_NAME, mistake_id: DEMO_QBANK_ID,
           status: 'completed', created_at: '2026-09-01T09:00:00Z', updated_at: stats().updated_at,
           metadata: { page_count: 0, card_count: questions.size } },
-        preview: { session_id: DEMO_QBANK_ID, exam_name: '数据并行训练', pages: [] },
+        preview: { session_id: DEMO_QBANK_ID, exam_name: DEMO_QBANK_NAME, pages: [] },
       };
       return { detail };
     }
@@ -86,7 +89,7 @@ export async function handleDemoQuestionBank(command: string, args: Record<strin
       const correct: boolean | null = request.is_correct_override ?? grade.isCorrect;
       const previous = request.regrade_submission_id ? submissions.get(request.regrade_submission_id) : undefined;
       if (request.regrade_submission_id && previous?.questionId !== question.id) {
-        throw new Error('请在当前题目的作答记录中调整结果。');
+        throw new Error(tr('请在当前题目的作答记录中调整结果。', 'Please adjust the result within the current question attempt.'));
       }
       const now = new Date().toISOString();
       const count = question.correct_count + Number(correct === true) - Number(previous?.correct === true);
@@ -113,6 +116,6 @@ export async function handleDemoQuestionBank(command: string, args: Record<strin
     case 'qbank_get_authoring_draft':
       return null;
     default:
-      throw new Error('请使用示例题目的收录、作答与解析功能。');
+      throw new Error(tr('请使用示例题目的收录、作答与解析功能。', 'Use the save, practice, and explanation actions for the demo questions.'));
   }
 }

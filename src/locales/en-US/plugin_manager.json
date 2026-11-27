@@ -761,7 +761,7 @@
       }
     },
     "actions": {
-      "refineWithAi": "✦ Refine with AI",
+      "refineWithAi": "Refine with AI",
       "resumeVerification": "Resume verification",
       "start": "Start building",
       "install": "Install",

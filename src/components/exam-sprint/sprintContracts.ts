@@ -169,40 +169,6 @@ export interface SprintLauncherSnapshot {
 
 export const SPRINT_BUDGET_PRESETS = [10, 15, 25, 40] as const;
 
-export function getExamPhaseDotClass(phase: ExamPhase): string {
-  switch (phase) {
-    case 'foundation':
-      return 'bg-emerald-500';
-    case 'reinforce':
-      return 'bg-amber-500';
-    case 'sprint':
-      return 'bg-rose-500';
-    case 'maintenance':
-    case 'unscheduled':
-    default:
-      return 'bg-primary/70';
-  }
-}
-
-export function getSourceKindDotClass(kind: SemanticAnchorKind): string {
-  switch (kind) {
-    case 'mindmap':
-      return 'bg-teal-500';
-    case 'note':
-      return 'bg-emerald-500';
-    case 'pdf':
-    case 'epub':
-      return 'bg-sky-500';
-    case 'qbank':
-      return 'bg-amber-500';
-    case 'media':
-      return 'bg-indigo-500';
-    case 'custom':
-    default:
-      return 'bg-primary/70';
-  }
-}
-
 export function clampSprintBudgetMinutes(value: number | null | undefined, fallback = 15): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.max(5, Math.min(120, Math.round(value)));

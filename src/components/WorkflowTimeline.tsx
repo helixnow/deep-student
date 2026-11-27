@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Badge } from './ui/shad/Badge';
 import { Progress as ShadProgress } from './ui/shad/Progress';
-import { cn } from '../lib/utils';
+import { cn } from '@/utils/cn';
 import { useTranslation } from 'react-i18next';
 
 type TimelineStatus = 'pending' | 'active' | 'done';
@@ -35,12 +35,6 @@ interface WorkflowTimelineProps {
   prefersReducedMotion?: boolean;
   currentStep?: string;
 }
-
-const statusLineClass: Record<TimelineStatus, string> = {
-  done: 'bg-primary/80',
-  active: 'bg-primary/60 dark:bg-primary/80',
-  pending: 'bg-border',
-};
 
 export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
   items,
@@ -93,31 +87,29 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
     >
       <motion.div
         layout
-        className="overflow-hidden rounded-3xl border border-transparent ring-1 ring-border/40 bg-card/80 shadow-lg backdrop-blur"
+        className="overflow-hidden rounded-xl border border-border bg-card"
       >
-        <div className="flex flex-col gap-6 border-b border-border/60 bg-gradient-to-b from-background via-background/90 to-muted/30 p-6 md:p-7">
+        <div className="flex flex-col gap-5 border-b border-border p-5 md:p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-2">
               {isProcessing && (
-                <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground/70">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
                   {t('workflow.progress.processing')}
                 </div>
               )}
               <div className="space-y-1">
-                <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">{title}</h3>
-                {subtitle && <p className="text-sm text-muted-foreground/90">{subtitle}</p>}
+                <h3 className="text-lg font-semibold tracking-tight text-foreground md:text-xl">{title}</h3>
+                {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
               </div>
-              <p className="text-sm text-muted-foreground/80">{latestMessage}</p>
+              <p className="text-sm text-muted-foreground">{latestMessage}</p>
             </div>
-            <div className="flex items-center justify-center rounded-2xl border border-border/60 bg-background/70 px-6 py-4">
-              <div className="flex flex-col items-center text-center">
-                <span className="text-[36px] font-light leading-none text-foreground">{Math.round(overallProgress)}</span>
-                <span className="text-[11px] tracking-[0.26em] text-muted-foreground">%</span>
-              </div>
+            <div className="flex items-baseline gap-1 self-start md:self-end text-foreground">
+              <span className="text-3xl font-semibold leading-none tabular-nums">{Math.round(overallProgress)}</span>
+              <span className="text-xs text-muted-foreground">%</span>
             </div>
           </div>
-          <div className="flex flex-col gap-4">
-            <ShadProgress value={overallProgress} className="h-[3px] rounded-full bg-border/40" />
+          <div className="flex flex-col gap-3">
+            <ShadProgress value={overallProgress} className="h-1 rounded-full bg-muted" />
             <div className="flex flex-wrap justify-between gap-1 md:gap-2">
               {timelineMetas.map((meta, index) => {
                 const isCurrent = meta.step === activeItem?.step;
@@ -128,22 +120,32 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
                     type="button"
                     onClick={() => setFocusedStep(meta.step)}
                     className={cn(
-                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:min-h-11',
-                      meta.status === 'done' && 'text-emerald-500',
+                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+                      meta.status === 'done' && 'text-success',
                       meta.status === 'active' && 'text-primary',
-                      meta.status === 'pending' && 'text-muted-foreground/70',
-                      isCurrent && 'text-primary'
+                      meta.status === 'pending' && 'text-muted-foreground',
+                      isCurrent && 'bg-muted/60 text-primary'
                     )}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0, transition: { duration: prefersReducedMotion ? 0.15 : 0.3, delay: prefersReducedMotion ? 0 : index * 0.04 } }}
                   >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full border border-current/50 text-xs">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full border border-current/40 text-xs">
                       {meta.visuals.icon}
                     </span>
                     <span className="text-center leading-tight text-current">
                       {meta.title}
                     </span>
-                    <span className={cn('absolute inset-x-6 bottom-0 h-[2px] rounded-full opacity-0 transition-opacity', isCurrent && 'opacity-100', meta.status === 'done' ? 'bg-emerald-400/80' : meta.status === 'active' ? 'bg-primary/80' : 'bg-border/60')} />
+                    <span
+                      className={cn(
+                        'absolute inset-x-4 bottom-0 h-0.5 rounded-full opacity-0 transition-opacity',
+                        isCurrent && 'opacity-100',
+                        meta.status === 'done'
+                          ? 'bg-success'
+                          : meta.status === 'active'
+                            ? 'bg-primary'
+                            : 'bg-border'
+                      )}
+                    />
                   </motion.button>
                 );
               })}
@@ -152,31 +154,30 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
         </div>
 
         {activeItem && (
-          <div className="px-6 pb-5 pt-3 md:px-7">
+          <div className="px-5 py-4 md:px-6">
             <motion.div
               key={activeItem.step}
               layout
               initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0, transition: { duration: prefersReducedMotion ? 0.15 : 0.25 } }}
               exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
-              className="flex flex-col gap-2 rounded-lg border border-border/40 bg-background/60 px-5 py-3 text-sm text-foreground"
+              className="flex flex-col gap-2 text-sm text-foreground"
             >
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground/70">
-                <Badge variant={activeItem.visuals.badge} className="rounded-full px-3 py-0.5 text-[10px] uppercase tracking-wider">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <Badge variant={activeItem.visuals.badge} className="rounded-full px-2.5 py-0.5 text-xs uppercase tracking-wider">
                   {activeItem.visuals.label}
                 </Badge>
                 {activeItem.percentage !== undefined && (
-                  <span className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-0.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/70" aria-hidden="true" />
+                  <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-foreground">
                     {t('workflow.progress.percentage', { value: Math.round(activeItem.percentage) })}
                   </span>
                 )}
                 <span>{formatTimestamp(activeItem.timestamp ?? '') || '—'}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground/80">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span className="text-sm font-semibold text-foreground">{activeItem.title}</span>
                 {(activeItem.description || activeItem.message) && (
-                  <span className="truncate text-muted-foreground/80">
+                  <span className="truncate text-muted-foreground">
                     {activeItem.description ?? activeItem.message}
                   </span>
                 )}

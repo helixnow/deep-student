@@ -11,7 +11,6 @@ import {
   SPRINT_BUDGET_PRESETS,
   clampSprintBudgetMinutes,
   formatReadinessPercent,
-  getExamPhaseDotClass,
   type ExamReadinessSnapshot,
 } from './sprintContracts';
 import {
@@ -136,7 +135,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       data-testid="exam-horizon-config-dialog"
       style={{ zIndex: Z_INDEX.modal }}
       onClick={() => setConfigOpen(false)}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-background/75 p-4 backdrop-blur-xs"
+      className="fixed inset-0 flex items-center justify-center bg-background/75 p-4 backdrop-blur-xs"
     >
       <div
         onClick={(event) => event.stopPropagation()}
@@ -256,10 +255,6 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             onClick={() => setConfigOpen(true)}
             className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-muted/60"
           >
-            <span
-              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', getExamPhaseDotClass(readiness.phase))}
-              aria-hidden="true"
-            />
             <span className="font-mono font-medium tabular-nums text-foreground">
               {countdownText}
             </span>
@@ -273,7 +268,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             type="button"
             data-testid="hud-header-sprint-cta"
             onClick={() => openDailySprint({ source: 'study-space-header' })}
-            className="inline-flex h-5 items-center gap-1 rounded-md bg-primary/12 px-2 font-mono text-[11px] font-medium tabular-nums text-primary transition-colors hover:bg-primary/20 active:scale-95 active:opacity-80"
+            className="inline-flex h-5 items-center gap-1 rounded-md bg-primary/12 px-2 font-mono text-2xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/20 active:scale-95 active:opacity-80"
           >
             <Play size={12} weight="fill" aria-hidden="true" />
             <span>{ctaText}</span>
@@ -306,11 +301,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             aria-label={t('examSprint.hud.editConfigLabel')}
             className="inline-flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-foreground/5 [@media(pointer:coarse)]:min-h-[44px]"
           >
-            <span
-              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', getExamPhaseDotClass(readiness.phase))}
-              aria-hidden="true"
-            />
-            <span className="truncate font-mono text-[11px] font-medium tabular-nums text-foreground">
+            <span className="truncate font-mono text-2xs font-medium tabular-nums text-foreground">
               {agendaSummary}
             </span>
           </button>
@@ -319,7 +310,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
             type="button"
             data-testid="wb-agenda-sprint-cta"
             onClick={() => openDailySprint({ source: 'desktop-agenda' })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/12 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-primary transition-colors hover:bg-primary/20 active:scale-95 active:opacity-80 [@media(pointer:coarse)]:min-h-[44px]"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/12 px-2 py-1 font-mono text-2xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/20 active:scale-95 active:opacity-80 [@media(pointer:coarse)]:min-h-[44px]"
           >
             <Play size={11} weight="fill" aria-hidden="true" />
             <span>{ctaText}</span>
@@ -348,10 +339,6 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-            <span
-              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', getExamPhaseDotClass(readiness.phase))}
-              aria-hidden="true"
-            />
             <span className="font-mono font-medium tabular-nums text-foreground">
               {countdownText}
             </span>

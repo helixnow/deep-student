@@ -238,7 +238,7 @@ const TrashSections: React.FC = () => {
 
   const sectionHeaderClass = cn(
     'sticky top-0 z-[1] px-2.5 pb-1 pt-2',
-    'bg-[color:var(--surface-root)]/95 backdrop-blur-sm',
+    'bg-[color:var(--surface-root)] border-b border-border/30',
     'text-xs font-medium uppercase tracking-wide text-muted-foreground/70',
   );
 
@@ -246,7 +246,7 @@ const TrashSections: React.FC = () => {
     <div className="space-y-3">
       {trashLists.length > 0 && (
         <section>
-          <div data-wb-blur-surface className={sectionHeaderClass}>{t('todo:trash.listsSection')}</div>
+          <div className={sectionHeaderClass}>{t('todo:trash.listsSection')}</div>
           <div className="space-y-0.5">
             <AnimatePresence initial={false}>
               {trashLists.map((list) => (
@@ -275,7 +275,7 @@ const TrashSections: React.FC = () => {
 
       {trashItems.length > 0 && (
         <section>
-          <div data-wb-blur-surface className={sectionHeaderClass}>{t('todo:trash.itemsSection')}</div>
+          <div className={sectionHeaderClass}>{t('todo:trash.itemsSection')}</div>
           <div className="space-y-0.5">
             <AnimatePresence initial={false}>
               {trashItems.map((item) => (

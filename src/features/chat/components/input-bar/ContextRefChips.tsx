@@ -12,7 +12,7 @@
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning, Quotes } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import type { ContextRef } from '../../resources/types';
@@ -90,23 +90,12 @@ function isVisualizedElsewhere(typeId: string): boolean {
   return ATTACHMENT_VISUALIZED_TYPES.has(typeId) || SKILL_VISUALIZED_TYPES.has(typeId);
 }
 
-const TYPE_COLORS: Readonly<Record<string, string>> = {
-  note: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  textbook: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  exam: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  essay: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  translation: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-  folder: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  selection: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-  skill: 'bg-primary/20 text-primary',
-  skill_instruction: 'bg-primary/20 text-primary',
-};
+const NEUTRAL_CHIP_COLOR_CLASS = 'bg-muted/70 text-foreground border-border/40';
 
 /**
- * 根据类型 ID 获取 Chip 颜色样式
+ * 根据类型 ID 获取 Chip 颜色样式（统一中性语义 token，以图标区分类型）
  */
-export const getTypeColorClass = (typeId: string): string =>
-  Object.hasOwn(TYPE_COLORS, typeId) ? TYPE_COLORS[typeId] : 'bg-muted text-foreground';
+export const getTypeColorClass = (_typeId: string): string => NEUTRAL_CHIP_COLOR_CLASS;
 
 // ============================================================================
 // 主组件
@@ -154,8 +143,8 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               key={`${ref.resourceId}-${ref.hash}`}
               className={cn(
                 'context-ref-chip inline-flex items-center gap-1.5 px-3 py-1',
-                'rounded-full text-xs font-medium border border-transparent',
-                'transition-all duration-200 hover:scale-105 cursor-default',
+                'rounded-full text-xs font-medium border',
+                'transition-colors duration-150 cursor-default',
                 colorClass,
                 isSticky && 'shadow-sm ring-1 ring-background/50'
               )}

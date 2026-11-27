@@ -9,6 +9,7 @@ import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { TRANSLATION_LANGUAGES } from '@/translation/languages';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor28, coarseHitClassFor32 } from '@/components/ui/coarseHit';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
@@ -72,8 +73,6 @@ interface TranslationMainProps {
   onCopyResult: () => void;
   onExportTranslation: () => void;
   onRateTranslation: (rating: number) => void;
-  canRestorePrevious?: boolean;
-  onRestorePrevious?: () => void;
   isOutdated?: boolean;
   onSaveAsNewVersion?: () => void;
   onKeepCurrentTranslation?: () => void;
@@ -98,10 +97,6 @@ function loadLayoutMode(): LayoutMode {
 const NARROW_LAYOUT_THRESHOLD = 680;
 /** 工具条放不下「自动翻译 / 同步滚动」两个开关的容器宽度（开关仍在设置面板里） */
 const TOOLBAR_COMPACT_THRESHOLD = 860;
-
-/** 触屏命中区扩展：32px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
-const COARSE_HIT =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
 
 export const TranslationMain: React.FC<TranslationMainProps> = ({
   srcLang,
@@ -151,8 +146,6 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   onCopyResult,
   onExportTranslation,
   onRateTranslation,
-  canRestorePrevious,
-  onRestorePrevious,
   isOutdated,
   onSaveAsNewVersion,
   onKeepCurrentTranslation,
@@ -288,8 +281,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   const canSwap = !isTranslating && !isEditingTranslation && (srcLang !== 'auto' || !!detectedLang);
 
   const toolbar = (
-    // flex-wrap + 独立语言组 z-10：任何窗口/分栏宽度下，「目标语言」都不会被右侧「正式/非正式」分段控件遮挡
-    <div data-wb-blur-surface className="min-h-12 h-auto py-1.5 shrink-0 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 sm:px-4 border-b border-border/35 bg-background/80 backdrop-blur-md z-20">
+    // 移动端仅保留单行语向切换（语气/术语/高级开关统一收在设置面板）；桌面按宽度自适应
+    <div className="min-h-12 h-auto py-1.5 shrink-0 flex flex-nowrap md:flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 sm:px-4 border-b border-border/35 bg-background z-20">
       {/* 左：布局切换（仅桌面；窄容器时强制上下布局并禁用）。 */}
       <div className="hidden md:flex items-center justify-start shrink-0">
         <SegmentedControl<LayoutMode>
@@ -297,9 +290,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           value={layoutControlValue}
           onValueChange={setLayoutMode}
           size="compact"
-          // ! 必须：app.css .study-shell-segmented-button 的 min-height:0
-          // 会压掉基元 coarse min-h-11，触屏命中区需 important 才能 ≥44px
-          itemClassName="[@media(pointer:coarse)]:!min-h-11"
+          itemClassName={coarseHitClassFor28}
           options={[
             {
               value: 'split',
@@ -340,7 +331,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
             size="icon"
             onClick={handleSwapClick}
             disabled={!canSwap}
-            className={cn(COARSE_HIT, 'h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground')}
+            className={cn(coarseHitClassFor32, 'h-8 w-8 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 shrink-0 text-muted-foreground hover:text-foreground')}
             aria-label={t('translation:actions.swap_languages')}
           >
             <span
@@ -362,30 +353,27 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         />
       </div>
 
-      {/* 右：翻译中指示 + 常用开关 + 设置开合（自动换行不侵入语言组） */}
-      <div className="flex w-full md:w-auto flex-wrap items-center justify-between md:justify-end gap-1 sm:gap-2 min-w-0 max-w-full">
+      {/* 右：仅桌面展示翻译中指示 + 语气 + 常用开关 + 单一设置/术语入口（<768px 统一收进 PromptPanel 设置页） */}
+      <div className="hidden md:flex w-auto flex-wrap items-center justify-end gap-1 sm:gap-2 min-w-0 max-w-full">
         {isTranslating && (
-          <span className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
             <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
             {t('translation:actions.translating')}
           </span>
         )}
 
-        {/* 语气（正式度）快捷切换：全视口主视图直接可见；<768px 独立紧凑条，≥44px 触屏命中区、360px 零横向溢出 */}
+        {/* 语气（正式度）快捷切换（仅桌面；移动端收进 PromptPanel 设置面板避免顶部多层工具条叠压） */}
         <div
           data-testid="translation-formality-bar"
-          className="flex w-full md:w-auto items-center justify-between md:justify-start gap-2 min-w-0 max-w-full pt-1 md:pt-0 border-t border-border/25 md:border-t-0"
+          className="flex items-center justify-start gap-2 min-w-0 max-w-full"
         >
-          <span className="md:hidden shrink-0 text-xs font-medium text-muted-foreground">
-            {t('translation:prompt_editor.formality')}
-          </span>
           <SegmentedControl
             ariaLabel={t('translation:prompt_editor.formality')}
             value={formality}
             onValueChange={setFormality}
             size="compact"
-            className="min-w-0 max-w-full flex-1 md:flex-none"
-            itemClassName="flex-1 md:flex-none justify-center min-w-0 truncate px-2 sm:px-2.5 [@media(pointer:coarse)]:!min-h-11"
+            className="min-w-0 max-w-full"
+            itemClassName={cn(coarseHitClassFor28, 'justify-center min-w-0 truncate px-2 sm:px-2.5')}
             options={[
               { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
               { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
@@ -405,7 +393,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-auto-translate"
-            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
           >
             {t('translation:workbench.toolbar.auto_translate')}
           </Label>
@@ -420,7 +408,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-sync-scroll"
-            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
           >
             {t('translation:sync_scroll')}
           </Label>
@@ -428,52 +416,49 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
         <div className={cn('hidden w-px h-4 bg-border/35', !isToolbarCompact && 'lg:block')} />
 
-        {/* 术语表与翻译设置入口：无论是否处于外部宿主导航模式，均保持一键可达，兑现空状态「术语表约束」承诺 */}
+        {/* 单一权威翻译设置 / 术语表入口（合并原重复的术语表与齿轮两个同动作按钮） */}
         {!isSmallScreen && (
-          <CommonTooltip content={t('translation:prompt_editor.title')}>
+          <CommonTooltip
+            content={
+              settingsAsPage
+                ? t('translation:prompt_editor.glossary_title')
+                : t('translation:prompt_editor.title')
+            }
+          >
             <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setShowPromptEditor(!showPromptEditor)}
-              aria-label={t('translation:prompt_editor.glossary_title')}
+              aria-label={
+                settingsAsPage
+                  ? t('translation:prompt_editor.glossary_title')
+                  : t('translation:prompt_editor.title')
+              }
               aria-expanded={showPromptEditor}
               className={cn(
-                COARSE_HIT,
-                'h-8 px-2 gap-1.5 shrink-0 text-xs font-medium',
+                coarseHitClassFor32,
+                'h-8 [@media(pointer:coarse)]:!min-h-0 px-2 gap-1.5 shrink-0 text-xs font-medium',
                 showPromptEditor || glossary.length > 0
                   ? 'text-primary bg-primary/10 hover:bg-primary/15'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <BookBookmark size={14} aria-hidden="true" />
-              <span className="whitespace-nowrap">{t('translation:prompt_editor.glossary_title')}</span>
+              {settingsAsPage ? (
+                <>
+                  <BookBookmark size={14} aria-hidden="true" />
+                  <span className="whitespace-nowrap">{t('translation:prompt_editor.glossary_title')}</span>
+                </>
+              ) : (
+                <>
+                  <GearSix size={15} aria-hidden="true" />
+                  <span className="whitespace-nowrap">{t('translation:prompt_editor.title')}</span>
+                </>
+              )}
               {glossary.length > 0 && (
-                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] leading-none font-mono tabular-nums text-primary">
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-2xs leading-none font-mono tabular-nums text-primary">
                   {glossary.length}
                 </span>
               )}
-            </DsButton>
-          </CommonTooltip>
-        )}
-
-        {/* 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏 */}
-        {!settingsAsPage && !isSmallScreen && (
-          <CommonTooltip content={t('translation:prompt_editor.title')}>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowPromptEditor(!showPromptEditor)}
-              aria-label={t('translation:prompt_editor.title')}
-              aria-expanded={showPromptEditor}
-              className={cn(
-                COARSE_HIT,
-                'h-8 w-8 shrink-0',
-                showPromptEditor
-                  ? 'text-primary bg-primary/10'
-                  : 'text-muted-foreground/60 hover:text-foreground'
-              )}
-            >
-              <GearSix size={16} />
             </DsButton>
           </CommonTooltip>
         )}
@@ -520,8 +505,6 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       isSpeaking={isSpeaking}
       onCopyResult={onCopyResult}
       onExportTranslation={onExportTranslation}
-      canRestorePrevious={canRestorePrevious}
-      onRestorePrevious={onRestorePrevious}
       isOutdated={isOutdated}
       onRetranslate={onTranslate}
       onSaveAsNewVersion={onSaveAsNewVersion}

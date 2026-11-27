@@ -18,6 +18,7 @@
  */
 
 import type { DstuNode } from '@/dstu/types';
+import { isDemoEn, tr } from './lang';
 
 // ============================================================================
 // ID 与命名
@@ -25,7 +26,10 @@ import type { DstuNode } from '@/dstu/types';
 
 export const DEMO_PDF_SOURCE_ID = 'file_demo_mlsys';
 export const DEMO_PDF_RESOURCE_ID = 'res_demo_pdf';
-export const DEMO_PDF_NAME = '机器学习系统（第 3 章）·数据并行训练.pdf';
+export const DEMO_PDF_NAME = tr(
+  '机器学习系统（第 3 章）·数据并行训练.pdf',
+  'Machine Learning Systems (Ch. 3) - Data-Parallel Training.pdf',
+);
 
 export interface DemoImageAsset {
   /** 消息 contextSnapshot 里的 resourceId（res_xxx） */
@@ -41,19 +45,21 @@ export interface DemoImageAsset {
 // ============================================================================
 
 function wrongProblemSvg(title: string, lines: string[], redNote: string): string {
+  const lineFontSize = isDemoEn ? 26 : 30;
+  const noteFontSize = isDemoEn ? 24 : 28;
   const textLines = lines
     .map(
       (l, i) =>
-        `<text x="60" y="${170 + i * 56}" font-size="30" fill="#1f2937" font-family="'PingFang SC','Microsoft YaHei',sans-serif">${l}</text>`,
+        `<text x="60" y="${170 + i * 56}" font-size="${lineFontSize}" fill="#1f2937" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">${l}</text>`,
     )
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
   <rect width="900" height="620" fill="#f8f7f4"/>
   <rect x="18" y="18" width="864" height="584" rx="10" fill="#ffffff" stroke="#e5e2dc" stroke-width="2"/>
   <line x1="18" y1="96" x2="882" y2="96" stroke="#f0ede6" stroke-width="2"/>
-  <text x="60" y="66" font-size="26" font-weight="600" fill="#9ca3af" font-family="'PingFang SC','Microsoft YaHei',sans-serif">${title}</text>
+  <text x="60" y="66" font-size="26" font-weight="600" fill="#9ca3af" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">${title}</text>
   ${textLines}
-  <text x="60" y="500" font-size="28" fill="#dc2626" font-family="'PingFang SC','Microsoft YaHei',sans-serif" transform="rotate(-2 60 500)">${redNote}</text>
+  <text x="60" y="500" font-size="${noteFontSize}" fill="#dc2626" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" transform="rotate(-2 60 500)">${redNote}</text>
   <path d="M560 470 q 40 -30 90 -12 q 50 18 96 -16" stroke="#dc2626" stroke-width="4" fill="none" stroke-linecap="round"/>
   <path d="M742 424 l 22 6 m -4 -18 l -18 24" stroke="#dc2626" stroke-width="4" fill="none" stroke-linecap="round"/>
 </svg>`;
@@ -63,31 +69,37 @@ export const DEMO_IMAGE_ASSETS: DemoImageAsset[] = [
   {
     resourceId: 'res_demo_img1',
     sourceId: 'att_demo_img1',
-    name: '错题1·等价无穷小替换.png',
+    name: tr('错题1·等价无穷小替换.png', 'Mistake 1 - Equivalent Infinitesimals.png'),
     svg: wrongProblemSvg(
-      '高等数学 · 错题照片 1',
-      ['求 lim(x→0) (sin x − x) / x³', '解：sin x ~ x，原式 = (x − x) / x³ = 0'],
-      '✗ 等价无穷小不能用于相减项！',
+      tr('高等数学 · 错题照片 1', 'Calculus · Mistake Photo 1'),
+      isDemoEn
+        ? ['Find lim(x→0) (sin x − x) / x³', 'Sol: sin x ~ x, so (x − x) / x³ = 0']
+        : ['求 lim(x→0) (sin x − x) / x³', '解：sin x ~ x，原式 = (x − x) / x³ = 0'],
+      tr('✗ 等价无穷小不能用于相减项！', '✗ Never substitute equivalents inside a difference!'),
     ),
   },
   {
     resourceId: 'res_demo_img2',
     sourceId: 'att_demo_img2',
-    name: '错题2·换元积分忘换限.png',
+    name: tr('错题2·换元积分忘换限.png', 'Mistake 2 - Substitution Limits.png'),
     svg: wrongProblemSvg(
-      '高等数学 · 错题照片 2',
-      ['∫₀^π sin²x dx，令 u = cos x', '原式 = ∫ √1−u² du（上下限照抄 0→π）'],
-      '✗ 换元必须换限：x=0→u=1，x=π→u=−1',
+      tr('高等数学 · 错题照片 2', 'Calculus · Mistake Photo 2'),
+      isDemoEn
+        ? ['∫₀^π sin²x dx, let u = cos x', 'Got ∫ √(1−u²) du (kept limits 0 → π)']
+        : ['∫₀^π sin²x dx，令 u = cos x', '原式 = ∫ √1−u² du（上下限照抄 0→π）'],
+      tr('✗ 换元必须换限：x=0→u=1，x=π→u=−1', '✗ Update bounds too: x=0→u=1, x=π→u=−1'),
     ),
   },
   {
     resourceId: 'res_demo_img3',
     sourceId: 'att_demo_img3',
-    name: '错题3·中值定理辅助函数.png',
+    name: tr('错题3·中值定理辅助函数.png', 'Mistake 3 - Mean Value Auxiliary Fn.png'),
     svg: wrongProblemSvg(
-      '高等数学 · 错题照片 3',
-      ['证：∃ξ∈(a,b)，使 f′(ξ) = (f(b)−f(a))/(b−a)', '证明：由拉格朗日中值定理显然成立。'],
-      '✗ 循环论证！先构造 F(x) 再落罗尔定理',
+      tr('高等数学 · 错题照片 3', 'Calculus · Mistake Photo 3'),
+      isDemoEn
+        ? ['Prove: ∃ξ∈(a,b), f′(ξ) = (f(b)−f(a))/(b−a)', 'Proof: Obvious by the Mean Value Theorem.']
+        : ['证：∃ξ∈(a,b)，使 f′(ξ) = (f(b)−f(a))/(b−a)', '证明：由拉格朗日中值定理显然成立。'],
+      tr('✗ 循环论证！先构造 F(x) 再落罗尔定理', '✗ Circular proof! Build F(x), then apply Rolle'),
     ),
   },
 ];
@@ -264,13 +276,22 @@ export function getDemoPdfBase64(): string {
 }
 
 /** 后端 DocumentParser 对 PDF 的解析文本（文件 chip 解析结果用） */
-export const DEMO_PDF_PARSED_TEXT = `机器学习系统 · 第 3 章 数据并行训练（解析文本摘要）
+export const DEMO_PDF_PARSED_TEXT = tr(
+  `机器学习系统 · 第 3 章 数据并行训练（解析文本摘要）
 
 3.1 数据并行的基本范式：mini-batch 切分到 K 个 worker，各自在完整模型副本上计算梯度，由参数服务器（Parameter Server）聚合后再广播更新值。
 3.2 同步的代价：同步 SGD 要求所有 worker 等待最慢的一步，straggler 效应使加速比随 worker 数增加而显著偏离线性。
 3.4 破局方向：通信受限场景下，梯度压缩（量化 / 稀疏化）与流水线并行是降低同步开销的两条主要路径。
 
-（共 60 页，第 3 章为第 44–56 页）`;
+（共 60 页，第 3 章为第 44–56 页）`,
+  `Machine Learning Systems · Ch. 3 Data-Parallel Training (Parsed Summary)
+
+3.1 Core Data-Parallel Protocol: Each mini-batch is split across K workers. Every worker holds a full model replica, computes gradients on its shard, and sends them to a Parameter Server for aggregation and broadcast.
+3.2 Synchronization Cost: Synchronous SGD requires all workers to wait for the slowest step; the straggler effect causes scaling to deviate from linear as worker count grows.
+3.4 Communication Optimization: Under bandwidth bottlenecks, gradient compression (quantization / sparsification) and pipeline parallelism are two primary paths to reduce synchronization overhead.
+
+(60 pages total; Chapter 3 spans pp. 44–56)`,
+);
 
 // ============================================================================
 // mock 查询接口（mockIpc 调用）
@@ -337,7 +358,7 @@ export async function resolveDemoAttachmentRef(
       resourceHash: `hash_${img.sourceId}`,
       type: 'image',
       name: img.name,
-      path: `/上传/${img.name}`,
+      path: `${tr('/上传/', '/Uploads/')}${img.name}`,
       found: true,
       content: pngBase64,
       metadata: { mimeType: 'image/png', size: Math.floor((pngBase64.length * 3) / 4) },
@@ -349,7 +370,7 @@ export async function resolveDemoAttachmentRef(
       resourceHash: `hash_${DEMO_PDF_SOURCE_ID}`,
       type: 'file',
       name: DEMO_PDF_NAME,
-      path: `/上传/${DEMO_PDF_NAME}`,
+      path: `${tr('/上传/', '/Uploads/')}${DEMO_PDF_NAME}`,
       found: true,
       content: DEMO_PDF_PARSED_TEXT,
       metadata: { mimeType: 'application/pdf', size: Math.floor((getDemoPdfBase64().length * 3) / 4) },

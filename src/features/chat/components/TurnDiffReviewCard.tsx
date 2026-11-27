@@ -718,13 +718,6 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
       {/* 顶部汇总栏 */}
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border/35 px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span
-            data-testid="turn-diff-status-dot"
-            className={cn(
-              'h-1.5 w-1.5 shrink-0 rounded-full',
-              totals.allReverted ? 'bg-muted-foreground/60' : 'bg-success',
-            )}
-          />
           <span className="text-xs font-medium text-foreground">
             {titleLabel}
           </span>
@@ -815,18 +808,6 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                   ) : (
                     <CaretRight size={12} className="shrink-0 text-muted-foreground" />
                   )}
-                  <span
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      entry.reverted
-                        ? 'bg-muted-foreground/50'
-                        : entry.kind === 'created'
-                          ? 'bg-success'
-                          : entry.kind === 'deleted'
-                            ? 'bg-destructive'
-                            : 'bg-primary',
-                    )}
-                  />
                   <FileCode size={13} className="shrink-0 text-muted-foreground" />
                   <span
                     className={cn(

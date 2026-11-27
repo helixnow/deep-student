@@ -42,7 +42,8 @@ import {
   EyeSlash,
   Article,
   Quotes,
-  Sparkle,
+  TreeStructure,
+  ListBullets,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -374,7 +375,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
               {t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
             </AppMenuItem>
             <AppMenuItem
-              icon={<Sparkle size={16} />}
+              icon={<TreeStructure size={16} />}
               onClick={() =>
                 handleAiNodeAction(
                   'expand',
@@ -386,7 +387,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
               {t('ai.expand', { defaultValue: 'AI 扩写' })}
             </AppMenuItem>
             <AppMenuItem
-              icon={<Sparkle size={16} />}
+              icon={<ListBullets size={16} />}
               onClick={() =>
                 handleAiNodeAction(
                   'summarize',

@@ -107,9 +107,10 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
         </p>
       )}
       {creating ? (
-        <Suspense fallback={<CircleNotch className="animate-spin" />}>
+        <Suspense fallback={<CircleNotch className="animate-spin motion-reduce:animate-none" />}>
           <PaperGenerator
             examId={examId}
+            embedded
             onGenerate={(paper) => {
               setSelected(paper);
               setCreating(false);

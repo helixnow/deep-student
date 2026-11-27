@@ -605,18 +605,16 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   if (loadError) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-background gap-4 p-8 ui-fade-in" role="alert">
-        <div className="flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10">
-          <Warning size={32} className="text-destructive" aria-hidden="true" />
-        </div>
+        <Warning size={28} className="text-destructive" aria-hidden="true" />
         <p className="text-sm text-destructive text-center max-w-md">
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
         <div className="flex gap-2">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" onClick={() => void loadSession()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" onClick={onClose}>
               {t('common:back')}
             </DsButton>
           )}

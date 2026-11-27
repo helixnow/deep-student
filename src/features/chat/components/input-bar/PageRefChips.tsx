@@ -9,7 +9,7 @@
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, BookOpen } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import type { PdfPageRefsState } from './usePdfPageRefs';
@@ -93,8 +93,8 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
         <div
           className={cn(
             'inline-flex items-center gap-1.5 px-2.5 py-0.5',
-            'rounded-full text-xs font-medium border border-transparent',
-            'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+            'rounded-full text-xs font-medium border',
+            'bg-muted/70 text-foreground border-border/40'
           )}
           title={`${pageRefs.sourceName} ${label}`}
         >

@@ -93,7 +93,6 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
       {groups.map((group) => (
         <section key={group.key} className="nlv-group" data-mastery={view === 'status' ? group.key : undefined}>
           <h3 className="nlv-group-label">
-            {view === 'status' && <i className="nlv-dot" aria-hidden="true" />}
             {group.label} · {group.notes.length}
           </h3>
           {group.notes.length === 0 && <p className="nlv-empty">
