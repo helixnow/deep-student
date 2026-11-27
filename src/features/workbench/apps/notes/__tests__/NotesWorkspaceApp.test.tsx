@@ -1176,32 +1176,33 @@ describe('NotesWorkspaceApp', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('exposes a library-root drop target for moving resources with NotesWorkspaceTree', async () => {
+  it('omits the redundant library-root row and renders top-level folders directly at level 1', async () => {
     render(<NotesWorkspaceApp {...props()} />);
-    const root = await screen.findByRole('treeitem', { name: /根目录|Library root|资料库/ });
-    expect(root).toHaveAttribute('data-nwt-id', '__nwt_root__');
     expect(await screen.findByRole('treeitem', { name: /课堂笔记/ })).toBeInTheDocument();
+    expect(screen.queryByRole('treeitem', { name: /根目录|Library root|资料库/ })).toBeNull();
+    const folder = screen.getByText('course').closest('[role="treeitem"]') as HTMLElement;
+    expect(folder).toHaveAttribute('aria-level', '1');
   });
 
-  it('includes the library root in tree semantics and keyboard navigation', async () => {
+  it('supports keyboard navigation across top-level folders and notes without a fake root row', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
 
-    const tree = screen.getByRole('tree');
-    const root = within(tree).getByRole('treeitem', { name: /根目录|Library root|资料库/ });
     const folder = screen.getByText('course').closest('[role="treeitem"]') as HTMLElement;
+    const childNote = screen.getByText('课堂笔记').closest('[role="treeitem"]') as HTMLElement;
 
-    expect(root).toHaveAttribute('aria-level', '1');
-    expect(folder).toHaveAttribute('aria-level', '2');
+    expect(folder).toHaveAttribute('aria-level', '1');
+    expect(childNote).toHaveAttribute('aria-level', '2');
 
-    root.focus();
-    fireEvent.keyDown(root, { key: 'ArrowDown' });
+    folder.focus();
+    fireEvent.keyDown(folder, { key: 'ArrowDown' });
+    await waitFor(() => expect(childNote).toHaveFocus());
+
+    fireEvent.keyDown(childNote, { key: 'ArrowLeft' });
     await waitFor(() => expect(folder).toHaveFocus());
 
     fireEvent.keyDown(folder, { key: 'ArrowLeft' });
     await waitFor(() => expect(folder).toHaveAttribute('aria-expanded', 'false'));
-    fireEvent.keyDown(folder, { key: 'ArrowLeft' });
-    await waitFor(() => expect(root).toHaveFocus());
   });
 
   it('finishes the initial loading state when a silent refresh supersedes it', async () => {
@@ -1574,25 +1575,33 @@ describe('WorkspaceTabs accessibility', () => {
 
   it('renders a direct top Backlinks / Graph toggle button when onToggleBacklinks is provided', () => {
     const onToggleBacklinks = vi.fn();
+    const onParentPointerDown = vi.fn();
+    const onParentDoubleClick = vi.fn();
     render(
-      <WorkspaceTabs
-        tabs={[{ key: 'note:a', type: 'note', id: 'a', title: 'Alpha' }]}
-        activeKey="note:a"
-        rightTabKey={null}
-        onActivate={vi.fn()}
-        onClose={vi.fn()}
-        onReorder={vi.fn()}
-        onOpenContextMenu={vi.fn()}
-        contextMenuKey={null}
-        sidebarWidth="0px"
-        saveStates={new Map()}
-        backlinksOpen={false}
-        onToggleBacklinks={onToggleBacklinks}
-      />,
+      <div onPointerDown={onParentPointerDown} onDoubleClick={onParentDoubleClick}>
+        <WorkspaceTabs
+          tabs={[{ key: 'note:a', type: 'note', id: 'a', title: 'Alpha' }]}
+          activeKey="note:a"
+          rightTabKey={null}
+          onActivate={vi.fn()}
+          onClose={vi.fn()}
+          onReorder={vi.fn()}
+          onOpenContextMenu={vi.fn()}
+          contextMenuKey={null}
+          sidebarWidth="0px"
+          saveStates={new Map()}
+          backlinksOpen={false}
+          onToggleBacklinks={onToggleBacklinks}
+        />
+      </div>,
     );
 
     const toggleBtn = screen.getByRole('button', { name: /反向链接 \/ 图谱|Backlinks \/ Graph/i });
     expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.pointerDown(toggleBtn);
+    fireEvent.doubleClick(toggleBtn);
+    expect(onParentPointerDown).not.toHaveBeenCalled();
+    expect(onParentDoubleClick).not.toHaveBeenCalled();
     fireEvent.click(toggleBtn);
     expect(onToggleBacklinks).toHaveBeenCalledTimes(1);
   });

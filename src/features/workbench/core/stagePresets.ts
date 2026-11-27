@@ -26,11 +26,11 @@ import { workbenchBus } from './workbenchBus';
 import { saveSnapshot } from './snapshot';
 import { resourceTypeToAppTypeId } from '../apps/content/typeMap';
 import { requestWorkspaceResource } from '../apps/notes/workspaceRegistry';
-import { requestResourceWorkspace } from '../apps/content/resourceWorkspaceRegistry';
 import {
+  requestResourceWorkspace,
   WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT,
   type WorkbenchHydrateRecentResourceDetail,
-} from '../apps/content/ResourceAppWorkspace';
+} from '../apps/content/resourceWorkspaceRegistry';
 import { openChatSession } from '../apps/chat/newSession';
 import { QBANK_CONTROL_EVENT, type QbankControlEventDetail } from '../agent/drivers/qbankDriver';
 

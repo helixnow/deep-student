@@ -59,6 +59,8 @@ export interface RuntimeModelOption {
   providerLabel?: string;
   iconId?: string;
   providerId?: string;
+  /** 实际供应商协议/品牌类型（如 'deepseek'、'siliconflow'、'moonshot'、'opencode_go'） */
+  providerType?: string;
   isRecent?: boolean;
   /** 最近选择中的名次（0 = 最近一次），用于「最近」分区按时间排序 */
   recentRank?: number;

@@ -454,4 +454,35 @@ describe('WindowShell 指针契约（stub 驱动 WindowPointerCallbacks）', () 
     expect(snapZoneToDisplayMode('br')).toBe('tiled-br');
     expect(snapZoneToDisplayMode('top-maximize')).toBe('maximized');
   });
+
+  it('平铺窗 tear-out 后又放回同侧吸附区时 DOM 恢复平铺几何而非卡在浮动尺寸', () => {
+    const { captured, useStub } = makeStubPointer();
+    const id = openTestWindow();
+    act(() => {
+      useWindowStore.getState().setDisplayMode(id, 'tiled-left');
+    });
+    renderShell(id, { usePointer: useStub, tileMargin: 8 });
+    const el = getWinEl(id);
+    expect(el.style.width).toBe('788px');
+    expect(el.style.height).toBe('884px');
+
+    act(() => {
+      captured.args!.onDragStateChange!(true);
+      captured.args!.onMoveArmed!({ x: 300, y: 20 });
+    });
+    // tear-out 后 DOM 已切到较小浮动尺寸
+    expect(el.style.width).not.toBe('788px');
+
+    act(() => {
+      captured.args!.onDragStateChange!(false);
+      captured.args!.callbacks.onCommit({ x: 40, y: 30, w: 600, h: 400 }, 'left');
+    });
+
+    expect(useWindowStore.getState().windows[id].displayMode).toBe('tiled-left');
+    expect(el.style.left).toBe('8px');
+    expect(el.style.top).toBe('8px');
+    expect(el.style.width).toBe('788px');
+    expect(el.style.height).toBe('884px');
+    expect(el.className).toContain('wb-window-tiled');
+  });
 });

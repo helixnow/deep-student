@@ -351,7 +351,6 @@ export function McpToolsSection({
                   ) : (
                     prompts.items.slice(0, 5).map((item, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-info flex-shrink-0" />
                         <span className="text-foreground truncate">{item.name}</span>
                       </div>
                     ))
@@ -367,7 +366,6 @@ export function McpToolsSection({
                   ) : (
                     resources.items.slice(0, 5).map((item, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
                         <span className="text-foreground truncate">{item.name || item.uri}</span>
                       </div>
                     ))

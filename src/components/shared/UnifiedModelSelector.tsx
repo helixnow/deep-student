@@ -10,7 +10,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, CaretDown, MagnifyingGlass, Prohibit, Star, Cube } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -222,7 +222,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (!allowEmpty) return null;
 
     return (
-      <DsButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
         <div className="flex items-center gap-2">
            <div className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
              <Prohibit size={14} />
@@ -239,17 +239,17 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     const isSelected = option.id === value;
     const isOptionDisabled = option.isDisabled || disabled;
     const disabledToneClass = option.disabledTone === 'warning'
-      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+      ? 'bg-warning/10 text-warning'
       : 'bg-destructive/10 text-destructive';
     const disabledReasonClass = option.disabledTone === 'warning'
-      ? 'text-amber-700/80 dark:text-amber-300/80'
+      ? 'text-warning/80'
       : 'text-destructive/80';
 
     return (
-      <DsButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* 供应商图标 */}
-          <div className="flex-shrink-0">
+          <div className="shrink-0">
              <ProviderIcon
               modelId={option.model || option.name}
               size={16}
@@ -257,7 +257,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               className="opacity-80 group-hover:opacity-100 transition-opacity"
 />
           </div>
-          
+
           <div className="flex flex-col min-w-0 flex-1">
              {/* 第一行：模型名称 + 收藏/禁用状态 */}
              <div className="flex items-center gap-1.5">
@@ -267,22 +267,22 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                )}>
                  {option.modelName}
                </span>
-               {option.isFavorite && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
+               {option.isFavorite && <Star size={12} className="text-warning fill-warning shrink-0" />}
                {option.isDisabled && (
-                 <span className={cn('text-[10px] px-1 rounded flex-shrink-0', disabledToneClass)}>
+                 <span className={cn('text-2xs px-1 rounded shrink-0', disabledToneClass)}>
                    {option.disabledLabel || t('common:disabled')}
                  </span>
                )}
              </div>
-             
+
              {/* 第二行：供应商 + 标签 */}
-             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+             <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
                <span className="truncate max-w-[80px]">{option.providerName}</span>
-               
+
                {/* 能力图标：保留 tooltip/aria-label，避免长文字挤占模型名。 */}
                {(option.isMultimodal || option.isReasoning || option.supportsTools || option.isImageGeneration) && (
                  <>
-                   <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
+                   <span aria-hidden="true">·</span>
                    <ModelCapabilityIcons
                      isMultimodal={option.isMultimodal}
                      isReasoning={option.isReasoning}
@@ -293,23 +293,23 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
 />
                  </>
                )}
-               
+
                {option.is_default && (
                   <>
-                    <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default')}</span>
+                    <span aria-hidden="true">·</span>
+                   <span className="text-success">{t('common:default')}</span>
                   </>
                )}
              </div>
              {option.isDisabled && option.disabledReason && (
-               <div className={cn('mt-1 text-[10px] leading-4', disabledReasonClass)}>
+               <div className={cn('mt-1 text-2xs leading-4', disabledReasonClass)}>
                  {option.disabledReason}
                </div>
              )}
           </div>
         </div>
 
-        {isSelected && <Check size={14} className="text-primary flex-shrink-0 ml-2" />}
+        {isSelected && <Check size={14} className="text-primary shrink-0 ml-2" />}
       </DsButton>
     );
   };
@@ -343,7 +343,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (variant === 'full') {
       // 全宽选择器样式（类似 SelectTrigger）
       return (
-        <DsButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 [@media(pointer:coarse)]:!min-h-11 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
+        <DsButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
           <span className="flex-1 min-w-0 pr-2 text-left text-sm truncate">
             {isEmptySelected && !allowEmpty ? (
               <span className="text-muted-foreground">{triggerDisplayText}</span>
@@ -363,7 +363,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         size="sm"
         disabled={disabled}
         className={cn(
-          'h-8 [@media(pointer:coarse)]:!min-h-11 px-2 gap-1.5 font-medium text-muted-foreground justify-start',
+          'h-8 px-2 gap-1.5 font-medium text-muted-foreground justify-start',
           className
         )}
       >
@@ -399,7 +399,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('chat_host:model_panel.search_placeholder')}
-              className="h-7 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-[16px] pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
+              className="h-7 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-base pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
 />
           </div>
@@ -427,10 +427,10 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                    <div
                      data-testid="model-selector-vendor-group-header"
                      data-wb-blur-surface
-                     className="sticky top-0 z-[1] mx-0.5 mb-1 flex items-center justify-between rounded-md bg-popover/95 px-2 py-1 text-[10px] font-semibold text-muted-foreground shadow-[0_1px_0_hsl(var(--border)/0.35)] backdrop-blur-sm"
+                     className="sticky top-0 z-sticky mx-0.5 mb-1 flex items-center justify-between rounded-md bg-popover/95 px-2 py-1 text-2xs font-semibold text-muted-foreground shadow-[0_1px_0_hsl(var(--border)/0.35)] backdrop-blur-sm"
                    >
                      <span className="min-w-0 truncate">{group.name}</span>
-                     <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">
+                     <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-2xs text-muted-foreground">
                        {group.models.length}
                      </span>
                    </div>

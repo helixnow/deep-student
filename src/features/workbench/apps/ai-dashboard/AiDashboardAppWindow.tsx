@@ -27,7 +27,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ChartBar, Sparkle } from '@phosphor-icons/react';
+import { ChartBar } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl';
 import { formatStudyDuration } from '@/components/LearningHeatmap/formatStudyDuration';
@@ -336,12 +336,21 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
       data-wb-sys-app="aiDashboard"
       data-testid="wb-ai-dashboard-window"
     >
-      <header className="wb-ai-dashboard-header">
-        <div className="wb-ai-dashboard-title">
-          <Sparkle className="h-5 w-5 shrink-0 text-primary" weight="fill" aria-hidden />
-          <span className="truncate">
-            {t('generativeUi:workbench.dashboard.title', {
-              defaultValue: t('generativeUi:workbench.briefing_label'),
+      <header className="wb-ai-dashboard-header flex-wrap">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <SegmentedControl<InsightRangeDays>
+            ariaLabel={t('generativeUi:workbench.dashboard.range_label')}
+            value={rangeDays}
+            onValueChange={setRangeDays}
+            options={rangeOptions}
+            size="compact"
+          />
+          <span
+            className="text-2xs font-normal text-muted-foreground"
+            data-testid="wb-ai-dashboard-range-caption"
+          >
+            {t('generativeUi:workbench.dashboard.range_caption', {
+              label: activeRangeLabel,
             })}
           </span>
         </div>
@@ -351,32 +360,14 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           size="sm"
           data-testid="wb-ai-dashboard-stats-button"
           onClick={handleOpenFullStats}
-          className="h-7 shrink-0 gap-1.5 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+          className="shrink-0 gap-1.5 text-xs"
         >
           <ChartBar className="h-3.5 w-3.5" aria-hidden />
           {t('generativeUi:workbench.dashboard.open_full_stats')}
         </DsButton>
       </header>
       <div className="wb-ai-dashboard-body">
-        <WbSysFade>
-          <div className="wb-ai-dashboard-controls flex flex-wrap items-center justify-between gap-2">
-            <SegmentedControl<InsightRangeDays>
-              ariaLabel={t('generativeUi:workbench.dashboard.range_label')}
-              value={rangeDays}
-              onValueChange={setRangeDays}
-              options={rangeOptions}
-              size="compact"
-            />
-            <span
-              className="text-[11px] text-muted-foreground"
-              data-testid="wb-ai-dashboard-range-caption"
-            >
-              {t('generativeUi:workbench.dashboard.range_caption', {
-                label: activeRangeLabel,
-              })}
-            </span>
-          </div>
-
+        <WbSysFade className="wb-ai-dashboard-content">
           <div
             className="wb-ai-dashboard-insights"
             data-testid="wb-ai-dashboard-insights"
@@ -387,44 +378,50 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
               data-testid="wb-ai-dashboard-study-card"
               data-study-mode={studyInsights.displayMode}
             >
-              <span className="wb-ai-dashboard-insight-label">
-                {studyInsights.cardLabel}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {studyInsights.cardLabel}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {studyInsights.subValue}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {studyInsights.primaryValue}
               </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {studyInsights.subValue}
-              </span>
             </div>
 
             <div className="wb-ai-dashboard-insight-card">
-              <span className="wb-ai-dashboard-insight-label">
-                {t('generativeUi:workbench.dashboard.todo_completion_label')}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.todo_completion_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.todo_completion_sub', {
+                    completed: todoCompletion.completed,
+                    total: todoCompletion.total,
+                  })}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {todoCompletion.rate}
               </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {t('generativeUi:workbench.dashboard.todo_completion_sub', {
-                  completed: todoCompletion.completed,
-                  total: todoCompletion.total,
-                })}
-              </span>
             </div>
 
             <div className="wb-ai-dashboard-insight-card">
-              <span className="wb-ai-dashboard-insight-label">
-                {t('generativeUi:workbench.dashboard.ai_usage_label')}
-              </span>
+              <div className="wb-ai-dashboard-insight-meta">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.ai_usage_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.ai_usage_sub', {
+                    requests: usageSummary?.totalRequests ?? 0,
+                    tokens: formatCompactTokens(usageSummary?.totalTokens ?? 0),
+                  })}
+                </span>
+              </div>
               <span className="wb-ai-dashboard-insight-value">
                 {formatCompactTokens(usageSummary?.totalTokens ?? 0)}
-              </span>
-              <span className="wb-ai-dashboard-insight-sub">
-                {t('generativeUi:workbench.dashboard.ai_usage_sub', {
-                  requests: usageSummary?.totalRequests ?? 0,
-                  tokens: formatCompactTokens(usageSummary?.totalTokens ?? 0),
-                })}
               </span>
             </div>
           </div>

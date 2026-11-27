@@ -126,7 +126,7 @@ describe('InputBarUI mobile inline composer panels (P0-1)', () => {
     // 附件条约束为单行紧凑高度，且制卡提示在窄屏隐藏避免叠加撑高输入区
     const previewList = screen.getByRole('list', { name: 'analysis:input_bar.attachments.title' });
     expect(previewList).toHaveClass('max-sm:max-h-[52px]');
-    expect(screen.getByTestId('flashcard-hint')).toHaveClass('max-sm:hidden');
+    expect(screen.queryByTestId('flashcard-hint')).toBeNull();
 
     // 删除按钮实体命中框在移动端达到 44×44px，点击删除不误触展开详情
     const removeBtn = screen.getByRole('button', { name: /(?:移除|remove).*lecture-notes\.pdf/i });

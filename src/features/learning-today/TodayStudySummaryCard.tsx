@@ -5,8 +5,8 @@
  */
 import React, { useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Brain, Cards, ListChecks, Notebook, Play, WarningDiamond } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { Brain, Cards, ListChecks, Notebook, Play, WarningDiamond } from '@phosphor-icons/react';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { openDailySprint, useSprintLauncherSnapshot } from '@/components/exam-sprint';
 import { getTodayLearningSnapshot, refreshTodayLearning, subscribeTodayLearning } from './todayLearningStore';
@@ -104,26 +104,54 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
     },
   ];
 
+  const activeCategories = categories.filter((cat) => cat.count > 0);
+
   return (
     <section
       data-testid="today-study-summary-card"
       aria-label={t('todo:reviewLink.hubTitle', { defaultValue: '今日学习汇总' })}
       className={cn(
-        'border-b border-border/25 bg-card/40 px-4 py-2.5 sm:px-6',
+        'flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border/20 px-4 py-2 sm:px-6',
         className,
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Brain size={15} weight="duotone" className="shrink-0 text-primary" aria-hidden="true" />
-          <span className="text-xs font-semibold text-foreground">
-            {t('todo:reviewLink.hubTitle', { defaultValue: '今日学习汇总' })}
-          </span>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {t('todo:reviewLink.hubTotal', { count: totalDue, defaultValue: '共 {{count}} 项待完成' })}
-          </span>
-        </div>
+      <div className="flex min-w-0 items-center gap-1.5 text-xs">
+        <Brain size={14} weight="duotone" className="shrink-0 text-primary" aria-hidden="true" />
+        <span className="font-medium text-foreground">
+          {t('todo:reviewLink.hubTitle', { defaultValue: '今日学习汇总' })}
+        </span>
+        <span className="font-mono tabular-nums text-muted-foreground">
+          {t('todo:reviewLink.hubTotal', { count: totalDue, defaultValue: '共 {{count}} 项待完成' })}
+        </span>
+      </div>
 
+      {activeCategories.length > 0 && (
+        <>
+          <span className="hidden h-3 w-px bg-border/40 sm:inline-block" aria-hidden="true" />
+          <div className="flex flex-wrap items-center gap-1">
+            {activeCategories.map((cat) => (
+              <DsButton
+                key={cat.key}
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid={cat.testId}
+                data-active="true"
+                onClick={cat.onClick}
+                className="gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <span className="shrink-0 text-primary/80">{cat.icon}</span>
+                <span className="truncate">{cat.label}</span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">
+                  {cat.count}
+                </span>
+              </DsButton>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="ml-auto flex shrink-0 items-center">
         {hasSprintTargets ? (
           <DsButton
             type="button"
@@ -131,7 +159,7 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
             size="sm"
             data-testid="today-summary-sprint"
             onClick={() => openDailySprint({ source: 'todo-today' })}
-            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-9 sm:min-h-9 sm:w-auto sm:rounded-full sm:px-3 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+            className="gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/15"
           >
             <Play size={11} weight="fill" aria-hidden="true" />
             <span>{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>
@@ -143,7 +171,7 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
             size="sm"
             data-testid="today-summary-review-notes"
             onClick={() => openTodayReviewTarget('notes')}
-            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-9 sm:min-h-9 sm:w-auto sm:rounded-full sm:px-3 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+            className="gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/15"
           >
             <Notebook size={13} aria-hidden="true" />
             <span>
@@ -154,54 +182,6 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
             </span>
           </DsButton>
         ) : null}
-      </div>
-
-      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {categories.map((cat) => {
-          const hasDue = cat.count > 0;
-          return (
-            <DsButton
-              key={cat.key}
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid={cat.testId}
-              data-active={hasDue ? 'true' : 'false'}
-              onClick={cat.onClick}
-              className={cn(
-                'native-touch-target group h-auto min-h-9 w-full justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-                hasDue
-                  ? 'border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10'
-                  : 'border-border/40 bg-background/50 text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-              )}
-            >
-              <span className="flex min-w-0 items-center gap-1.5 truncate">
-                <span className={cn('shrink-0', hasDue ? 'text-primary' : 'text-muted-foreground')}>
-                  {cat.icon}
-                </span>
-                <span className="truncate">{cat.label}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1">
-                <span
-                  className={cn(
-                    'font-mono text-xs font-semibold tabular-nums',
-                    hasDue ? 'text-foreground' : 'text-muted-foreground/70',
-                  )}
-                >
-                  {cat.count}
-                </span>
-                <ArrowRight
-                  size={11}
-                  aria-hidden="true"
-                  className={cn(
-                    'transition-transform group-hover:translate-x-0.5',
-                    hasDue ? 'text-primary/80' : 'text-muted-foreground/40',
-                  )}
-                />
-              </span>
-            </DsButton>
-          );
-        })}
       </div>
     </section>
   );

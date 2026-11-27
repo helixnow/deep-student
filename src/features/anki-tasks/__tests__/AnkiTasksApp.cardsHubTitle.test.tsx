@@ -1,6 +1,6 @@
 /**
- * 闪卡中心「制卡」分区标题契约：经典壳里页面标题由壳层（「闪卡」+ 分区条）承担，
- * 页内不再显示「Anki制卡」；Workbench 窗口保留应用自身名称。
+ * 制卡任务标题契约：经典壳（「闪卡」+ 分区条）与学习桌面（外部窗口标题栏）
+ * 均已由外部承载标题，页内不再重复渲染可见主标题，仅保留 sr-only 标题供读屏导航。
  */
 import React from 'react';
 import { render, screen } from '@testing-library/react';
@@ -68,10 +68,11 @@ describe('AnkiTasksApp title inside the flashcards hub', () => {
     expect(useMobileHeaderMock.mock.calls.at(-1)?.[1]?.title).not.toBe('taskDashboard.title');
   });
 
-  it('keeps the app name heading inside a workbench window', async () => {
+  it('keeps only an sr-only heading inside a workbench window because WindowTitleBar owns the title', async () => {
     render(<AnkiTasksApp isVisible workbenchWindowId="wb-1" />);
     const heading = await screen.findByRole('heading', { level: 2 });
-    expect(heading).not.toHaveClass('sr-only');
-    expect(heading).toHaveClass('wb-at-title');
+    expect(heading).toHaveClass('sr-only');
+    expect(heading).not.toHaveClass('wb-at-title');
+    expect(heading.textContent).toBe('taskDashboard.title');
   });
 });

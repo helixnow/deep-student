@@ -353,7 +353,7 @@ const BranchNodeComponent: React.FC<NodeProps<Node<BranchNodeData>>> = ({
 
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
-  useNodeHeightObserver(nodeRef, nodeId, setMeasuredNodeHeight, !isEmbed);
+  useNodeHeightObserver(nodeRef, nodeId, setMeasuredNodeHeight, !isEmbed, isEditing);
 
   // 节点外观只由层级决定，避免新增子节点时在 branch/leaf 样式间跳变。
   const nodeTheme = data.level === 1 ? theme?.node?.branch : theme?.node?.leaf;

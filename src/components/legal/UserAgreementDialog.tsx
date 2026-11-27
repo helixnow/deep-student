@@ -168,7 +168,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
   return (
     <div className="select-none">
       {/* Toggle 触发行 —— 简洁风格：无边框，hover 浅色背景 */}
-      <DsButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', '[@media(pointer:coarse)]:!min-h-11', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
+      <DsButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
         {/* 展开箭头 —— 简洁 三角形风格 */}
         <CaretRight
           className={cn(
@@ -336,7 +336,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
       {/* 遮罩层 —— 极简，无 blur */}
       <div
         className={cn(
-          'absolute inset-0 bg-black/25',
+          'absolute inset-0 bg-foreground/25',
           'transition-opacity duration-200',
           mounted ? 'opacity-100' : 'opacity-0',
         )}
@@ -425,24 +425,20 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             >
               <p>{t('legal.privacyPolicy.sections.overview.content')}</p>
 
-              <div className="space-y-1.5 mt-2">
+              <div className="space-y-2 mt-2">
                 <PolicyItem
-                  color="emerald"
                   title={t('legal.privacyPolicy.sections.localStorage.title')}
                   content={t('legal.privacyPolicy.sections.localStorage.content')}
 />
                 <PolicyItem
-                  color="blue"
                   title={t('legal.privacyPolicy.sections.llmApi.title')}
                   content={t('legal.privacyPolicy.sections.llmApi.content')}
 />
                 <PolicyItem
-                  color="orange"
                   title={t('legal.privacyPolicy.sections.errorReporting.title')}
                   content={t('legal.privacyPolicy.sections.errorReporting.content')}
 />
                 <PolicyItem
-                  color="gray"
                   title={t('legal.privacyPolicy.sections.noTracking.title')}
                   content={t('legal.privacyPolicy.sections.noTracking.content')}
 />
@@ -462,7 +458,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-[12px] text-orange-600/80 dark:text-orange-400/80 font-medium">
+              <p className="mt-3 text-xs text-warning font-medium">
                 {t('legal.userAgreement.contentSafety.note')}
               </p>
             </ToggleBlock>
@@ -488,7 +484,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             <DsButton
               variant="default"
               size="lg"
-              className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              className="w-full justify-center text-[13px] font-medium"
               onClick={onClose}
             >
               {t('common:close')}
@@ -510,7 +506,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                 size="lg"
                 data-testid="user-agreement-agree-continue"
                 disabled={!consentChecked}
-                className="w-full justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+                className="w-full justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-[13px] font-medium"
                 onClick={() => {
                   if (!consentChecked) return;
                   persistLegalConsentRecord();
@@ -542,24 +538,13 @@ const AgreementItem: React.FC<{ title: string; content: string }> = ({ title, co
 // ============================================================================
 // 子组件：隐私政策条目
 // ============================================================================
-const colorMap: Record<string, string> = {
-  emerald: 'bg-emerald-500/60',
-  blue: 'bg-blue-500/60',
-  orange: 'bg-orange-500/60',
-  gray: 'bg-foreground/20',
-};
-
 const PolicyItem: React.FC<{
-  color: string;
   title: string;
   content: string;
-}> = ({ color, title, content }) => (
-  <div className="flex items-start gap-2">
-    <span className={cn('mt-[6px] h-1.5 w-1.5 rounded-full flex-shrink-0', colorMap[color] || colorMap.gray)} />
-    <div className="min-w-0">
-      <p className="text-[12px] font-medium text-foreground/80">{title}</p>
-      <p className="text-[12px] text-foreground/45 leading-[1.5]">{content}</p>
-    </div>
+}> = ({ title, content }) => (
+  <div className="min-w-0">
+    <p className="text-xs font-medium text-foreground/80">{title}</p>
+    <p className="text-xs text-muted-foreground leading-[1.5]">{content}</p>
   </div>
 );
 

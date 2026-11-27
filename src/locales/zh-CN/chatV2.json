@@ -777,7 +777,12 @@
       "openRuntimeSettings": "去授权运行目录",
       "generatingArgs": "生成参数中...",
       "expandLongOutput": "展开全部（约 {{count}} 字）",
-      "collapseLongOutput": "收起长输出"
+      "collapseLongOutput": "收起长输出",
+      "browserScreenshot": {
+        "annotated": "已标注 ref",
+        "artifact": "产物：",
+        "unavailable": "截图不可用"
+      }
     },
     "workbenchOps": {
       "title": "桌面操作",
@@ -1312,7 +1317,7 @@
     "groupName": "分组名称",
     "groupNamePlaceholder": "一句话描述要完成的任务",
     "groupIcon": "分组图标",
-    "groupIconPlaceholder": "如：📁 或 folder",
+    "groupIconPlaceholder": "如：book 或 folder",
     "groupColor": "分组颜色",
     "groupDescription": "分组描述",
     "groupDescriptionPlaceholder": "可选，描述该分组用途",
@@ -2110,6 +2115,30 @@
       "browserOpen": "将在内置浏览器中打开：{{url}}",
       "browserNavigate": "将导航至：{{url}}",
       "browserClick": "将点击网页元素：{{element}}（ref={{ref}}）",
+      "browserClickCoord": "将点击网页坐标 ({{x}}, {{y}})",
+      "browserClickCoordWithElement": "将点击网页元素：{{element}}（坐标 {{x}}, {{y}}）",
+      "browserHover": "将悬停在网页元素：{{element}}（ref={{ref}}）",
+      "browserHoverCoord": "将悬停在网页坐标 ({{x}}, {{y}})",
+      "browserHoverCoordWithElement": "将悬停在网页元素：{{element}}（坐标 {{x}}, {{y}}）",
+      "browserPressKey": "将在网页中按下按键：{{key}}",
+      "browserPressKeyWithModifiers": "将在网页中按下组合键：{{modifiers}}+{{key}}",
+      "browserSelectOption": "将在下拉框 {{element}}（ref={{ref}}）中选择：{{values}}",
+      "browserWaitFor": "将等待网页条件就绪",
+      "browserWaitForText": "将等待网页出现文本：{{text}}",
+      "browserWaitForSelector": "将等待网页元素出现：{{selector}}",
+      "browserWaitForLoadState": "将等待网页达到加载状态：{{loadState}}",
+      "browserExtractContent": "将提取当前网页的正文内容",
+      "browserTabsList": "将列出当前浏览器标签页",
+      "browserTabsNew": "将在内置浏览器中新建标签页：{{url}}",
+      "browserTabsNewBlank": "将在内置浏览器中新建空白标签页",
+      "browserTabsSwitch": "将切换浏览器标签页至：{{tabId}}",
+      "browserTabsClose": "将关闭浏览器标签页：{{tabId}}",
+      "browserObserveConsole": "将读取当前网页的控制台日志",
+      "browserObserveNetwork": "将读取当前网页的网络请求日志",
+      "browserObserveBoth": "将读取当前网页的控制台与网络请求日志",
+      "browserObserve": "将读取浏览器诊断日志（{{kind}}）",
+      "browserScreenshot": "将截取当前网页画面并保存为会话产物",
+      "browserDownloads": "将查询内置浏览器的下载记录",
       "browserFileUpload": "将向网页上传 {{count}} 个已授权文件：{{element}}",
       "browserType": "将向网页元素输入文本：{{element}}（ref={{ref}}；内容已隐藏）",
       "browserOperation": "将执行浏览器操作：{{tool}}",
@@ -2524,7 +2553,18 @@
     "noSessionId": "子代理会话 ID 缺失",
     "collapse": "收缩",
     "expand": "展开",
-    "viewFull": "查看完整会话"
+    "viewFull": "查看完整会话",
+    "profile": {
+      "browser": "浏览器"
+    },
+    "hostFacts": {
+      "verifiedLabel": "宿主核验浏览记录",
+      "noOrigins": "未访问外部站点",
+      "actions": "{{count}} 次操作",
+      "downloads": "{{count}} 个下载",
+      "blocked": "{{count}} 次拦截",
+      "takeovers": "{{count}} 次人工接管"
+    }
   },
   "subagentSession": {
     "readOnlyNotice": "子代理会话（只读）· 由主代理触发，消息不可编辑或重发"
@@ -2869,11 +2909,9 @@
       "missingHint": "可解除"
     },
     "badges": {
-      "kbAutoScoped": "已限定本空间知识库",
       "countdownDays": "D-{{days}}",
       "countdownToday": "D-Day",
-      "countdownPassed": "D+{{days}}",
-      "budgetMinutes": "{{minutes}}m/日"
+      "countdownPassed": "D+{{days}}"
     },
     "actions": {
       "reviewDeck": "复习本空间闪卡",

@@ -1,4 +1,4 @@
-# Node 版 DeepSeek 应用 API
+# DeepSeek 应用 API
 
 在 **设置 → 模型服务 → DeepSeek** 填写官方 API Key，然后在同一页的 **应用能力** 管理和测试各项接口。对话能力使用官方 `deepseek-flash` 的 **OpenAI Responses** 协议。第三方中转和手动选择 Chat Completions 的模型仍走原有协议。
 

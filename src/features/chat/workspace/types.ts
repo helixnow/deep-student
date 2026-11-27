@@ -69,6 +69,8 @@ export interface AgentCompletionEnvelope {
   completedAt?: string;
   /** C8：子代理本次运行的 token 用量（camelCase TokenUsage），后端读不到时缺省 */
   tokenUsage?: TokenUsage;
+  /** 宿主验证的浏览器子代理事实凭证（browser profile 完成时产出） */
+  hostFacts?: Record<string, unknown>;
 }
 
 export interface WorkspaceMessage {

@@ -53,4 +53,15 @@ describe('preview whitelists', () => {
     expect(resolveFilePreviewMode('application/octet-stream', 'clip.ogv')).toBe('video');
     expect(resolveFilePreviewMode('application/octet-stream', 'voice.opus')).toBe('audio');
   });
+
+  it('routes images (including SVG) to image preview and .xmind to xmind preview', () => {
+    expect(inferFilePreviewTypeFromName('pathway.svg')).toBe('image');
+    expect(inferFilePreviewTypeFromName('diagram.png')).toBe('image');
+    expect(inferFilePreviewTypeFromName('mindmap.xmind')).toBe('xmind');
+    expect(resolveFilePreviewMode('image/svg+xml', 'pathway.svg')).toBe('image');
+    expect(resolveFilePreviewMode('application/xml', 'pathway.svg')).toBe('image');
+    expect(resolveFilePreviewMode('image/png', 'diagram.png')).toBe('image');
+    expect(resolveFilePreviewMode('application/vnd.xmind.workbook', 'mindmap.xmind')).toBe('xmind');
+    expect(resolveFilePreviewMode('application/octet-stream', 'mindmap.xmind')).toBe('xmind');
+  });
 });

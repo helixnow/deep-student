@@ -83,6 +83,8 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     isVendorConfiguredForSidebar(vendor, props.openAICodexAuthenticated ?? false),
   );
 
+  const [externalImportTriggerSeq, setExternalImportTriggerSeq] = React.useState(0);
+
   // 将 props 映射为 Context value
   const contextValue: VendorSettingsContextValue = {
     vendors: props.vendors,
@@ -128,6 +130,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     onReorderVendors: props.onReorderVendors,
     onAddVendorModels: props.onAddVendorModels,
     triggerPostSaveAutoFlow: props.triggerPostSaveAutoFlow,
+    onOpenExternalImport: () => setExternalImportTriggerSeq((prev) => prev + 1),
   };
 
   return (
@@ -151,6 +154,12 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
             <QuickByokProvisionerCard
               mode="settings"
               defaultCollapsed={hasAnyConfiguredModel}
+              externalImportTriggerSeq={externalImportTriggerSeq}
+              onExternalImported={(res) => {
+                if (res.vendorIds[0]) {
+                  props.setSelectedVendorId(res.vendorIds[0]);
+                }
+              }}
             />
           </div>
         )}

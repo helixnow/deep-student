@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy, CircleNotch } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -234,10 +235,10 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   <h3 className="truncate text-base font-medium leading-snug text-foreground sm:text-sm sm:leading-tight">
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
-                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
+                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（通过伪元素扩区保证 44px 触控命中而不撑高标题行） */}
                   <DsButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
+                    className={cn('!h-6 !w-6 !p-0 flex-shrink-0 transition-opacity duration-200', coarseHitClassFor24, isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     title={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                     aria-label={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                   >
@@ -268,10 +269,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     }}
                     className={cn(
                       "flex items-center justify-center px-2 py-0.5 rounded-full text-2xs font-medium transition-colors cursor-pointer border select-none",
-                      // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
-                      "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
-                      // 触屏（含 ≥lg 触屏平板）补足 44px 触控目标；!important 压过 max-lg:min-h-9
-                      "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5",
+                      coarseHitClassFor24,
                       isDefaultEnabled 
                         ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"

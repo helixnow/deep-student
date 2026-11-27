@@ -181,7 +181,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                               ? 'w-full max-h-[300px]'
                               : 'h-20 w-20 object-cover sm:h-24 sm:w-24'
                           } ${
-                            onImageClick ? 'cursor-pointer transition-transform hover:scale-[1.02]' : ''
+                            onImageClick ? 'cursor-pointer transition-[border-color,opacity] hover:border-primary/60 hover:opacity-90' : ''
                           }`}
                           onClick={() => onImageClick && onImageClick(idx)}
                           onError={() => {

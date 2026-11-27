@@ -491,14 +491,11 @@ const EmptyState: React.FC<{
   const { t } = useTranslation(['review', 'practice']);
   return (
     <div className="ui-rise-in motion-reduce:animate-none flex h-full flex-col items-center justify-center px-6 py-12 text-center">
-      <div className={cn(
-        'mb-3.5 flex h-12 w-12 items-center justify-center rounded-xl border',
-        hasPracticedAny
-          ? 'border-success/25 bg-success/10 text-success'
-          : 'border-border/50 bg-muted/60 text-muted-foreground',
-      )}>
-        {hasPracticedAny ? <Award className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
-      </div>
+      {hasPracticedAny ? (
+        <Award size={26} className="mb-3 text-success/80" aria-hidden="true" />
+      ) : (
+        <BookOpen size={26} className="mb-3 text-muted-foreground/70" aria-hidden="true" />
+      )}
       <h3 className="mb-1.5 text-sm font-medium text-foreground">
         {hasPracticedAny ? t('review:questions.emptyTitle') : t('practice:reviewView.noPracticeYetTitle')}
       </h3>

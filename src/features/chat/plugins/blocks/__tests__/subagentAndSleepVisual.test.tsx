@@ -135,6 +135,76 @@ describe('subagentEmbed modern mcpTool visual alignment', () => {
     expect(screen.getByText('Subagent timed out during step 2')).toBeInTheDocument();
     expect(screen.queryByText('abcdef123456')).toBeNull();
   });
+
+  it('renders browser profile badge and host-verified host_facts receipt with origin overflow and counts', () => {
+    render(
+      <SubagentEmbed
+        block={makeSubagentBlock({
+          toolInput: { task: 'Check docs and download report', profile: 'browser' },
+          toolOutput: {
+            session_id: 'agent-session-browser123456',
+            workspace_id: 'ws-1',
+            profile_id: 'browser',
+            status: 'completed',
+            task_summary: 'Check docs and download report',
+            output: 'Downloaded PDF report.',
+            host_facts: {
+              verified_by: 'host',
+              visitedOrigins: [
+                'https://docs.example.com',
+                'https://portal.example.org',
+                'https://cdn.example.net',
+                'https://extra.example.edu',
+              ],
+              blockedNavigations: [
+                { url: 'http://127.0.0.1:8080', reason: 'ssrf', at: '2026-11-27T07:00:00Z' },
+              ],
+              downloadsCount: 2,
+              actionCount: 7,
+              userTakeoverCount: 1,
+              finalUrl: 'https://portal.example.org/files',
+            },
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('subagent.profile.browser')).toBeInTheDocument();
+    const receipt = screen.getByTestId('subagent-host-facts');
+    expect(receipt).toBeInTheDocument();
+    expect(receipt.textContent).toContain('subagent.hostFacts.verifiedLabel');
+    expect(receipt.textContent).toContain('docs.example.com');
+    expect(receipt.textContent).toContain('portal.example.org');
+    expect(receipt.textContent).toContain('cdn.example.net');
+    expect(receipt.textContent).not.toContain('extra.example.edu');
+    expect(receipt.textContent).toContain('+1');
+    expect(receipt.textContent).toContain('subagent.hostFacts.actions:{"count":"7"}');
+    expect(receipt.textContent).toContain('subagent.hostFacts.downloads:{"count":"2"}');
+    expect(receipt.textContent).toContain('subagent.hostFacts.takeovers:{"count":"1"}');
+    expect(receipt.textContent).toContain('subagent.hostFacts.blocked:{"count":"1"}');
+  });
+
+  it('ignores unverified host_facts payloads without verified_by === "host"', () => {
+    render(
+      <SubagentEmbed
+        block={makeSubagentBlock({
+          toolOutput: {
+            session_id: 'agent-session-browser999999',
+            workspace_id: 'ws-1',
+            profile_id: 'browser',
+            status: 'completed',
+            host_facts: {
+              verified_by: 'llm',
+              visitedOrigins: ['https://spoofed.example.com'],
+              actionCount: 3,
+            },
+          },
+        })}
+      />
+    );
+
+    expect(screen.queryByTestId('subagent-host-facts')).toBeNull();
+  });
 });
 
 describe('sleepBlock modern mcpTool visual alignment', () => {

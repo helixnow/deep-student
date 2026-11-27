@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretDown, CaretUp, Sparkle } from '@phosphor-icons/react';
+import { CaretDown, CaretUp } from '@phosphor-icons/react';
 import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import { openTodayReviewTarget, type TodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import {
@@ -18,6 +18,7 @@ import {
   subscribeTodayLearning,
 } from '@/features/learning-today/todayLearningStore';
 import { WallpaperReplica } from '../core/liquidGlassLens';
+import { useAdaptiveGlassTone } from '../core/useAdaptiveGlassTone';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWindowStore } from '../core/windowStore';
 import {
@@ -44,6 +45,7 @@ interface BriefingTile {
 export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
   const { t } = useTranslation(['workbench', 'generativeUi']);
   const widgetRef = useRef<HTMLElement | null>(null);
+  useAdaptiveGlassTone(widgetRef);
   const [collapsed, toggleCollapsed] = useDesktopWidgetCollapsed('briefing');
   const dueCards = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
@@ -94,15 +96,14 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
   return (
     <section
       ref={widgetRef}
-      className="wb-ai-briefing-widget wb-glass wb-glass-highlight"
+      className="wb-ai-briefing-widget wb-glass wb-glass-widget wb-glass-highlight"
       data-testid="wb-ai-briefing-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
       data-collapsed={collapsed || undefined}
       aria-label={t('generativeUi:workbench.briefing_label')}
     >
-      <WallpaperReplica hostRef={widgetRef} />
+      <WallpaperReplica hostRef={widgetRef} variant="widget" />
       <header className="wb-ai-briefing-header">
-        <Sparkle className="h-4 w-4 text-primary" weight="fill" aria-hidden />
         <span>{t('generativeUi:workbench.briefing_label')}</span>
         <span className="wb-ai-briefing-summary" data-testid="wb-ai-briefing-summary">
           {totalDue > 0

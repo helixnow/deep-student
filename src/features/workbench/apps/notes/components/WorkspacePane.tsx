@@ -11,6 +11,7 @@ import {
 import type { DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import type { NoteBreadcrumbItem } from '@/features/notes/components/NotesEditorHeader';
+import { NotesChromeSlotVisibleContext } from '@/features/notes/notesChromeSlot';
 import { DsButton } from '@/components/ui/DsButton';
 import { isMacOS } from '@/utils/platform';
 import {
@@ -220,22 +221,24 @@ export const WorkspacePane: React.FC<WorkspacePaneProps> = ({
             return (
               <div className="notes-document-host" hidden={!visible} key={tab.key}>
                 {tab.type === 'note' ? (
-                  <UnifiedAppPanel
-                    type="note"
-                    resourceId={tab.id}
-                    dstuPath={`/${tab.id}`}
-                    strictType
-                    isActive={workspaceActive && visible}
-                    focusOnActive={workspaceActive && visible}
-                    hostWindowId={windowId}
-                    propertiesPanelDisabled
-                    noteBreadcrumbs={getNoteBreadcrumbs?.(tab.id, tab.title)}
-                    onNoteBreadcrumbClick={onNoteBreadcrumbClick}
-                    suppressFloatingToc={suppressFloatingToc}
-                    onTitleChange={(title) => onTitleChange(tab.key, title)}
-                    onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
-                    className="h-full"
-                  />
+                  <NotesChromeSlotVisibleContext.Provider value={visible}>
+                    <UnifiedAppPanel
+                      type="note"
+                      resourceId={tab.id}
+                      dstuPath={`/${tab.id}`}
+                      strictType
+                      isActive={workspaceActive && visible}
+                      focusOnActive={workspaceActive && visible}
+                      hostWindowId={windowId}
+                      propertiesPanelDisabled
+                      noteBreadcrumbs={getNoteBreadcrumbs?.(tab.id, tab.title)}
+                      onNoteBreadcrumbClick={onNoteBreadcrumbClick}
+                      suppressFloatingToc={suppressFloatingToc}
+                      onTitleChange={(title) => onTitleChange(tab.key, title)}
+                      onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
+                      className="h-full"
+                    />
+                  </NotesChromeSlotVisibleContext.Provider>
                 ) : (
                   <React.Suspense fallback={<MindMapPaneFallback />}>
                     <MindMapContentView

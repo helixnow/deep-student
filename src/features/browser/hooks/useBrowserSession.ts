@@ -48,6 +48,9 @@ export function useBrowserSession(options?: {
   const lastError = useBrowserSessionStore((s) => s.lastError);
   const addressDraft = useBrowserSessionStore((s) => s.addressDraft);
   const contentVisible = useBrowserSessionStore((s) => s.contentVisible);
+  const tabs = useBrowserSessionStore((s) => s.tabs);
+  const activeTabId = useBrowserSessionStore((s) => s.activeTabId);
+  const screencastFrame = useBrowserSessionStore((s) => s.screencastFrame);
 
   const navigate = useBrowserSessionStore((s) => s.navigate);
   const back = useBrowserSessionStore((s) => s.back);
@@ -58,6 +61,12 @@ export function useBrowserSession(options?: {
   const showContent = useBrowserSessionStore((s) => s.showContent);
   const setAddressDraft = useBrowserSessionStore((s) => s.setAddressDraft);
   const closeSession = useBrowserSessionStore((s) => s.closeSession);
+  const refreshTabs = useBrowserSessionStore((s) => s.refreshTabs);
+  const createTab = useBrowserSessionStore((s) => s.createTab);
+  const switchTab = useBrowserSessionStore((s) => s.switchTab);
+  const closeTab = useBrowserSessionStore((s) => s.closeTab);
+  const sendRemoteInput = useBrowserSessionStore((s) => s.sendRemoteInput);
+  const promoteToInteractive = useBrowserSessionStore((s) => s.promoteToInteractive);
 
   const handleGateChange = useCallback(
     (event: Event) => {
@@ -126,6 +135,9 @@ export function useBrowserSession(options?: {
     lastError,
     addressDraft,
     contentVisible,
+    tabs,
+    activeTabId,
+    screencastFrame,
     navigate,
     back,
     forward,
@@ -135,6 +147,12 @@ export function useBrowserSession(options?: {
     showContent,
     setAddressDraft,
     closeSession,
+    refreshTabs,
+    createTab,
+    switchTab,
+    closeTab,
+    sendRemoteInput,
+    promoteToInteractive,
     hydrateFromRust,
   };
 }

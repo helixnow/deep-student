@@ -8,6 +8,7 @@ import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence'
 import {
   Plus,
   Pencil,
+  Check,
   CheckCircle,
   CheckSquare,
   Circle,
@@ -38,7 +39,7 @@ import {
   Note,
   BracketsCurly,
   Cards,
-  Sparkle,
+  TreeStructure,
   ListBullets,
   MagicWand,
   ChatCircleDots,
@@ -343,7 +344,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive,
     <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">{icon}</span>
     <span className="flex-1">{label}</span>
     {active && (
-      <span className="text-primary text-xs mr-1">✓</span>
+      <Check size={12} className="text-primary mr-1 shrink-0" aria-hidden="true" />
     )}
     {shortcut && (
       <span className="text-[11px] text-muted-foreground ml-auto pl-2 flex-shrink-0">{shortcut}</span>
@@ -988,12 +989,11 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       {/* 画布原生一键 AI 助手分区 */}
       {!reciteMode && (
         <>
-          <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[12px] font-medium text-muted-foreground select-none">
-            <Sparkle className="w-3.5 h-3.5 flex-shrink-0 text-primary" />
+          <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-xs font-medium text-muted-foreground select-none">
             <span>{t('contextMenu.aiAssistant', { defaultValue: 'AI 助手' })}</span>
           </div>
           <MenuItem
-            icon={<Sparkle className="w-4 h-4" />}
+            icon={<TreeStructure className="w-4 h-4" />}
             label={t('contextMenu.aiExpand', { defaultValue: 'AI 扩写子节点' })}
             onClick={() => exec(() => handleAiNodeAction('expand'))}
           />

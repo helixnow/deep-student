@@ -64,20 +64,6 @@ function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
   return ACTIVE_STATUSES.has(status);
 }
 
-/** 时间线状态点配色（与 AutomationStatusPill 的语义色一致） */
-const TIMELINE_DOT_CLASS: Record<string, string> = {
-  success: 'bg-success',
-  heartbeat_ok: 'bg-success',
-  error: 'bg-destructive',
-  timeout: 'bg-destructive',
-  spawn_error: 'bg-destructive',
-  running: 'bg-primary',
-  retrying: 'bg-primary',
-  queued: 'bg-muted-foreground/50',
-  cancelled: 'bg-muted-foreground/40',
-  skipped: 'bg-muted-foreground/40',
-};
-
 /**
  * 失败原因 → 人类可读分类（i18n key 后缀 `todo:automation.history.reason.*`）。
  * 原始错误全文仍在下方 <pre> 中保留，可复制。
@@ -241,7 +227,6 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
   const { t } = useTranslation(['todo']);
   const detailId = `automation-run-detail-${run.id}`;
   const isActive = ACTIVE_STATUSES.has(run.status);
-  const isRunning = run.status === 'running' || run.status === 'retrying';
   const retryable = RETRYABLE_STATUSES.has(run.status);
   const showTrigger = VISIBLE_TRIGGERS.has(run.triggerType);
   const showAttempt = run.attempt > 1;
@@ -288,15 +273,6 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
         )}
         style={{ borderRadius: 'var(--radius-shell-row, 6px)', transitionTimingFunction: EASE }}
       >
-        {/* 时间线状态点（左侧竖向 rail 由 ul.automation-timeline 提供） */}
-        <span
-          aria-hidden
-          className={cn(
-            'automation-timeline__dot shrink-0',
-            TIMELINE_DOT_CLASS[run.status] ?? 'bg-muted-foreground/40',
-            isRunning && 'automation-timeline__dot--pulse',
-          )}
-        />
         <AutomationStatusPill status={run.status} size="sm" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={name}>
           {name}

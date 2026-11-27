@@ -3,7 +3,7 @@
 状态：**已定稿**（2026-11-03，协调者决策）。本文与 [ARCHITECTURE.md](ARCHITECTURE.md)（后端插件）合起来，构成完整的插件模型：
 **一个功能 = 一个插件包 = Host 一半 + UI 一半（可选）**。社区开发者可以同时扩展后端能力和界面，一个开关同时启用或停用两半。
 
-落地后的写法（v1 清单、由 id 派生的名字、`ctx.ui.host`）以 [SDK.md](SDK.md)、`examples/README.md`、`src/ui-sdk/README.md`
+落地后的写法（v1/v2 清单、由 id 派生的名字、`ctx.ui.host`）以 [SDK.md](SDK.md)、[PLUGIN-V2.md](PLUGIN-V2.md)、`examples/README.md`、`src/ui-sdk/README.md`
 为准；下文的接口名已按实现更新。社区插件与官方插件并存，不能顶替官方插件（SDK.md §3.3）。
 
 参考：DeepSeek Harness 的客户端插件（浏览器内运行 Cordis 树、类型化 slot、host 决定加载哪些客户端模块、
@@ -15,14 +15,14 @@
 | 问题 | 决定 | 理由 |
 |---|---|---|
 | UI 插件运行在哪 | 渲染进程中的 **Cordis 根**（`src/ui-kernel/`），与 Host 同一框架、同一套 `apply(ctx)` / `inject` / 副作用生命周期 | 开发者只学一套模型；贡献物随插件卸载自动撤销 |
-| 插件包形态 | 一个目录或 npm 包：`index.ts`（Host 半）+ `ui.tsx`（UI 半，可选，构建成 `dist/ui.js`），在清单 `deepStudent.ui` 与 Host 插件的 `meta.ui` 中声明 | 启用、停用都只有一个开关（profile 条目） |
+| 插件包形态 | 一个目录或 npm 包：`index.ts`（Host 半）+ `ui.tsx`（UI 半，可选，构建成 `dist/ui.js`），在清单 `deepStudent.ui` 与 Host 插件的 `meta.ui` 中声明；v2 清单另支持纯 UI 包（无需 Host 半）与零代码 `declarative` 声明式包（[PLUGIN-V2.md](PLUGIN-V2.md)） | 启用、停用都只有一个开关（profile 条目） |
 | 谁决定加载哪些 UI 模块 | **Host**：根据已装载的 profile 生成 UI 引导清单，渲染进程按清单加载 | 前后两半永远一致；被禁用的插件不会只剩半个 |
 | 怎么加载第三方代码 | 原生 ESM，经 Electron 自定义协议 `ds-plugin://<插件 id>/…` 提供；共享依赖经 **import map** 指向宿主单例 | 不需要自研模块系统，也不需要用户机器上有构建工具链 |
-| 共享依赖 | 固定白名单：`react`、`react-dom`、`@deepstudent/ui`（UI SDK：设计系统组件、hooks、类型）、`i18next` | 第三方插件不自带 React，体积小、行为一致 |
+| 共享依赖 | 固定白名单（16 个模块，`src/ui-kernel/community.ts` `COMMUNITY_SHARED_MODULES`）：4 个核心模块（`react`、`react-dom`、`@deepstudent/ui`、`i18next`）与 12 个 `@milkdown/kit/*` 入口 | 第三方插件不自带 React 或编辑器内核，体积小、行为一致 |
 | 扩展点形态 | **类型化 slot**（单个 / 列表 / 按 key 三种基数），外加若干领域注册表（对话 block、命令、设置分区…），全部通过 `ctx.ui.*` 服务暴露 | 新扩展点只需声明 slot，不再往中心列表里加 if 分支 |
 | 现有代码 | **不重写**。把中心化列表（视图、侧栏、设置页签、命令、block…）改为读取注册表，官方功能自己先作为 UI 插件注册 | 前端完整保留，渐进改造，每一步都可单独验证 |
-| UI 怎么调用后端 | `ctx.ui.host.<服务名>.<方法>()`：调用 Host 插件 `meta.remote` 中列出的服务方法 | 第三方 UI 不需要（也不允许）新增 Tauri 命令 |
-| 信任与隔离 | 已安装插件与应用同进程运行（同 DSH），安装时提示信任（未实现：现在没有安装流程和同意记录，见 SECURITY.md 第 6 节）；**不受信任的展示类贡献**（例如 HTML 卡片）走现有的沙箱 iframe（`HtmlSandboxPreview` 策略） | 教育类应用需要可控；完全沙箱化所有 UI 代价过高 |
+| UI 怎么调用后端 | `ctx.ui.host.<服务名>.<方法>()`：调用 Host 插件 `meta.remote` 中列出的服务方法 | 第三方 UI 不需要（也不允许）新增 IPC 命令 |
+| 信任与隔离 | 已安装插件与应用同进程运行（同 DSH），通过包管理器（`host/kernel/plugin-packages/index.ts` `PluginPackages`）、插件管理页与插件工坊（`host/plugins/plugin-workshop/index.ts`）完成安装并由 Host K3 精确 ID/版本/权限同意账本记录授权（见 `docs/plugins/SECURITY.md` 第 6 节）；**不受信任的展示类贡献**（例如 HTML 卡片）走现有的沙箱 iframe（`HtmlSandboxPreview` 策略） | 教育类应用需要可控；完全沙箱化所有 UI 代价过高 |
 | 样式 | 只用 `@deepstudent/ui` 组件与应用主题的 CSS 变量（`src/styles/shadcn-variables.css`，如 `hsl(var(--foreground))`）；Tailwind 工具类只有应用自己用到的才有样式（`tailwind.config.js` 只扫描 `src/`）；禁止覆盖全局选择器 | 与现有主题系统一致，深浅色自动适配 |
 | 文案 | 插件自带语言包，经 `ctx.ui.i18n.addBundles({ 'zh-CN': …, 'en-US': … })` 注册到由插件 id 派生的命名空间（i18next `addResourceBundle`） | 不需要修改全局 `ALL_NS` |
 
@@ -34,7 +34,7 @@ my-plugin/
                  "deepStudent": { "manifestVersion": 1, "id": "alice.my-plugin", "platforms": ["desktop"], "host": "./index.ts", "ui": "./dist/ui.js" }
   index.ts       Host 半：definePlugin({ meta: { id, version, provides, ui: './dist/ui.js', remote }, apply })（host/kernel/api.ts）
   ui.tsx         UI 半：definePlugin({ meta: { id, version, host: true }, apply(ctx) { ctx.ui.views.register(…) } })（@deepstudent/ui）
-  dist/ui.js     npm run build:ui（应用仓库的 examples/scripts/build-ui.mjs）的产物：四个共享模块 external，文案写在 ui.tsx 里
+  dist/ui.js     npm run build:ui（应用仓库的 examples/scripts/build-ui.mjs）的产物：16 个共享模块 external（4 个核心模块 + 12 个 @milkdown/kit/*），文案写在 ui.tsx 里
 ```
 
 完整的可运行例子与脚手架见 `examples/README.md`。官方插件同样分两半：Host 半在 `host/plugins/<x>/index.ts`；UI 半在
@@ -98,18 +98,17 @@ UI 端调用 `await ctx.ui.host.exampleWordOfDay.today(date)`。kernel 通过统
 中列出的方法，参数和返回值必须是可序列化的 JSON；方法抛 `CommandError(value)` 时 UI 收到 `value`（SDK.md §2）。官方前端现有的
 `invoke` 调用保持不变（它们受 IPC 契约约束）；新功能优先使用这个通道。
 
-## 6. 分阶段计划
+## 6. 落地状态
 
-| 阶段 | 内容 | 负责 | 时机 |
-|---|---|---|---|
-| **F0 基础** | `src/ui-kernel/`：渲染进程 Cordis 根、`defineUiPlugin`、slot 原语（单个 / 列表 / keyed，贡献随 fiber 撤销）、`ctx.ui.commands` / `chat.blocks` / `workbench` 三个包装现有注册表的服务、`@deepstudent/ui` SDK 入口、`ds-shared` shim 生成；配套测试 | 协调者（Claude）亲自 | 现在（后端迁移期间并行） |
-| F0b 加载通道 | kernel：`meta.ui` / `meta.remote`、UI 引导清单、`plugin:host\|call`；外壳：`ds-plugin://` 与 `ds-shared://` 协议、import map、CSP | F1、F2 lane（按本文规格） | 后端 A 级接近完成时 |
-| F1 改造 | 视图、侧栏、设置分区、Markdown、右键菜单改为读注册表；官方功能逐个注册为 UI 插件；每步做前端回归 | lane（规格明确的机械改造） | 后端集成完成后 |
-| F2 生态 | 社区插件示例（Host+UI 两半）、插件管理页（启用/停用/信任提示）、SDK 文档补 UI 章节 | 协调者设计，lane 实现 | F1 之后 |
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| **F0 基础** | `src/ui-kernel/`：渲染进程 Cordis 根、`defineUiPlugin`、slot 原语（单个 / 列表 / keyed，贡献随 fiber 撤销）、`ctx.ui.commands` / `chat.blocks` / `workbench` 等注册表适配、`@deepstudent/ui` SDK 入口、共享模块 import map shim 及配套测试 | 已落地 |
+| **F0b 加载通道** | kernel：`meta.ui` / `meta.remote`、UI 引导清单、`plugin:host\|call`；外壳：`ds-plugin://` 协议、import map、CSP | 已落地 |
+| **F1 改造** | 视图、侧栏、设置分区、Markdown、右键菜单、编辑器等已改为读槽位/注册表；`src/ui-plugins/official/` 下已落地 20 个官方 UI 插件 | 已落地 |
+| **F2 生态** | 社区插件示例（`examples/plugins/`）、插件管理页与插件工坊（安装、启用/停用、Host K3 同意账本）、SDK 文档 UI 章节（[SDK.md](SDK.md) §4） | 已落地 |
 
 ## 7. 不做的事
 
 - 不引入 Module Federation，也不写自研模块加载器：Electron 自定义协议加上原生 ESM 和 import map 足够。
 - 不为现有官方组件强推"零上下文"重写；这条约定只用于新插件。
-- 不在用户机器上调用 npm/pnpm：插件以预构建的包分发（UI 半是构建好的 `dist/ui.js`）。现在还没有安装流程，用户在
-  `<数据目录>/plugins/user.profile.json` 里加一条指向包的条目（`examples/README.md`「装载」）。
+- 不在用户机器上调用 npm/pnpm：插件以预构建包分发（UI 半是构建好的 `dist/ui.js`），通过包管理器（`host/kernel/plugin-packages/index.ts` `PluginPackages`）在插件管理页或插件工坊中安装并写入 Host K3 同意账本；开发态仍可直接通过 `<数据目录>/plugins/user.profile.json` 手动装载（`examples/README.md`「装载」）。

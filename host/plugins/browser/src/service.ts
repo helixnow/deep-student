@@ -196,7 +196,7 @@ export function unionPhysicalSurfaceOcclusions(rects: readonly PhysicalRect[]): 
   const converted: PhysicalOcclusionBounds[] = [];
   for (const rect of rects) {
     const bounds = boundsFromRect(rect);
-    if (!bounds.ok) return bounds;
+    if ('error' in bounds) return { ok: false, error: bounds.error };
     converted.push(bounds.value);
   }
   const yEdges = [...new Set(converted.flatMap(rect => [rect.top, rect.bottom]))].sort((a, b) => a - b);
@@ -234,7 +234,7 @@ export function unionPhysicalSurfaceOcclusions(rects: readonly PhysicalRect[]): 
   const output: PhysicalRect[] = [];
   for (const bounds of union) {
     const rect = boundsIntoRect(bounds);
-    if (!rect.ok) return rect;
+    if ('error' in rect) return { ok: false, error: rect.error };
     output.push(rect.value);
   }
   return { ok: true, value: output };
@@ -276,7 +276,7 @@ export function physicalSurfaceOcclusions(
       x: left, y: top, width: right - left, height: bottom - top,
       viewportWidth, viewportHeight,
     }, physicalViewport);
-    if (!mapped.ok) return mapped;
+    if ('error' in mapped) return { ok: false, error: mapped.error };
     result.push(mapped.value);
   }
   return unionPhysicalSurfaceOcclusions(result);

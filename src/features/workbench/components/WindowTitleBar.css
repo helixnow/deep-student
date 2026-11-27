@@ -26,15 +26,21 @@
 /* Notes（document tabs）与 Files（Finder toolbar）都把自有 chrome 投射进标题栏，
  * 统一读作一块平面桌面编辑器表面，而不是内容区上方的玻璃层。 */
 .wb-titlebar.wb-title-bar[data-wb-app-tabs='notes'],
-.wb-titlebar.wb-title-bar[data-wb-app-tabs='files'] {
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='files'],
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='browser'] {
   border-bottom-color: hsl(var(--border));
   background-color: hsl(var(--muted) / 30%);
   background-image: none;
   backdrop-filter: none;
 }
 
+[data-wb-app-tabs='browser']:has([data-wb-browser-tab-strip]) .wb-title-center {
+  display: none;
+}
+
 .wb-titlebar.wb-title-bar[data-wb-app-tabs='notes']::after,
 .wb-titlebar.wb-title-bar[data-wb-app-tabs='files']::after,
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='browser']::after,
 .wb-titlebar.wb-title-bar[data-wb-title-seamless]::after {
   display: none;
 }

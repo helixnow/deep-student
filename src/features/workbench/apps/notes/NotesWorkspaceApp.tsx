@@ -42,7 +42,6 @@ import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikili
 import { NotesOutlineTab, NotesPropertiesTab } from './NotesPropertiesTab';
 import type { NoteBreadcrumbItem } from '@/features/notes/components/NotesEditorHeader';
 import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
-import type { NoteLearningView } from '@/features/notes/noteLearningProps';
 import { NotesGraphTab } from './graph/NotesGraphTab';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
@@ -216,7 +215,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [resourceFolderIds, setResourceFolderIds] = useState<ReadonlyMap<string, string>>(EMPTY_RESOURCE_FOLDER_IDS);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [learningView, setLearningView] = useState<NoteLearningView | 'tree'>('tree');
   const [learningCreateOpen, setLearningCreateOpen] = useState(false);
   /** 从目录树右键创建时的目标文件夹；undefined = 跟随当前上下文文件夹 */
   const [learningCreateFolderId, setLearningCreateFolderId] = useState<string | null | undefined>(undefined);
@@ -358,7 +356,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   // 宽/中窗侧栏可被 explorerOpen 真正折叠（mod+\ / 命令面板 toggle-sidebar）：
   // 折叠后布局宽度归零，titlebar 标签偏移与背链 overlay 判定随之变化
   const explorerVisible = sizeClass !== 'compact' && explorerOpen;
-  const sidebarLayoutWidth = explorerVisible ? (sizeClass === 'wide' ? 272 : 240) : 0;
+  const sidebarLayoutWidth = explorerVisible ? (sizeClass === 'wide' ? 244 : 216) : 0;
   const availableMainWidth = workspaceWidth - sidebarLayoutWidth;
   const backlinksOverlay = sizeClass === 'compact'
     || Boolean(splitTab)
@@ -1700,8 +1698,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       onQueryChange={setQuery}
       selectedTags={selectedTags}
       onSelectedTagsChange={setSelectedTags}
-      learningView={learningView}
-      onLearningViewChange={setLearningView}
       loading={loading}
       loadError={loadError}
       resourcesCount={resources.length}
@@ -1761,7 +1757,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setSelectedTags([]);
       if (sizeClassRef.current === 'compact') setBacklinksOpen(false);
       setExplorerOpen(true);
-      setLearningView('tree');
       // 展开目标目录及其祖先目录（直接基于 folders 计算路径，清空过滤前即使 treeItems 尚未重建也能生效）
       const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
       const chainIds: string[] = [];
@@ -1833,7 +1828,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           saveStates={saveStates}
           actionsSlotRef={setNotesChromeSlot}
           backlinksOpen={backlinksOpen}
-          onToggleBacklinks={() => setBacklinksOpen((open) => !open)}
+          onToggleBacklinks={focusMode ? undefined : () => setBacklinksOpen((open) => !open)}
         />,
         titlebarTarget,
       ) : null}
@@ -1971,9 +1966,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                       data-active={backlinksOpen ? 'true' : undefined}
                       aria-pressed={backlinksOpen}
                       aria-label={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+                      title={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
                       onClick={() => setBacklinksOpen((open) => !open)}
                     >
-                      <span>{t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}</span>
+                      <span>{t('notesWorkspace.backlinks.title', 'Links')}</span>
                     </button>
                   )}
                   {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}

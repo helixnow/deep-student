@@ -343,8 +343,10 @@ describe('MediaAskTab Companion QA UI integration', () => {
     // Clicking clickable ▶ 03:05 and ▶ 03:26 pills jumps the player to exact seconds
     const cite1 = screen.getByRole('button', { name: '跳转到 03:05' });
     const cite2 = screen.getByRole('button', { name: '跳转到 03:26' });
-    expect(cite1.textContent).toContain('▶');
-    expect(cite2.textContent).toContain('▶');
+    expect(cite1.querySelector('svg')).toBeTruthy();
+    expect(cite2.querySelector('svg')).toBeTruthy();
+    expect(cite1.textContent).toContain('03:05');
+    expect(cite2.textContent).toContain('03:26');
     fireEvent.click(cite1);
     expect(seekTo).toHaveBeenCalledWith(185);
     fireEvent.click(cite2);

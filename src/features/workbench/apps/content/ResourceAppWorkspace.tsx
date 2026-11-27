@@ -46,20 +46,16 @@ import {
   clearResourceWorkspaceActive,
   registerResourceWorkspace,
   setResourceWorkspaceActive,
+  WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT,
   type ResourceWorkspaceType,
+  type WorkbenchHydrateRecentResourceDetail,
 } from './resourceWorkspaceRegistry';
 import './ResourceAppWorkspace.css';
 import { WorkbenchSidebarSurface, WorkbenchSidebarRow, WorkbenchSidebarRowLabel } from '../../components/sidebar';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
 
-export const WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT = 'workbench:hydrate-recent-resource';
-
-export interface WorkbenchHydrateRecentResourceDetail {
-  type: ResourceWorkspaceType;
-  resourceId?: string | null;
-  practiceMode?: 'review_first' | 'normal';
-}
+export { WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT, type WorkbenchHydrateRecentResourceDetail };
 
 type LibraryView = 'all' | 'recent';
 
@@ -959,15 +955,47 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         sidebarCollapsed={sidebarCollapsed}
         hideDrawerHandle={Boolean(titlebarTarget)}
         sidebar={<WorkbenchSidebarSurface ariaLabel={title} className="wb-resource-workspace-sidebar">
-        <header className="wb-resource-workspace-sidebar-title">
-          <span className="wb-resource-workspace-app-icon">
-            <ResourceIcon size={18} weight="duotone" aria-hidden="true" />
-          </span>
-          <strong>{title}</strong>
+        {/* data-wb-drawer-stay：搜索/新建/过滤的结果就显示在抽屉列表里，
+            紧凑窗抽屉不因这些操作自动收起（见 WorkbenchSidebarLayout）；
+            窗口标题栏已承载应用标题，侧栏顶部不再重复渲染应用名。 */}
+        <div className="wb-resource-workspace-sidebar-top" data-wb-drawer-stay>
+          <div className="wb-resource-workspace-search">
+            <MagnifyingGlass size={14} aria-hidden="true" />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && query) {
+                  event.preventDefault();
+                  setQuery('');
+                }
+              }}
+              placeholder={t('workbench:resourceHome.search')}
+              aria-label={t('workbench:resourceHome.search')}
+            />
+            {query && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => {
+                  setQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                title={t('workbench:resourceWorkspace.clearSearch')}
+                aria-label={t('workbench:resourceWorkspace.clearSearch')}
+              >
+                <X size={12} />
+              </DsButton>
+            )}
+          </div>
           <DsButton
             variant="ghost"
             size="icon"
             iconOnly
+            className="wb-resource-workspace-create-btn"
             onClick={createResource}
             disabled={creating}
             title={newLabel}
@@ -975,41 +1003,6 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           >
             {creating ? <ArrowClockwise size={14} className="animate-spin" /> : <Plus size={14} />}
           </DsButton>
-        </header>
-
-        {/* data-wb-drawer-stay：搜索/过滤/刷新的结果就显示在抽屉列表里，
-            紧凑窗抽屉不因这些操作自动收起（见 WorkbenchSidebarLayout） */}
-        <div className="wb-resource-workspace-search" data-wb-drawer-stay>
-          <MagnifyingGlass size={14} aria-hidden="true" />
-          <input
-            ref={searchInputRef}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && query) {
-                event.preventDefault();
-                setQuery('');
-              }
-            }}
-            placeholder={t('workbench:resourceHome.search')}
-            aria-label={t('workbench:resourceHome.search')}
-          />
-          {query && (
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              onClick={() => {
-                setQuery('');
-                searchInputRef.current?.focus();
-              }}
-              title={t('workbench:resourceWorkspace.clearSearch')}
-              aria-label={t('workbench:resourceWorkspace.clearSearch')}
-            >
-              <X size={12} />
-            </DsButton>
-          )}
         </div>
 
         <nav className="wb-resource-workspace-nav" aria-label={title} data-wb-drawer-stay>
@@ -1043,7 +1036,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           }}
           trackOffsetTop={5}
           trackOffsetBottom={8}
-          trackOffsetRight={3}
+          trackOffsetRight={1}
         >
           {loading && items.length === 0 ? (
             <div className="wb-resource-workspace-loading" role="status">

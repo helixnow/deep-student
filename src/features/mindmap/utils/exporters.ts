@@ -143,7 +143,7 @@ function nodeToMarkdown(node: MindMapNode, level: number): string {
   if (node.refs && node.refs.length > 0) {
     const indent = level === 0 ? '' : '  '.repeat(level);
     for (const ref of node.refs) {
-      result += `${indent}> 📎 [${ref.name}](${ref.sourceId})\n`;
+      result += `${indent}> [${ref.name}](${ref.sourceId})\n`;
     }
     if (level === 0) result += '\n';
   }

@@ -1116,7 +1116,7 @@
   },
   "subagentProfiles": {
     "title": "子代理档案",
-    "description": "管理可用的子代理档案：内建三型开箱即用，自定义档案可直接在此新建和编辑，保存后立即生效。",
+    "description": "管理可用的子代理档案：内建四型开箱即用，自定义档案可直接在此新建和编辑，保存后立即生效。",
     "loading": "正在加载子代理档案",
     "loading_file": "正在读取档案内容…",
     "builtin_badge": "内建",
@@ -1130,7 +1130,11 @@
     "builtin_names": {
       "default": "通用",
       "worker": "执行者",
-      "explorer": "调研者"
+      "explorer": "调研者",
+      "browser": "浏览器专员"
+    },
+    "builtin_descriptions": {
+      "browser": "最小权限沙箱浏览器子代理，仅启用网页浏览、交互、阅读与内容提取工具。"
     },
     "actions": {
       "refresh": "刷新档案列表",
@@ -1183,7 +1187,7 @@
       "reveal_failed": "无法打开档案目录，请检查目录是否存在。",
       "name_required": "请填写档案名称",
       "name_invalid": "名称仅允许小写字母、数字和连字符（不超过 64 个字符）",
-      "name_builtin_conflict": "名称不能与内建档案（default / worker / explorer）相同",
+      "name_builtin_conflict": "名称不能与内建档案（default / worker / explorer / browser）相同",
       "content_required": "文件内容不能为空",
       "file_exists": "同名档案文件已存在，请换一个名称",
       "not_found": "档案文件不存在，可能已被删除，请刷新列表",
@@ -1200,7 +1204,7 @@
     "clear_search": "清空搜索",
     "expand": "展开",
     "collapse": "收起",
-    "back_to_home": "返回首页",
+    "back_to_home": "返回主页",
     "navigation_label": "设置导航"
   },
   "language": {
@@ -1289,7 +1293,7 @@
     "configure_hint": "请使用「硅基流动一键分配」配置 OCR 模型",
     "coordinate_positioning": "坐标定位",
     "configured": "已配置",
-    "siliconflow_hint": "💡 提示：使用「硅基流动一键分配」可自动配置多个 OCR 引擎",
+    "siliconflow_hint": "提示：使用「硅基流动一键分配」可自动配置多个 OCR 引擎",
     "priority_desc": "按优先级从上到下尝试，引擎故障时自动熔断到下一个。可添加任意多模态模型作为备用引擎。",
     "primary": "主引擎",
     "click_to_disable": "点击禁用",
@@ -2360,7 +2364,7 @@
     "unrecognized_package_manager": "无法识别此命令的包管理器要求",
     "install_env_manually": "请手动安装所需环境",
     "package_manager_not_installed": "{{manager}} 未安装\n\n{{hints}}",
-    "package_manager_ready": "✅ {{manager}} 已就绪\n版本：{{version}}\n\n提示：Stdio MCP 需要在桌面端测试实际连接。",
+    "package_manager_ready": "{{manager}} 已就绪\n版本：{{version}}\n\n提示：Stdio MCP 需要在桌面端测试实际连接。",
     "unknown_version": "未知",
     "check_package_manager_failed": "检测包管理器环境失败: {{error}}",
     "policy_saved": "MCP 安全策略已保存",
@@ -2893,8 +2897,8 @@
     "selectFolder": "选择存储文件夹...",
     "createFolder": "新建文件夹",
     "defaultFolderName": "我的记忆",
-    "configured": "✓ 记忆内核已就绪（笔记归档目录已绑定）",
-    "notConfigured": "✓ 记忆内核已就绪（笔记归档目录可按需选择）",
+    "configured": "记忆内核已就绪（笔记归档目录已绑定）",
+    "notConfigured": "记忆内核已就绪（笔记归档目录可按需选择）",
     "disabled": "已停用",
     "rootFolder": "存储位置",
     "noFolders": "暂无文件夹",
@@ -3493,5 +3497,95 @@
       "safeDetail": "请检查连接与配置后重试。"
     },
     "fullSettingsLink": "前往完整高级设置"
+  },
+  "external_import": {
+    "entry_short": "从工具导入",
+    "entry_button": "从 Magpie / CC Switch 导入",
+    "sidebar_button_tooltip": "从外部工具导入或增量同步模型配置",
+    "quick_input_placeholder": "粘贴 API 密钥（sk-... / AIzaSy...）或 ccswitch:// 导入链接",
+    "title": "从外部 AI 工具导入模型配置",
+    "description": "自动扫描本机 Magpie、CC Switch、OpenCode、Claude Code、Codex 配置，或粘贴 ccswitch:// 链接与备份文件一键导入真实上游服务商。",
+    "mode_switch_aria": "导入方式切换",
+    "pick_file_title": "选择外部工具配置文件或备份 (.db / .sql / .json / .toml / .env)",
+    "paste_placeholder": "粘贴 ccswitch://v1/import?... 链接、.env 环境变量块、providers.json 或 SQL 备份片段",
+    "paste_aria_label": "外部工具配置内容",
+    "paste_hint": "粘贴后将自动识别；支持 ccswitch:// 深链、export/$env: 环境变量、JSON/JSONC 与 SQL 备份",
+    "paste_empty_title": "在上方粘贴导入链接或配置片段即可自动解析",
+    "source_count_badge": "{{count}} 项",
+    "scan_summary_found": "已从 {{sources}} 检出配置（共扫描 {{total}} 类工具）",
+    "scan_summary_none": "已扫描 {{total}} 类本机工具，未发现可导入配置",
+    "skipped_proxy_short": "已跳过 {{count}} 个本地代理",
+    "auto_probe_short": "导入时自动探测模型",
+    "skipped_proxy_notice": "已自动跳过 {{count}} 个本地代理接管占位配置，仅导入真实上游服务商。",
+    "all_synced_banner": "检测到的 {{count}} 个外部服务商均已与当前配置保持同步，无需重复操作。",
+    "vendor_selection_summary": "已勾选 {{selected}} / {{total}} 个服务商",
+    "scanning": "正在扫描并解析外部配置...",
+    "empty_title": "未发现可导入的外部供应商配置",
+    "empty_desc": "若配置保存在自定义目录，可点击「选择配置文件」手动导入 cc-switch.db / providers.json / .sql 备份，或切换到「粘贴链接或配置」直接解析。",
+    "extra_keys_badge": "+{{count}} 个备用密钥",
+    "selected_models_count": "{{selected}}/{{total}} 个模型",
+    "auto_probe_on_import_hint": "该供应商未显式列出模型，导入时将自动探测并精选核心模型（也可先点击「探测模型」手动勾选）。",
+    "zero_models_selected_hint": "当前未勾选任何模型，导入时将仅同步该服务商密钥。",
+    "search_models_placeholder": "搜索模型名称...",
+    "no_matching_models": "没有匹配的模型",
+    "model_recommended": "推荐",
+    "model_exists": "已存在",
+    "auto_assign_slots_title": "自动补齐未配置的学习功能模型",
+    "auto_assign_slots_desc": "仅为当前尚未分配模型的对话、解题、OCR 等空缺槽位绑定最佳模型，保留你已有的设置。",
+    "tabs": {
+      "scan": "本机自动扫描",
+      "paste": "粘贴链接或配置"
+    },
+    "sources": {
+      "magpie": "Magpie",
+      "cc_switch": "CC Switch",
+      "opencode": "OpenCode",
+      "claude_code": "Claude Code",
+      "codex": "Codex",
+      "paste": "剪贴板",
+      "file": "配置文件"
+    },
+    "protocols": {
+      "openai_responses": "OpenAI Responses",
+      "openai_chat_completions": "OpenAI Chat",
+      "anthropic_messages": "Anthropic Messages",
+      "google_generate_content": "Google Gemini"
+    },
+    "status": {
+      "new": "新增",
+      "match_builtin": "对齐内置厂商",
+      "update": "增量更新",
+      "synced": "已同步"
+    },
+    "actions": {
+      "rescan": "重新扫描",
+      "pick_file": "选择配置文件",
+      "paste_clipboard": "读取剪贴板",
+      "parse_snippet": "解析配置",
+      "probe_models": "探测模型",
+      "toggle_models": "展开或收起模型列表",
+      "select_recommended": "仅选推荐",
+      "select_all": "全选",
+      "select_none": "全不选",
+      "force_resync_all": "全部重同步",
+      "import_more_or_reset": "继续导入或换密钥",
+      "importing": "正在导入...",
+      "import_selected": "导入已选配置 ({{count}})"
+    },
+    "notifications": {
+      "import_success_title": "外部模型配置导入完成",
+      "import_success_desc": "已同步 {{vendorCount}} 个服务商，新增启用 {{modelCount}} 个模型，自动补齐 {{slotCount}} 个功能槽位。",
+      "import_warning_title": "部分供应商需手动拉取模型"
+    }
+  },
+  "workbenchBrowserCdpUrl": {
+    "title": "远程 CDP 端点",
+    "desc": "用于自托管 WebUI 或外部 Chromium 的 Chrome DevTools Protocol 地址（支持 http(s):// 与 ws(s)://）。环境变量 DS_BROWSER_CDP_URL 优先级更高。",
+    "placeholder": "http://127.0.0.1:9222",
+    "save": "保存",
+    "clear": "清除",
+    "saved": "远程 CDP 端点已保存",
+    "cleared": "远程 CDP 端点已清除",
+    "invalidUrl": "请输入以 http://、https://、ws:// 或 wss:// 开头的有效地址"
   }
 }

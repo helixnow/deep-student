@@ -8,9 +8,7 @@ export function EmptyServerList({ onAdd }: { onAdd: () => void }) {
 
   return (
     <div className="py-16">
-      <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-4">
-        <Plug className="w-6 h-6 text-muted-foreground/60" />
-      </div>
+      <Plug className="w-6 h-6 text-muted-foreground/60 mb-3" />
       <p className="text-sm font-medium text-foreground mb-1">
         {t('settings:mcp_descriptions.no_mcp_configured')}
       </p>

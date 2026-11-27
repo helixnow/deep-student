@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowCounterClockwise,
   CaretDown,
+  Check,
   CircleNotch,
+  DownloadSimple,
   Eye,
   EyeSlash,
   Lightning,
@@ -10,11 +12,18 @@ import {
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import { cn } from '@/utils/cn';
+import { ExternalToolImportPanel } from './ExternalToolImportPanel';
+import {
+  looksLikeStructuredExternalConfig,
+  type ExternalLlmImportResult,
+} from './externalImportApi';
+import { BYOK_PRESETS } from './keyDetector';
 import type {
   ByokAutoProvisionSummary,
   ByokProviderPreset,
@@ -37,9 +46,14 @@ const LEARNER_ROLE_LABELS: Readonly<Record<ByokSlotRoleId, { zh: string; en: str
 export interface QuickByokProvisionerCardProps {
   mode?: 'onboarding' | 'settings';
   defaultCollapsed?: boolean;
+  externalImportTriggerSeq?: number;
   fetcher?: typeof fetch;
   autoProbeOnPaste?: boolean;
   onCompleted?: (summary: ByokAutoProvisionSummary) => void;
+  onReadyStateChange?: (ready: boolean) => void;
+  /** 宿主弹窗（如 WelcomeOnboardingDialog）自带底部主导航按钮时，隐藏卡内重复的「前往设置/开始学习」按钮 */
+  hideFooterNavigationActions?: boolean;
+  onExternalImported?: (result: ExternalLlmImportResult) => void;
   onOpenFullSettings?: () => void;
   className?: string;
 }
@@ -67,9 +81,13 @@ function resolveStepStatuses(state: ByokProvisionerState): [StepStatus, StepStat
 export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> = ({
   mode = 'settings',
   defaultCollapsed = false,
+  externalImportTriggerSeq,
   fetcher,
   autoProbeOnPaste = false,
   onCompleted,
+  onReadyStateChange,
+  hideFooterNavigationActions = false,
+  onExternalImported,
   onOpenFullSettings,
   className,
 }) => {
@@ -81,6 +99,35 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
   const [userToggledCollapse, setUserToggledCollapse] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [showCustomUrl, setShowCustomUrl] = useState(false);
+  const [entryTab, setEntryTab] = useState<'key' | 'import'>('key');
+  const [externalInitialText, setExternalInitialText] = useState('');
+  const [panelTriggerSeq, setPanelTriggerSeq] = useState(0);
+  const [externalImportDone, setExternalImportDone] = useState<ExternalLlmImportResult | null>(null);
+
+  const openExternalImport = (snippet = '') => {
+    setUserToggledCollapse(true);
+    setIsCollapsed(false);
+    setExternalInitialText(snippet);
+    setEntryTab('import');
+    setPanelTriggerSeq((prev) => prev + 1);
+  };
+
+  useEffect(() => {
+    if (externalImportTriggerSeq && externalImportTriggerSeq > 0) {
+      openExternalImport('');
+    }
+  }, [externalImportTriggerSeq]);
+
+  const handleExternalImported = (result: ExternalLlmImportResult) => {
+    onExternalImported?.(result);
+    if (mode === 'onboarding') {
+      setExternalImportDone(result);
+    } else {
+      setEntryTab('key');
+      setUserToggledCollapse(true);
+      setIsCollapsed(true);
+    }
+  };
 
   const provisioner = useByokAutoProvisioner({
     fetcher,
@@ -119,6 +166,13 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
     }
   }, [detection.isAmbiguous, error]);
 
+  const isProvisionFinished =
+    state === 'completed' || state === 'partial_chat_only' || externalImportDone !== null;
+
+  useEffect(() => {
+    onReadyStateChange?.(isProvisionFinished);
+  }, [isProvisionFinished, onReadyStateChange]);
+
   const getLocalizedPresetName = (preset: ByokProviderPreset): string => {
     if (preset.i18nProviderKey) {
       return t(preset.i18nProviderKey, { defaultValue: preset.displayName });
@@ -126,7 +180,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
     return preset.displayName;
   };
 
-  if (mode === 'settings' && isCollapsed && state === 'idle') {
+  if (mode === 'settings' && isCollapsed && state === 'idle' && entryTab === 'key') {
     return (
       <div
         data-testid="byok-provisioner-collapsed"
@@ -136,25 +190,35 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
         )}
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
           <span className="truncate text-xs text-muted-foreground">
             {isZh
               ? '粘贴一个 API 密钥，几秒内自动配置对话、文档阅读与搜索所需的 AI 模型'
               : 'Paste one API key to automatically set up AI models for chat, reading, and search'}
           </span>
         </div>
-        <DsButton
-          variant="primary"
-          size="sm"
-          data-testid="byok-expand-button"
-          className="shrink-0 rounded-xl border-primary/35 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20"
-          onClick={() => {
-            setUserToggledCollapse(true);
-            setIsCollapsed(false);
-          }}
-        >
-          {isZh ? '快速连接' : 'Quick Setup'}
-        </DsButton>
+        <div className="flex shrink-0 items-center gap-2">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="byok-external-import-collapsed-btn"
+            onClick={() => openExternalImport('')}
+          >
+            <DownloadSimple size={14} />
+            <span>{t('settings:external_import.entry_short')}</span>
+          </DsButton>
+          <DsButton
+            variant="primary"
+            size="sm"
+            data-testid="byok-expand-button"
+            className="shrink-0 rounded-xl border-primary/35 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20"
+            onClick={() => {
+              setUserToggledCollapse(true);
+              setIsCollapsed(false);
+            }}
+          >
+            {isZh ? '快速连接' : 'Quick Setup'}
+          </DsButton>
+        </div>
       </div>
     );
   }
@@ -178,7 +242,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
     },
   ];
 
-  const isFinished = state === 'completed' || state === 'partial_chat_only';
+  const isFinished = isProvisionFinished;
   const showDisambiguationPills =
     !isFinished &&
     detection.sanitizedApiKey.length > 0 &&
@@ -196,51 +260,76 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 shrink-0 rounded-full',
-                state === 'completed'
-                  ? 'bg-emerald-500'
-                  : state === 'partial_chat_only'
-                    ? 'bg-amber-500'
-                    : state === 'error'
-                      ? 'bg-destructive'
-                      : 'bg-foreground/45',
-              )}
-            />
-            <h2 className="text-sm font-medium text-foreground leading-snug">
-              {isZh ? '连接 AI 模型服务' : 'Connect an AI Service'}
-            </h2>
-          </div>
+          <h2 className="text-sm font-medium text-foreground leading-snug">
+            {isZh ? '连接 AI 模型服务' : 'Connect an AI Service'}
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            {isZh
-              ? '粘贴一个服务商 API 密钥，自动识别服务商并配置日常对话、文档阅读与资料搜索。'
-              : 'Paste a single provider API key to identify your provider and set up chat, reading, and material search.'}
+            {entryTab === 'import' && !isFinished
+              ? t('settings:external_import.description')
+              : isZh
+                ? '粘贴一个服务商 API 密钥，自动识别服务商并配置日常对话、文档阅读与资料搜索。'
+                : 'Paste a single provider API key to identify your provider and set up chat, reading, and material search.'}
           </p>
         </div>
 
-        {mode === 'settings' && (
-          <DsButton
-            variant="ghost"
-            size="sm"
-            data-testid="byok-collapse-button"
-            onClick={() => {
-              setUserToggledCollapse(true);
-              setIsCollapsed(true);
-            }}
-          >
-            {isZh ? '收起' : 'Collapse'}
-          </DsButton>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {!isFinished && (
+            <SegmentedControl<'key' | 'import'>
+              ariaLabel={t('settings:external_import.mode_switch_aria')}
+              size="compact"
+              value={entryTab}
+              onValueChange={(next) => {
+                setEntryTab(next);
+                if (next === 'import') {
+                  setExternalInitialText('');
+                  setPanelTriggerSeq((prev) => prev + 1);
+                }
+              }}
+              options={[
+                { value: 'key', label: isZh ? '粘贴密钥' : 'Paste Key' },
+                { value: 'import', label: t('settings:external_import.entry_short') },
+              ]}
+            />
+          )}
+          {mode === 'settings' && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-testid="byok-collapse-button"
+              onClick={() => {
+                setEntryTab('key');
+                setUserToggledCollapse(true);
+                setIsCollapsed(true);
+              }}
+            >
+              {isZh ? '收起' : 'Collapse'}
+            </DsButton>
+          )}
+        </div>
       </div>
 
+      {/* Inline External Tool Import Panel */}
+      {!isFinished && entryTab === 'import' && (
+        <ExternalToolImportPanel
+          initialTextInput={externalInitialText}
+          triggerSeq={panelTriggerSeq}
+          onCancel={() => setEntryTab('key')}
+          onImported={handleExternalImported}
+        />
+      )}
+
       {/* Input Form */}
-      {!isFinished && (
+      {!isFinished && entryTab === 'key' && (
         <form
           className="space-y-2.5"
           onSubmit={(event) => {
             event.preventDefault();
+            if (looksLikeStructuredExternalConfig(rawApiKey)) {
+              const snippet = rawApiKey;
+              setRawApiKey('');
+              openExternalImport(snippet);
+              return;
+            }
             void submitProvision();
           }}
         >
@@ -254,16 +343,16 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 autoFocus={mode === 'onboarding'}
                 disabled={isBusy}
                 aria-label={isZh ? 'API 密钥' : 'API Key'}
-                placeholder={
-                  isZh
-                    ? '粘贴你的 API 密钥（如 sk-... / AIzaSy...）'
-                    : 'Paste your API key (e.g. sk-... / AIzaSy...)'
-                }
+                placeholder={t('settings:external_import.quick_input_placeholder')}
                 onChange={(event) => setRawApiKey(event.target.value)}
                 onPaste={(event) => {
                   const text = event.clipboardData?.getData('text');
                   if (text) {
                     event.preventDefault();
+                    if (looksLikeStructuredExternalConfig(text)) {
+                      openExternalImport(text);
+                      return;
+                    }
                     handlePasteApiKey(text);
                   }
                 }}
@@ -321,7 +410,6 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                     data-testid="byok-detected-chip"
                     className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-background/70 px-2 py-1 text-foreground/90"
                   >
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                     <ProviderIcon
                       modelId={detection.preset.iconModelId}
                       size={14}
@@ -341,7 +429,6 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                   data-testid="byok-ambiguous-chip"
                   className="inline-flex items-center gap-1.5 text-muted-foreground"
                 >
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                   <span>
                     {isZh
                       ? '请选择你的服务商，或让系统自动识别：'
@@ -381,7 +468,6 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                     : 'border-border/35 bg-background/50 text-muted-foreground hover:text-foreground',
                 )}
               >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                 <span>{isZh ? '自动识别' : 'Auto-detect'}</span>
               </button>
 
@@ -449,16 +535,11 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               key={step.key}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs min-w-0"
             >
-              <span
-                className={cn(
-                  'h-1.5 w-1.5 shrink-0 rounded-full',
-                  step.status === 'done'
-                    ? 'bg-emerald-500'
-                    : step.status === 'active'
-                      ? 'bg-amber-500 animate-pulse'
-                      : 'bg-foreground/20',
-                )}
-              />
+              {step.status === 'done' ? (
+                <Check size={12} weight="bold" className="shrink-0 text-success" />
+              ) : step.status === 'active' ? (
+                <CircleNotch size={12} className="shrink-0 text-primary animate-spin motion-reduce:animate-none" />
+              ) : null}
               <span className="font-mono tabular-nums text-muted-foreground">
                 {index + 1}.
               </span>
@@ -480,14 +561,11 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
         <Alert
           variant="destructive"
           data-testid="byok-error-alert"
-          className="border border-border/35 px-3 py-2.5"
+          className="border border-destructive/30 px-3 py-2.5"
         >
-          <div className="flex items-start gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
-            <AlertDescription className="text-xs text-destructive leading-relaxed">
-              {error.message}
-            </AlertDescription>
-          </div>
+          <AlertDescription className="text-xs text-destructive leading-relaxed">
+            {error.message}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -496,7 +574,6 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
         <div data-testid="byok-completed-summary" className="space-y-3 pt-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
               <ProviderIcon
                 modelId={summary.preset.iconModelId}
                 size={15}
@@ -512,9 +589,8 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               <Badge
                 variant="secondary"
                 data-testid="byok-vector-dimension-badge"
-                className="gap-1.5 border border-border/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-normal"
+                className="gap-1.5 border border-success/25 bg-success/10 text-success font-normal"
               >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                 {summary.dimension !== null && (
                   <span className="font-mono tabular-nums">{summary.dimension}</span>
                 )}
@@ -543,52 +619,41 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
       {state === 'partial_chat_only' && summary && (
         <Alert
           data-testid="byok-chat-only-banner"
-          className="border border-border/35 bg-muted/40 px-3.5 py-3"
+          className="border border-warning/25 bg-warning/[0.06] px-3.5 py-3"
         >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-start gap-2 min-w-0">
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-              <div className="min-w-0 space-y-1">
-                <AlertTitle className="text-xs font-medium text-foreground">
-                  {isZh ? 'AI 对话与学习功能已就绪' : 'AI chat & study features are ready'}
-                </AlertTitle>
-                <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
-                  {isZh
-                    ? `已为你配置 ${summary.assignedSlotCount} 项对话与学习功能。当前服务商暂未提供语义搜索模型，资料库将先使用关键词搜索；你随时可以在设置中补充支持语义搜索的服务。`
-                    : `Set up ${summary.assignedSlotCount} chat and study features. This provider does not offer semantic search yet, so your library will use keyword search for now—you can add one anytime in Settings.`}
-                </AlertDescription>
-              </div>
-            </div>
+          <div className="min-w-0 space-y-1">
+            <AlertTitle className="text-xs font-medium text-foreground">
+              {isZh ? 'AI 对话与学习功能已就绪' : 'AI chat & study features are ready'}
+            </AlertTitle>
+            <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
+              {isZh
+                ? `已为你配置 ${summary.assignedSlotCount} 项对话与学习功能。当前服务商暂未提供语义搜索模型，资料库将先使用关键词搜索；你随时可以在设置中补充支持语义搜索的服务。`
+                : `Set up ${summary.assignedSlotCount} chat and study features. This provider does not offer semantic search yet, so your library will use keyword search for now—you can add one anytime in Settings.`}
+            </AlertDescription>
           </div>
         </Alert>
       )}
 
-      {/* Compact 2-Column Study Feature Assignment Grid */}
+      {/* Compact Study Feature Assignment List */}
       {isFinished && summary && (
         <div
           data-testid="byok-slots-grid"
-          className="grid grid-cols-1 gap-1.5 pt-2.5 border-t border-border/35 sm:grid-cols-2"
+          className="divide-y divide-border/35 border-t border-border/35 pt-1"
         >
           {summary.slots.map((slot) => (
             <div
               key={slot.roleId}
-              className="flex items-center justify-between gap-2 rounded-md border border-border/35 bg-background/50 px-2.5 py-1.5 text-xs"
+              className="flex items-center justify-between gap-2 px-1 py-1.5 text-xs"
             >
               <div className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    slot.configId ? 'bg-emerald-500' : 'bg-foreground/20',
-                  )}
-                />
                 <span className="font-mono tabular-nums text-muted-foreground">
                   {slot.slotNumber}.
                 </span>
-                <span className="truncate text-foreground/85">
+                <span className={cn('truncate', slot.configId ? 'text-foreground/90' : 'text-muted-foreground')}>
                   {isZh ? LEARNER_ROLE_LABELS[slot.roleId].zh : LEARNER_ROLE_LABELS[slot.roleId].en}
                 </span>
               </div>
-              <span className="max-w-[46%] truncate font-mono tabular-nums text-[11px] text-muted-foreground">
+              <span className="max-w-[48%] truncate font-mono tabular-nums text-[11px] text-muted-foreground">
                 {slot.modelLabel ??
                   (slot.preservedExisting && slot.configId
                     ? (isZh ? '已配置' : 'Configured')
@@ -614,25 +679,92 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
             </span>
           </DsButton>
 
+          {mode === 'onboarding' && !hideFooterNavigationActions && (onOpenFullSettings || onCompleted) && (
+            <div className="flex items-center gap-2">
+              {onOpenFullSettings && (
+                <DsButton variant="ghost" size="sm" onClick={onOpenFullSettings}>
+                  {isZh ? '前往完整模型设置' : 'Open AI Settings'}
+                </DsButton>
+              )}
+              {onCompleted && (
+                <button
+                  type="button"
+                  data-testid="byok-enter-app-button"
+                  onClick={() => onCompleted(summary)}
+                  className={cn(
+                    'inline-flex h-9 items-center justify-center rounded-control px-4 text-xs font-medium transition-colors',
+                    'bg-foreground text-background hover:bg-foreground/90',
+                    '[@media(pointer:coarse)]:!min-h-11',
+                  )}
+                >
+                  {isZh ? '开始学习' : 'Start Learning'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Onboarding External Import Completed State */}
+      {externalImportDone !== null && !summary && (
+        <div data-testid="byok-external-import-summary" className="space-y-3 pt-1">
           <div className="flex items-center gap-2">
-            {mode === 'onboarding' && onOpenFullSettings && (
-              <DsButton variant="ghost" size="sm" onClick={onOpenFullSettings}>
-                {isZh ? '前往完整模型设置' : 'Open AI Settings'}
-              </DsButton>
-            )}
-            {mode === 'onboarding' && onCompleted && (
-              <button
-                type="button"
-                data-testid="byok-enter-app-button"
-                onClick={() => onCompleted(summary)}
-                className={cn(
-                  'inline-flex h-9 items-center justify-center rounded-control px-4 text-xs font-medium transition-colors',
-                  'bg-foreground text-background hover:bg-foreground/90',
-                  '[@media(pointer:coarse)]:!min-h-11',
+            <Check size={14} weight="bold" className="shrink-0 text-success" />
+            <span className="text-xs font-medium text-foreground">
+              {t('settings:external_import.notifications.import_success_title')}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {t('settings:external_import.notifications.import_success_desc', {
+              vendorCount:
+                externalImportDone.importedVendorCount + externalImportDone.updatedVendorCount,
+              modelCount: externalImportDone.importedModelCount,
+              slotCount: externalImportDone.assignedSlotCount,
+            })}
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-border/35">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setExternalImportDone(null);
+                reset();
+              }}
+            >
+              <ArrowCounterClockwise size={14} />
+              <span>{t('settings:external_import.actions.import_more_or_reset')}</span>
+            </DsButton>
+            {mode === 'onboarding' && !hideFooterNavigationActions && (onOpenFullSettings || onCompleted) && (
+              <div className="flex items-center gap-2">
+                {onOpenFullSettings && (
+                  <DsButton variant="ghost" size="sm" onClick={onOpenFullSettings}>
+                    {t('settings:byok.fullSettingsLink')}
+                  </DsButton>
                 )}
-              >
-                {isZh ? '开始学习' : 'Start Learning'}
-              </button>
+                {onCompleted && (
+                  <DsButton
+                    variant="primary"
+                    size="sm"
+                    data-testid="byok-external-enter-app-button"
+                    className="h-9 rounded-control !border-transparent !bg-foreground px-4 text-xs font-medium !text-background hover:!bg-foreground/90 hover:!text-background active:!bg-foreground/85"
+                    onClick={() =>
+                      onCompleted({
+                        status: 'completed',
+                        preset: BYOK_PRESETS.custom,
+                        baseUrl: '',
+                        probedModelCount: externalImportDone.importedModelCount,
+                        enabledModelCount: externalImportDone.importedModelCount,
+                        assignedSlotCount: externalImportDone.assignedSlotCount,
+                        slots: [],
+                        dimension: null,
+                        keptExistingDefaultDimension: null,
+                        latencyMs: 0,
+                      })
+                    }
+                  >
+                    {t('settings:byok.result.enterAppCta')}
+                  </DsButton>
+                )}
+              </div>
             )}
           </div>
         </div>

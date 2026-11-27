@@ -12,6 +12,8 @@ type JsonObject = { [key: string]: JsonValue };
 
 export const TRANSIENT_SKILL_METADATA_KIND = 'skill_instruction';
 export const TRANSIENT_REQUEST_ANCHOR_METADATA_KIND = 'request_context_anchor';
+export const TRANSIENT_BROWSER_SCREENSHOT_METADATA_KIND = 'browser_screenshot_image';
+export const TRANSIENT_RETRIEVAL_PAGE_IMAGES_METADATA_KIND = 'retrieval_page_images';
 
 export interface TransientChatMessageLike {
   role: string;
@@ -37,7 +39,9 @@ export function isTransientLlmOnlyMessage(message: TransientChatMessageLike): bo
   const metadata = metadataObject(message);
   if (metadata === null || metadata.hidden !== true) return false;
   return metadata.kind === TRANSIENT_SKILL_METADATA_KIND
-    || metadata.kind === TRANSIENT_REQUEST_ANCHOR_METADATA_KIND;
+    || metadata.kind === TRANSIENT_REQUEST_ANCHOR_METADATA_KIND
+    || metadata.kind === TRANSIENT_BROWSER_SCREENSHOT_METADATA_KIND
+    || metadata.kind === TRANSIENT_RETRIEVAL_PAGE_IMAGES_METADATA_KIND;
 }
 
 /** 瞬态技能/锚点 user 正文集合，用于合并屏障的精确匹配。 */
@@ -107,23 +111,62 @@ export function mergeConsecutiveUserMessages(messages: unknown[]): void {
   messages.splice(0, messages.length, ...merged);
 }
 
+function firstTextPart(content: JsonValue | undefined): string | null {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return null;
+  for (const part of content) {
+    if (part !== null && typeof part === 'object' && !Array.isArray(part)) {
+      const record = part as JsonObject;
+      if (record.type === 'text' && typeof record.text === 'string') {
+        return record.text;
+      }
+    }
+  }
+  return null;
+}
+
+function hasTransientMultimodalMarker(text: string): boolean {
+  if (text.startsWith('<untrusted_web_content') && text.includes('kind="browser_screenshot"')) {
+    return true;
+  }
+  if (text.startsWith('<retrieval_page_images>')) {
+    return true;
+  }
+  return false;
+}
+
+function isGuardedTransientUserMessage(
+  message: unknown,
+  transientContents: ReadonlySet<string>,
+): boolean {
+  if (roleOf(message) !== 'user') return false;
+  if (message !== null && typeof message === 'object' && !Array.isArray(message)) {
+    const candidate = message as TransientChatMessageLike;
+    if (candidate.metadata !== undefined && isTransientLlmOnlyMessage(candidate)) {
+      return true;
+    }
+  }
+  const content = contentOf(message);
+  const text = firstTextPart(content);
+  if (text === null) return false;
+  if (transientContents.has(text)) return true;
+  return hasTransientMultimodalMarker(text);
+}
+
 /**
- * P1-8 恒定合并：瞬态消息作为屏障，屏障两侧真实 user 段各自照常合并。
+ * P1-8 恒定合并：瞬态消息（含多模态浏览器截图/检索页图）作为屏障，屏障两侧真实 user 段各自照常合并。
  * 无瞬态时与 mergeConsecutiveUserMessages 完全一致。
  */
 export function mergeConsecutiveUserMessagesRespectingTransients(
   messages: unknown[],
   transientContents: ReadonlySet<string>,
 ): void {
-  if (transientContents.size === 0) {
+  const isGuarded = (message: unknown): boolean =>
+    isGuardedTransientUserMessage(message, transientContents);
+  if (transientContents.size === 0 && !messages.some(isGuarded)) {
     mergeConsecutiveUserMessages(messages);
     return;
   }
-  const isGuarded = (message: unknown): boolean => (
-    roleOf(message) === 'user'
-    && typeof contentOf(message) === 'string'
-    && transientContents.has(contentOf(message) as string)
-  );
   const drained = [...messages];
   const output: unknown[] = [];
   let segment: unknown[] = [];
@@ -149,7 +192,7 @@ export function escapeXmlContent(text: string): string {
 
 /**
  * 把注入文本追加到最近一条真实 user 消息；找不到时在尾部追加独立 user。
- * 空白注入为 no-op；system 与历史消息永不改写。
+ * 空白注入为 no-op；system 与历史消息永不改写；跳过瞬态纯文本与多模态 user 消息。
  */
 export function appendInjectionToCurrentUserMessage(
   messages: unknown[],
@@ -163,9 +206,7 @@ export function appendInjectionToCurrentUserMessage(
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (roleOf(message) !== 'user') continue;
-    const content = contentOf(message);
-    const isTransient = typeof content === 'string' && transientUserContents.has(content);
-    if (!isTransient) {
+    if (!isGuardedTransientUserMessage(message, transientUserContents)) {
       target = message as JsonObject;
       break;
     }

@@ -2356,7 +2356,37 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => handleSelectTab(v as DashboardTab)} className="min-w-0">
-      {unresolvedConflictCount > 0 && (
+      {maintenanceMode ? (
+        <div
+          role="status"
+          data-testid="governance-maintenance-banner"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-2 text-xs text-foreground"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <CircleNotch className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-warning" />
+            <span className="font-medium text-warning">
+              {t('data:governance.maintenance_banner_active')}
+            </span>
+            {maintenanceReason && (
+              <span className="truncate text-muted-foreground">
+                · {maintenanceReason}
+              </span>
+            )}
+          </div>
+          <DsButton
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="governance-maintenance-view-details"
+            onClick={revealActiveMaintenanceDetail}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t('data:governance.maintenance_view_details', {
+              defaultValue: i18n?.language?.startsWith('en') ? 'View Details' : '查看详情',
+            })}
+          </DsButton>
+        </div>
+      ) : unresolvedConflictCount > 0 ? (
         <div
           role="alert"
           data-testid="governance-unresolved-conflicts-banner"
@@ -2386,44 +2416,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             {t('data:governance.unresolved_conflicts_go_resolve')}
           </DsButton>
         </div>
-      )}
-      {maintenanceMode && (
-        <div
-          role="status"
-          data-testid="governance-maintenance-banner"
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-2 text-xs text-foreground"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <CircleNotch className="h-3.5 w-3.5 shrink-0 animate-spin text-warning" />
-            <span className="font-medium text-warning">
-              {t('data:governance.maintenance_banner_active')}
-            </span>
-            {maintenanceReason && (
-              <span className="truncate text-muted-foreground">
-                · {maintenanceReason}
-              </span>
-            )}
-          </div>
-          <DsButton
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="governance-maintenance-view-details"
-            onClick={revealActiveMaintenanceDetail}
-            className="h-7 px-2.5 text-xs"
-          >
-            {t('data:governance.maintenance_view_details', {
-              defaultValue: i18n?.language?.startsWith('en') ? 'View Details' : '查看详情',
-            })}
-          </DsButton>
-        </div>
-      )}
-      {/* 移动端（如 360px）使用 !flex !h-auto flex-wrap 自动换行，防止固定 h-10 截断与死点。 */}
-      <div className="relative z-10 mb-4 min-w-0 max-w-full" data-testid="governance-tabs-strip">
+      ) : null}
+      {/* 单行可横向滚动页签条，立即同步操作内联在同一行右侧，不另起第二行。 */}
+      <div
+        className="relative z-10 mb-4 flex min-w-0 max-w-full items-center gap-2 border-b border-border/40 pb-3"
+        data-testid="governance-tabs-strip"
+      >
         <TabsList
           aria-label={t('data:governance.tabs_nav_label')}
           style={{ height: 'auto' }}
-          className="!flex !h-auto !min-h-0 !w-full min-w-0 max-w-full flex-wrap items-center justify-start !gap-1.5 rounded-none border-b border-border/40 bg-transparent !p-0 !pb-3"
+          className="!flex !h-auto !min-h-0 min-w-0 flex-1 flex-nowrap items-center justify-start !gap-1.5 overflow-x-auto rounded-none border-0 bg-transparent !p-0"
         >
           <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className={tabTriggerClassName}>
             <Gauge className="h-3.5 w-3.5 shrink-0" />
@@ -2471,7 +2473,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           )}
         </TabsList>
         {!hideHeaderQuickSync && cloudSyncConfigured && activeTab !== 'sync' && (
-          <div className="mt-2 flex justify-end">
+          <div className="shrink-0">
             <QuickSyncNowButton
               dataTestId="governance-quick-sync-now-btn"
               cloudConfiguredOverride={cloudSyncConfigured}

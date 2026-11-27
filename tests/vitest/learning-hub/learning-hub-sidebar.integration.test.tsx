@@ -75,6 +75,7 @@ vi.mock('@/components/ui/app-menu', () => ({
   AppMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AppMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AppMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button onClick={onClick}>{children}</button>,
+  AppMenuSeparator: () => <hr />,
   AppMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));

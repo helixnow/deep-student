@@ -75,14 +75,14 @@ const LABELED_TYPES: ReadonlySet<DstuNodeType> = new Set([
 
 // ★ 记忆系统改造：从笔记 tags 中提取记忆元数据（文案走 i18n finder.memoryMeta.*）
 const MEMORY_TYPE_STYLES: Record<string, string> = {
-  fact: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  study: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  note: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  fact: 'bg-info/10 text-info',
+  study: 'bg-success/10 text-success',
+  note: 'bg-primary/10 text-primary',
 };
 const MEMORY_PURPOSE_STYLES: Record<string, string> = {
-  internalized: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  supplementary: 'bg-slate-500/10 text-slate-500',
-  systemic: 'bg-rose-500/10 text-rose-500',
+  internalized: 'bg-warning/10 text-warning',
+  supplementary: 'bg-muted text-muted-foreground',
+  systemic: 'bg-destructive/10 text-destructive',
 };
 
 function extractMemoryMeta(tags: string[] | undefined) {
@@ -252,7 +252,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           isDragging && "opacity-40",
           isDragOverlay && "bg-primary text-primary-foreground shadow-lg",
           activeDropTarget && "outline outline-2 outline-primary outline-offset-[-2px] bg-primary/10",
-          activeSpringLoading && "outline outline-2 outline-primary/50 outline-offset-[-2px] bg-primary/5 animate-pulse"
+          activeSpringLoading && "outline outline-2 outline-primary/60 outline-offset-[-2px] bg-primary/10"
         )}
         title={rowTitle}
         onClick={handleClick}
@@ -320,7 +320,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             inputClassName="h-6 text-ui max-md:!h-9 max-md:!text-[16px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!text-[16px]"
           />
           {isFavorite && (
-            <Star size={useComfortableList ? 14 : 12} className="text-yellow-500 shrink-0" />
+            <Star size={useComfortableList ? 14 : 12} className="text-warning shrink-0" />
           )}
           {/* ★ 记忆 badge */}
           {memoryMeta && (
@@ -334,7 +334,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                 </span>
               )}
               {memoryMeta.isImportant && (
-                <Star size={10} className="text-amber-500 shrink-0" />
+                <Star size={10} className="text-warning shrink-0" />
               )}
             </>
           )}
@@ -417,7 +417,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                         size="sm"
                         className={cn(
                           'h-6 px-2 gap-1 text-xs',
-                          isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-primary hover:bg-primary/10',
+                          isSelected ? 'text-primary-foreground hover:bg-primary-foreground/15' : 'text-primary hover:bg-primary/10',
                         )}
                         onClick={(e) => { e.stopPropagation(); onRestore(); }}
                         aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
@@ -492,7 +492,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         isDragging && "opacity-40",
         isDragOverlay && "drop-shadow-lg",
         activeGridDropTarget && "rounded-lg bg-primary/10 outline outline-2 outline-primary",
-        activeGridSpringLoading && "rounded-lg bg-primary/5 outline outline-2 outline-primary/50 animate-pulse"
+        activeGridSpringLoading && "rounded-lg bg-primary/10 outline outline-2 outline-primary/60"
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -534,7 +534,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       {/* 收藏星标 */}
       {isFavorite && (
-        <Star size={12} className={cn('absolute top-1.5 text-yellow-500 fill-yellow-500', isTouchPrimary ? 'right-9' : 'right-1.5')} />
+        <Star size={12} className={cn('absolute top-1.5 text-warning fill-current', isTouchPrimary ? 'right-9' : 'right-1.5')} />
       )}
       {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
       {isTouchPrimary && !isEditing && (

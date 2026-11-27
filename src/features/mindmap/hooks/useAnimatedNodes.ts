@@ -44,6 +44,10 @@ export type UseAnimatedNodesOptions = {
 export const ANIMATION_NODE_SOFT_LIMIT = 300;
 /** 大图硬阈值：节点数超过后跳过布局动画，直接就位 */
 export const ANIMATION_NODE_HARD_LIMIT = 800;
+/** 单次位移节点软阈值：中型图大幅折叠/展开时缩短过渡时长 */
+export const ANIMATION_MOVED_SOFT_LIMIT = 35;
+/** 单次位移节点硬阈值：超过后跳过逐帧 JS 插值直接就位，避免主线程连续全量 commit */
+export const ANIMATION_MOVED_HARD_LIMIT = 80;
 /** 软降级时的时长压缩比例 */
 export const ANIMATION_SOFT_DURATION_SCALE = 0.6;
 
@@ -349,6 +353,17 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
     }
 
     if (needsAnimation) {
+      // 按实际发生位移的节点数做二次降级：大分支折叠/展开避免逐帧全量重渲染
+      if (animating.size > ANIMATION_MOVED_HARD_LIMIT) {
+        cancelRaf();
+        animating.clear();
+        commit(decorateSpawns(nodes));
+        return;
+      }
+      durationRef.current =
+        animating.size > ANIMATION_MOVED_SOFT_LIMIT
+          ? Math.round(duration * ANIMATION_SOFT_DURATION_SCALE)
+          : duration;
       // 重置时钟，使新布局过渡从 t=0 开始
       startTimeRef.current = null;
       // 首帧先把静止节点切到最新 target，动画节点停在 from

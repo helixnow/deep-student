@@ -8,8 +8,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lightning, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X, CircleNotch } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24, coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -308,7 +309,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           isMenuVariant ? (
             <span
               className={cn(
-                'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-2xs font-semibold',
                 isActiveSkill
                   ? 'bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                   : 'bg-muted text-muted-foreground',
@@ -348,7 +349,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       : t('skills:card.pinToSession')
               }
               className={cn(
-                'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
+                'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-2xs font-semibold transition-colors',
                 // coarse 下 -inset-[13px]：18px 复选框 + 2×13px = 44px 触控目标
                 'relative after:absolute after:-inset-2.5 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-[13px]',
                 isActiveSkill
@@ -443,7 +444,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
             ) : null}
           </span>
           {isMenuVariant ? (
-            <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+            <span className="line-clamp-2 text-2xs leading-snug text-muted-foreground">
               {getLocalizedSkillDescription(skill.id, skill.description, t)}
             </span>
           ) : null}
@@ -487,7 +488,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           {bundles.map((bundle) => (
             <span
               key={bundle.id}
-              className="group inline-flex items-center gap-1 rounded-full border border-[color:var(--composer-panel-control-border)] pl-2 pr-1 py-0.5 text-[11px]"
+              className="group inline-flex items-center gap-1 rounded-full border border-[color:var(--composer-panel-control-border)] pl-2 pr-1 py-0.5 text-2xs"
             >
               {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联小按钮，DsButton 尺寸体系不适配 */}
               <button
@@ -496,7 +497,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 disabled={disabled}
                 title={bundle.skillIds.join(', ')}
                 aria-label={t('skills:bundles.activate', { name: bundle.name })}
-                className="inline-flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 text-foreground hover:opacity-80 disabled:opacity-50"
+                className={cn(
+                  'inline-flex items-center gap-1 text-foreground hover:opacity-80 disabled:opacity-50',
+                  coarseHitClassFor24,
+                )}
               >
                 <Stack size={11} />
                 {bundle.name}
@@ -509,7 +513,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 aria-label={t('skills:bundles.delete', { name: bundle.name })}
                 title={t('skills:bundles.delete', { name: bundle.name })}
                 // coarse 下 -inset-[15px]：14px 按钮（10px 图标 + p-0.5）+ 2×15px = 44px 触控目标
-                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[15px]"
+                className="relative z-10 ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[15px]"
               >
                 <X size={10} />
               </button>
@@ -522,7 +526,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               <button
                 type="button"
                 onClick={() => setBundleNameInput('')}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 [@media(pointer:coarse)]:min-h-11 text-[11px] text-muted-foreground hover:text-foreground"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 text-2xs text-muted-foreground hover:text-foreground',
+                  coarseHitClassFor24,
+                )}
               >
                 <Stack size={11} />
                 {t('skills:bundles.save_current', { count: activeSkillIds.length })}
@@ -540,7 +547,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }}
                   placeholder={t('skills:bundles.name_placeholder')}
                   aria-label={t('skills:bundles.name_placeholder')}
-                  className="h-6 max-lg:h-8 [@media(pointer:coarse)]:!h-11 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] [@media(pointer:coarse)]:text-base outline-none focus:border-[color:var(--button-primary-border)]"
+                  className="h-7 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-2xs [@media(pointer:coarse)]:text-base outline-none focus:border-[color:var(--button-primary-border)]"
                 />
                 {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
                 <button
@@ -596,7 +603,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
             <div className="space-y-1.5">
               {customSkills.length > 0 && (
                 <div className="space-y-1" data-testid="skill-selector-custom-section">
-                  <div className="px-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-2 pt-1 text-2xs font-medium text-muted-foreground">
                     {t('skills:selector.customSection')}
                   </div>
                   {customSkills.map(renderSkillRow)}
@@ -604,7 +611,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               )}
               {remainingSkills.length > 0 && (
                 <div className="space-y-1" data-testid="skill-selector-all-section">
-                  <div className="px-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-2 pt-1 text-2xs font-medium text-muted-foreground">
                     {t('skills:selector.allSection')}
                   </div>
                   {remainingSkills.map(renderSkillRow)}
@@ -716,20 +723,23 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
                 {/* 次级状态：被工具临时加载（未钉住时给出解释与一键钉住引导） */}
                 {isSkillLoaded(selectedSkill.id) && !isSkillActive(selectedSkill.id) ? (
-                  <div className="mb-3 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
+                  <div className="mb-3 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
                     <Lightning size={12} className="mt-0.5 shrink-0" />
                     <span>{t('skills:card.toolLoadedHint')}</span>
                   </div>
                 ) : null}
 
                 {isSkillDisabledNow(selectedSkill.id) ? (
-                  <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
+                  <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-2xs text-muted-foreground">
                     <span>{t('skills:selector.disabled_hint')}</span>
                     <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEnableSkill(selectedSkill.id)}
-                      className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                      className={cn(
+                        '!h-auto !min-h-0 !min-w-0 !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline',
+                        coarseHitClassFor24,
+                      )}
                     >
                       {t('skills:selector.enable')}
                     </DsButton>
@@ -742,7 +752,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   const canToggleTrust = !selectedSkill.isBuiltin && source !== 'builtin';
                   if (trust === 'untrusted') {
                     return (
-                      <div className="mb-3 space-y-1 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
+                      <div className="mb-3 space-y-1 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
                         <div className="flex items-start gap-1.5">
                           <ShieldWarning size={12} className="mt-0.5 shrink-0" />
                           <span>{t('skills:selector.untrusted_hint')}</span>
@@ -753,7 +763,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               variant="ghost"
                               size="sm"
                               onClick={() => handleTrustOverride(selectedSkill.id, 'trusted')}
-                              className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                              className={cn(
+                                '!h-auto !min-h-0 !min-w-0 !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline',
+                                coarseHitClassFor24,
+                              )}
                             >
                               {t('skills:package.trust_enable')}
                             </DsButton>
@@ -767,7 +780,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }
                   if (trust === 'trusted' && canToggleTrust) {
                     return (
-                      <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[color:var(--composer-panel-muted-foreground)]">
+                      <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs text-[color:var(--composer-panel-muted-foreground)]">
                         <ShieldCheck size={12} className="shrink-0 text-success" />
                         <span title={t('skills:package.trust_effect_trusted')}>
                           {t('skills:package.trust_trusted')}
@@ -777,7 +790,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           size="sm"
                           onClick={() => handleTrustOverride(selectedSkill.id, 'untrusted')}
                           title={t('skills:package.trust_effect_untrusted')}
-                          className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                          className={cn(
+                            '!h-auto !min-h-0 !min-w-0 !px-1.5 !py-0.5 text-xs hover:underline',
+                            coarseHitClassFor24,
+                          )}
                         >
                           {t('skills:package.trust_revoke')}
                         </DsButton>
@@ -845,7 +861,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       onClick={() => toggleDefault(selectedSkill.id)}
                       title={t('skills:default.hint')}
                       className={cn(
-                        '!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                        '!h-auto !min-h-0 !min-w-0 !px-2 !py-1 text-xs',
+                        coarseHitClassFor28,
                         isDefault(selectedSkill.id)
                           ? 'text-success'
                           : 'text-[color:var(--composer-panel-muted-foreground)]'
@@ -862,7 +879,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleEnableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-primary [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                        className={cn('!h-auto !min-h-0 !min-w-0 !px-2 !py-1 text-xs text-primary', coarseHitClassFor28)}
                       >
                         {t('skills:selector.enable')}
                       </DsButton>
@@ -872,7 +889,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleDisableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                        className={cn('!h-auto !min-h-0 !min-w-0 !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive', coarseHitClassFor28)}
                       >
                         {t('skills:selector.disable')}
                       </DsButton>

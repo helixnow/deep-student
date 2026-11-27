@@ -35,7 +35,12 @@ import {
   anchoredSkillIdsInHistory, buildInLoopSkillMessages, buildTransientSkillMessagesWithAudit,
   insertSkillMessagesAfterToolResult, insertTransientSkillMessages, type SessionSkillState,
 } from './skill-injection.ts';
-import { canonicalImageBlobHashes, countRequestImages, insertRetrievalPageImageMessage, RetrievalPageImageBudget } from './retrieval-images.ts';
+import {
+  buildBrowserScreenshotImageInjection, canonicalImageBlobHashes, countRequestImages,
+  insertOrReplaceBrowserScreenshotMessage, insertRetrievalPageImageMessage, isBrowserScreenshotImageMessage,
+  RetrievalPageImageBudget,
+} from './retrieval-images.ts';
+import { foldHistoricalBrowserSnapshots } from './browser-snapshot-folding.ts';
 import { sourceUserCanonicalBeforeAssistant } from './multi-variant.ts';
 import type { VariantDependencies, VariantExecution } from './variant-run-ports.ts';
 
@@ -270,10 +275,11 @@ export async function runVariant(deps: VariantDependencies, ctx: VariantExecutio
       context.chat_v2_compaction_checked = compactionCheckedRound === toolRound;
       const idleConfig = loadStreamIdleConfig(deps.readSetting);
       const outlet = deps.streamSinkFor(ctx.emitter());
+      const foldedMessages = foldHistoricalBrowserSnapshots(messages);
       const raced = await runStreamWithWatchdog({
         cancellation: ctx.cancelToken(),
         start: abandoned => deps.model2.callUnifiedModel2Stream({ context: { ...context },
-          chatHistory: messages.map(messageForModel2), subject: '', enableChainOfThought: true, enableThinking,
+          chatHistory: foldedMessages.map(messageForModel2), subject: '', enableChainOfThought: true, enableThinking,
           taskContext: 'chat_v2_variant', sink: sinkUntilAbandoned(outlet, abandoned), streamEvent,
           messageId: ctx.messageId(), traceId: null, window, disableTools, maxInputTokensOverride: maxInput,
           modelOverrideId: options.modelId ?? null, systemPromptOverride: systemPrompt,
@@ -411,11 +417,30 @@ export async function runVariant(deps: VariantDependencies, ctx: VariantExecutio
         ctx.addToolResult(result);
       }
       for (const [anchor, last, batch] of pendingBatches) insertSkillMessagesAfterToolResult(messages, anchor, last, batch);
-      if (pageBudget !== null) {
+      if (seed !== null) {
         const last = results.at(-1)?.toolCallId;
         if (last != null && last !== '') {
-          const page = deps.buildRetrievalPageImageInjection(results, pageBudget);
-          if (page !== null) insertRetrievalPageImageMessage(messages, last, page);
+          if (pageBudget !== null) {
+            const page = deps.buildRetrievalPageImageInjection(results, pageBudget);
+            if (page !== null) insertRetrievalPageImageMessage(messages, last, page);
+          }
+          const imagesInRequest = countRequestImages(
+            messages.filter(message => !isBrowserScreenshotImageMessage(message)),
+          );
+          const screenshotInjector = (deps as VariantDependencies & {
+            buildBrowserScreenshotImageInjection?: (
+              roundResults: typeof results,
+              budget: { imageBudget: number; imagesInRequest: number },
+            ) => Promise<LegacyChatMessage | null>;
+          }).buildBrowserScreenshotImageInjection;
+          const screenshot = typeof screenshotInjector === 'function'
+            ? await screenshotInjector(results, { imageBudget: seed[0], imagesInRequest })
+            : await buildBrowserScreenshotImageInjection(results, {
+              imageBudget: seed[0],
+              imagesInRequest,
+              logger: log,
+            });
+          if (screenshot !== null) insertOrReplaceBrowserScreenshotMessage(messages, last, screenshot);
         }
       }
       if (results.some(r => (r.output as { task_completed?: unknown } | null)?.task_completed === true)) {

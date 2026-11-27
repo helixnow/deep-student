@@ -73,8 +73,6 @@ export interface StatusBarAppMenusProps {
   activeMenuId?: 'brand' | 'app' | 'window' | 'control-center' | 'clock' | null;
   /** 受控模式：点击切换对应菜单 */
   onToggleMenu?: (id: 'app' | 'window') => void;
-  /** 受控模式：顶栏已有菜单展开时指针划入相邻触发器 0ms 即时切换 */
-  onHoverMenu?: (id: 'app' | 'window') => void;
   /** 受控模式：关闭菜单 */
   onCloseMenu?: () => void;
 }
@@ -83,7 +81,6 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
   onOpenChange,
   activeMenuId,
   onToggleMenu,
-  onHoverMenu,
   onCloseMenu,
 }) => {
   const { t } = useTranslation('workbench');
@@ -130,17 +127,6 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
     [isControlled, onToggleMenu],
   );
 
-  const handleHover = useCallback(
-    (menu: 'app' | 'window') => {
-      if (isControlled) {
-        onHoverMenu?.(menu);
-      } else {
-        setInternalOpenMenu((m) => (m !== null && m !== menu ? menu : m));
-      }
-    },
-    [isControlled, onHoverMenu],
-  );
-
   const instantExit = isControlled ? activeMenuId !== null : internalOpenMenu !== null;
   const focusedDef = focusedTypeId ? appRegistry.get(focusedTypeId) : undefined;
   const appName = focusedTypeId
@@ -163,7 +149,6 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
         aria-expanded={openMenu === 'app'}
         title={appName}
         onClick={() => handleToggle('app')}
-        onPointerEnter={() => handleHover('app')}
       >
         <span className="wb-menubar-appmenu-label">{appName}</span>
       </button>
@@ -176,7 +161,6 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
         aria-expanded={openMenu === 'window'}
         title={t('menubar.windowMenu')}
         onClick={() => handleToggle('window')}
-        onPointerEnter={() => handleHover('window')}
       >
         {t('menubar.windowMenu')}
       </button>

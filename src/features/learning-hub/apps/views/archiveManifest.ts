@@ -36,3 +36,62 @@ export function archiveManifestDisplayText(text: string): string {
   const suffix = text.slice(ARCHIVE_MANIFEST_MARKER.length);
   return suffix.startsWith('\r\n') ? suffix.slice(2) : suffix.slice(1);
 }
+
+const MAX_CLIENT_ZIP_ENTRIES = 500;
+
+function formatEntryBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * 前端只读 ZIP 清单兜底：当后端未在导入期预写条目清单时，
+ * 利用已内置的 JSZip 读取中央目录生成纯文本条目表，供 TextFilePreview 展示。
+ */
+export async function buildZipManifestFromBytes(
+  buffer: ArrayBuffer,
+  fileName: string,
+): Promise<string | null> {
+  const { inspectOfficeZipContainer } = await import('./officeZipContainer');
+  const { issue, normalizedBuffer } = inspectOfficeZipContainer(buffer);
+  if (issue) return null;
+
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(normalizedBuffer, { createFolders: false });
+  const entries = Object.values(zip.files)
+    .filter((entry) => !entry.dir && !entry.name.startsWith('__MACOSX/'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (entries.length === 0) return null;
+
+  const shown = entries.slice(0, MAX_CLIENT_ZIP_ENTRIES);
+  let totalUncompressed = 0;
+  const lines: string[] = [];
+
+  for (const entry of entries) {
+    const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+    if (typeof data?.uncompressedSize === 'number' && data.uncompressedSize >= 0) {
+      totalUncompressed += data.uncompressedSize;
+    }
+  }
+
+  lines.push(`${fileName} (${entries.length} files · ${formatEntryBytes(totalUncompressed)})`);
+  lines.push('─'.repeat(32));
+
+  for (const entry of shown) {
+    const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+    const sizeLabel =
+      typeof data?.uncompressedSize === 'number' && data.uncompressedSize >= 0
+        ? `  (${formatEntryBytes(data.uncompressedSize)})`
+        : '';
+    lines.push(`${entry.name}${sizeLabel}`);
+  }
+
+  if (entries.length > MAX_CLIENT_ZIP_ENTRIES) {
+    lines.push(`... (+${entries.length - MAX_CLIENT_ZIP_ENTRIES} more)`);
+  }
+
+  return lines.join('\n');
+}

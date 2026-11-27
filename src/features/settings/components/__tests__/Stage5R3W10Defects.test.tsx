@@ -576,7 +576,8 @@ describe('Stage 5 Round 3 W10 Defects (S5-01, S5-02, S5-07, S5-08, S5-15, S5-17,
     const tabList = within(screen.getByTestId('governance-tabs-strip')).getByRole('tablist');
     expect(tabList.className).toContain('!flex');
     expect(tabList.className).toContain('!h-auto');
-    expect(tabList.className).toContain('flex-wrap');
+    expect(tabList.className).toContain('flex-nowrap');
+    expect(tabList.className).toContain('overflow-x-auto');
     expect(tabList.style.height).toBe('auto');
 
     const syncTab = screen.getByRole('tab', { name: '同步' });

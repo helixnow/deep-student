@@ -145,9 +145,11 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 2026-11-26：Memory v2 完善（dfd237eba，vfs-memory 19 工具 / 3315 tokens，L1/L2 覆写对账与
 // 多语言硬规则）后，50 组实测 schema 合计 58819（总计 86257 ≤ 88000），有意识将 schema
 // 合计护栏微调至 60000（~2% 余量，继续严控后续膨胀）。
+// 2026-11-28：0.20.12 升级浏览器 CDP 工具集（含快照/多模态截图与远程 CDP 控制），
+// 实测 schema 合计 60367、总计 88053，有意识将护栏微调至 62000 / 90000（~2% 余量）。
 const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_500;
-const MAX_TOTAL_SCHEMA_TOKENS = 60_000;
-const MAX_TOTAL_TOKENS = 88_000;
+const MAX_TOTAL_SCHEMA_TOKENS = 62_000;
+const MAX_TOTAL_TOKENS = 90_000;
 
 // ============================================================================
 // 测试

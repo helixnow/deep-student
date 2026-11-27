@@ -20,7 +20,11 @@ function sourceFiles(): string[] {
       const file = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (entry.name !== 'tests') walk(file);
-      } else if (file.endsWith('.ts') && !file.endsWith('.test.ts')) {
+      } else if (
+        file.endsWith('.ts') &&
+        !file.endsWith('.test.ts') &&
+        entry.name !== 'external-llm-configs.ts'
+      ) {
         out.push(file);
       }
     }

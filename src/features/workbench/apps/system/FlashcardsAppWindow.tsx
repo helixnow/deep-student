@@ -45,7 +45,7 @@ const FlashcardsAppWindow: React.FC<AppWindowProps> = ({
         <MobileHeaderProvider>
           <MobileHeaderActiveViewSync activeView="flashcards" />
           <MobileHeaderNavProvider value={mobileHeaderNav}>
-            <FlashcardsApp launchPayload={launchPayload} isActive={isActive} />
+            <FlashcardsApp launchPayload={launchPayload} isActive={isActive} embedded />
           </MobileHeaderNavProvider>
         </MobileHeaderProvider>
       </WbSysFade>

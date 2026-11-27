@@ -33,114 +33,118 @@
 }
 
 /* ==========================================================================
- * 玻璃基础材质
+ * 玻璃基础材质（统一 Tahoe Liquid Glass：清透真 backdrop-filter + 0.5px 菲涅尔细边）
  * ========================================================================== */
 
 .wb-glass {
   position: relative;
-  background-color: var(--wb-glass-bg);
+  background-color: var(--wb-glass-liquid-bg, var(--wb-glass-bg));
   background-image: var(--wb-glass-sheen);
-  -webkit-backdrop-filter: var(--wb-glass-blur);
-  backdrop-filter: var(--wb-glass-blur);
-  border: 1px solid var(--wb-glass-border);
+  backdrop-filter: var(--wb-glass-liquid-blur, var(--wb-glass-blur));
+  border: 1px solid transparent;
+  text-shadow: var(--wb-glass-text-halo, none);
 }
 
-/* 整面壁纸复刻：铺满宿主，圆角跟随，不挖环。 */
-.wb-glass:has(> .wb-glass-replica),
-.wb-desk-menu:has(> .wb-glass-replica),
-.wb-dock:has(> .wb-glass-replica) {
-  isolation: isolate;
+/* 桌面小组件（macOS Tahoe Clear Widget 策略：柔润高模糊化开背景纹理 + 边缘菲涅尔细边） */
+.wb-glass-widget {
+  background-color: var(--wb-widget-liquid-bg, var(--wb-glass-liquid-bg));
+  backdrop-filter: var(--wb-widget-liquid-blur, var(--wb-glass-liquid-blur));
 }
 
-.wb-glass-replica {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
+/* 自适应暗壁纸区：对标 Tahoe 桌面单色纯白字阶（主 94% / 次 66% / 弱 56%，极轻文字阴影） */
+.wb-glass[data-wb-glass-tone='dark'] {
+  --foreground: 0 0% 98%;
+  --muted-foreground: 0 0% 86%;
+  --text-primary: rgb(255 255 255 / 94%);
+  --text-secondary: rgb(255 255 255 / 66%);
+  --text-muted: rgb(255 255 255 / 58%);
+  --wb-glass-text-halo: 0 1px 2px rgb(0 0 0 / 18%);
+
+  color: rgb(255 255 255 / 94%);
 }
 
-html[data-wb-material='reduced'] .wb-glass-replica,
-html[data-wb-material='minimal'] .wb-glass-replica {
-  display: none;
+html[data-wb-material='reduced'] .wb-glass,
+html[data-wb-material='minimal'] .wb-glass {
+  border-color: var(--wb-glass-border);
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .wb-glass-replica {
-    display: none;
+  .wb-glass {
+    border-color: var(--wb-glass-border);
   }
 }
 
-/* 顶缘 1px specular 高光（伪元素实现，避免与外层 box-shadow 冲突） */
+/* 兼容占位节点：原壁纸复刻已切换为实景 backdrop-filter 倒角折射，占位层不再绘制 */
+.wb-glass-replica {
+  display: none;
+}
+
+/* 顶缘微弱 specular 高光（.wb-glass 已自带 360° 菲涅尔细边，仅非 .wb-glass 元素启用） */
 .wb-glass-highlight {
   position: relative;
 }
 
-.wb-glass-highlight::after {
+.wb-glass-highlight:not(.wb-glass)::after {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 1px;
+  height: 0.5px;
   pointer-events: none;
   border-radius: inherit;
+  opacity: 0.45;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    var(--wb-glass-highlight) 16%,
-    var(--wb-glass-highlight) 84%,
+    var(--wb-glass-highlight) 18%,
+    var(--wb-glass-highlight) 82%,
     transparent 100%
   );
 }
 
 /*
- * 全周 specular 环（opt-in，中央浮层/面板用）
+ * 全周菲涅尔折射细边（所有 .wb-glass 与 .wb-glass-rim 共享，与 Dock 完全同源）
  * ---------------------------------------------------------------------------
- * 对标 Liquid Glass 的 rim light：1px 渐变环绕玻璃边缘一周——左上受光最亮，
- * 两侧收腰，右下回光次之（光源固定在左上）。mask composite 挖空内部只留
- * 1px 环带；与 wb-glass-highlight（顶缘高光，::after）互补，可同时挂。
- * 亮度锚定 --wb-glass-highlight token（暗色档自动降）；minimal 档关闭。
+ * 普通屏 0.75px，Retina 屏 0.5px（1 物理像素），左上/右下圆角弧面受光，中段直边淡入背景。
  */
 .wb-glass-rim {
   position: relative;
 }
 
+.wb-glass::before,
 .wb-glass-rim::before {
   content: '';
   position: absolute;
   inset: 0;
-  padding: 1px;
+  padding: 0.75px;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(
-    135deg,
-    var(--wb-glass-highlight) 0%,
-    rgba(255, 255, 255, 0.16) 30%,
-    rgba(255, 255, 255, 0.05) 52%,
-    rgba(255, 255, 255, 0.10) 76%,
-    rgba(255, 255, 255, 0.30) 100%
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
+  z-index: 1;
+  background: var(--wb-glass-liquid-rim, var(--wb-dock-liquid-rim));
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
 
-:root.dark .wb-glass-rim::before {
-  background: linear-gradient(
-    135deg,
-    var(--wb-glass-highlight) 0%,
-    rgba(255, 255, 255, 0.08) 30%,
-    rgba(255, 255, 255, 0.03) 52%,
-    rgba(255, 255, 255, 0.05) 76%,
-    rgba(255, 255, 255, 0.14) 100%
-  );
+@media (resolution >= 2dppx) {
+  .wb-glass::before,
+  .wb-glass-rim::before {
+    padding: 0.5px;
+  }
 }
 
+html[data-wb-material='reduced'] .wb-glass::before,
+html[data-wb-material='minimal'] .wb-glass::before,
+html[data-wb-material='reduced'] .wb-glass-rim::before,
 html[data-wb-material='minimal'] .wb-glass-rim::before {
   display: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .wb-glass::before,
+  .wb-glass-rim::before {
+    display: none;
+  }
 }
 
 /*
@@ -794,25 +798,6 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   color: var(--text-secondary, hsl(var(--muted-foreground)));
 }
 
-.wb-empty-hint-arrow {
-  margin-top: 10px;
-  color: var(--text-muted, hsl(var(--muted-foreground)));
-  /* 时长走 O1 breathe token：minimal / reduced-motion 下归零 */
-  animation: wb-empty-bounce var(--wb-motion-breathe, 2200ms) var(--wb-ease) infinite;
-}
-
-@keyframes wb-empty-bounce {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: translateY(0);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(4px);
-  }
-}
-
 /* ==========================================================================
  * 动效兜底降级
  * --------------------------------------------------------------------------
@@ -831,15 +816,6 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
     --wb-snap-fade-duration: 0ms;
     --wb-dock-item-hover-scale: 1;
   }
-
-  .wb-empty-hint-arrow {
-    animation: none;
-  }
-}
-
-/* minimal 档：token 已把 --wb-motion-breathe 归零，再显式关停避免 0ms infinite 空转 */
-:root[data-wb-material='minimal'] .wb-empty-hint-arrow {
-  animation: none;
 }
 
 /* ==========================================================================

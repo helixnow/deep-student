@@ -94,7 +94,8 @@
 ### 4. 长期记忆、多模型与插件扩展
 
 - **透明可控的长期记忆**：区分按全局、学科或模式生效的「固定交互规则」与自动归纳错题及批改薄弱点的「学习者画像」；支持历史版本一键回退，每条回答底部均标注所引用的记忆条目，可随时查看、编辑或移除。
-- **多模型与检索自由**：预置 15 家模型服务商（支持粘贴 API Key 自动识别并分配能力槽位、同屏多模型并排对比、DeepSeek 官方全套 API，以及 Ollama 等本地模型无密钥接入），内置 9 个联网搜索引擎与 6 种 OCR 引擎。
+- **多模型与检索自由**：预置 15 家模型服务商（支持粘贴 API Key 自动识别并分配能力槽位、Codex OAuth 与 OpenCode Go 订阅、DeepSeek 官方全套 API、Ollama 等本地模型无密钥接入，以及同屏多模型并排对比）；支持从 **CC Switch**（含 `ccswitch://` 深链与 `.db`/`.sql` 备份）、**Magpie**、**OpenCode**、**Claude Code** 与 **Codex** 一键扫描本机配置或粘贴导入并增量同步（自动过滤本地代理占位地址，导入真实上游服务商）；内置 9 个联网搜索引擎与 6 种 OCR 引擎。
+- **本地编程 CLI 原生协同（桌面端）**：自动探测并在对话中直接调用本机 **Claude Code**、**Codex CLI**、**OpenCode**、**Pi Agent**、**Antigravity CLI**、**DeepSeek Harness** 及自定义 CLI 工具——可通过统一模型选择器或 `@handle` 直呼（支持 `/swarm`、`/handoff` 多代理协作），提供分 CLI 的模型与推理强度选择、内联工具审批、运行中实时引导、并发文件租约、隐藏快照一键回合回退与共享学习上下文。
 - **分层插件与技能生态**：内置 58 个按需加载技能并支持社区技能市场与 MCP 外部工具接入；支持导入零代码 `.dspack` 学习包（共享评分标准、提示词与工作流），或通过内置 **AI 插件工坊**以自然语言生成、自动编译校验并热加载 `.dstuplugin` 扩展。
 
 ---
@@ -160,7 +161,7 @@
 
 ### 快速上手
 
-首次启动后，可在引导页直接粘贴 **15 家预置模型服务商**之一的 API Key 完成自动识别配置（或在「设置 → 模型服务」接入本地 Ollama），随后可按场景体验完整闭环：
+首次启动后，可在引导页直接粘贴 **15 家预置模型服务商**之一的 API Key 完成自动识别配置，或一键导入本机已有的 **CC Switch / Magpie / OpenCode / Claude Code / Codex** 配置及 `ccswitch://` 深链（桌面端还可直接调用本地编程 CLI，或在「设置 → 模型服务」接入本地 Ollama 与 Codex OAuth），随后可按场景体验完整闭环：
 
 1. **[3 分钟考前冲刺](./docs/user-guide/01-快速上手.md#3-分钟考前冲刺)**：导入讲义或历年真题生成闪卡与练习题，设定考试日期与每日复习时长，开启按遗忘曲线动态排期的冲刺队列。
 2. **[3 分钟精读 40 页论文](./docs/user-guide/01-快速上手.md#3-分钟精读-40-页论文)**：使用 AI 论文导读提炼脉络，配合单栏贴合分屏问答、五色语义高亮与跨页图表固定对照，导出可回跳原页的结构化笔记与带批注 PDF。
@@ -182,7 +183,7 @@ DeepStudent
 ├── UI 内核        20 个官方 UI 插件目录 (src/ui-plugins/official/) · 插槽与注册表 · UiErrorBudget
 ├── IPC 契约       contracts/ipc/ 统一治理 (1,072 条命令 · 128 个事件 · 998 个类型定义)
 ├── 数据与原生层   SQLite (better-sqlite3 / sqlite-wasm) · LanceDB · koffi FFI · f7-native-wasm (WASI-WASM)
-└── 扩展与集成     58 个内置技能 · MCP · 三层插件体系 (.dspack / .dstuplugin / Cordis) · 15 家模型商 · 9 搜索 · 6 OCR
+└── 扩展与集成     58 个内置技能 · MCP · 本地 CLI 协同 · 三层插件体系 (.dspack / .dstuplugin / Cordis) · 15 家模型商 · 9 搜索 · 6 OCR
 ```
 
 ### 技术栈
@@ -231,6 +232,7 @@ npx @electron/rebuild -f -w better-sqlite3
 node electron/scripts/package.mjs --dir
 
 # 3) 构建 Android APK（需 JDK 21 与 Android SDK Platform 36）
+npm --prefix mobile ci --legacy-peer-deps
 node mobile/scripts/build-apk.mjs
 
 # 4) 类型检查、契约、架构边界与测试套件
@@ -259,8 +261,8 @@ DeepStudent
 │   ├── kernel/                  #   命令路由、IPC 契约校验、事件、协议、profile 存储、插件生命周期与权限账本
 │   ├── platform/                #   平台服务：crypto · diagnostics · errors · files · http · log · native
 │   │                            #   (koffi FFI & f7-native-wasm) · paths · secrets · settings · storage (+ storage-mobile) · vector
-│   ├── plugins/                 #   30 个业务与系统插件目录 (chat, chat-pipeline, llm, memory, vfs, notes, qbank,
-│   │                            #   anki, review, sync, ilink, plugin-workshop, mobile-compat 等)
+│   ├── plugins/                 #   31 个业务与系统插件目录 (agent-mesh, chat, chat-pipeline, llm, memory, vfs, notes,
+│   │                            #   qbank, anki, review, sync, ilink, plugin-workshop, mobile-compat 等)
 │   ├── profiles/                #   自动生成的 desktop.json (45) / mobile.json (37) 装配清单
 │   └── e2e/                     #   真实 Host、安全、流式传输、跨版本升级与工具覆盖测试
 ├── electron/                    # 桌面端外壳

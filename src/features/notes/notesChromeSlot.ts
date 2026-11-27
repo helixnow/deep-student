@@ -8,3 +8,12 @@ import { createContext, useContext } from 'react';
 export const NotesChromeSlotContext = createContext<HTMLElement | null>(null);
 
 export const useNotesChromeSlot = () => useContext(NotesChromeSlotContext);
+
+/**
+ * 可选：由多标签窗格按标签可见性提供，解耦「标签可见」与「窗口失焦」。
+ * 为 null 时 NotesCrepeEditor 退回使用 isActive 判定是否占领顶栏操作位，
+ * 避免 Notes 窗口失焦时「已保存 / 阅读 / 页面」从标题栏掉回正文上方引发跳动。
+ */
+export const NotesChromeSlotVisibleContext = createContext<boolean | null>(null);
+
+export const useNotesChromeSlotVisible = () => useContext(NotesChromeSlotVisibleContext);

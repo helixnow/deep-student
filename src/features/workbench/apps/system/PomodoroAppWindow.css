@@ -212,51 +212,8 @@
   opacity: 0;
 }
 
-/* ---- 运行呼吸光晕（transform/opacity only） ---- */
-
 .wb-sys-pomo-glow {
-  position: absolute;
-  inset: -14%;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in hsl, var(--wb-sys-pomo-accent) 26%, transparent 74%) 0%,
-    transparent 68%
-  );
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 400ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
-}
-
-.wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
-  opacity: 0.2;
-  animation: wb-sys-pomo-breathe 4.2s ease-in-out infinite;
-}
-
-/*
- * 挂起呼吸：isVisible=false 或拖窗 renderThrottleMs>0 时组件写 data-anim='off'。
- * ANTI-REGRESSION：拖窗期间必须停 glow，避免与壳层跟手抢合成层。
- */
-.wb-sys-pomo[data-anim='off'] .wb-sys-pomo-glow {
-  animation-play-state: paused;
-}
-
-/* hint 未刷新时仍靠根旗停呼吸（起拖默认同步挂 data-wb-dragging） */
-:root[data-wb-dragging] .wb-sys-pomo .wb-sys-pomo-glow,
-:root[data-wb-settling] .wb-sys-pomo .wb-sys-pomo-glow {
-  animation-play-state: paused;
-}
-
-@keyframes wb-sys-pomo-breathe {
-  0%,
-  100% {
-    opacity: 0.13;
-    transform: scale(0.985);
-  }
-  50% {
-    opacity: 0.26;
-    transform: scale(1.025);
-  }
+  display: none;
 }
 
 /* ---- 完成瞬间环闪光（一次性，transform/opacity only） ---- */
@@ -784,11 +741,6 @@
 /* ==== 动效降级 ======================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
-    animation: none;
-    opacity: 0.16;
-  }
-
   .wb-sys-pomo-progress {
     transition: none;
   }
@@ -813,11 +765,6 @@
   .wb-sys-pomo {
     --wb-sys-pomo-view-ms: 0ms;
   }
-}
-
-:root[data-wb-material='minimal'] .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
-  animation: none;
-  opacity: 0.16;
 }
 
 :root[data-wb-material='minimal'] .wb-sys-pomo-progress {

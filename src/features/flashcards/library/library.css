@@ -246,7 +246,7 @@
   gap: 10px;
   padding: 6px 12px;
   border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
-  background: color-mix(in hsl, hsl(var(--card)) 94%, hsl(var(--muted)) 6%);
+  background: color-mix(in hsl, var(--fc-surface, var(--shell-workspace-surface, hsl(var(--background)))) 94%, hsl(var(--muted)) 6%);
   font-size: 11px;
   color: hsl(var(--muted-foreground));
 }
@@ -277,7 +277,7 @@
 }
 
 .fc-lib-queue-head[data-queue='scheduled'] {
-  background: color-mix(in hsl, hsl(var(--card)) 94%, hsl(var(--muted)) 6%);
+  background: color-mix(in hsl, var(--fc-surface, var(--shell-workspace-surface, hsl(var(--background)))) 94%, hsl(var(--muted)) 6%);
 }
 
 .fc-lib-queue-title {

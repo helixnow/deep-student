@@ -10,7 +10,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Robot, TerminalWindow, UsersThree, X } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import {
@@ -142,12 +142,12 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
     <span
       className={cn(
         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full',
-        'text-xs font-medium border border-transparent',
-        'bg-primary/10 text-primary border-primary/20',
+        'text-xs font-medium border border-border/40',
+        'bg-muted/70 text-foreground',
         'select-none cursor-default',
-        'transition-all duration-200 hover:scale-105',
+        'transition-colors duration-150',
         disabled && 'opacity-60',
-        !disabled && 'hover:bg-primary/20',
+        !disabled && 'hover:bg-muted',
         className,
       )}
       style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' } as React.CSSProperties}

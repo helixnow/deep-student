@@ -52,10 +52,14 @@ export interface SandboxWorkbenchSurfaceProps {
   ownerKey?: SandboxOwnerKey;
   /**
    * 隐藏自绘的 SandboxToolbar。
-   * 独立视图形态下移动端已有统一顶栏（UnifiedMobileHeader），
-   * 再渲染 SandboxToolbar 会形成第二条顶栏；由 SandboxWorkbenchPage 在小屏时传入。
+   * 独立视图形态下移动端已有统一顶栏（UnifiedMobileHeader），学习桌面已有外部窗口标题栏，
+   * 再渲染 SandboxToolbar 会形成第二条顶栏。
    */
   hideToolbar?: boolean;
+  /**
+   * 隐藏预览内容区顶栏中的重复标题（由外部窗口标题栏承载时使用）。
+   */
+  hideTitle?: boolean;
 }
 
 const viewportClasses: Record<'desktop' | 'tablet' | 'mobile', string> = {
@@ -70,6 +74,7 @@ export function SandboxWorkbenchSurface({
   onClose,
   ownerKey,
   hideToolbar = false,
+  hideTitle = false,
 }: SandboxWorkbenchSurfaceProps) {
   const { t, i18n } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
@@ -611,12 +616,14 @@ export function SandboxWorkbenchSurface({
             )}
             aria-hidden="true"
           />
-          <span
-            className="max-w-[220px] truncate text-xs font-medium text-foreground"
-            data-testid="sandbox-artifact-title"
-          >
-            {effectiveTitle}
-          </span>
+          {!hideTitle && (
+            <span
+              className="max-w-[220px] truncate text-xs font-medium text-foreground"
+              data-testid="sandbox-artifact-title"
+            >
+              {effectiveTitle}
+            </span>
+          )}
           {useInteractiveHtmlCanvas && (
             <span
               data-testid="sandbox-runtime-status-badge"
@@ -755,6 +762,20 @@ export function SandboxWorkbenchSurface({
                   : t('sandbox.mobileShort', '手')}
             </DsButton>
           ))}
+          {hideToolbar && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleToggleInspector}
+              title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+              aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+              aria-pressed={inspectorOpen}
+              className="!h-7 !w-7 !p-0"
+            >
+              <SidebarSimple size={15} />
+            </DsButton>
+          )}
         </div>
       </div>
 

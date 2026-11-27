@@ -62,7 +62,7 @@ const SaveIndicator: React.FC<{ status: SaveStatus }> = ({ status }) => {
   return (
     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ui-rise-in">
       {status === 'saving' && <Spinner className="h-3 w-3 animate-spin" />}
-      {status === 'saved' && <Check className="h-3 w-3 text-green-500" />}
+      {status === 'saved' && <Check className="h-3 w-3 text-success" />}
     </span>
   );
 };
@@ -530,7 +530,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className={cn('max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
+                  className={cn('max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', profile.isFavorite && "text-warning opacity-100")}
                   onClick={() => handleToggleFavorite(profile)}
                   disabled={vendorBusy}
                   title={t('settings:api_config.toggle_favorite')}
@@ -914,7 +914,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 <LinkSimple className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
                 {isConnectionConfigured ? (
                   <span className="flex items-center gap-2 min-w-0 text-muted-foreground">
-                    <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                    <Check className="h-3.5 w-3.5 text-success shrink-0" />
                     <span className="truncate font-mono text-xs">{selectedVendor.baseUrl}</span>
                     <span className="text-muted-foreground/60 shrink-0">·</span>
                     {usesNoApiKey ? (
@@ -1054,12 +1054,10 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
         <div className="space-y-6">
           {!selectedVendorIsSiliconflow && (
             <div
-              data-wb-blur-surface
               className={cn(
                 // 小屏（移动 Sheet）不粘性，避免滑入 Sheet header；md+ 保持 sticky
                 'static md:sticky md:top-4 z-10 -mx-1 px-1 py-3',
-                'bg-[color:var(--shell-workspace-panel)]/85',
-                'supports-[backdrop-filter]:bg-[color:var(--shell-workspace-panel)]/65 supports-[backdrop-filter]:backdrop-blur-md',
+                'bg-[color:var(--shell-workspace-panel)]',
                 'border-b border-border/40',
                 'flex flex-wrap items-center justify-between gap-2'
               )}

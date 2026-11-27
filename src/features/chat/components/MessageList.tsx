@@ -33,7 +33,11 @@ import {
   registerChatMessageListScrollHandle,
   type ChatMessageScrollResult,
 } from './messageListScrollRegistry';
-import { ArrowDown } from '@phosphor-icons/react';
+import { ArrowDown, MagnifyingGlass } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_ICON_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { MobileEmptyStateToggle } from './ui/MobileEmptyStateToggle';
 import { ThreadContentShell } from './ui/ThreadContentShell';
@@ -358,6 +362,40 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 搜索自身订阅 store，将变化块送入专用 Worker；消息列表只消费命中结果。
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // 经典壳桌面端右侧顶栏统一折叠搜索入口（点击原地展开 MessageSearchBar）
+  const canShowChatHeaderSearchTrigger =
+    !isSmallScreen
+    && Boolean(desktopChatHeaderTarget)
+    && !isSearchOpen
+    && !forceEmptyPreview
+    && messageOrder.length > 0;
+  useDesktopHeader(
+    'chat-v2',
+    {
+      actions: canShowChatHeaderSearchTrigger ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('messageList.search.open')}
+              aria-expanded={false}
+              data-desktop-header-search-trigger="true"
+              className={cn(TITLEBAR_ICON_CONTROL_CLASS, 'text-muted-foreground hover:text-foreground')}
+              onClick={() => setIsSearchOpen(true)}
+            >
+              <MagnifyingGlass size={15} />
+            </DsButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('messageList.search.open')}</TooltipContent>
+        </Tooltip>
+      ) : undefined,
+    },
+    [canShowChatHeaderSearchTrigger, t],
+    !isSmallScreen && Boolean(desktopChatHeaderTarget),
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const { suspended = false } = useStreamPreferences();

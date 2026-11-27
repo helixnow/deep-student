@@ -125,30 +125,29 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
       ref={rootRef}
       className={cn(
         isHeaderPlacement
-          ? 'relative flex h-full min-w-0 w-full items-center justify-end'
+          ? 'pointer-events-none relative flex h-full min-w-0 w-full items-center justify-end'
           : 'pointer-events-none fixed right-4 top-[max(0.5rem,env(safe-area-inset-top))] z-[1101] flex w-[min(32rem,calc(100vw-2rem))] justify-end md:right-8 md:top-1',
       )}
       style={isHeaderPlacement ? undefined : { zIndex: Z_INDEX.desktopTitlebar + 1 }}
-      data-no-drag
       data-slot="message-search-bar"
     >
       <div
         role="search"
+        data-no-drag
         className={cn(
-          'pointer-events-auto ml-auto flex h-12 min-w-0 w-full max-w-md items-center gap-2 overflow-hidden',
-          // The header placement is portaled outside `.chat-v2`, so keep the
-          // chat token while falling back to the global shell radius there.
-          'rounded-[var(--chat-radius-pill,var(--radius-shell-toolbar,16px))] border border-border/70',
-          'bg-background/95 transition-[border-color,box-shadow] duration-150',
+          'pointer-events-auto ml-auto flex min-w-0 items-center gap-1.5 overflow-hidden',
+          isHeaderPlacement
+            ? 'desktop-shell-header-search-input w-full max-w-[320px] rounded-lg border border-border/70 bg-background/95 px-2.5 shadow-sm'
+            : 'h-12 w-full max-w-md rounded-[var(--chat-radius-pill,var(--radius-shell-toolbar,16px))] border border-border/70 bg-background/95 px-3 shadow-floating backdrop-blur-sm',
+          'transition-[border-color,box-shadow] duration-150',
           'focus-within:border-ring/70 focus-within:ring-2 focus-within:ring-ring/20',
-          isHeaderPlacement ? 'px-3 shadow-sm' : 'px-3 shadow-floating backdrop-blur-sm',
         )}
       >
         <MagnifyingGlass
-          size={20}
+          size={isHeaderPlacement ? 14 : 20}
           weight="regular"
           aria-hidden="true"
-          className="ml-1 shrink-0 text-muted-foreground"
+          className={cn('shrink-0 text-muted-foreground', !isHeaderPlacement && 'ml-1')}
         />
         <input
           ref={inputRef}
@@ -159,7 +158,12 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           placeholder={t('messageList.search.placeholder')}
           aria-label={t('messageList.search.open')}
           // 📱 16px 输入契约：15px 在 iOS WKWebView 聚焦时会触发页面自动放大
-          className="min-w-0 flex-1 appearance-none bg-transparent px-1.5 py-1.5 text-[15px] [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-muted-foreground/70"
+          className={cn(
+            'min-w-0 flex-1 appearance-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground/70',
+            isHeaderPlacement
+              ? 'px-1 py-0 text-ui [@media(pointer:coarse)]:text-lg'
+              : 'px-1.5 py-1.5 text-md [@media(pointer:coarse)]:text-lg',
+          )}
         />
         {hasQuery ? (
           <>

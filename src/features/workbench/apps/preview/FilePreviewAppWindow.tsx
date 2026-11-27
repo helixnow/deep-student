@@ -296,6 +296,7 @@ const ToolbarSeparator: React.FC = () => (
 );
 
 const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
+  windowId,
   instanceKey,
   isActive,
   renderThrottleMs = 0,
@@ -854,6 +855,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
           dstuPath={`/${resourceId}`}
           preferNodeType
           isActive={isActive}
+          hostWindowId={windowId}
           onNodeLoaded={setNode}
           onTitleChange={onTitleChange}
           onClose={requestClose}

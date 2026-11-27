@@ -127,6 +127,14 @@ describe('SnapPreview', () => {
     expect(el.style.width).toBe('800px');
     expect(el.style.height).toBe('1000px');
   });
+
+  it('轻擦热区 1 帧后立刻离开不会因残留内层 rAF 闪回可见', () => {
+    const { rerender } = render(<SnapPreview zone="left" margin={8} />);
+    act(() => flushRaf()); // 外层 rAF 已排入内层 rAF，尚未 visible
+    rerender(<SnapPreview zone={null} margin={8} />);
+    act(() => flushRaf()); // 若内层 rAF 未取消，这里会被错置为 true
+    expect(screen.getByTestId('wb-snap-preview').getAttribute('data-wb-snap-visible')).toBe('false');
+  });
 });
 
 describe('⌥ 扩热区角标', () => {

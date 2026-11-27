@@ -19,7 +19,7 @@
 
 Host 启动时先读社区条目旁边的 `package.json#deepStudent`（`host/kernel/profile.ts` `screenProfileEntry`、`host/kernel/manifest.ts`
 `checkManifest`），不通过的包**不会被导入**，代码一行也不执行；该插件降级，原因带错误码，启动照常继续。这一步对恶意包同样有效
-（例外是第 6 节的 `data:` 条目）。
+（用户 profile 中的 `data:` 等非文件路径条目现已在解析阶段以 `ProfileError` 拒绝，见第 6 节）。
 
 | 规则 | 错误码 | 测试 |
 |---|---|---|
@@ -27,9 +27,9 @@ Host 启动时先读社区条目旁边的 `package.json#deepStudent`（`host/ker
 | `engines.deepStudent` 包含应用版本 | `ENGINE_INCOMPATIBLE` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts` |
 | 不能用 `dstu.*` 和禁用的 publisher，profile 条目 id 与清单 id 一致：社区插件替换不了官方插件 | `ID_RESERVED`、`ID_MISMATCH` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts`、`examples/plugins/community-web-search/__tests__/web-search.test.ts` |
 | `platforms` 包含当前平台 | `UNSUPPORTED_ON_PLATFORM` | `host/kernel/tests/plugin-manifest-load.test.ts` |
-| profile 只能装 Host 半，模块必须是清单的 `host` 入口 | `HOST_ENTRY_MISMATCH` | `host/kernel/tests/plugin-manifest-load.test.ts` |
-| 权限的 kind 只有 `service:<服务名>`、`net:<主机名>`、`agent:tools` 三种 | `PERMISSION_UNKNOWN_KIND` | `host/kernel/tests/plugin-manifest-load.test.ts` |
-| `agentTools` 与 `agent:tools` 同时出现且有 Host 半；`net:<主机名>` 只能和智能体工具一起声明；工具名不能重复或用保留名 | `MANIFEST_INVALID` | `host/kernel/tests/plugin-agent-tools.test.ts` |
+| v1 清单要求 profile 装载 Host 半且模块指向清单的 `host` 入口；v2 清单（以及声明了 `ui` / `declarative` 的包）在 profile 的 `module` 指向 `package.json` 时，也允许装载纯 UI 或零代码声明式包（`host/kernel/profile.ts` `screenProfileEntry`） | `HOST_ENTRY_MISMATCH` | `host/kernel/tests/plugin-manifest-load.test.ts`、`host/kernel/tests/ui-only-plugin-install.test.ts`、`host/kernel/tests/declarative-tier1-v2.test.ts` |
+| 权限的 kind 只有 `service:<服务名>`、`net:<主机名>`、`agent:tools` 三种（v2 清单额外允许 `net:write:<主机名>` 与 `net:local:<端口>`） | `PERMISSION_UNKNOWN_KIND` | `host/kernel/tests/plugin-manifest-load.test.ts` |
+| `agentTools` 与 `agent:tools` 同时出现且有 Host 半；v1 中 `net:<主机名>` 只能和 `agentTools` 一起声明，v2 的 `net:*` 权限要求具备 `host` 入口（不要求声明 `agentTools`，见 `host/kernel/manifest.ts` `checkManifest`）；工具名不能重复或用保留名 | `MANIFEST_INVALID` | `host/kernel/tests/plugin-agent-tools.test.ts`、`host/kernel/tests/declarative-tier1-v2.test.ts` |
 
 ## 3. Host 半：导入之后、`apply` 之前的检查
 
@@ -77,22 +77,22 @@ installer 的四个方法每次调用都同时核对注入授权及当前执行 
 | 安装（`install`） | 只有配对的工坊 UI | 卡片上的「安装」，绑定显示的候选版本 |
 
 实现：`host/plugins/plugin-workshop/src/tools.ts`（`needsUserStart`）、`host/plugins/plugin-workshop/src/operations.ts`（`create`）。回归：
-`host/plugins/plugin-workshop/tests/card-consent-settings.test.ts`、`tests/autonomous.test.ts`、`tests/tools.test.ts`。
+`host/plugins/plugin-workshop/tests/card-consent-settings.test.ts`、`host/plugins/plugin-workshop/tests/autonomous.test.ts`、`host/plugins/plugin-workshop/tests/tools.test.ts`。
 
 ## 4. UI 半
 
-UI 半由 Host 半的 `meta.ui` 带进来（没有单独装 UI 半的入口），经 `ds-plugin://` 加载到主窗口。
+v1 插件的 UI 半由 Host 半的 `meta.ui` 带进来；v2 另支持独立纯 UI 包（无需 Host 半，profile 指向 `package.json`，见 `host/kernel/profile.ts` `screenProfileEntry` 与 [PLUGIN-V2.md](PLUGIN-V2.md)），均经 `ds-plugin://` 加载到主窗口。此外，`host/kernel/runtime.ts` `BROKERED_UI_DOMAIN_SERVICES` 允许已获同意并声明对应 `service:*` 权限的纯 UI 插件经 `plugin:host|call` 直接调用代理的 `studyData`、`pluginModel` 与 `pluginNotify`。
 
 | 规则 | 做检查的地方 | 测试 |
 |---|---|---|
 | `meta.ui` 必须在包根目录（`package.json` 所在目录）之内，否则不进 UI 清单（SEC-E12） | `host/kernel/runtime.ts` `communityUiFile` | `host/kernel/tests/ui-file-containment.test.ts` |
 | `ds-plugin://<id>/` 只提供 UI 文件所在目录下的文件；`..`、绝对路径、HTML / TS 文件都拒绝 | `electron/shell/plugin-ui-protocol.ts` `servePluginUiRequest` | `electron/tests/plugin-ui-protocol.test.ts` |
 | UI 半经 `plugin:host\|call` 只能调 `meta.remote` 列出的方法，参数和返回值必须是纯 JSON | `host/kernel/runtime.ts` `remoteCall` | `host/kernel/tests/ui-bridge.test.ts`、`examples/plugins/community-word-of-day/__tests__/word-of-day.test.tsx` |
-| `ctx.ui.host` 的调用带上本插件 id（`caller`），Host 只放行它自己 Host 半的服务；不带 `caller` 的调用以 Validation 错误拒绝 | `host/kernel/runtime.ts` `DEFAULT_HOST_CALL_CALLER_MODE` | `host/kernel/tests/ui-bridge.test.ts`、`src/ui-kernel/__tests__/community-example.test.tsx` |
+| `ctx.ui.host` 的调用带上本插件 id（`caller`），Host 放行它自己 Host 半的服务，以及已获同意的纯 UI 插件经代理调用的 `studyData` / `pluginModel` / `pluginNotify`；不带 `caller` 的调用以 Validation 错误拒绝 | `host/kernel/runtime.ts` `DEFAULT_HOST_CALL_CALLER_MODE`、`resolveBrokeredMethod` | `host/kernel/tests/ui-bridge.test.ts`、`host/kernel/tests/ui-only-plugin-install.test.ts`、`src/ui-kernel/__tests__/community-example.test.tsx` |
 | kernel 命令（`plugin:ui\|manifest`、`plugin:host\|call`）只对主窗口的本地页面开放（SEC-E11） | `host/kernel/commands.ts` `KERNEL_COMMAND_WINDOWS` | `host/kernel/tests/kernel-command-windows.test.ts` |
 | 文案只能写进 id 派生的命名空间，`t` 不回落到官方或其他插件。API v1 插件经 `addBundle` 写别的新命名空间也报错（`STRICT_COMMUNITY_NAMESPACES` 现在是 `true`，改回 `false` 时只告警） | `src/ui-kernel/kernel.ts` `STRICT_COMMUNITY_NAMESPACES` | `src/ui-kernel/__tests__/i18n.test.tsx`、`examples/plugins/community-word-of-day/__tests__/word-of-day.test.tsx` |
 | 贡献的组件抛错只影响自己；错误超出预算时整个插件被卸载 | `src/ui-kernel/outlet.tsx` | `src/ui-kernel/__tests__/outlet.test.tsx` |
-| 能 import 的裸模块只有四个共享模块，其余依赖要打进 `dist/ui.js` | `examples/scripts/build-ui.mjs` `SHARED_MODULES`、`src/ui-kernel/shared.ts` `installSharedModules` | `examples/testing/conformance.test.ts`、`examples/scripts/__tests__/walkthrough.test.tsx` |
+| 能 import 的裸模块只有 16 个共享模块（`react`、`react-dom`、`@deepstudent/ui`、`i18next` 与 12 个 `@milkdown/kit/*` 入口），其余依赖要打进 `dist/ui.js` | `examples/scripts/build-ui.mjs` `SHARED_MODULES`、`src/ui-kernel/shared.ts` `installSharedModules` | `examples/testing/conformance.test.ts`、`examples/scripts/__tests__/walkthrough.test.tsx` |
 
 ## 5. 不是边界的地方
 
@@ -118,7 +118,7 @@ Host 每次启动都会装载 `<应用数据目录>/plugins/user.profile.json` �
 | 打包版用 `DS_HOST_PROFILE` / `DS_HOST_ENTRY` 换 profile 或 Host 入口 | 打包版启动时删除这些变量 | `electron/shell/launch-env.ts` `DEV_ONLY_ENV`、`electron/tests/launch-env.test.ts` |
 | profile 条目写成 `data:` 模块 | 拒绝：用户 profile（以及它 extends 的非官方文件）里条目的 `module` 只收文件路径（`./`、`../`、绝对路径、`file:`），`data:`、`node:`、包名等写法报 ProfileError，启动时回退到官方 profile 并报告原因（S01 第 3 轮 M1） | `host/kernel/profile.ts`、`host/kernel/tests/profile-data-url.test.ts` |
 | Agent 的 shell 在包含数据目录的读写工作区里写入 | 沙箱模式下拒绝：可写根覆盖 `<数据目录>/plugins` 时先建出该目录，再设为受保护写根（macOS Seatbelt、Linux bwrap），工作区其余位置照常可写；沙箱不可用时不执行命令。用户把权限档位设为 `full_access` / `danger_full_access` 时命令不进沙箱，这层保护也就没有了。测试只在有沙箱的系统上运行（macOS；装了 `bwrap` 和 `prlimit` 的 Linux） | `host/plugins/agent-workspace/src/tools/shell-execute/context.ts` `protectHostPluginDir`、`host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts` |
-| Agent 文件工具写入包含数据目录的工作区 | 未修（S01 第 3 轮 L1 / L2，W02） | `host/plugins/agent-workspace/src/runtime-roots.ts` |
+| Agent 文件工具写入包含数据目录的工作区 | 已修（S01 第 3 轮 L1 / L2，W02）：`chat_v2_set_workspace_root` 拒绝把应用数据目录、其祖先目录、其子目录或经符号链接/大小写折叠指向它的路径设为 `read_write`；历史上已落盘的重叠 `read_write` 工作区在列出、工具执行与撤销时自动降级为 `read_only` | `host/plugins/agent-workspace/src/runtime-roots.ts` `workspaceOverlapsDataDir`、`host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts` |
 | 同步下载的 blob 路径越出 blobs 目录 | 拒绝：云端清单里不符合 `<hash 前两位>/<hash>[.扩展名]` 的路径、绝对路径、盘符、反斜杠、越出 blobs 目录或经过符号链接的目标都不下载（S01 第 2 轮 H1） | `host/plugins/sync/src/blob-sync.ts` `downloadTarget`、`host/plugins/sync/tests/blob-relative-path.test.ts` |
 
 ## 7. 对插件作者的要求
@@ -126,6 +126,6 @@ Host 每次启动都会装载 `<应用数据目录>/plugins/user.profile.json` �
 - 只 `inject` 声明过的服务，只在 `meta.remote` 里列 UI 半真正要调的方法；不要用 `ctx.commands`、`ctx.protocols`、
   `ctx.backendEvents`、`ctx.shell`。
 - 凭据不进配置，用 `ctx.settings.saveSecret` / `getSecret`（需要 `service:settings`）。
-- UI 半的依赖全部打包，只把四个共享模块留作外部依赖（`examples/scripts/build-ui.mjs` `SHARED_MODULES`）。
+- UI 半的依赖全部打包，只把 16 个共享模块（`react`、`react-dom`、`@deepstudent/ui`、`i18next` 与 12 个 `@milkdown/kit/*` 入口）留作外部依赖（`examples/scripts/build-ui.mjs` `SHARED_MODULES`）。
 - 不要在模块顶层做有副作用的事：导入发生在模块检查之前，检查失败时副作用已经发生；启动时导入抛错会让整个用户 profile 回退到
   官方 profile。

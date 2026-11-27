@@ -14,6 +14,7 @@ import {
   Warning,
   CircleNotch,
   Plus,
+  Star,
   X,
   Check,
   CaretDown,
@@ -179,17 +180,6 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
     vfsUnifiedIndexApi.getPresetDimensions().then(setPresetDimensions).catch(console.error);
     vfsUnifiedIndexApi.getDimensionRange().then(setDimensionRange).catch(console.error);
   }, [loadDimensions]);
-
-  const getStatusIndicator = (status: DimensionStatus) => {
-    switch (status) {
-      case 'active':
-        return <span className="w-1.5 h-1.5 rounded-full bg-success" />;
-      case 'empty':
-        return <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />;
-      default:
-        return <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />;
-    }
-  };
 
   // 获取状态文本
   const getStatusText = (status: DimensionStatus) => {
@@ -494,7 +484,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             </div>
             <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_multimodal')}</span>
-              <span className="font-medium text-sm text-purple-500/80">{stats.multimodalDimensions}</span>
+              <span className="font-medium text-sm text-primary/80">{stats.multimodalDimensions}</span>
             </div>
           </div>
         )}
@@ -575,7 +565,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 <span className="text-sm font-medium">{dim.dimension}</span>
                                 {isDefaultDimension(dim) && (
                                   <CommonTooltip content={t('settings:dimension_management.set_as_default')}>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-warning shadow-[0_0_4px_hsl(var(--warning)/0.5)]" />
+                                    <Star size={12} weight="fill" className="text-warning shrink-0" />
                                   </CommonTooltip>
                                 )}
                               </div>
@@ -598,15 +588,14 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             <TableCell className="py-1">
                               <span className="text-xs">
                                 {dim.isMultimodal
-                                  ? <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">{t('settings:dimension_management.type_multimodal')}</span>
+                                  ? <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">{t('settings:dimension_management.type_multimodal')}</span>
                                   : <span className="px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/20">{t('settings:dimension_management.type_text')}</span>}
                               </span>
                             </TableCell>
                             <TableCell className="py-1">
-                              <div className="flex items-center gap-1.5">
-                                {getStatusIndicator(dim.status)}
-                                <span className="text-xs text-muted-foreground">{getStatusText(dim.status)}</span>
-                              </div>
+                              <span className={cn("text-xs", dim.status === 'active' ? 'text-success' : 'text-muted-foreground')}>
+                                {getStatusText(dim.status)}
+                              </span>
                             </TableCell>
                             <TableCell className="py-1 pr-4">
                               <div className={cn(
@@ -622,7 +611,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       disabled={settingDefault || !dim.modelConfigId}
                                       className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                     >
-                                      <span className="text-2xs">⭐</span>
+                                      <Star size={14} />
                                     </DsButton>
                                   </CommonTooltip>
                                 )}
@@ -653,7 +642,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"
                                     )}
                                   >
-                                    <span className="text-2xs">✕</span>
+                                    <X size={14} />
                                   </DsButton>
                                 </CommonTooltip>
                               </div>
@@ -753,7 +742,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 isConfirmingDelete ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
                               )}>
                                 <div className="overflow-hidden">
-                                  <div className="flex items-center gap-3 px-4 py-2.5 bg-destructive/5 border-l-2 border-destructive/60">
+                                  <div className="flex items-center gap-3 px-4 py-2.5 bg-destructive/5 border-t border-destructive/20">
                                     <Warning size={14} className="text-destructive shrink-0" />
                                     <p className="flex-1 min-w-0 text-xs text-destructive/90 leading-relaxed">
                                       {t('settings:dimension_management.delete_confirm_inline', {
@@ -823,14 +812,13 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           )}
                           <span className="text-2xs">
                             {dim.isMultimodal
-                              ? <span className="px-1 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">{t('settings:dimension_management.type_multimodal')}</span>
+                              ? <span className="px-1 py-0.5 rounded bg-primary/10 text-primary">{t('settings:dimension_management.type_multimodal')}</span>
                               : <span className="px-1 py-0.5 rounded bg-info/10 text-info">{t('settings:dimension_management.type_text')}</span>}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {getStatusIndicator(dim.status)}
-                          <span className="text-2xs text-muted-foreground">{getStatusText(dim.status)}</span>
-                        </div>
+                        <span className={cn("text-2xs", dim.status === 'active' ? 'text-success' : 'text-muted-foreground')}>
+                          {getStatusText(dim.status)}
+                        </span>
                       </div>
                       
                       <div className="flex items-center justify-between gap-2">
@@ -859,7 +847,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               disabled={settingDefault || !dim.modelConfigId}
                               className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:!h-11 px-2 active:scale-95"
                             >
-                              <span className="mr-1">⭐</span>
+                              <Star size={14} className="mr-1" />
                               {t('settings:dimension_management.set_as_default')}
                             </DsButton>
                           </span>
@@ -889,7 +877,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               : "text-destructive/60 hover:text-destructive"
                           )}
                         >
-                          <span>✕</span>
+                          <X size={14} />
                         </DsButton>
                       </div>
                     </div>

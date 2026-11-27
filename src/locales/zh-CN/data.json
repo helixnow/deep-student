@@ -833,7 +833,7 @@
         "ocr_text": "OCR 识别结果",
         "ocr_text_desc": "清理后使用 OCR 模式时会重新识别",
         "vector_index": "向量索引数据",
-        "vector_index_desc": "⚠️ 清理后需要重新建立所有资源的向量索引"
+        "vector_index_desc": "清理后需要重新建立所有资源的向量索引"
       }
     },
     "feature_coming_soon": "该功能即将推出",

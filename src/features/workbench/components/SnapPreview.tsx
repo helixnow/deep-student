@@ -134,15 +134,15 @@ function runTileSettle(windowId: string, el: HTMLElement, from: Frame, to: Frame
   beginInteraction({ kind: 'snap.settle', windowId });
   settleAnimations.set(windowId, anim);
 
-  // 用户中途抓取窗口 → 立刻取消，让位给指针引擎的直写 transform
+  // 用户中途抓取窗口 → 捕获阶段立刻取消，抢在 TitleBar/pointerEngine 起拖前归还 transform 控制权
   const onGrab = (): void => cancelSettle(windowId);
-  el.addEventListener('pointerdown', onGrab);
+  el.addEventListener('pointerdown', onGrab, true);
 
   let cleaned = false;
   const cleanup = (cancelled: boolean): void => {
     if (cleaned) return;
     cleaned = true;
-    el.removeEventListener('pointerdown', onGrab);
+    el.removeEventListener('pointerdown', onGrab, true);
     el.style.transformOrigin = prevOrigin;
     if (settleAnimations.get(windowId) === anim) settleAnimations.delete(windowId);
     endInteraction({ cancelled });
@@ -234,11 +234,16 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
         hideTimerRef.current = null;
       }
       setMounted(true);
-      // 两帧后再置 visible，确保初次挂载走 0→1 的 fade-in 过渡
-      const raf = requestAnimationFrame(() => {
-        requestAnimationFrame(() => setVisible(true));
+      // 两帧后再置 visible，确保初次挂载走 0→1 的 fade-in 过渡；两层 rAF 均需在清理时取消，
+      // 避免指针轻擦热区 1 帧离开后内层 rAF 晚到把预览重新置回可见。
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setVisible(true));
       });
-      return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf1);
+        if (raf2) cancelAnimationFrame(raf2);
+      };
     }
     setVisible(false);
     const fadeMs = getSnapFadeMs(elRef.current);
@@ -307,7 +312,6 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
     };
     let pending: PendingSettle[] = [];
     let flushRaf1 = 0;
-    let flushRaf2 = 0;
     let pendingSettling = false;
 
     const releasePendingSettling = () => {
@@ -318,7 +322,6 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
 
     const flushSettles = () => {
       flushRaf1 = 0;
-      flushRaf2 = 0;
       if (pending.length === 0) {
         releasePendingSettling();
         return;
@@ -343,18 +346,16 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
     };
 
     const scheduleFlush = () => {
-      if (flushRaf1 || flushRaf2) return;
+      if (flushRaf1) return;
       // Mark the handoff before React commits the tiled frame. Native child
-      // surfaces must be hidden before the two-rAF FLIP measurement window.
+      // surfaces must be hidden before the FLIP measurement window.
       beginShellSettling();
       pendingSettling = true;
-      // 等 React 提交新布局后再 FLIP
+      // 单 rAF：React 在微任务完成新布局提交后、浏览器绘制首帧前注入 FLIP 反演，
+      // 彻底消除旧双 rAF 造成的「先闪到目标位 1 帧再弹回起点」抽搐。
       flushRaf1 = requestAnimationFrame(() => {
         flushRaf1 = 0;
-        flushRaf2 = requestAnimationFrame(() => {
-          flushRaf2 = 0;
-          flushSettles();
-        });
+        flushSettles();
       });
     };
 
@@ -402,7 +403,6 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
     return () => {
       unsubscribe();
       if (flushRaf1) cancelAnimationFrame(flushRaf1);
-      if (flushRaf2) cancelAnimationFrame(flushRaf2);
       releasePendingSettling();
     };
   }, []);
@@ -416,7 +416,7 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
       data-testid="wb-snap-preview"
       data-zone={zone ?? ''}
       data-wb-snap-visible={visible ? 'true' : 'false'}
-      data-wb-snap-flush={margin === 0 ? 'true' : undefined}
+      data-wb-snap-flush={margin === 0 || zone === 'top-maximize' ? 'true' : undefined}
       aria-hidden="true"
       style={{
         position: 'fixed',

@@ -166,7 +166,6 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleDownload}
               aria-label={t('blocks.imageGen.download')}
               title={t('blocks.imageGen.download')}
@@ -177,7 +176,6 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleOpenInNewTab}
               aria-label={t('blocks.imageGen.openInNewTab')}
               title={t('blocks.imageGen.openInNewTab')}
@@ -188,7 +186,6 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleCollapse}
               aria-label={t('blocks.imageGen.collapse')}
               title={t('blocks.imageGen.collapse')}
@@ -231,7 +228,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             'bg-muted/30 dark:bg-muted/20 rounded-lg'
           )}
         >
-          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin motion-reduce:animate-none text-muted-foreground" />
         </div>
       )}
 
@@ -241,7 +238,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         alt={alt || t('blocks.imageGen.generatedImage')}
         className={cn(
           'w-full h-auto rounded-lg object-contain',
-          'cursor-zoom-in transition-transform hover:scale-[1.02]',
+          'cursor-zoom-in transition-opacity hover:opacity-95',
           isLoading && 'opacity-0'
         )}
         onLoad={handleLoad}
@@ -262,8 +259,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             'pointer-events-none'
           )}
         >
-          <div className="flex items-center gap-2 text-white pointer-events-auto">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-[var(--overlay)] hover:bg-background text-foreground" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
               <ArrowsOut size={20} />
             </DsButton>
           </div>

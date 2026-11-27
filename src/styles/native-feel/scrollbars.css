@@ -114,6 +114,11 @@
   --os-handle-interactive-area-offset: var(--scrollbar-thumb-inset);
 }
 
+/* 自动隐藏态绝不拦截右侧行内按钮的鼠标命中 */
+[data-slot="scroll-area"] > .os-scrollbar.os-scrollbar-auto-hide-hidden {
+  pointer-events: none;
+}
+
 /* Per-surface track insets supplied by the unified ScrollArea wrapper. */
 /* ---------------------------------------------------------------- */
 /* Vertical-only surfaces (chat streams, lists, panels): the library

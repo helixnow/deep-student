@@ -92,7 +92,7 @@ export {
 export type { RolePack, RolePackWorkflow } from './src/role-packs.ts';
 
 export {
-  AGENT_PROFILE_METADATA_KEY, DEFAULT_PROFILE_ID, EXPLORER_PROFILE_ID, WORKER_PROFILE_ID,
+  AGENT_PROFILE_METADATA_KEY, BROWSER_PROFILE_ID, DEFAULT_PROFILE_ID, EXPLORER_PROFILE_ID, WORKER_PROFILE_ID,
   builtInAgentProfile, resolveAgentProfile,
 } from './src/agent-profile.ts';
 export type {

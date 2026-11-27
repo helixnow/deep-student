@@ -482,6 +482,63 @@ export type VendorConfig__De = {
   maxTokensLimit?: number | null;
   websiteUrl?: string | null;
 };
+/** ExternalScannedSourceInfo */
+export type ExternalScannedSourceInfo = {
+  source: string;
+  pathLabel: string;
+  candidateCount: number;
+  error: string | null;
+};
+/** ExternalCandidateModelDto */
+export type ExternalCandidateModelDto = {
+  id: string;
+  label: string;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  alreadyExists: boolean;
+  recommended: boolean;
+};
+/** ExternalVendorCandidateDto */
+export type ExternalVendorCandidateDto = {
+  candidateId: string;
+  name: string;
+  providerType: string;
+  apiProtocol: string;
+  supportsOpenaiResponses: boolean;
+  baseUrl: string;
+  websiteUrl: string | null;
+  maskedApiKey: string;
+  extraKeyCount: number;
+  sources: string[];
+  appTypes: string[];
+  syncStatus: "new" | "match_builtin" | "update" | "synced";
+  matchedVendorId: string | null;
+  matchedVendorName: string | null;
+  models: ExternalCandidateModelDto[];
+};
+/** ExternalLlmScanReport */
+export type ExternalLlmScanReport = {
+  sessionId: string;
+  autoScanSupported: boolean;
+  sources: ExternalScannedSourceInfo[];
+  candidates: ExternalVendorCandidateDto[];
+  skippedProxyCount: number;
+  skippedNoKeyCount: number;
+};
+/** ExternalVendorImportSelection */
+export type ExternalVendorImportSelection = {
+  candidateId: string;
+  selectedModelIds?: string[] | null;
+};
+/** ExternalLlmImportResult */
+export type ExternalLlmImportResult = {
+  importedVendorCount: number;
+  updatedVendorCount: number;
+  importedModelCount: number;
+  assignedSlotCount: number;
+  warnings: string[];
+  vendorIds: string[];
+};
 
 export interface Commands {
   /** src/commands.rs:4051 `call_llm_for_boundary` */
@@ -711,6 +768,35 @@ export interface Commands {
     result: TranslationResponse | null;
     error: Shared.AppError;
   };
+  /** host/plugins/llm/src/plugin.ts */
+  scan_external_llm_configs: {
+    args: {
+      textInput?: string | null;
+      filePath?: string | null;
+    };
+    result: ExternalLlmScanReport;
+    error: Shared.AppError;
+  };
+  /** host/plugins/llm/src/plugin.ts */
+  probe_external_llm_candidate_models: {
+    args: {
+      sessionId: string;
+      candidateId: string;
+    };
+    result: ExternalCandidateModelDto[];
+    error: Shared.AppError;
+  };
+  /** host/plugins/llm/src/plugin.ts */
+  import_external_llm_configs: {
+    args: {
+      sessionId: string;
+      selections: ExternalVendorImportSelection[];
+      autoFetchMissingModels?: boolean | null;
+      autoAssignEmptySlots?: boolean | null;
+    };
+    result: ExternalLlmImportResult;
+    error: Shared.AppError;
+  };
 }
 
 export interface Events {
@@ -895,3 +981,9 @@ export type TranslateTextCandidatesCommandArgs = Commands['translate_text_candid
 export type TranslateTextCandidatesCommandResult = Commands['translate_text_candidates']['result'];
 export type TranslateTextStreamCommandArgs = Commands['translate_text_stream']['args'];
 export type TranslateTextStreamCommandResult = Commands['translate_text_stream']['result'];
+export type ScanExternalLlmConfigsCommandArgs = Commands['scan_external_llm_configs']['args'];
+export type ScanExternalLlmConfigsCommandResult = Commands['scan_external_llm_configs']['result'];
+export type ProbeExternalLlmCandidateModelsCommandArgs = Commands['probe_external_llm_candidate_models']['args'];
+export type ProbeExternalLlmCandidateModelsCommandResult = Commands['probe_external_llm_candidate_models']['result'];
+export type ImportExternalLlmConfigsCommandArgs = Commands['import_external_llm_configs']['args'];
+export type ImportExternalLlmConfigsCommandResult = Commands['import_external_llm_configs']['result'];

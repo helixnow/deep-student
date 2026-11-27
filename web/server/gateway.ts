@@ -56,10 +56,12 @@ import {
   type Handshake,
   type HostToMain,
   type MainToHostMessage,
+  type ShellErrorData,
   type ShellRequest,
 } from '../../host/kernel/protocol.ts';
 
 import { decodeRendererMessage, encodeMainMessage } from '../shared/wire.ts';
+import { WebBrowserBridge } from './browser-bridge.ts';
 import type { WebSocketConnection } from './ws.ts';
 
 const DEFAULT_MAX_STAGE_UPLOAD_BYTES = 200 * 1024 * 1024;
@@ -350,6 +352,64 @@ function createWebProcessPlugin(onRestart: () => void): BuiltinPlugin {
   };
 }
 
+export function formatShellRequestError(error: unknown): { error: string; errorData?: ShellErrorData } {
+  if (error instanceof Error) {
+    const maybeData = (error as { data?: unknown }).data;
+    if (
+      typeof maybeData === 'object' &&
+      maybeData !== null &&
+      !Array.isArray(maybeData) &&
+      typeof (maybeData as Record<string, unknown>).code === 'string' &&
+      typeof (maybeData as Record<string, unknown>).message === 'string'
+    ) {
+      const dataRecord = maybeData as { code: string; message: string; details?: unknown };
+      return {
+        error: error.message,
+        errorData: {
+          code: dataRecord.code,
+          message: dataRecord.message,
+          ...(dataRecord.details !== undefined ? { details: dataRecord.details } : {}),
+        },
+      };
+    }
+    return { error: error.message };
+  }
+  if (typeof error === 'object' && error !== null && !Array.isArray(error)) {
+    const record = error as Record<string, unknown>;
+    if (record.kind === 'Bridge' && typeof record.code === 'string' && typeof record.message === 'string') {
+      const details = Object.hasOwn(record, 'details') ? record.details : undefined;
+      return {
+        error: `bridge error ${record.code}: ${record.message}`,
+        errorData: {
+          code: record.code,
+          message: record.message,
+          ...(details !== undefined ? { details } : {}),
+        },
+      };
+    }
+    if (record.kind === 'Timeout' && typeof record.milliseconds === 'number' && Number.isFinite(record.milliseconds)) {
+      const message = `bridge call timed out after ${record.milliseconds}ms`;
+      return {
+        error: message,
+        errorData: {
+          code: 'TIMEOUT',
+          message,
+          details: { milliseconds: record.milliseconds },
+        },
+      };
+    }
+    if (typeof record.message === 'string') {
+      return { error: record.message };
+    }
+    try {
+      return { error: JSON.stringify(error) };
+    } catch {
+      return { error: String(error) };
+    }
+  }
+  return { error: String(error) };
+}
+
 class InProcessHostBridge {
   private readonly listeners: Array<(message: unknown) => void> = [];
   private readonly pendingInvokes = new Map<string, PendingInvoke>();
@@ -359,17 +419,20 @@ class InProcessHostBridge {
   private nextSeq = 1;
   private readonly onEvent: (event: BackendEvent) => void;
   private readonly onShellRequest: (request: ShellRequest) => Promise<unknown>;
+  private readonly onInvokeSucceeded?: (cmd: string, args: unknown) => void;
   private readonly onFatal?: (reason: string) => void;
   private readonly log: (message: string) => void;
 
   constructor(deps: {
     onEvent: (event: BackendEvent) => void;
     onShellRequest: (request: ShellRequest) => Promise<unknown>;
+    onInvokeSucceeded?: (cmd: string, args: unknown) => void;
     onFatal?: (reason: string) => void;
     log: (message: string) => void;
   }) {
     this.onEvent = deps.onEvent;
     this.onShellRequest = deps.onShellRequest;
+    this.onInvokeSucceeded = deps.onInvokeSucceeded;
     this.onFatal = deps.onFatal;
     this.log = deps.log;
   }
@@ -429,7 +492,18 @@ class InProcessHostBridge {
     pending: PendingInvoke,
   ): void {
     const id = `web-inv-${this.nextSeq++}`;
-    this.pendingInvokes.set(id, pending);
+    const wrappedPending: PendingInvoke = this.onInvokeSucceeded
+      ? {
+          webview: pending.webview,
+          resolve: (result) => {
+            if (result.ok) {
+              this.onInvokeSucceeded?.(req.cmd, req.args);
+            }
+            pending.resolve(result);
+          },
+        }
+      : pending;
+    this.pendingInvokes.set(id, wrappedPending);
     this.sendMessage({
       kind: 'invoke',
       id,
@@ -505,7 +579,7 @@ class InProcessHostBridge {
               kind: 'shell-result',
               id: message.id,
               ok: false,
-              error: error instanceof Error ? error.message : String(error),
+              ...formatShellRequestError(error),
             }),
         );
         return;
@@ -718,6 +792,81 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
 
   const withId = (base: string | null) => (base === null ? null : join(base, config.identifier));
 
+  const CDP_URL_SETTING_KEY = 'desktop.workbenchBrowserCdpUrl';
+  const CDP_SETTING_TIMEOUT_MS = 1_500;
+  let activeBridge!: InProcessHostBridge;
+  let activeSession!: HostSession;
+
+  const invokeHostCommand = (cmd: string, args: unknown): Promise<unknown> =>
+    new Promise<unknown>((resolveInvoke, rejectInvoke) => {
+      if (!activeBridge) {
+        rejectInvoke(new Error('WebUI Host bridge is not initialized'));
+        return;
+      }
+      activeBridge.invoke(
+        { cmd, args, source: { window: 'main', webview: 'main' } },
+        {
+          webview: 'main',
+          resolve: (result) => {
+            if (result.ok) {
+              resolveInvoke(result.value);
+              return;
+            }
+            const error = result.error;
+            rejectInvoke(
+              new Error(typeof error === 'string' ? error : error === undefined ? 'Host command failed' : JSON.stringify(error)),
+            );
+          },
+        },
+      );
+    });
+
+  const resolveConfiguredCdpUrl = async (): Promise<string | null> => {
+    if (!activeBridge || !activeBridge.readyState) return null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const value = await Promise.race([
+        invokeHostCommand('get_setting', { key: CDP_URL_SETTING_KEY }).catch((error: unknown) => {
+          log(
+            `[web-browser] failed to read ${CDP_URL_SETTING_KEY}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return null;
+        }),
+        new Promise<null>((resolveTimeout) => {
+          timer = setTimeout(() => resolveTimeout(null), CDP_SETTING_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return trimmed !== '' ? trimmed : null;
+    } catch (error) {
+      log(
+        `[web-browser] failed to read ${CDP_URL_SETTING_KEY}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  };
+
+  const browserBridge = new WebBrowserBridge({
+    profileRootDir: join(appDataDir, 'browser-remote-profile'),
+    resolveConfiguredCdpUrl,
+    onScreencastFrame: (frame) => {
+      runtime.emitTo({ kind: 'Any' }, 'browser:screencast-frame', JSON.stringify(frame));
+    },
+    onNativeEvent: (event, payload) => {
+      runtime.sendNativeEvent(
+        event,
+        payload,
+        { window: 'main', webview: 'browser-content' },
+        { kind: 'App' },
+      );
+    },
+    log,
+  });
+
   const handleWebShellRequest = async (request: ShellRequest): Promise<unknown> => {
     const args = (request.args ?? {}) as Record<string, unknown>;
     if (request.op === 'app.fullVersion') return getAppVersion();
@@ -771,7 +920,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
       return [...dirs];
     }
     if (request.op.startsWith('browser.')) {
-      throw new Error(`embedded native browser surface (${request.op}) is unavailable in WebUI mode`);
+      return browserBridge.handleShellRequest(request.op, args);
     }
     const windowLabel = typeof args.__window === 'string' ? args.__window : 'main';
     const builtin = runtime.runBuiltin(
@@ -838,8 +987,6 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
   };
 
   const hostEntry = join(repoRoot, 'host', 'kernel', 'main.ts');
-  let activeBridge!: InProcessHostBridge;
-  let activeSession!: HostSession;
 
   const startHostSession = () => {
     const bridge = new InProcessHostBridge({
@@ -861,6 +1008,17 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
         }
       },
       onShellRequest: handleWebShellRequest,
+      onInvokeSucceeded: (cmd, args) => {
+        if (
+          (cmd === 'save_setting' || cmd === 'delete_setting') &&
+          args !== null &&
+          typeof args === 'object' &&
+          !Array.isArray(args) &&
+          (args as Record<string, unknown>).key === CDP_URL_SETTING_KEY
+        ) {
+          void browserBridge.invalidateSurface();
+        }
+      },
       onFatal: () => {
         pluginUi.invalidate();
       },
@@ -902,26 +1060,6 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
 
     return { bridge, session };
   };
-
-  const invokeHostCommand = (cmd: string, args: unknown): Promise<unknown> =>
-    new Promise<unknown>((resolveInvoke, rejectInvoke) => {
-      activeBridge.invoke(
-        { cmd, args, source: { window: 'main', webview: 'main' } },
-        {
-          webview: 'main',
-          resolve: (result) => {
-            if (result.ok) {
-              resolveInvoke(result.value);
-              return;
-            }
-            const error = result.error;
-            rejectInvoke(
-              new Error(typeof error === 'string' ? error : error === undefined ? 'Host command failed' : JSON.stringify(error)),
-            );
-          },
-        },
-      );
-    });
 
   const syncHostStateAfterRestart = async (): Promise<void> => {
     const withTimeout = <T>(promise: Promise<T>, label: string): Promise<T | undefined> =>
@@ -984,6 +1122,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
     restartInFlight = (async () => {
       log('[web-host] restarting Host session in-process...');
       pluginUi.invalidate();
+      await browserBridge.dispose();
       const previousBridge = activeBridge;
       const previousSession = activeSession;
       previousBridge.dispose('WebUI Host restarting');
@@ -1419,6 +1558,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
         tabs.clear();
         activeBridge.dispose('WebUI gateway shutting down');
         if (restartInFlight) await restartInFlight;
+        await browserBridge.dispose();
         await activeSession.shutdown();
       } finally {
         releaseHostInstanceLock(instanceLockPath, instanceLockRecord, log);

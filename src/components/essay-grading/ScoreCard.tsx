@@ -285,7 +285,7 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
             y={y}
             textAnchor={anchor}
             dominantBaseline="middle"
-            className="fill-muted-foreground text-[10px]"
+            className="fill-muted-foreground text-2xs"
           >
             {lines.map((line, li) => (
               <React.Fragment key={li}>
@@ -354,7 +354,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
     <div
       className={cn(
         'mb-6',
-        resolvedStaleRubric && 'rounded-xl border border-amber-500/45 bg-amber-500/[0.04] p-4',
+        resolvedStaleRubric && 'rounded-xl border border-warning/45 bg-warning/[0.05] p-4',
         className,
       )}
       data-stale-rubric={resolvedStaleRubric ? 'true' : undefined}
@@ -363,9 +363,9 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span
             data-testid="score-card-stale-rubric-badge"
-            className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/60 bg-amber-100/90 dark:border-amber-400/50 dark:bg-amber-950/70 px-2.5 py-0.5 text-xs font-medium text-amber-950 dark:text-amber-100"
+            className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning"
           >
-            <WarningCircle size={13} weight="fill" className="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            <WarningCircle size={13} weight="fill" className="shrink-0 text-warning" aria-hidden="true" />
             {staleRubricBadgeText}
           </span>
         </div>

@@ -57,6 +57,8 @@ export interface UseWindowPointerOptions {
   onMoveArmed?: (point: { x: number; y: number }) => void;
   /** move 未过阈值就结束（纯点击）——撤掉 pointerdown 壳层抬升 */
   onMoveDismissed?: () => void;
+  /** tear-out 后取消（Esc / blur / capture 丢失）——恢复受管状态，不写 floating */
+  onMoveCancelled?: () => void;
 }
 
 export interface UseWindowPointerResult {
@@ -101,6 +103,7 @@ export function useWindowPointer(options: UseWindowPointerOptions): UseWindowPoi
       },
       onMoveArmed: (point) => optionsRef.current.onMoveArmed?.(point),
       onMoveDismissed: () => optionsRef.current.onMoveDismissed?.(),
+      onMoveCancelled: () => optionsRef.current.onMoveCancelled?.(),
     });
   }
 
@@ -115,11 +118,13 @@ export function useWindowPointer(options: UseWindowPointerOptions): UseWindowPoi
     return {
       startMove: (e) => {
         if (optionsRef.current.disabled) return;
-        engine.startMove(e.nativeEvent, e.currentTarget as Element);
+        const native = 'nativeEvent' in e && e.nativeEvent ? e.nativeEvent : (e as unknown as PointerEvent);
+        engine.startMove(native, e.currentTarget as Element);
       },
       startResize: (e, edge) => {
         if (optionsRef.current.disabled) return;
-        engine.startResize(e.nativeEvent, edge, e.currentTarget as Element);
+        const native = 'nativeEvent' in e && e.nativeEvent ? e.nativeEvent : (e as unknown as PointerEvent);
+        engine.startResize(native, edge, e.currentTarget as Element);
       },
       cancel: () => engine.cancel(),
       isDragging: () => engine.isActive(),

@@ -60,6 +60,8 @@ export interface ProjectKnowledgeDagDrawerProps {
   onToggleTodo?: (todo: KnowledgeTodo, completed: boolean) => void;
   onDispatchTodo?: (payload: TodoDispatchPayload) => void;
   onSaveNote?: (note: KnowledgeNote, expected?: string) => void;
+  /** 嵌入到父面板（如 AgentTaskPanel）时去掉外层卡片描边/阴影与重复顶栏 */
+  embedded?: boolean;
   className?: string;
 }
 
@@ -85,6 +87,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
   onToggleTodo,
   onDispatchTodo,
   onSaveNote,
+  embedded = false,
   className,
 }) => {
   const [plans, setPlans] = useState<KnowledgePlan[]>(() =>
@@ -357,43 +360,51 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
       aria-label="项目知识与学习计划拓扑抽屉"
       data-testid="project-knowledge-dag-drawer"
       className={cn(
-        'w-full max-w-md rounded-xl border border-border/35 bg-card text-card-foreground shadow-lg flex flex-col overflow-hidden',
+        'w-full text-card-foreground flex flex-col overflow-hidden',
+        !embedded && 'max-w-md rounded-xl border border-border/35 bg-card shadow-lg',
         className,
       )}
     >
-      {/* 抽屉顶栏 */}
-      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/35 bg-muted/20">
-        <div className="flex items-center gap-2">
-          <GitBranch size={16} className="text-primary shrink-0" />
-          <h2 className="text-sm font-semibold text-foreground">
-            学习计划与任务拓扑
-          </h2>
-        </div>
+      {/* 抽屉顶栏（嵌入父面板时省略，避免重复标题与卡片套娃） */}
+      {!embedded && (
+        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/35 bg-muted/20">
+          <div className="flex items-center gap-2">
+            <GitBranch size={16} className="text-primary shrink-0" />
+            <h2 className="text-sm font-semibold text-foreground">
+              学习计划与任务拓扑
+            </h2>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            data-testid="dag-completion-badge"
-            className="text-xs font-mono tabular-nums px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
-          >
-            {dagSummary.effectiveDone}/{dagSummary.effectiveTotal} ({dagSummary.completionPercent}%)
-          </span>
-          {onClose && (
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              onClick={onClose}
-              aria-label="关闭计划抽屉"
-              className="!h-auto !w-auto !p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+          <div className="flex items-center gap-2">
+            <span
+              data-testid="dag-completion-badge"
+              className="text-xs font-mono tabular-nums px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
             >
-              <X size={16} />
-            </DsButton>
-          )}
-        </div>
-      </header>
+              {dagSummary.effectiveDone}/{dagSummary.effectiveTotal} ({dagSummary.completionPercent}%)
+            </span>
+            {onClose && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={onClose}
+                aria-label="关闭计划抽屉"
+                className="!h-auto !w-auto !p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+              >
+                <X size={16} />
+              </DsButton>
+            )}
+          </div>
+        </header>
+      )}
 
       {/* 当前学习计划（Plan）进度区 */}
-      <section className="p-4 border-b border-border/35 bg-muted/10 flex flex-col gap-3">
+      <section
+        className={cn(
+          'border-b border-border/35 flex flex-col',
+          embedded ? 'px-4 py-3 gap-2.5' : 'p-4 bg-muted/10 gap-3',
+        )}
+      >
         {plans.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {plans.map((plan) => (
@@ -421,9 +432,18 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
               <span className="text-xs font-semibold text-foreground truncate">
                 {extractPlanHeading(currentPlan.body, currentPlan.id)}
               </span>
-              <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
-                步骤 {currentPlan.progress.done}/{currentPlan.progress.total}
-              </span>
+              {embedded ? (
+                <span
+                  data-testid="dag-completion-badge"
+                  className="text-xs font-mono tabular-nums text-muted-foreground shrink-0"
+                >
+                  {dagSummary.effectiveDone}/{dagSummary.effectiveTotal} ({dagSummary.completionPercent}%)
+                </span>
+              ) : (
+                <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+                  步骤 {currentPlan.progress.done}/{currentPlan.progress.total}
+                </span>
+              )}
             </div>
 
             {/* 完成度进度条 */}
@@ -438,27 +458,24 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             {/* 拓扑状态概览计数器 */}
             <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-success" />
                 <span>现在可做</span>
                 <strong
                   data-testid="dag-ready-count"
-                  className="font-mono tabular-nums text-foreground"
+                  className="font-mono tabular-nums text-success"
                 >
                   {dagSummary.readyTodos}
                 </strong>
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-warning" />
                 <span>等待前置步骤</span>
                 <strong
                   data-testid="dag-blocked-count"
-                  className="font-mono tabular-nums text-foreground"
+                  className="font-mono tabular-nums text-warning"
                 >
                   {dagSummary.blockedTodos}
                 </strong>
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                 <span>已完成</span>
                 <strong
                   data-testid="dag-completed-count"
@@ -476,12 +493,22 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             )}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">当前暂无关联学习计划</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">当前暂无关联学习计划</p>
+            {embedded && (
+              <span
+                data-testid="dag-completion-badge"
+                className="text-xs font-mono tabular-nums text-muted-foreground shrink-0"
+              >
+                {dagSummary.effectiveDone}/{dagSummary.effectiveTotal} ({dagSummary.completionPercent}%)
+              </span>
+            )}
+          </div>
         )}
       </section>
 
       {/* DAG 任务拓扑列表区 */}
-      <section className="p-4 border-b border-border/35 flex flex-col gap-2.5">
+      <section className={cn('border-b border-border/35 flex flex-col gap-2', embedded ? 'px-4 py-3' : 'p-4')}>
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-foreground">
             学习步骤顺序
@@ -491,7 +518,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
           </span>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="divide-y divide-border/35">
           {enrichedTodos.map((todo) => {
             const isReady = todo.dagStatus === 'ready';
             const isBlocked = todo.dagStatus === 'blocked';
@@ -503,13 +530,8 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                 data-testid={`dag-todo-item-${todo.id}`}
                 data-dag-status={todo.dagStatus}
                 className={cn(
-                  'rounded-lg border p-3 flex flex-col gap-2 transition-colors',
-                  isReady &&
-                    'border-success/40 bg-success/5 text-foreground',
-                  isBlocked &&
-                    'border-border/35 bg-muted/20 text-muted-foreground',
-                  isCompleted &&
-                    'border-border/35 bg-background/60 text-muted-foreground',
+                  'py-2.5 first:pt-1 last:pb-0 flex flex-col gap-1.5 transition-colors',
+                  isReady ? 'text-foreground' : 'text-muted-foreground',
                 )}
               >
                 <div className="flex items-start justify-between gap-2.5">
@@ -537,26 +559,14 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                     </DsButton>
 
                     <div className="flex flex-col gap-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        {/* 6px 状态点：Ready 高亮绿点 */}
-                        <span
-                          data-testid={`dag-todo-dot-${todo.id}`}
-                          className={cn(
-                            'w-1.5 h-1.5 rounded-full shrink-0',
-                            isReady && 'bg-success',
-                            isBlocked && 'bg-warning',
-                            isCompleted && 'bg-muted-foreground/50',
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            'text-xs font-medium leading-snug',
-                            isCompleted && 'line-through text-muted-foreground',
-                          )}
-                        >
-                          {todo.body}
-                        </span>
-                      </div>
+                      <span
+                        className={cn(
+                          'text-xs font-medium leading-snug',
+                          isCompleted && 'line-through text-muted-foreground',
+                        )}
+                      >
+                        {todo.body}
+                      </span>
 
                       {/* 状态徽标：就绪可执行 / 等待前置：<前置任务名> */}
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -602,7 +612,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
       </section>
 
       {/* 底部关联课堂笔记（Notes）与乐观锁版本校验编辑 */}
-      <section className="p-4 flex flex-col gap-3">
+      <section className={cn('flex flex-col gap-2.5', embedded ? 'px-4 py-3' : 'p-4 gap-3')}>
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-foreground">
             关联课堂笔记
@@ -621,7 +631,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
           </div>
         )}
 
-        <div className="flex flex-col gap-2.5">
+        <div className={cn(embedded ? 'divide-y divide-border/35' : 'flex flex-col gap-2.5')}>
           {notes.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">暂无关联课堂笔记</p>
           ) : (
@@ -632,7 +642,12 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                 <div
                   key={note.id}
                   data-testid={`dag-note-card-${note.id}`}
-                  className="rounded-lg border border-border/35 bg-background p-3 flex flex-col gap-2"
+                  className={cn(
+                    'flex flex-col gap-2',
+                    embedded
+                      ? 'py-2.5 first:pt-1 last:pb-0'
+                      : 'rounded-lg border border-border/35 bg-background p-3',
+                  )}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-mono tabular-nums text-muted-foreground">

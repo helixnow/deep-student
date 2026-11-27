@@ -9,6 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Bug,
+  Check,
   Copy,
   Trash,
   ArrowClockwise,
@@ -19,9 +20,12 @@ import {
   CaretRight,
   Play,
   ArrowCounterClockwise,
+  ListBullets,
+  MagnifyingGlass,
+  X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   getIndexDiagnostic,
@@ -236,7 +240,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     return (
       <div className="mt-2 p-2 bg-muted/30 rounded text-xs font-mono">
         <div className="text-muted-foreground mb-2">
-          {t('diagnostic.architecture')}: <span className="text-cyan-500">{data.architectureVersion || 'unknown'}</span>
+          {t('diagnostic.architecture')}: <span className="text-info">{data.architectureVersion || 'unknown'}</span>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
           <div>{t('diagnostic.totalResources')}: <span className="text-foreground">{data.totalResources}</span></div>
@@ -248,7 +252,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border/30 pt-2">
           <div>pending: <span className="text-warning">{stateCounts.pending}</span></div>
           <div>indexed: <span className="text-success">{stateCounts.indexed}</span></div>
-          <div>disabled: <span className="text-gray-500">{stateCounts.disabled}</span></div>
+          <div>disabled: <span className="text-muted-foreground">{stateCounts.disabled}</span></div>
           <div>failed: <span className="text-danger">{stateCounts.failed}</span></div>
         </div>
         {unitsStats && unitsStats.totalCount > 0 && (
@@ -256,13 +260,16 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             <div className="col-span-2 text-muted-foreground">{t('diagnostic.unitStatus')}:</div>
             <div>text_indexed: <span className="text-success">{unitsStats.textIndexed}</span></div>
             <div>text_pending: <span className="text-warning">{unitsStats.textPending}</span></div>
-            <div>text_disabled: <span className="text-gray-500">{unitsStats.textDisabled}</span></div>
+            <div>text_disabled: <span className="text-muted-foreground">{unitsStats.textDisabled}</span></div>
             <div>text_failed: <span className="text-danger">{unitsStats.textFailed}</span></div>
           </div>
         )}
         {issues.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50">
-            <div className="text-warning font-medium mb-1">⚠️ {t('diagnostic.consistencyTitle')}:</div>
+            <div className="flex items-center gap-1.5 text-warning font-medium mb-1">
+              <Warning size={14} className="shrink-0" />
+              <span>{t('diagnostic.consistencyTitle')}:</span>
+            </div>
             {issues.map((issue, i) => (
               <div key={i} className="text-danger ml-2">• {issue.details}</div>
             ))}
@@ -272,13 +279,15 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
         {/* 所有资源详情表格 */}
         {allResources && allResources.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border/50">
-            <div className="text-cyan-400 font-medium mb-2">📋 {t('diagnostic.resourceDetails', { count: allResources.length })}:</div>
-            {/* 8 列表格窄屏必然放不下：容器允许横向滚动，表格保底最小宽度。
-                注：本面板为开发者诊断工具，黑底终端风格配色为有意为之（低优先跟随主题）。 */}
+            <div className="flex items-center gap-1.5 text-info font-medium mb-2">
+              <ListBullets size={14} className="shrink-0" />
+              <span>{t('diagnostic.resourceDetails', { count: allResources.length })}:</span>
+            </div>
+            {/* 8 列表格窄屏必然放不下：容器允许横向滚动，表格保底最小宽度。 */}
             <CustomScrollArea className="max-h-48 min-h-0" orientation="both" fullHeight={false}>
               <table className="w-full min-w-[560px] text-2xs">
-                <thead className="sticky top-0 bg-black/80">
-                  <tr className="text-gray-400 border-b border-gray-700">
+                <thead className="sticky top-0 bg-card/95">
+                  <tr className="text-muted-foreground border-b border-border/70">
                     <th className="text-left py-1 px-1">{t('diagnostic.tableHeader.nameId')}</th>
                     <th className="text-left py-1 px-1">{t('diagnostic.tableHeader.type')}</th>
                     <th className="text-left py-1 px-1">{t('diagnostic.tableHeader.dbState')}</th>
@@ -291,33 +300,33 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                 </thead>
                 <tbody>
                   {allResources.map((r) => (
-                    <tr key={r.id} className="border-b border-gray-800 hover:bg-white/5">
+                    <tr key={r.id} className="border-b border-border/40 hover:bg-muted/50">
                       <td className="py-1 px-1 truncate max-w-[120px]" title={r.id}>
                         {r.name || r.id.slice(0, 15)}
                       </td>
-                      <td className="py-1 px-1 text-gray-400">{r.resourceType}</td>
+                      <td className="py-1 px-1 text-muted-foreground">{r.resourceType}</td>
                       <td className={cn('py-1 px-1',
                         r.indexState === 'indexed' && 'text-success',
                         r.indexState === 'pending' && 'text-warning',
                         r.indexState === 'failed' && 'text-danger',
-                        r.indexState === 'disabled' && 'text-gray-500',
+                        r.indexState === 'disabled' && 'text-muted-foreground',
                       )}>
                         {r.indexState || 'null'}
                       </td>
                       <td className={cn('py-1 px-1',
                         r.unitTextState === 'indexed' && 'text-success',
                         r.unitTextState === 'pending' && 'text-warning',
-                        r.unitTextState === 'disabled' && 'text-gray-500',
+                        r.unitTextState === 'disabled' && 'text-muted-foreground',
                       )}>
                         {r.unitTextState || '-'}
                       </td>
                       <td className="py-1 px-1 text-right">{r.unitCount}</td>
                       <td className={cn('py-1 px-1 text-right',
-                        r.segmentCount > 0 ? 'text-success' : 'text-gray-500'
+                        r.segmentCount > 0 ? 'text-success' : 'text-muted-foreground'
                       )}>
                         {r.segmentCount}
                       </td>
-                      <td className="py-1 px-1 text-right text-gray-400">
+                      <td className="py-1 px-1 text-right text-muted-foreground">
                         {r.textEmbeddingDim || '-'}
                       </td>
                       <td className="py-1 px-1 truncate max-w-[100px] text-danger" title={r.indexError || ''}>
@@ -337,23 +346,33 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
   const formatLanceDiagnosticSummary = (data: LanceTableDiagnostic[]) => {
     return (
       <div className="mt-2 p-2 bg-muted/30 rounded text-xs font-mono">
-        <div className="text-cyan-400 font-medium mb-2">🔍 {t('diagnostic.lanceDiagTitle')}</div>
+        <div className="flex items-center gap-1.5 text-info font-medium mb-2">
+          <MagnifyingGlass size={14} className="shrink-0" />
+          <span>{t('diagnostic.lanceDiagTitle')}</span>
+        </div>
         {data.map((table, idx) => (
           <div key={idx} className="mb-3 p-2 border border-border/30 rounded">
             <div className="flex items-center gap-2 mb-1">
-              <span className={table.schemaValid ? 'text-success' : 'text-danger'}>
-                {table.schemaValid ? '✓' : '✗'}
+              <span className={cn('inline-flex items-center', table.schemaValid ? 'text-success' : 'text-danger')}>
+                {table.schemaValid ? <Check size={12} aria-hidden="true" /> : <X size={12} aria-hidden="true" />}
               </span>
               <span className="text-foreground font-medium">{table.tableName}</span>
-              <span className="text-gray-500">({table.rowCount} {t('diagnostic.lanceRows')})</span>
+              <span className="text-muted-foreground">({table.rowCount} {t('diagnostic.lanceRows')})</span>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 ml-4 text-2xs">
               <div>{t('diagnostic.lanceDims')}: <span className="text-foreground">{table.dimension}</span></div>
               <div>{t('diagnostic.lanceCols')}: <span className="text-foreground">{table.columns.length}</span></div>
-              <div>
-                {t('diagnostic.lanceMetadataCol')}: 
-                <span className={table.hasMetadataColumn ? 'text-success' : 'text-danger'}>
-                  {table.hasMetadataColumn ? ' ✓' : ` ✗ ${t('diagnostic.lanceMetadataMissing')}`}
+              <div className="flex items-center gap-1">
+                <span>{t('diagnostic.lanceMetadataCol')}:</span>
+                <span className={cn('inline-flex items-center gap-1', table.hasMetadataColumn ? 'text-success' : 'text-danger')}>
+                  {table.hasMetadataColumn ? (
+                    <Check size={12} aria-hidden="true" />
+                  ) : (
+                    <>
+                      <X size={12} aria-hidden="true" />
+                      <span>{t('diagnostic.lanceMetadataMissing')}</span>
+                    </>
+                  )}
                 </span>
               </div>
               <div>
@@ -364,17 +383,18 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               </div>
             </div>
             {table.issueDescription && (
-              <div className="mt-1 ml-4 text-danger text-2xs">
-                ⚠️ {table.issueDescription}
+              <div className="mt-1 ml-4 flex items-center gap-1 text-danger text-2xs">
+                <Warning size={12} className="shrink-0" />
+                <span>{table.issueDescription}</span>
               </div>
             )}
             {table.sampleMetadata.length > 0 && (
               <div className="mt-2 ml-4">
-                <div className="text-gray-500 text-2xs mb-1">{t('diagnostic.lanceSampleMetadata')}:</div>
-                <CustomScrollArea className="max-h-20 min-h-0 rounded bg-black/50" orientation="both" fullHeight={false}>
+                <div className="text-muted-foreground text-2xs mb-1">{t('diagnostic.lanceSampleMetadata')}:</div>
+                <CustomScrollArea className="max-h-20 min-h-0 rounded bg-muted/60" orientation="both" fullHeight={false}>
                   <div className="p-1 text-2xs">
                     {table.sampleMetadata.slice(0, 3).map((m, i) => (
-                      <div key={i} className="truncate text-gray-400">
+                      <div key={i} className="truncate text-muted-foreground">
                         {m ? m.slice(0, 100) : '<null>'}
                       </div>
                     ))}
@@ -391,7 +411,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
   return (
     <div className="border-t border-border/50">
       {/* 标题栏 */}
-      <DsButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
         {isExpanded ? (
           <CaretDown size={16} className="text-muted-foreground" />
         ) : (
@@ -416,9 +436,9 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={() => handleGetDiagnostic()}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs"
             >
-              <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
+              <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin motion-reduce:animate-none')} />
               {t('diagnostic.getDiagnostic')}
             </DsButton>
             <DsButton
@@ -426,7 +446,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleIndexWithDiagnostic}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs"
             >
               <Play size={14} className="mr-1" />
               {t('diagnostic.indexWithDiag')}
@@ -436,7 +456,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetDisabled}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs text-warning"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetDisabled')}
@@ -446,7 +466,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetIndexedWithoutEmb}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs text-warning"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetNoEmbed')}
@@ -456,7 +476,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleDiagnoseLanceSchema}
               disabled={isLoading}
-              className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs text-info"
             >
               <Bug size={14} className="mr-1" />
               {t('learningHub:diagnostic.lanceSchema')}
@@ -467,7 +487,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleCopyLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs"
             >
               <Copy size={14} className="mr-1" />
               {t('diagnostic.copyLogs')}
@@ -477,7 +497,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleClearLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+              className="text-xs text-muted-foreground"
             >
               <Trash size={14} className="mr-1" />
               {t('diagnostic.clearLogs')}
@@ -487,7 +507,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
           {/* 日志区域 */}
           <CustomScrollArea
             viewportRef={logContainerRef}
-            className="h-64 border rounded-md bg-black/90"
+            className="h-64 border border-border rounded-md bg-muted/40"
             viewportClassName="p-2 font-mono text-xs"
           >
             {logs.length === 0 ? (
@@ -500,7 +520,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                   <div key={index} className="group">
                     <div 
                       className={cn(
-                        'flex items-start gap-2 cursor-pointer hover:bg-white/5 rounded px-1',
+                        'flex items-start gap-2 cursor-pointer hover:bg-muted/60 rounded px-1',
                         // 触屏：日志行可点展开详情，保证 ≥44px 触控高度（桌面保持紧凑）
                         '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-1.5',
                         (log.data || log.lanceData) && 'cursor-pointer'
@@ -508,7 +528,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                       onClick={() => (log.data || log.lanceData) && setShowDetails(showDetails === index ? null : index)}
                     >
                       {getLogIcon(log.type)}
-                      <span className="text-gray-500 shrink-0">
+                      <span className="text-muted-foreground shrink-0">
                         {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
                       <span className={cn(
@@ -521,8 +541,13 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                         {log.message}
                       </span>
                       {(log.data || log.lanceData) && (
-                        <span className="text-gray-500 text-2xs">
-                          {showDetails === index ? '▼' : '▶'} {t('diagnostic.details')}
+                        <span className="inline-flex items-center gap-0.5 text-muted-foreground text-2xs">
+                          {showDetails === index ? (
+                            <CaretDown size={11} aria-hidden="true" />
+                          ) : (
+                            <CaretRight size={11} aria-hidden="true" />
+                          )}
+                          {t('diagnostic.details')}
                         </span>
                       )}
                     </div>

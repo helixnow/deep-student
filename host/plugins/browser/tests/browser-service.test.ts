@@ -442,4 +442,130 @@ describe('browser runtime service (service.rs state machine)', () => {
       expect(opened.url).toBe(OPEN_URL);
     });
   });
+
+  describe('red-team hardening: host facts post-close, value.tree snapshot, about:blank tabs, headless promotion, serialized downloads', () => {
+    it('preserves getHostFactsForChatSession across closeSession and returns null for unknown chat sessions', async () => {
+      const { service, surface } = harness();
+      const opened = await service.openSession({
+        url: 'https://1.1.1.1/',
+        fromAgent: true,
+        chatSessionId: 'chat-facts-1',
+      });
+      await service.click(opened.id, 'e1');
+      await service.closeSession();
+      expect(surface.present).toBe(false);
+
+      const postClose = service.getHostFactsForChatSession('chat-facts-1');
+      expect(postClose).not.toBeNull();
+      expect(postClose?.sessionId).toBe(opened.id);
+      expect(postClose?.visitedOrigins).toEqual(['https://1.1.1.1']);
+      expect(postClose?.actionCount).toBe(1);
+      expect(service.getHostFacts('chat-facts-1')).toEqual(postClose);
+      expect(service.getHostFactsForChatSession('chat-unknown')).toBeNull();
+    });
+
+    it('reads value.tree in snapshot() when present', async () => {
+      const { service, surface } = harness();
+      const opened = await service.openSession({ url: OPEN_URL });
+      surface.snapshot = async () => ({ tree: 'button "Save" [ref=e1]', epoch: 3 });
+      const snap = await service.snapshot(opened.id, 4_000);
+      expect(snap.snapshot).toBe('button "Save" [ref=e1]');
+      expect(snap.epoch).toBe(3);
+    });
+
+    it('allows about:blank in newTab, mirrors navigate control transitions, and closes session when last tab closes', async () => {
+      const { service, surface } = harness();
+      let promoted = 0;
+      let tabs = [{ tabId: 't1', url: 'https://1.1.1.1/', title: 'One', active: true }];
+      Object.assign(surface, {
+        promoteToInteractive: async () => { promoted += 1; },
+        newTab: async (url: string) => {
+          const tab = { tabId: 't2', url, title: '', active: true };
+          tabs = [...tabs.map(t => ({ ...t, active: false })), tab];
+          return tab;
+        },
+        switchTab: async (tabId: string) => {
+          tabs = tabs.map(t => ({ ...t, active: t.tabId === tabId }));
+          return tabs.find(t => t.tabId === tabId)!;
+        },
+        closeTab: async (tabId: string) => {
+          tabs = tabs.filter(t => t.tabId !== tabId);
+          const next = tabs[0] ?? null;
+          return {
+            closed: true,
+            tabId,
+            activeTabId: next?.tabId ?? null,
+            remainingCount: tabs.length,
+            activeTab: next,
+          };
+        },
+      });
+
+      const opened = await service.openSession({
+        url: 'https://1.1.1.1/',
+        fromAgent: true,
+        headless: true,
+      });
+      expect(service.surfaceHostMode()).toBe('headless');
+
+      // setSurfaceVisibility(visible=true) promotes headless -> interactive
+      const modeAfterVisible = await service.setSurfaceVisibility(opened.id, true, false);
+      expect(promoted).toBe(1);
+      expect(modeAfterVisible).toBe('embedded');
+
+      // User opening about:blank tab takes over from agent and updates session URL/title
+      const blank = await service.newTab(opened.id, 'about:blank', false);
+      expect(blank.url).toBe('about:blank');
+      expect(service.getState(opened.id)?.controlMode).toBe('user');
+      expect(service.getState(opened.id)?.url).toBe('about:blank');
+
+      // switchTab updates title even when empty
+      await service.switchTab(opened.id, 't1');
+      expect(service.getState(opened.id)?.title).toBe('One');
+      await service.switchTab(opened.id, 't2');
+      expect(service.getState(opened.id)?.title).toBe('');
+
+      // Closing t2 syncs activeTab (t1); closing last tab t1 closes the session
+      await service.closeTab(opened.id, 't2');
+      expect(service.getState(opened.id)?.url).toBe('https://1.1.1.1/');
+      await service.closeTab(opened.id, 't1');
+      expect(service.getActiveState()).toBeNull();
+    });
+
+    it('serializes fast Electron downloadStarted -> downloadFinished callbacks and pushes download policy', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'browser-dl-serial-'));
+      cleanup.push(root);
+      let resolveRoot!: (value: string) => void;
+      const rootReady = new Promise<string>(resolve => { resolveRoot = resolve; });
+      const policies: Array<{ agentOwned: boolean; artifactDir: string | null }> = [];
+      const { service, surface } = harness({
+        artifactRoot: async () => rootReady,
+      });
+      Object.assign(surface, {
+        setDownloadPolicy: async (policy: { agentOwned: boolean; artifactDir: string | null }) => {
+          policies.push(policy);
+        },
+      });
+      const opened = await service.openSession({
+        url: 'https://1.1.1.1/',
+        fromAgent: true,
+        chatSessionId: 'chat-dl-serial',
+      });
+      const stagedPath = join(root, 'browser-downloads', 'fast.txt');
+      // Emit downloadStarted and immediate downloadFinished while artifactRoot is still pending
+      surface.callbacks?.downloadStarted?.('https://example.com/fast.txt', 'fast.txt', stagedPath);
+      surface.callbacks?.downloadFinished?.('https://example.com/fast.txt', stagedPath, true);
+
+      // Now create the file and resolve artifactRoot
+      resolveRoot(root);
+      await flush();
+      await writeFile(stagedPath, 'fast-bytes');
+      await vi.waitFor(() => {
+        const items = service.listDownloads(opened.id);
+        expect(items).toHaveLength(1);
+        expect(items[0]?.state).toBe('completed');
+      });
+      expect(policies.some(p => p.agentOwned && p.artifactDir?.endsWith('/browser-downloads'))).toBe(true);
+    });
+  });
 });

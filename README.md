@@ -94,7 +94,8 @@ Conventional AI study workflows split context across browser chat tabs, PDF read
 ### 4. Long-Term Memory, Models & Extensions
 
 - **Transparent long-term memory**: Separates user-defined **standing interaction rules** (scoped globally, by subject, or by study mode) from an evolving **learner profile** synthesized from practice and grading weak spots. Includes version rollback and per-message attribution chips in chat to inspect, edit, or remove any applied rule.
-- **Flexible model & search providers**: Ships with 15 preset model providers (supporting automatic API key detection and slot assignment, side-by-side multi-model comparison, official DeepSeek APIs, and keyless local Ollama models), 9 web search engines, and 6 OCR engines.
+- **Flexible model & search providers**: Ships with 15 preset model providers (automatic API key detection and slot assignment, Codex OAuth and OpenCode Go subscriptions, official DeepSeek APIs, keyless local Ollama models, and side-by-side multi-model comparison); one-click local scan or paste import with incremental sync from **CC Switch** (including `ccswitch://` deep links and `.db`/`.sql` backups), **Magpie**, **OpenCode**, **Claude Code**, and **Codex** (auto-filtering local proxy placeholders to import real upstream providers); plus 9 web search engines and 6 OCR engines.
+- **Native local coding CLI collaboration (Desktop)**: Auto-detects and invokes local **Claude Code**, **Codex CLI**, **OpenCode**, **Pi Agent**, **Antigravity CLI**, **DeepSeek Harness**, and custom CLI tools directly in chat via the unified model picker or `@handle` (and `/swarm` / `/handoff` multi-agent collaboration), with per-CLI model and reasoning effort selection, inline tool approval, live steering, concurrent file leases, instant turn revert via hidden snapshots, and shared study context.
 - **Layered skills & plugins**: Includes 58 on-demand built-in skills, community skill repositories, and MCP server integration; supports zero-code `.dspack` Study Packs (sharing rubrics, prompts, and workflows) and the **AI Plugin Workshop** for generating, compiling, verifying, and hot-reloading `.dstuplugin` extensions from natural language.
 
 ---
@@ -160,7 +161,7 @@ Download the latest release from [GitHub Releases](https://github.com/helixnow/d
 
 ### Quickstart Workflows
 
-On first launch, paste an API key from any of the **15 preset providers** for automatic setup (or connect a local Ollama server under *Settings → Model Services*), then follow a guided 3-minute workflow:
+On first launch, paste an API key from any of the **15 preset providers** for automatic setup, or one-click import existing **CC Switch / Magpie / OpenCode / Claude Code / Codex** configs or `ccswitch://` deep links (on Desktop you can also invoke local coding CLIs directly, or connect local Ollama / Codex OAuth under *Settings → Model Service*), then follow a guided 3-minute workflow:
 
 1. **[3-Minute Exam Cram Sprint](./docs/user-guide/en/01-quickstart.md#quick-scenario-1-3-minute-exam-cram-sprint)** — Import lecture notes or past papers to generate flashcards and practice questions, set your target exam date and daily budget, and launch a prioritized daily review sprint.
 2. **[3-Minute 40-Page Paper Deep Read](./docs/user-guide/en/01-quickstart.md#quick-scenario-2-3-minute-40-page-paper-deep-read)** — Map out core contributions with AI Paper Guide, read side-by-side with 5-color semantic highlights and pinned figures, and export linked notes plus an annotated PDF.
@@ -182,7 +183,7 @@ DeepStudent
 ├── UI Kernel      20 official UI plugin directories (src/ui-plugins/official/) · slots & registries · UiErrorBudget
 ├── IPC Contracts  contracts/ipc/ schema governance (1,072 commands · 128 events · 998 types)
 ├── Data & Engines SQLite (better-sqlite3 / sqlite-wasm) · LanceDB · koffi FFI · f7-native-wasm (WASI-WASM)
-└── Ecosystem      58 built-in skills · MCP · 3-tier plugins (.dspack / .dstuplugin / Cordis) · 15 LLM vendors · 9 search · 6 OCR
+└── Ecosystem      58 built-in skills · MCP · local CLI mesh · 3-tier plugins (.dspack / .dstuplugin / Cordis) · 15 LLM vendors · 9 search · 6 OCR
 ```
 
 ### Tech Stack
@@ -231,6 +232,7 @@ npx @electron/rebuild -f -w better-sqlite3
 node electron/scripts/package.mjs --dir
 
 # 3) Build Android APK (requires JDK 21 and Android SDK Platform 36)
+npm --prefix mobile ci --legacy-peer-deps
 node mobile/scripts/build-apk.mjs
 
 # 4) Lint, typecheck, contracts, architecture boundaries & test suites
@@ -259,8 +261,8 @@ DeepStudent
 │   ├── kernel/                  #   command router, IPC contract validation, events, protocols, profile store, plugin lifecycle & consent ledger
 │   ├── platform/                #   platform providers: crypto · diagnostics · errors · files · http · log · native
 │   │                            #   (koffi FFI & f7-native-wasm) · paths · secrets · settings · storage (+ storage-mobile) · vector
-│   ├── plugins/                 #   30 domain & system plugin directories (chat, chat-pipeline, llm, memory, vfs, notes, qbank,
-│   │                            #   anki, review, sync, ilink, plugin-workshop, mobile-compat, …)
+│   ├── plugins/                 #   31 domain & system plugin directories (agent-mesh, chat, chat-pipeline, llm, memory, vfs, notes,
+│   │                            #   qbank, anki, review, sync, ilink, plugin-workshop, mobile-compat, …)
 │   ├── profiles/                #   generated desktop.json (45) / mobile.json (37) assembly manifests
 │   └── e2e/                     #   real-host, security, streaming, upgrade & tool coverage suites
 ├── electron/                    # Desktop shell

@@ -69,11 +69,7 @@
 :root[data-wb-dragging] .inline-tool-indicator--running .inline-tool-indicator__pulse,
 :root[data-wb-settling] .inline-tool-indicator--running .inline-tool-indicator__pulse,
 
-/* ---- 制卡任务 / 待办 / 自动化 ---- */
-:root[data-wb-dragging] .wb-at-pulse-dot,
-:root[data-wb-settling] .wb-at-pulse-dot,
-:root[data-wb-dragging] .wb-at-progress-active::after,
-:root[data-wb-settling] .wb-at-progress-active::after,
+/* ---- 待办 / 自动化 ---- */
 :root[data-wb-dragging] .todo-empty-decor::before,
 :root[data-wb-settling] .todo-empty-decor::before,
 :root[data-wb-dragging] .todo-empty-decor::after,
@@ -81,11 +77,9 @@
 :root[data-wb-dragging] .automation-timeline__dot--pulse,
 :root[data-wb-settling] .automation-timeline__dot--pulse,
 
-/* ---- 菜单栏 / 桌面空态（在 .wb-window 之外，壳类名单打不中） ---- */
+/* ---- 菜单栏（在 .wb-window 之外，壳类名单打不中） ---- */
 :root[data-wb-dragging] .wb-menubar-automation-iconwrap[data-pulse] .wb-menubar-item-icon,
-:root[data-wb-settling] .wb-menubar-automation-iconwrap[data-pulse] .wb-menubar-item-icon,
-:root[data-wb-dragging] .wb-empty-hint-arrow,
-:root[data-wb-settling] .wb-empty-hint-arrow {
+:root[data-wb-settling] .wb-menubar-automation-iconwrap[data-pulse] .wb-menubar-item-icon {
   animation-play-state: paused !important;
 }
 

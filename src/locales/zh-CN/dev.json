@@ -290,7 +290,7 @@
     }
   },
   "backendTest": {
-    "title": "🔧 后端 API 测试（统一流）",
+    "title": "后端 API 测试（统一流）",
     "envStatus": "环境状态：",
     "available": "可用",
     "unavailable": "不可用",

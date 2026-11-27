@@ -33,11 +33,31 @@ export interface RenderLatexOptions {
   permissive?: boolean;
 }
 
+const MAX_LATEX_HTML_CACHE = 1000;
+const latexHtmlCache = new Map<string, string | null>();
+
+function readCachedLatexHtml(key: string): string | null | undefined {
+  if (!latexHtmlCache.has(key)) return undefined;
+  const cached = latexHtmlCache.get(key)!;
+  // LRU 触达刷新
+  latexHtmlCache.delete(key);
+  latexHtmlCache.set(key, cached);
+  return cached;
+}
+
+function writeCachedLatexHtml(key: string, value: string | null): void {
+  if (latexHtmlCache.size >= MAX_LATEX_HTML_CACHE) {
+    const oldestKey = latexHtmlCache.keys().next().value;
+    if (oldestKey !== undefined) latexHtmlCache.delete(oldestKey);
+  }
+  latexHtmlCache.set(key, value);
+}
+
 /**
  * 检测文本是否包含 LaTeX 语法（$...$ 或 $$...$$）
  */
 export function containsLatex(text: string, options: RenderLatexOptions = {}): boolean {
-  if (!text) return false;
+  if (!text || !text.includes('$')) return false;
   const regex = options.permissive ? LATEX_REGEX_PERMISSIVE : LATEX_REGEX;
   // 重置 lastIndex（共用正则对象时需要）
   regex.lastIndex = 0;
@@ -54,7 +74,7 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * 将包含 LaTeX 的文本渲染为 HTML 字符串。
+ * 将包含 LaTeX 的文本渲染为 HTML 字符串（带模块级有界 LRU 缓存）。
  * - $$...$$ → display mode
  * - $...$ → inline mode（Pandoc 规则，见 LATEX_REGEX）
  * - 其余文本进行 HTML 转义
@@ -62,19 +82,24 @@ function escapeHtml(str: string): string {
  * 如果文本不含 LaTeX，返回 null（调用方可直接用纯文本）。
  */
 export function renderLatexToHtml(text: string, options: RenderLatexOptions = {}): string | null {
-  if (!text) return null;
+  if (!text || !text.includes('$')) return null;
 
-  // 使用与 containsLatex 相同的正则
-  const base = options.permissive ? LATEX_REGEX_PERMISSIVE : LATEX_REGEX;
-  const regex = new RegExp(base.source, base.flags);
+  const cacheKey = `${options.permissive ? '1' : '0'}:${text}`;
+  const cached = readCachedLatexHtml(cacheKey);
+  if (cached !== undefined) return cached;
+
+  // 同步执行复用模块级正则，避免每次调用 new RegExp 分配
+  const regex = options.permissive ? LATEX_REGEX_PERMISSIVE : LATEX_REGEX;
+  regex.lastIndex = 0;
 
   let result = '';
   let lastIndex = 0;
   let hasLatexMatch = false;
+  let match: RegExpExecArray | null;
 
-  for (const match of text.matchAll(regex)) {
+  while ((match = regex.exec(text)) !== null) {
     const fullMatch = match[0];
-    const matchStart = match.index!;
+    const matchStart = match.index;
     hasLatexMatch = true;
 
     // 添加匹配前的纯文本
@@ -104,12 +129,16 @@ export function renderLatexToHtml(text: string, options: RenderLatexOptions = {}
   }
 
   // 无任何 LaTeX 匹配 → 返回 null，调用方使用纯文本
-  if (!hasLatexMatch) return null;
+  if (!hasLatexMatch) {
+    writeCachedLatexHtml(cacheKey, null);
+    return null;
+  }
 
   // 添加剩余的纯文本
   if (lastIndex < text.length) {
     result += escapeHtml(text.slice(lastIndex));
   }
 
+  writeCachedLatexHtml(cacheKey, result);
   return result;
 }

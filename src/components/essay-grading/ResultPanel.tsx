@@ -378,17 +378,17 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           data-testid="essay-stale-rubric-banner"
           role="status"
           aria-live="polite"
-          className="mx-3 mt-2.5 mb-1.5 sm:mx-4 shrink-0 rounded-lg border border-amber-500/75 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-950/55 px-3.5 py-2.5 shadow-sm"
+          className="mx-3 mt-2.5 mb-1.5 sm:mx-4 shrink-0 rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 shadow-sm"
         >
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex min-w-0 flex-1 items-start gap-2">
               <WarningCircle
                 size={16}
                 weight="fill"
-                className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+                className="mt-0.5 shrink-0 text-warning"
                 aria-hidden="true"
               />
-              <p className="min-w-0 text-xs sm:text-[13px] font-medium leading-relaxed text-amber-950 dark:text-amber-100 break-words">
+              <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-foreground break-words">
                 {staleBannerMessage}
               </p>
             </div>
@@ -422,9 +422,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             aria-live="polite"
             className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none ui-rise-in motion-reduce:animate-none"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
-              <CircleNotch size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            </div>
+            <CircleNotch size={20} className="animate-spin motion-reduce:animate-none text-primary" aria-hidden="true" />
             <div className="text-sm font-medium text-foreground/85">
               {gradingPhase ? t(`essay_grading:progress.phase_${gradingPhase}`) : t('essay_grading:progress.phase_annotating')}
             </div>
@@ -442,18 +440,16 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
         ) : showEmptyState ? (
           /* 空状态 - 未开始批改时的居中引导 */
           <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/40 bg-muted/20">
-              <Pen size={18} className="text-muted-foreground/50" />
-            </div>
+            <Pen size={20} className="text-muted-foreground/50" aria-hidden="true" />
             <div className="text-sm text-muted-foreground/80">
               {t('essay_grading:result_empty.title')}
             </div>
             <div className="text-xs text-muted-foreground/50 leading-relaxed max-w-[260px]">
               {t('essay_grading:result_empty.description')}
             </div>
-            <div className="inline-flex items-center rounded-full border border-border/35 bg-muted/25 px-3 py-1 text-2xs text-muted-foreground/75">
+            <p className="text-xs text-muted-foreground">
               {t('essay_grading:empty_state.deliverables_hint')}
-            </div>
+            </p>
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-hidden">

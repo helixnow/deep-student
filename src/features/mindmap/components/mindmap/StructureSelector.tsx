@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { UiPresence } from '@/components/ui/UiPresence';
 import {
@@ -83,47 +84,53 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
   const { t } = useTranslation('mindmap');
   const resolvedName = t(preset.name);
   return (
-    <DsButton variant="ghost"
-      className={cn(
-        'mm-structure-preset',
-        'flex items-center justify-center',
-        isActive
-          ? 'is-active'
-          : '',
-        preset.locked && 'opacity-60 cursor-not-allowed'
-      )}
-      onClick={onClick}
-      disabled={preset.locked}
-      title={resolvedName}
-      aria-pressed={isActive}
-      aria-label={resolvedName}
-    >
-      {/* 预设图标 */}
-      <PresetIcon
-        category={preset.category}
-        direction={preset.layoutDirection}
-        className={cn(
-          'transition-colors motion-reduce:transition-none',
-          isActive
-            ? 'text-primary'
-            : 'text-muted-foreground'
-        )}
-      />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex w-full">
+          <DsButton variant="ghost"
+            className={cn(
+              'mm-structure-preset',
+              'flex items-center justify-center',
+              isActive
+                ? 'is-active'
+                : '',
+              preset.locked && 'opacity-60 cursor-not-allowed'
+            )}
+            onClick={onClick}
+            disabled={preset.locked}
+            aria-pressed={isActive}
+            aria-label={resolvedName}
+          >
+            {/* 预设图标 */}
+            <PresetIcon
+              category={preset.category}
+              direction={preset.layoutDirection}
+              className={cn(
+                'transition-colors motion-reduce:transition-none',
+                isActive
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              )}
+            />
 
-      {/* 选中标记 */}
-      {isActive && (
-        <div className="mm-structure-check">
-          <Check className="w-3 h-3" strokeWidth={2.5} />
-        </div>
-      )}
+            {/* 选中标记 */}
+            {isActive && (
+              <div className="mm-structure-check">
+                <Check className="w-3 h-3" strokeWidth={2.5} />
+              </div>
+            )}
 
-      {/* 锁定标记 */}
-      {preset.locked && (
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
-          <Lock className="w-2.5 h-2.5 text-muted" />
-        </div>
-      )}
-    </DsButton>
+            {/* 锁定标记 */}
+            {preset.locked && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
+                <Lock className="w-2.5 h-2.5 text-muted" />
+              </div>
+            )}
+          </DsButton>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{resolvedName}</TooltipContent>
+    </Tooltip>
   );
 };
 

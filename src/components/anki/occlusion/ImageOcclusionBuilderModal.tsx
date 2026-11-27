@@ -900,11 +900,9 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
               className="flex min-h-[240px] cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/50 bg-muted/20 p-6 text-center transition-colors hover:bg-muted/35"
               data-testid="occlusion-empty-dropzone"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/35 bg-card text-muted-foreground">
-                <Plus size={18} />
-              </div>
+              <Plus size={22} className="text-muted-foreground" aria-hidden="true" />
               <p className="max-w-sm text-xs text-muted-foreground">{t('occlusion.uploadPrompt')}</p>
-              <DsButton type="button" variant="default" size="sm" className="min-h-[36px] text-xs [@media(pointer:coarse)]:!min-h-11">
+              <DsButton type="button" variant="default" size="sm" className="text-xs">
                 <UploadSimple size={14} />
                 <span>{t('occlusion.chooseImage')}</span>
               </DsButton>

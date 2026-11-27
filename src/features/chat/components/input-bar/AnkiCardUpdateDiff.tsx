@@ -151,12 +151,12 @@ export const AnkiCardUpdateDiff: React.FC<AnkiCardUpdateDiffProps> = ({ toolName
               </span>
               <span className="mx-1 text-muted-foreground/50"><ArrowRight size={9} className="inline" /></span>
               {diff.before && (
-                <span className="text-red-600/80 dark:text-red-400/80 line-through decoration-red-500/40">
+                <span className="text-destructive/80 line-through decoration-destructive/40">
                   {preview(diff.before)}
                 </span>
               )}
               {diff.before && <span className="mx-0.5 text-muted-foreground/50">→</span>}
-              <span className="text-emerald-700 dark:text-emerald-400">{preview(diff.after) || '∅'}</span>
+              <span className="text-success">{preview(diff.after) || '∅'}</span>
             </li>
           ))}
         </ul>

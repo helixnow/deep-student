@@ -192,6 +192,42 @@ describe('ApisTab vendor list icons', () => {
     }
   });
 
+  it('renders adaptive theme-safe color glyphs for Kimi, Zhipu, and light-on-dark brands without brand plates', () => {
+    const kimiGlyph = render(
+      <ProviderIcon modelId="kimi-k3" size={16} showTooltip={false} variant="color" renderMode="glyph" />,
+    );
+    const kimiPaths = Array.from(kimiGlyph.container.querySelectorAll('svg path'));
+    expect(kimiPaths).toHaveLength(2);
+    expect(kimiPaths.map((path) => path.getAttribute('fill'))).toEqual(['#1783FF', 'currentColor']);
+    expect(kimiGlyph.container.querySelector('svg')?.style.transform).toBe('');
+    kimiGlyph.unmount();
+
+    const kimiPlateGlyph = render(
+      <ProviderIcon modelId="kimi-k3" size={16} showTooltip={false} variant="color" renderMode="plate-glyph" />,
+    );
+    const kimiPlatePaths = Array.from(kimiPlateGlyph.container.querySelectorAll('svg path'));
+    expect(kimiPlatePaths.map((path) => path.getAttribute('fill'))).toEqual(['#1783FF', '#fff']);
+    kimiPlateGlyph.unmount();
+
+    const zhipuGlyph = render(
+      <ProviderIcon modelId="glm-4.5" size={16} showTooltip={false} variant="color" renderMode="glyph" />,
+    );
+    const zhipuPath = zhipuGlyph.container.querySelector('svg path');
+    expect(zhipuPath).toHaveAttribute('fill', '#3859FF');
+    zhipuGlyph.unmount();
+
+    for (const modelId of ['mimo-v2', 'bge-m3', 'pika']) {
+      const { container, unmount } = render(
+        <ProviderIcon modelId={modelId} size={16} showTooltip={false} variant="color" renderMode="glyph" />,
+      );
+      const svg = container.querySelector('svg');
+      expect(svg).toBeInTheDocument();
+      expect(svg?.style.color).toBe('');
+      expect(svg?.querySelector('path')).toHaveAttribute('fill', 'currentColor');
+      unmount();
+    }
+  });
+
   it('renders the audited Lobe-backed provider set without local image assets', () => {
     const lobeBackedModelIds = [
       'gpt-4o',

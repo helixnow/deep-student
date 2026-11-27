@@ -262,9 +262,7 @@ describe('unified scroll primitive contract', () => {
   });
 
   it('uses scrolling, not hover, to reveal OverlayScrollbars on touch', () => {
-    expect(scrollAreaSource).toContain(
-      'scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave")',
-    );
+    expect(scrollAreaSource).toContain('scrollAutoHide ?? "scroll"');
   });
 
   it('keeps wrapper props and flex height constraints aligned', () => {

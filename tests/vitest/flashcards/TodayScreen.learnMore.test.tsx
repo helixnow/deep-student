@@ -94,9 +94,11 @@ describe('TodayScreen — learn more new cards today', () => {
 
   it('points to the daily limit setting and hides the offer when nothing is waiting', async () => {
     mocks.invoke.mockImplementation(async (cmd: string) => (cmd === 'fsrs_get_stats' ? stats(3) : null));
-    const view = render(<TodayScreen />);
+    const onOpenSchedulerSettings = vi.fn();
+    const view = render(<TodayScreen onOpenSchedulerSettings={onOpenSchedulerSettings} />);
     fireEvent.click(await screen.findByRole('button', { name: '调整每日新卡上限' }));
-    expect(mocks.setScreen).toHaveBeenCalledWith('settings');
+    expect(onOpenSchedulerSettings).toHaveBeenCalledWith('newPerDay');
+    expect(mocks.setScreen).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /今天多学 3 张/ })).toBeInTheDocument();
     view.unmount();
 

@@ -416,7 +416,6 @@ export const OcclusionCardStage: React.FC<OcclusionCardStageProps> = ({
             onClick={handleRevealSource}
             className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-card/90 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <span>{t('occlusion.revealSource', { defaultValue: '回到原处' })}</span>
             {shortLocator ? (
               <span className="font-mono tabular-nums text-foreground/85">
@@ -678,7 +677,7 @@ const CardImageLightbox: React.FC<{
       aria-label={image.alt || t('imageViewer.zoomInOut', { defaultValue: 'Zoom' })}
       data-testid="anki-image-lightbox"
       data-anki-image-lightbox="true"
-      className="fixed inset-0 z-modal flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs"
+      className="fixed inset-0 z-modal flex flex-col items-center justify-center bg-[var(--overlay)] backdrop-blur-xs [@media(prefers-reduced-transparency:reduce)]:bg-background/95 [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none"
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
       onClick={(event) => {
@@ -696,41 +695,45 @@ const CardImageLightbox: React.FC<{
         <DsButton
           type="button"
           variant="ghost"
+          size="icon"
           iconOnly
           data-testid="anki-image-lightbox-zoom-out"
           aria-label={t('imageViewer.zoomOut', { defaultValue: 'Zoom out' })}
           title={t('imageViewer.zoom_out', { defaultValue: 'Zoom out (-)' })}
           onClick={handleZoomOut}
-          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+          className="rounded-lg border border-border/60 bg-card/90 text-foreground hover:bg-card focus-visible:ring-ring"
         >
           <MagnifyingGlassMinus size={18} aria-hidden="true" />
         </DsButton>
         <DsButton
           type="button"
           variant="ghost"
+          size="sm"
           data-testid="anki-image-lightbox-reset"
           aria-label={t('imageViewer.reset', { defaultValue: 'Reset' })}
           title={t('imageViewer.reset_title', { defaultValue: 'Reset (0)' })}
           onClick={handleToggleFitOrReset}
-          className="h-11 min-w-14 rounded-lg border border-white/25 bg-black/65 px-3 font-mono text-xs font-medium tabular-nums text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+          className="min-w-14 rounded-lg border border-border/60 bg-card/90 px-3 font-mono text-xs font-medium tabular-nums text-foreground hover:bg-card focus-visible:ring-ring"
         >
           {zoomMode === 'fit' ? '1:1' : `${Math.round(scale * 100)}%`}
         </DsButton>
         <DsButton
           type="button"
           variant="ghost"
+          size="icon"
           iconOnly
           data-testid="anki-image-lightbox-zoom-in"
           aria-label={t('imageViewer.zoomIn', { defaultValue: 'Zoom in' })}
           title={t('imageViewer.zoom_in', { defaultValue: 'Zoom in (+)' })}
           onClick={handleZoomIn}
-          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+          className="rounded-lg border border-border/60 bg-card/90 text-foreground hover:bg-card focus-visible:ring-ring"
         >
           <MagnifyingGlassPlus size={18} aria-hidden="true" />
         </DsButton>
         <DsButton
           type="button"
           variant="ghost"
+          size="icon"
           iconOnly
           data-testid="anki-image-lightbox-close"
           aria-label={t('imageViewer.close', { defaultValue: 'Close (Esc)' })}
@@ -739,7 +742,7 @@ const CardImageLightbox: React.FC<{
             event.stopPropagation();
             onClose();
           }}
-          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+          className="rounded-lg border border-border/60 bg-card/90 text-foreground hover:bg-card focus-visible:ring-ring"
         >
           <X size={18} aria-hidden="true" />
         </DsButton>

@@ -81,6 +81,8 @@ describe('AgentControlDockEntry', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'AI 桌面操控' });
     expect(dialog).toHaveClass('wb-glass', 'wb-glass-highlight', 'wb-glass-lens');
+    expect(dialog.style.position).toBe('fixed');
+    expect(dialog.style.zIndex).toBe('var(--wb-z-dock-flyout, 9200)');
     expect(dialog.querySelector('.wb-agent-control-mark img')).toHaveAttribute('src', '/app-icon.png');
     expect(screen.getByText('能做什么')).toBeInTheDocument();
     expect(document.querySelectorAll('.wb-agent-capability-group')).toHaveLength(3);

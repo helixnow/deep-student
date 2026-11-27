@@ -17,7 +17,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
 import type { VfsMultimodalIndexResourceOutput } from '@/api/vfsRagApi';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 
 // ============================================================================
 // Props 定义
@@ -168,11 +168,11 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const getIcon = () => {
     switch (status) {
       case 'indexing':
-        return <CircleNotch size={16} className="animate-spin" />;
+        return <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />;
       case 'success':
-        return <CheckCircle size={16} className="text-green-500" />;
+        return <CheckCircle size={16} className="text-success" />;
       case 'error':
-        return <WarningCircle size={16} className="text-red-500" />;
+        return <WarningCircle size={16} className="text-destructive" />;
       default:
         return <Database size={16} />;
     }
@@ -218,9 +218,8 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
           onClick={handleIndex}
           disabled={disabled || status === 'indexing'}
           className={cn(
-            status === 'success' && 'border-green-500/50',
-            status === 'error' && 'border-red-500/50',
-            '[@media(pointer:coarse)]:!min-h-11'
+            status === 'success' && 'border-success/50',
+            status === 'error' && 'border-destructive/50'
           )}
         >
           {getIcon()}
@@ -236,7 +235,6 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             size="icon"
             onClick={handleRebuild}
             aria-label={t('common:chat.multimodal.rebuild')}
-            className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <ArrowClockwise size={14} />
           </DsButton>

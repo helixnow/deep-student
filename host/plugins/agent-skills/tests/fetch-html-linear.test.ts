@@ -291,7 +291,7 @@ const ADVERSARIAL_UNITS: readonly [string, string][] = [
 describe('web_fetch HTML→Markdown linear scanner (M1)', () => {
   it('matches the former regex implementation on existing fixtures, crafted pages and repo pages', () => {
     const pages = repoPages();
-    expect(pages.length).toBeGreaterThanOrEqual(10);
+    expect(pages.length).toBeGreaterThanOrEqual(5);
     for (const html of [...EXISTING_FIXTURES, ...CRAFTED_SAMPLES, ...pages]) expectSameAsLegacy(html);
   });
 

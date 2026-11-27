@@ -22,6 +22,7 @@ export const BROWSER_CONTENT_LABEL = 'browser-content';
 export const MAIN_WINDOW_LABEL = 'main';
 export const SURFACE_HOST_EMBEDDED = 'embedded';
 export const SURFACE_HOST_DETACHED = 'detached';
+export const SURFACE_HOST_HEADLESS = 'headless';
 export const SURFACE_HOST_UNSUPPORTED = 'unsupported';
 
 export const DEFAULT_READY_TIMEOUT_MS = 2_000;
@@ -58,21 +59,131 @@ export interface BrowserCreateOptions {
   focused: boolean;
   profileDir: string;
   initializationScript: string;
+  headless?: boolean;
+}
+
+export interface BrowserTabInfo {
+  tabId: string;
+  url: string;
+  title: string;
+  active: boolean;
+  isLoading?: boolean;
+}
+
+export interface BrowserConsoleEntry {
+  level: string;
+  text: string;
+  timestamp: number;
+  url?: string;
+  lineNumber?: number;
+}
+
+export interface BrowserNetworkEntry {
+  requestId: string;
+  url: string;
+  method: string;
+  status: number;
+  statusText: string;
+  resourceType: string;
+  failed: boolean;
+  errorText?: string;
+  timestamp: number;
+}
+
+export interface BrowserScreenshotOptions {
+  fullPage?: boolean;
+  annotate?: boolean;
+  maxWidth?: number;
+  quality?: number;
+}
+
+export interface BrowserWaitOptions {
+  text?: string;
+  selector?: string;
+  loadState?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeoutMs?: number;
+}
+
+export interface BrowserCloseTabResult {
+  closed: boolean;
+  activeTabId: string | null;
+  remainingCount: number;
+  activeTab: BrowserTabInfo | null;
+}
+
+export interface BrowserDownloadPolicy {
+  agentOwned: boolean;
+  artifactDir: string | null;
+}
+
+export interface BrowserExtractOptions {
+  maxChars?: number;
+  startIndex?: number;
+}
+
+export interface BrowserSnapshotOptions {
+  interactiveOnly: boolean;
+  maxChars?: number;
+  diff?: boolean;
+  selector?: string;
+}
+
+export interface BrowserClickOptions {
+  ref?: string;
+  x?: number;
+  y?: number;
+  doubleClick?: boolean;
+  button?: 'left' | 'right' | 'middle';
+}
+
+export interface BrowserTypeOptions {
+  clear?: boolean;
+  submit?: boolean;
+}
+
+export interface BrowserHoverOptions {
+  ref?: string;
+  x?: number;
+  y?: number;
+}
+
+export interface BrowserPressKeyOptions {
+  key: string;
+  modifiers?: string[];
+}
+
+export interface BrowserSelectOptionOptions {
+  ref: string;
+  values: string[];
+}
+
+export interface BrowserRemoteInputOptions {
+  type: 'mouseMoved' | 'mousePressed' | 'mouseReleased' | 'mouseWheel' | 'keyDown' | 'keyUp' | 'insertText';
+  x?: number;
+  y?: number;
+  button?: 'left' | 'right' | 'middle';
+  clickCount?: number;
+  deltaX?: number;
+  deltaY?: number;
+  key?: string;
+  modifiers?: string[];
+  text?: string;
 }
 
 /**
  * `browser.screenshot` 的结果。成功时是 browser-content surface 的真实可见像素
- * （PNG base64，不含窗口装饰）；无可见像素/平台 API 不可用时保持 Rust
+ * （PNG/JPEG base64，不含窗口装饰）；无可见像素/平台 API 不可用时保持 Rust
  * `browser_screenshot` 的 `PLATFORM_API_UNAVAILABLE` 形状，绝不用 DOM 快照或合成图代替。
  */
 export type BrowserScreenshotResult =
   | {
       available: true;
       capability: 'browser_visible_webview_screenshot';
-      mimeType: 'image/png';
+      mimeType: 'image/png' | 'image/jpeg';
       dataBase64: string;
       width: number;
       height: number;
+      annotated?: boolean;
     }
   | {
       available: false;
@@ -83,6 +194,7 @@ export type BrowserScreenshotResult =
 
 /** `BrowserContentSurface` 中 `browser.*` 分派实际使用的方法子集（测试可传替身）。 */
 export interface BrowserSurfaceLike {
+  hostMode(): string;
   createContentWindow(options: BrowserCreateOptions): Promise<void>;
   destroyContentWindow(): Promise<boolean>;
   navigate(url: string): Promise<void>;
@@ -99,16 +211,85 @@ export interface BrowserSurfaceLike {
   ): Promise<void>;
   setContentVisibility(visible: boolean, focus: boolean): Promise<void>;
   /** 原生 surface 截图；不可用时返回 `PLATFORM_API_UNAVAILABLE` 形状，不伪造 DOM 快照。 */
-  screenshot(): Promise<BrowserScreenshotResult>;
-  snapshot(options: { interactiveOnly: boolean; maxChars?: number }): Promise<unknown>;
-  click(ref: string): Promise<unknown>;
-  typeText(ref: string, text: string): Promise<unknown>;
+  screenshot(options?: BrowserScreenshotOptions): Promise<BrowserScreenshotResult>;
+  snapshot(options: BrowserSnapshotOptions): Promise<unknown>;
+  click(target: string | BrowserClickOptions): Promise<unknown>;
+  typeText(ref: string, text: string, options?: BrowserTypeOptions): Promise<unknown>;
   setInputFiles(ref: string, files: unknown): Promise<unknown>;
   scroll(options: { direction: string | null; amount: number | null; ref: string | null }): Promise<unknown>;
+  hover?(options: BrowserHoverOptions): Promise<unknown>;
+  pressKey?(options: BrowserPressKeyOptions): Promise<unknown>;
+  selectOption?(options: BrowserSelectOptionOptions): Promise<unknown>;
+  waitFor?(options: BrowserWaitOptions): Promise<unknown>;
+  extractContent?(options: BrowserExtractOptions): Promise<unknown>;
+  listTabs?(): Promise<BrowserTabInfo[]>;
+  newTab?(options: { url?: string; active?: boolean }): Promise<BrowserTabInfo>;
+  switchTab?(tabId: string): Promise<BrowserTabInfo>;
+  closeTab?(tabId: string): Promise<BrowserCloseTabResult | boolean>;
+  consoleLogs?(options: { level?: string; limit?: number }): Promise<BrowserConsoleEntry[]>;
+  networkLogs?(options: { statusMin?: number; limit?: number }): Promise<BrowserNetworkEntry[]>;
+  promoteToInteractive?(): Promise<{ promoted: boolean; headless: boolean }>;
+  remoteInput?(options: BrowserRemoteInputOptions): Promise<unknown>;
+  setDownloadPolicy?(policy: BrowserDownloadPolicy): void;
   /** browser 插件推送的 Agent 控制开关与 http 策略（形状非法时抛错）。 */
   setAgentNavigationPolicy(policy: unknown): void;
   /** 插件侧 preflight 的 DNS：与外壳导航拦截共用同一解析器、超时与 busy 语义。 */
   resolveAgentHost(host: string): Promise<{ addresses: string[] } | { error: string }>;
+}
+
+/** 将 `browser.scroll` 的 `{ direction, amount, ref }` 参数转换为 `ax-lite` 桥脚本期望的 `{ to | dx | dy, ref }`。 */
+export function translateAxLiteScrollOptions(options: {
+  direction: string | null;
+  amount: number | null;
+  ref: string | null;
+}): { to?: 'top' | 'bottom'; dx?: number; dy?: number; ref?: string } {
+  const direction = (options.direction ?? 'down').trim().toLowerCase();
+  const amount =
+    typeof options.amount === 'number' && Number.isFinite(options.amount)
+      ? Math.abs(options.amount)
+      : 480;
+  const refPart = typeof options.ref === 'string' && options.ref !== '' ? { ref: options.ref } : {};
+  if (direction === 'top') return { to: 'top', ...refPart };
+  if (direction === 'bottom') return { to: 'bottom', ...refPart };
+  if (direction === 'up') return { dx: 0, dy: -amount, ...refPart };
+  if (direction === 'left') return { dx: -amount, dy: 0, ...refPart };
+  if (direction === 'right') return { dx: amount, dy: 0, ...refPart };
+  return { dx: 0, dy: amount, ...refPart };
+}
+
+const WINDOWS_RESERVED_FILENAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
+/** 清洗下载文件名：去掉路径分隔符、控制字符、前导点与非法字符，避免路径穿越或平台非法名。 */
+export function sanitizeDownloadFilename(rawFilename: string): string {
+  const segment = rawFilename.split(/[/\\]/).pop() ?? '';
+  let cleaned = '';
+  for (let i = 0; i < segment.length; i += 1) {
+    const code = segment.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) {
+      cleaned += '_';
+      continue;
+    }
+    const ch = segment[i]!;
+    if ('<>:"/\\|?*'.includes(ch)) {
+      cleaned += '_';
+    } else {
+      cleaned += ch;
+    }
+  }
+  cleaned = cleaned.replace(/^\.+/, '').replace(/[\s.]+$/, '').replace(/\s+/g, '_');
+  if (cleaned === '' || cleaned === '.' || cleaned === '..') {
+    return 'download';
+  }
+  if (WINDOWS_RESERVED_FILENAME_RE.test(cleaned)) {
+    cleaned = `_${cleaned}`;
+  }
+  if (cleaned.length > 120) {
+    const dotIdx = cleaned.lastIndexOf('.');
+    const ext = dotIdx > 0 && cleaned.length - dotIdx <= 16 ? cleaned.slice(dotIdx) : '';
+    const stem = cleaned.slice(0, 120 - ext.length).replace(/[\s.]+$/, '');
+    cleaned = (stem || 'download') + ext;
+  }
+  return cleaned;
 }
 
 export function messageOf(error: unknown): string {
@@ -374,6 +555,53 @@ function requireRects(value: unknown, name: string): PhysicalRect[] {
   return value.map((item, index) => requireRect(item, `${name}[${index}]`));
 }
 
+function requireFiniteNumber(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`browser shell op argument ${name} must be a finite number`);
+  }
+  return value;
+}
+
+function parseMouseButton(value: unknown): 'left' | 'right' | 'middle' | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value === 'left' || value === 'right' || value === 'middle') return value;
+  throw new Error('browser shell op argument button must be left, right, or middle');
+}
+
+function parseStringArray(value: unknown, name: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`browser shell op argument ${name} must be an array of strings`);
+  }
+  return value as string[];
+}
+
+function parseScreenshotOptions(args: Record<string, unknown>): BrowserScreenshotOptions | undefined {
+  const options: BrowserScreenshotOptions = {};
+  let hasOption = false;
+  if (typeof args.fullPage === 'boolean') {
+    options.fullPage = args.fullPage;
+    hasOption = true;
+  }
+  if (typeof args.annotate === 'boolean') {
+    options.annotate = args.annotate;
+    hasOption = true;
+  }
+  if (typeof args.maxWidth === 'number' && Number.isFinite(args.maxWidth)) {
+    options.maxWidth = args.maxWidth;
+    hasOption = true;
+  }
+  if (typeof args.quality === 'number' && Number.isFinite(args.quality)) {
+    options.quality = args.quality;
+    hasOption = true;
+  }
+  return hasOption ? options : undefined;
+}
+
+function requireCapability<T>(fn: T | undefined, op: string): T {
+  if (fn === undefined) throw new Error(`browser surface does not support ${op}`);
+  return fn;
+}
+
 /**
  * `ctx.shell.request` 的 `browser.*` 分派（op 名与参数形状来自 L19 `surface-host.ts`）。
  * 数值坐标统一为物理像素；`setContentBounds` 的 args 本身就是矩形。
@@ -384,6 +612,8 @@ export async function handleBrowserShellRequest(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   switch (op) {
+    case 'browser.hostMode':
+      return surface.hostMode();
     case 'browser.createContentWindow': {
       const options: BrowserCreateOptions = {
         url: requireString(args, 'url'),
@@ -393,6 +623,7 @@ export async function handleBrowserShellRequest(
         focused: args.focused !== false,
         profileDir: requireString(args, 'profileDir'),
         initializationScript: typeof args.initializationScript === 'string' ? args.initializationScript : '',
+        ...(typeof args.headless === 'boolean' ? { headless: args.headless } : {}),
       };
       await surface.createContentWindow(options);
       return null;
@@ -431,17 +662,47 @@ export async function handleBrowserShellRequest(
     case 'browser.setContentVisibility':
       await surface.setContentVisibility(args.visible === true, args.focus === true);
       return null;
-    case 'browser.screenshot':
-      return surface.screenshot();
+    case 'browser.screenshot': {
+      const options = parseScreenshotOptions(args);
+      return options === undefined ? surface.screenshot() : surface.screenshot(options);
+    }
     case 'browser.snapshot': {
-      const options: { interactiveOnly: boolean; maxChars?: number } = { interactiveOnly: args.interactiveOnly !== false };
+      const options: BrowserSnapshotOptions = { interactiveOnly: args.interactiveOnly !== false };
       if (typeof args.maxChars === 'number' && Number.isFinite(args.maxChars)) options.maxChars = args.maxChars;
+      if (typeof args.diff === 'boolean') options.diff = args.diff;
+      if (typeof args.selector === 'string' && args.selector.trim() !== '') options.selector = args.selector;
       return surface.snapshot(options);
     }
-    case 'browser.click':
-      return surface.click(requireString(args, 'ref'));
-    case 'browser.typeText':
-      return surface.typeText(requireString(args, 'ref'), requireString(args, 'text'));
+    case 'browser.click': {
+      const hasRef = typeof args.ref === 'string';
+      const hasCoords = args.x !== undefined || args.y !== undefined;
+      const hasExtra = args.doubleClick !== undefined || args.button !== undefined;
+      if (hasRef && !hasCoords && !hasExtra) {
+        return surface.click(args.ref as string);
+      }
+      const clickOptions: BrowserClickOptions = {};
+      if (hasRef) {
+        clickOptions.ref = args.ref as string;
+      } else if (hasCoords) {
+        clickOptions.x = requireFiniteNumber(args.x, 'x');
+        clickOptions.y = requireFiniteNumber(args.y, 'y');
+      } else {
+        throw new Error('browser shell op argument ref must be a string or x/y must be finite numbers');
+      }
+      if (typeof args.doubleClick === 'boolean') clickOptions.doubleClick = args.doubleClick;
+      const button = parseMouseButton(args.button);
+      if (button !== undefined) clickOptions.button = button;
+      return surface.click(clickOptions);
+    }
+    case 'browser.typeText': {
+      const ref = requireString(args, 'ref');
+      const text = requireString(args, 'text');
+      const typeOptions: BrowserTypeOptions = {
+        clear: typeof args.clear === 'boolean' ? args.clear : false,
+      };
+      if (typeof args.submit === 'boolean') typeOptions.submit = args.submit;
+      return surface.typeText(ref, text, typeOptions);
+    }
     case 'browser.setInputFiles':
       return surface.setInputFiles(requireString(args, 'ref'), args.files);
     case 'browser.scroll':
@@ -450,6 +711,136 @@ export async function handleBrowserShellRequest(
         amount: typeof args.amount === 'number' ? args.amount : null,
         ref: typeof args.ref === 'string' ? args.ref : null,
       });
+    case 'browser.hover': {
+      const hover = requireCapability(surface.hover, op).bind(surface);
+      const hoverOptions: BrowserHoverOptions = {};
+      if (typeof args.ref === 'string') {
+        hoverOptions.ref = args.ref;
+      } else {
+        hoverOptions.x = requireFiniteNumber(args.x, 'x');
+        hoverOptions.y = requireFiniteNumber(args.y, 'y');
+      }
+      return hover(hoverOptions);
+    }
+    case 'browser.pressKey': {
+      const pressKey = requireCapability(surface.pressKey, op).bind(surface);
+      const pressOptions: BrowserPressKeyOptions = {
+        key: requireString(args, 'key'),
+        ...(args.modifiers !== undefined ? { modifiers: parseStringArray(args.modifiers, 'modifiers') } : {}),
+      };
+      return pressKey(pressOptions);
+    }
+    case 'browser.selectOption': {
+      const selectOption = requireCapability(surface.selectOption, op).bind(surface);
+      const rawValues = args.values !== undefined
+        ? parseStringArray(args.values, 'values')
+        : typeof args.value === 'string'
+          ? [args.value]
+          : (() => {
+              throw new Error('browser shell op argument values must be an array of strings');
+            })();
+      return selectOption({ ref: requireString(args, 'ref'), values: rawValues });
+    }
+    case 'browser.waitFor': {
+      const waitFor = requireCapability(surface.waitFor, op).bind(surface);
+      const waitOptions: BrowserWaitOptions = {};
+      if (typeof args.text === 'string') waitOptions.text = args.text;
+      if (typeof args.selector === 'string') waitOptions.selector = args.selector;
+      if (args.loadState === 'load' || args.loadState === 'domcontentloaded' || args.loadState === 'networkidle') {
+        waitOptions.loadState = args.loadState;
+      } else if (args.loadState !== undefined) {
+        throw new Error('browser shell op argument loadState must be load, domcontentloaded, or networkidle');
+      }
+      if (typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs)) {
+        waitOptions.timeoutMs = args.timeoutMs;
+      }
+      return waitFor(waitOptions);
+    }
+    case 'browser.extractContent': {
+      const extractContent = requireCapability(surface.extractContent, op).bind(surface);
+      const extractOptions: BrowserExtractOptions = {};
+      if (typeof args.maxChars === 'number' && Number.isFinite(args.maxChars)) {
+        extractOptions.maxChars = args.maxChars;
+      }
+      if (typeof args.startIndex === 'number' && Number.isFinite(args.startIndex)) {
+        extractOptions.startIndex = args.startIndex;
+      }
+      return extractContent(extractOptions);
+    }
+    case 'browser.listTabs': {
+      const listTabs = requireCapability(surface.listTabs, op).bind(surface);
+      return listTabs();
+    }
+    case 'browser.newTab': {
+      const newTab = requireCapability(surface.newTab, op).bind(surface);
+      const options: { url?: string; active?: boolean } = {};
+      if (typeof args.url === 'string') options.url = args.url;
+      if (typeof args.active === 'boolean') options.active = args.active;
+      return newTab(options);
+    }
+    case 'browser.switchTab': {
+      const switchTab = requireCapability(surface.switchTab, op).bind(surface);
+      return switchTab(requireString(args, 'tabId'));
+    }
+    case 'browser.closeTab': {
+      const closeTab = requireCapability(surface.closeTab, op).bind(surface);
+      return closeTab(requireString(args, 'tabId'));
+    }
+    case 'browser.consoleLogs': {
+      const consoleLogs = requireCapability(surface.consoleLogs, op).bind(surface);
+      const options: { level?: string; limit?: number } = {};
+      if (typeof args.level === 'string') options.level = args.level;
+      if (typeof args.limit === 'number' && Number.isFinite(args.limit)) options.limit = args.limit;
+      return consoleLogs(options);
+    }
+    case 'browser.networkLogs': {
+      const networkLogs = requireCapability(surface.networkLogs, op).bind(surface);
+      const options: { statusMin?: number; limit?: number } = {};
+      if (typeof args.statusMin === 'number' && Number.isFinite(args.statusMin)) options.statusMin = args.statusMin;
+      if (typeof args.limit === 'number' && Number.isFinite(args.limit)) options.limit = args.limit;
+      return networkLogs(options);
+    }
+    case 'browser.promoteToInteractive': {
+      const promoteToInteractive = requireCapability(surface.promoteToInteractive, op).bind(surface);
+      return promoteToInteractive();
+    }
+    case 'browser.remoteInput': {
+      const remoteInput = requireCapability(surface.remoteInput, op).bind(surface);
+      const inputType = requireString(args, 'type');
+      const allowedTypes = ['mouseMoved', 'mousePressed', 'mouseReleased', 'mouseWheel', 'keyDown', 'keyUp', 'insertText'] as const;
+      if (!(allowedTypes as readonly string[]).includes(inputType)) {
+        throw new Error(`browser shell op argument type is invalid: ${inputType}`);
+      }
+      const remoteOptions: BrowserRemoteInputOptions = {
+        type: inputType as BrowserRemoteInputOptions['type'],
+      };
+      if (typeof args.x === 'number' && Number.isFinite(args.x)) remoteOptions.x = args.x;
+      if (typeof args.y === 'number' && Number.isFinite(args.y)) remoteOptions.y = args.y;
+      const button = parseMouseButton(args.button);
+      if (button !== undefined) remoteOptions.button = button;
+      if (typeof args.clickCount === 'number' && Number.isFinite(args.clickCount)) remoteOptions.clickCount = args.clickCount;
+      if (typeof args.deltaX === 'number' && Number.isFinite(args.deltaX)) remoteOptions.deltaX = args.deltaX;
+      if (typeof args.deltaY === 'number' && Number.isFinite(args.deltaY)) remoteOptions.deltaY = args.deltaY;
+      if (typeof args.key === 'string') remoteOptions.key = args.key;
+      if (args.modifiers !== undefined) remoteOptions.modifiers = parseStringArray(args.modifiers, 'modifiers');
+      if (typeof args.text === 'string') remoteOptions.text = args.text;
+      return remoteInput(remoteOptions);
+    }
+    case 'browser.setDownloadPolicy': {
+      if (typeof args.agentOwned !== 'boolean') {
+        throw new Error('browser shell op argument agentOwned must be a boolean');
+      }
+      let artifactDir: string | null;
+      if (args.artifactDir === undefined || args.artifactDir === null) {
+        artifactDir = null;
+      } else if (typeof args.artifactDir === 'string') {
+        artifactDir = args.artifactDir.trim() !== '' ? args.artifactDir : null;
+      } else {
+        throw new Error('browser shell op argument artifactDir must be a string or null');
+      }
+      surface.setDownloadPolicy?.({ agentOwned: args.agentOwned, artifactDir });
+      return null;
+    }
     case 'browser.setAgentNavigationPolicy':
       surface.setAgentNavigationPolicy(args);
       return null;

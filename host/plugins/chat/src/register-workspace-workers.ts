@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { CommandError } from '../../../kernel/api.ts';
 import type { Commands } from '../api.ts';
 import type { AgentCompletionOutbox, WorkspaceCoordinator } from '../../agent-workspace/api.ts';
+import type { BrowserHostFacts } from '../../browser/api.ts';
 import type { ChatV2Database } from '../api.ts';
 import type { ChatV2State } from './state.ts';
 import type { CompletionDispatcherRuntime } from './completion-dispatcher.ts';
@@ -28,6 +29,7 @@ export interface WorkspaceWorkerCommandDeps {
   outbox: () => AgentCompletionOutbox | undefined;
   dispatcher: CompletionDispatcherRuntime;
   log: ChatLogger;
+  getBrowserHostFacts?: (sessionId?: string | null) => BrowserHostFacts | null;
 }
 
 /** Rust `Result<_, String>`: every failure crosses IPC as its message string. */
@@ -45,6 +47,7 @@ export function workerRuntimeDeps(ctx: Context, deps: WorkspaceWorkerCommandDeps
     coordinator: requireCoordinator(deps.coordinator()), state: deps.state, db: deps.db, pipeline: deps.pipeline,
     outbox: deps.outbox(), surfaces: deps.surfaces, log: deps.log,
     emit: (event, payload) => ctx.backendEvents.emit(event, payload),
+    ...(deps.getBrowserHostFacts === undefined ? {} : { getBrowserHostFacts: deps.getBrowserHostFacts }),
   });
 }
 

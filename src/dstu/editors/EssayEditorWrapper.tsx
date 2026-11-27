@@ -248,16 +248,16 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         {/* M-050: 数据解析异常警告横幅 */}
         {isParseError && (
           <div className="flex items-start gap-3 p-3 bg-warning/10 border border-warning/30 rounded-md">
-            <ShieldWarning size={20} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+            <ShieldWarning size={20} className="text-warning flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+              <p className="text-sm font-medium text-warning">
                 {t('dstu:errors.essayParseErrorTitle')}
               </p>
-              <p className="text-xs text-yellow-700 dark:text-yellow-400">
+              <p className="text-xs text-warning/80">
                 {t('dstu:errors.essayParseErrorDetailDesc')}
               </p>
               <button
-                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs [@media(pointer:coarse)]:min-h-11 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs [@media(pointer:coarse)]:min-h-11 bg-warning text-warning-foreground rounded-md hover:bg-warning/90"
                 onClick={() => void loadEssay()}
               >
                 <ArrowClockwise size={12} />

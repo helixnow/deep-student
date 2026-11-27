@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '../ui/shad/Textarea';
@@ -10,8 +10,8 @@ import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { showGlobalNotification } from '../UnifiedNotification';
 import {
-  FloppyDisk,
   ArrowCounterClockwise,
+  ArrowLeft,
   Plus,
   X,
   Check,
@@ -20,14 +20,15 @@ import {
   BookmarkSimple,
 } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { getSetting, saveSetting } from '@/utils/settingsApi';
 
 interface PromptPanelProps {
   customPrompt: string;
   setCustomPrompt: (prompt: string) => void;
-  onSavePrompt: () => void;
+  /** 兼容历史调用方；当前设置项均即时生效并自动保存 */
+  onSavePrompt?: () => void;
   onRestoreDefaultPrompt: () => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
@@ -133,20 +134,25 @@ async function hydrateCustomTemplatesFromSettings(): Promise<CustomTemplate[] | 
   }
 }
 
-/** 分区外壳：小标题 + 说明 + 内容，适配内联紧凑布局 */
+/** 分区外壳：对齐全站设置页的轻量层级与 1px 细分隔线 */
 const PanelSection: React.FC<{
   title: string;
   hint?: string;
   badge?: React.ReactNode;
+  action?: React.ReactNode;
+  divided?: boolean;
   children: React.ReactNode;
-}> = ({ title, hint, badge, children }) => (
-  <section className="space-y-2">
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-1.5">
-        <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">{title}</h3>
-        {badge}
+}> = ({ title, hint, badge, action, divided = false, children }) => (
+  <section className={cn('space-y-3', divided && 'border-t border-border/45 pt-5')}>
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground">{title}</h3>
+          {badge}
+        </div>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      {hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
     {children}
   </section>
@@ -570,11 +576,10 @@ const PromptTemplates: React.FC<{
   );
 };
 
-/** 提示词编辑内容（移动/桌面共用的紧凑分组布局） */
+/** 提示词编辑内容（移动/桌面共用的分层即时生效布局） */
 const PromptEditorContent: React.FC<{
   customPrompt: string;
   setCustomPrompt: (prompt: string) => void;
-  onSavePrompt: () => void;
   onRestoreDefaultPrompt: () => void;
   formality: 'formal' | 'casual' | 'auto';
   setFormality: (formality: 'formal' | 'casual' | 'auto') => void;
@@ -586,12 +591,10 @@ const PromptEditorContent: React.FC<{
   setIsAutoTranslate?: (val: boolean) => void;
   isSyncScroll?: boolean;
   setIsSyncScroll?: (val: boolean) => void;
-  hideActions?: boolean;
   className?: string;
 }> = ({
   customPrompt,
   setCustomPrompt,
-  onSavePrompt,
   onRestoreDefaultPrompt,
   formality,
   setFormality,
@@ -603,20 +606,66 @@ const PromptEditorContent: React.FC<{
   setIsAutoTranslate,
   isSyncScroll,
   setIsSyncScroll,
-  hideActions = false,
   className,
 }) => {
   const { t } = useTranslation(['translation', 'common']);
 
   return (
-    <div className={cn('space-y-5 flex flex-col', className)}>
-      {/* 翻译选项开关 */}
-      {(setIsAutoTranslate || setIsSyncScroll) && (
-        <PanelSection title={t('translation:options_title')}>
-          <div className="space-y-3">
+    <div className={cn('flex flex-col space-y-5', className)}>
+      {/* 1. 翻译偏好：风格 + 领域双列对齐 + 开关分组 */}
+      <PanelSection title={t('translation:prompt_panel.preferences_title')}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="min-w-0 space-y-1.5">
+            <div className="space-y-0.5">
+              <div className="text-xs font-medium text-foreground">
+                {t('translation:prompt_panel.style_title')}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('translation:prompt_panel.style_hint')}
+              </p>
+            </div>
+            <SegmentedControl
+              ariaLabel={t('translation:prompt_editor.formality')}
+              value={formality}
+              onValueChange={setFormality}
+              size="compact"
+              options={[
+                { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
+                { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
+                { value: 'casual', label: t('translation:prompt_editor.formality_casual') },
+              ]}
+            />
+          </div>
+
+          {setDomain && (
+            <div className="min-w-0 space-y-1.5">
+              <div className="space-y-0.5">
+                <div className="text-xs font-medium text-foreground">
+                  {t('translation:prompt_editor.domain')}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('translation:prompt_panel.domain_hint')}
+                </p>
+              </div>
+              <AppSelect
+                value={domain || 'general'}
+                onValueChange={(v) => setDomain(v)}
+                size="sm"
+                className="w-full rounded-lg border border-border/60 bg-background px-3 hover:bg-muted/35"
+                options={DOMAIN_OPTIONS.map((d) => ({
+                  value: d.value,
+                  label: t(d.labelKey),
+                }))}
+              />
+            </div>
+          )}
+        </div>
+
+        {(setIsAutoTranslate || setIsSyncScroll) && (
+          <div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-2">
             {setIsAutoTranslate && (
-              <div className="flex items-center justify-between">
-                <Label htmlFor="prompt-panel-auto-translate" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/45 px-3 py-2.5">
+                <Label htmlFor="prompt-panel-auto-translate" className="min-w-0 cursor-pointer text-sm text-foreground">
                   {t('translation:auto_mode')}
                 </Label>
                 <Switch
@@ -627,8 +676,8 @@ const PromptEditorContent: React.FC<{
               </div>
             )}
             {setIsSyncScroll && (
-              <div className="flex items-center justify-between">
-                <Label htmlFor="prompt-panel-sync-scroll" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/45 px-3 py-2.5">
+                <Label htmlFor="prompt-panel-sync-scroll" className="min-w-0 cursor-pointer text-sm text-foreground">
                   {t('translation:sync_scroll')}
                 </Label>
                 <Switch
@@ -639,56 +688,18 @@ const PromptEditorContent: React.FC<{
               </div>
             )}
           </div>
-        </PanelSection>
-      )}
-
-      {/* 翻译风格（语气） */}
-      <PanelSection
-        title={t('translation:prompt_panel.style_title')}
-        hint={t('translation:prompt_panel.style_hint')}
-      >
-        <SegmentedControl
-          ariaLabel={t('translation:prompt_editor.formality')}
-          value={formality}
-          onValueChange={setFormality}
-          size="compact"
-          itemClassName="[@media(pointer:coarse)]:!min-h-11"
-          options={[
-            { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
-            { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
-            { value: 'casual', label: t('translation:prompt_editor.formality_casual') },
-          ]}
-        />
+        )}
       </PanelSection>
 
-      {/* 领域 */}
-      {setDomain && (
-        <PanelSection
-          title={t('translation:prompt_editor.domain')}
-          hint={t('translation:prompt_panel.domain_hint')}
-        >
-          <AppSelect
-            value={domain || 'general'}
-            onValueChange={(v) => setDomain(v)}
-            width={160}
-            size="sm"
-            className="rounded-full bg-foreground/[0.03] px-3 hover:bg-foreground/[0.06]"
-            options={DOMAIN_OPTIONS.map((d) => ({
-              value: d.value,
-              label: t(d.labelKey),
-            }))}
-          />
-        </PanelSection>
-      )}
-
-      {/* 术语表 */}
+      {/* 2. 术语表 */}
       {setGlossary && glossary && (
         <PanelSection
+          divided
           title={t('translation:prompt_editor.glossary_title')}
           hint={t('translation:prompt_editor.glossary_hint')}
           badge={
             <>
-              <BookOpen size={13} className="text-muted-foreground/60" />
+              <BookOpen size={14} className="text-muted-foreground" aria-hidden="true" />
               {glossary.length > 0 && <Badge variant="default">{glossary.length}</Badge>}
             </>
           }
@@ -697,44 +708,33 @@ const PromptEditorContent: React.FC<{
         </PanelSection>
       )}
 
-      {/* 自定义提示词 + 模板 */}
+      {/* 3. 自定义提示词 + 模板（恢复默认就近归属本区块） */}
       <PanelSection
+        divided
         title={t('translation:prompt_editor.custom_prompt_label')}
         hint={t('translation:prompt_panel.prompt_hint')}
+        action={
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onRestoreDefaultPrompt}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowCounterClockwise size={14} aria-hidden="true" />
+            <span>{t('translation:prompt_editor.restore_default')}</span>
+          </DsButton>
+        }
       >
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <PromptTemplates customPrompt={customPrompt} setCustomPrompt={setCustomPrompt} />
           <Textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             placeholder={t('translation:prompt_editor.placeholder')}
-            className="flex-1 min-h-[100px] resize-none w-full"
+            className="min-h-[120px] w-full flex-1 resize-none"
           />
         </div>
       </PanelSection>
-
-      {!hideActions && (
-        <div className="flex gap-2 justify-end">
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={onRestoreDefaultPrompt}
-            className="[@media(pointer:coarse)]:!min-h-11"
-          >
-            <ArrowCounterClockwise size={16} className="mr-2" />
-            {t('translation:prompt_editor.restore_default')}
-          </DsButton>
-          <DsButton
-            variant="default"
-            size="sm"
-            onClick={onSavePrompt}
-            className="[@media(pointer:coarse)]:!min-h-11"
-          >
-            <FloppyDisk size={16} className="mr-2" />
-            {t('translation:prompt_editor.save')}
-          </DsButton>
-        </div>
-      )}
     </div>
   );
 };
@@ -742,7 +742,6 @@ const PromptEditorContent: React.FC<{
 export const PromptPanel: React.FC<PromptPanelProps> = ({
   customPrompt,
   setCustomPrompt,
-  onSavePrompt,
   onRestoreDefaultPrompt,
   isOpen: _isOpen,
   setIsOpen,
@@ -760,32 +759,11 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
 }) => {
   const { t } = useTranslation(['translation', 'common']);
 
-  // 「恢复默认」立即持久化：父级 setCustomPrompt 提交后（onSavePrompt 闭包已捕获新值）再触发保存。
-  // 用 ref 取最新一版 onSavePrompt，避免存下点击时刻捕获旧 prompt 的闭包。
-  const onSavePromptRef = useRef(onSavePrompt);
-  onSavePromptRef.current = onSavePrompt;
-  const [restoreTick, setRestoreTick] = useState(0);
-  useEffect(() => {
-    if (restoreTick === 0) return;
-    onSavePromptRef.current();
-  }, [restoreTick]);
-
-  const handleRestoreDefault = useCallback(() => {
-    onRestoreDefaultPrompt();
-    setRestoreTick((tick) => tick + 1);
-  }, [onRestoreDefaultPrompt]);
-
-  const handleSaveAndClose = useCallback(() => {
-    onSavePrompt();
-    setIsOpen(false);
-  }, [onSavePrompt, setIsOpen]);
-
   const editorContent = (
     <PromptEditorContent
       customPrompt={customPrompt}
       setCustomPrompt={setCustomPrompt}
-      onSavePrompt={handleSaveAndClose}
-      onRestoreDefaultPrompt={handleRestoreDefault}
+      onRestoreDefaultPrompt={onRestoreDefaultPrompt}
       formality={formality}
       setFormality={setFormality}
       domain={domain}
@@ -796,76 +774,56 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
       setIsAutoTranslate={setIsAutoTranslate}
       isSyncScroll={isSyncScroll}
       setIsSyncScroll={setIsSyncScroll}
-      hideActions
     />
   );
 
-  const stickyFooter = (
-    <div
-      data-testid="translation-settings-sticky-footer"
-      className="sticky bottom-0 shrink-0 flex items-center justify-end gap-2 border-t border-border/35 bg-background/95 px-4 py-2.5 pb-[calc(0.625rem+var(--mobile-safe-area-bottom,0px))] backdrop-blur-sm"
-    >
-      <DsButton
-        variant="outline"
-        size="sm"
-        onClick={handleRestoreDefault}
-        className="[@media(pointer:coarse)]:!min-h-11"
-      >
-        <ArrowCounterClockwise size={16} className="mr-2" />
-        {t('translation:prompt_editor.restore_default')}
-      </DsButton>
-      <DsButton
-        variant="default"
-        size="sm"
-        onClick={handleSaveAndClose}
-        className="[@media(pointer:coarse)]:!min-h-11"
-      >
-        <FloppyDisk size={16} className="mr-2" />
-        {t('translation:prompt_editor.save')}
-      </DsButton>
-    </div>
-  );
-
   if (mobileFullscreen) {
-    // 小屏内联设置区不自绘标题行：宿主功能条仍在上方，再画一条会形成双头部。
-    // 关闭路径：Android 返回键 / 宿主顶栏设置开关（learning-hub 更多菜单）/ 保存按钮。
+    // 小屏内联设置区不自绘标题行：宿主功能条仍在上方，所有设置即时生效，无需底部手动保存栏。
     return (
-      <div className="h-full min-h-0 flex flex-col bg-background">
+      <div className="flex h-full min-h-0 flex-col bg-background">
         <CustomScrollArea
-          className="flex-1 min-h-0"
-          viewportClassName="p-4 pb-4"
+          className="min-h-0 flex-1"
+          viewportClassName="p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
         >
+          <p className="mb-3 text-xs text-muted-foreground" data-testid="translation-settings-autosave-hint">
+            {t('translation:prompt_panel.auto_save_hint')}
+          </p>
           {editorContent}
         </CustomScrollArea>
-        {stickyFooter}
       </div>
     );
   }
 
-  // 桌面端：设置整页视图内容（由 TranslationMain 以占满主区的独立页承载）
+  // 桌面端：设置整页视图内容（由 TranslationMain 以居中版心独立页承载，所有更改即时生效）
   return (
-    <div className="h-full min-h-0 flex flex-col bg-background">
-      {/* 头部：无底框线轻量行，与主工具栏自然衔接 */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
-        <span className="text-sm font-medium text-foreground/80">
-          {t('translation:prompt_editor.title')}
-        </span>
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/45 px-5 py-3">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
+          <h2 className="text-sm font-semibold text-foreground">
+            {t('translation:prompt_editor.title')}
+          </h2>
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid="translation-settings-autosave-hint"
+          >
+            {t('translation:prompt_panel.auto_save_hint')}
+          </span>
+        </div>
         <DsButton
           variant="ghost"
-          size="icon"
+          size="sm"
           onClick={() => setIsOpen(false)}
-          className="h-7 w-7 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-          aria-label={t('common:close')}
+          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+          aria-label={t('translation:prompt_panel.back_to_translate')}
         >
-          <X size={16} />
+          <ArrowLeft size={14} aria-hidden="true" />
+          <span>{t('translation:prompt_panel.back_to_translate')}</span>
         </DsButton>
       </div>
 
-      {/* 内容区 */}
-      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-5 py-5">
         {editorContent}
       </CustomScrollArea>
-      {stickyFooter}
     </div>
   );
 };

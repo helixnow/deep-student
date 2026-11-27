@@ -1331,7 +1331,10 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               onToggleBold={toggleBold}
               className="select-text"
               style={{
-                backgroundColor: node.style?.bgColor ? `${node.style.bgColor}85` : undefined,
+                backgroundColor:
+                  node.style?.bgColor && node.style.bgColor !== 'transparent'
+                    ? node.style.bgColor
+                    : undefined,
               }}
             />
           </div>
@@ -1358,7 +1361,10 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             <span
               className="outline-text-highlight"
               style={{
-                backgroundColor: node.style?.bgColor ? `${node.style.bgColor}85` : undefined,
+                backgroundColor:
+                  node.style?.bgColor && node.style.bgColor !== 'transparent'
+                    ? node.style.bgColor
+                    : undefined,
               }}
             >
               {containsLatex(localText) ? (

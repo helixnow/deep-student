@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { X, Brain, StackSimple, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Lightning } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import { useTranslation } from 'react-i18next';
@@ -42,12 +42,15 @@ export interface ActiveFeatureChipsProps {
 // 颜色映射
 // ============================================================================
 
+const NEUTRAL_FEATURE_CHIP_CLASS =
+  'bg-muted/70 text-foreground border border-border/40 hover:bg-[var(--interactive-hover)]';
+
 const colorClasses: Record<string, string> = {
-  default: 'bg-muted/80 text-foreground hover:bg-[var(--interactive-hover)]',
-  purple: 'bg-muted/80 text-purple-600 hover:bg-[var(--interactive-hover)] dark:text-purple-400',
-  blue: 'bg-muted/80 text-blue-600 hover:bg-[var(--interactive-hover)] dark:text-blue-400',
-  green: 'bg-muted/80 text-green-600 hover:bg-[var(--interactive-hover)] dark:text-green-400',
-  orange: 'bg-muted/80 text-orange-600 hover:bg-[var(--interactive-hover)] dark:text-orange-400',
+  default: NEUTRAL_FEATURE_CHIP_CLASS,
+  purple: NEUTRAL_FEATURE_CHIP_CLASS,
+  blue: NEUTRAL_FEATURE_CHIP_CLASS,
+  green: NEUTRAL_FEATURE_CHIP_CLASS,
+  orange: NEUTRAL_FEATURE_CHIP_CLASS,
 };
 
 // ============================================================================

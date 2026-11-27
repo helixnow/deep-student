@@ -2,11 +2,11 @@
    顶部主工具栏、按钮交互、焦点环与容器查询
    ============================================ */
 
-/* 文档流顶部条：零遮挡下方 9 类文档流横幅与关联线提示条，高度统一 42px */
+/* 文档流顶部条：零遮挡下方 9 类文档流横幅与关联线提示条，高度收紧至 36px 释放画布空间 */
 .mm-toolbar {
   position: relative;
   z-index: 30;
-  height: var(--mm-toolbar-height, 42px);
+  height: var(--mm-toolbar-height, 36px);
   flex-shrink: 0;
   padding: 0 12px;
   display: flex;
@@ -63,6 +63,11 @@
   gap: 2px;
   padding: 0 2px 0 6px;
   border-left: 1px solid var(--mm-border);
+}
+
+.mm-learning-group:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .mm-learning-label {
@@ -171,6 +176,15 @@
   min-width: 0;
 }
 
+/* 平稳已保存态收起文字仅留圆点提示（悬停/读屏完整），未保存/保存中完整展示 */
+.mm-toolbar-save[data-save-state='saved'] {
+  padding-inline: 5px;
+}
+
+.mm-toolbar-save[data-save-state='saved'] > span[aria-live] {
+  display: none;
+}
+
 /* 桌面窄分屏提前收起学习区文字标签，释放宽度避免挤出右侧「搜索 / 演示 / 更多」 */
 @container mm-root (max-width: 1080px) {
   .mm-learning-label,
@@ -183,12 +197,9 @@
   }
 }
 
-/* 窄分屏下隐藏左下快捷键胶囊与右下 MiniMap，收紧历史/学习区间距并隐藏保存文字与次要分隔线 */
+/* 窄分屏下隐藏右下 MiniMap，收紧历史/学习区间距并隐藏保存文字与次要分隔线 */
 /* stylelint-disable selector-class-pattern */
 @container mm-root (max-width: 760px) {
-  .mm-shortcut-hint-pill,
-  [data-testid='mm-shortcut-hint-pill'],
-  [data-testid='mm-shortcut-hint-expand'],
   .react-flow__minimap {
     display: none;
   }
@@ -205,6 +216,10 @@
   .mm-learning-group {
     gap: 1px;
     padding: 0 2px 0 4px;
+  }
+
+  .mm-learning-group:first-child {
+    padding-left: 0;
   }
 
   .mm-toolbar :is(.mm-toolbar-history, .mm-toolbar-actions) > .w-px,

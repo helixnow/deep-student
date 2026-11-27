@@ -6,7 +6,11 @@ import { NotesContextPanel } from '../../NotesContextPanel';
 
 const suggestions = vi.hoisted(() => ({ move: vi.fn(() => true), set: vi.fn() }));
 vi.mock('@/features/notes/noteAppearance', () => ({
-  NOTE_APPEARANCE_PRESETS: ['standard', 'compact', 'wide'], NOTE_APPEARANCE_ICONS: ['', '📚'], NOTE_ICON_GROUPS: [], ALL_NOTE_ICONS: ['📚'],
+  NOTE_APPEARANCE_PRESETS: ['standard', 'compact', 'wide'],
+  NOTE_APPEARANCE_ICONS: ['', 'book-open'],
+  NOTE_ICON_GROUPS: [],
+  ALL_NOTE_ICONS: ['book-open'],
+  renderNoteIcon: (icon: string) => (icon ? <svg data-testid={`note-icon-${icon}`} /> : null),
   useNoteAppearance: () => ({ value: { preset: 'standard', icon: '' }, update: vi.fn(), loading: false }),
 }));
 vi.mock('@/features/notes/hooks/useTagSuggestions', () => ({ useTagSuggestions: () => ({

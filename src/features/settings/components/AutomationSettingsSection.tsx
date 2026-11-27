@@ -414,11 +414,11 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <DsButton variant="outline" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={onCancel}>
+        <DsButton variant="outline" size="sm" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={() => void handleSubmit()}>
-          {saving && <CircleNotch className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        <DsButton variant="primary" size="sm" disabled={saving} onClick={() => void handleSubmit()}>
+          {saving && <CircleNotch className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
           {mode === 'create' ? t('settings:automation.create.submit') : t('common:save')}
         </DsButton>
       </div>
@@ -1310,7 +1310,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => setConfirmingDeleteId(null)}>
+              <DsButton size="sm" variant="ghost" onClick={() => setConfirmingDeleteId(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton
@@ -1318,9 +1318,8 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 variant="danger"
                 disabled={deleteBusy}
                 onClick={() => void handleConfirmDelete(automation)}
-                className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
               >
-                {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
                 {t('settings:automation.delete.confirm')}
               </DsButton>
             </div>
@@ -1527,7 +1526,6 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                   <DsButton
                     variant="primary"
                     size="sm"
-                    className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     disabled={desktopUnavailable || capacityFull || expandedId === 'create'}
                     onClick={handleRequestCreate}
                   >
@@ -1558,7 +1556,6 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 setActionError(null);
                 void refresh();
               }}
-              className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('settings:automation.actions.retry')}
             </DsButton>
@@ -1624,14 +1621,14 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 {summary === null && loading ? (
                   <span
                     aria-hidden="true"
-                    className="h-5 w-9 shrink-0 animate-pulse rounded-full bg-muted/60"
+                    className="h-5 w-9 shrink-0 animate-pulse motion-reduce:animate-none rounded-full bg-muted/60"
                   />
                 ) : backgroundBusy ? (
                   <span
                     className="flex h-6 w-9 shrink-0 items-center justify-center"
                     aria-label={t('settings:automation.saving')}
                   >
-                    <CircleNotch className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <CircleNotch className="h-4 w-4 animate-spin motion-reduce:animate-none text-muted-foreground" />
                   </span>
                 ) : (
                   <Switch
@@ -1654,7 +1651,6 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                       size="sm"
                       variant="outline"
                       onClick={() => setConfirmingBackgroundOff(false)}
-                      className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('common:cancel')}
                     </DsButton>
@@ -1663,9 +1659,8 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                       variant="danger"
                       disabled={backgroundBusy}
                       onClick={() => void applyBackgroundEnabled(false)}
-                      className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                     >
-                      {backgroundBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                      {backgroundBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
                       {t('settings:automation.background.confirm')}
                     </DsButton>
                   </div>
@@ -1693,7 +1688,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           {loading && rows.length === 0 ? (
             <div aria-label={t('settings:automation.loading')} className="space-y-1">
               {[0, 1, 2].map((index) => (
-                <div key={index} className="flex min-h-16 animate-pulse items-center gap-4 rounded-[var(--radius-shell-row,0.5rem)] px-3 py-3">
+                <div key={index} className="flex min-h-16 animate-pulse motion-reduce:animate-none items-center gap-4 rounded-[var(--radius-shell-row,0.5rem)] px-3 py-3">
                   <div className="flex-1 space-y-2">
                     <div className="h-4 w-44 max-w-full rounded bg-muted" />
                     <div className="h-3 w-72 max-w-full rounded bg-muted" />
@@ -1712,7 +1707,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               <DsButton
                 variant="primary"
                 size="sm"
-                className="mt-4 min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                className="mt-4"
                 onClick={handleRequestCreate}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />

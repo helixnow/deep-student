@@ -266,6 +266,60 @@ describe('MindMapFormatBar upgrades', () => {
     expect(pinnedGroup.contains(aiTrigger)).toBe(true);
     expect(scrollGroup.contains(aiTrigger)).toBe(false);
   });
+
+  it('uses unified Tooltip bubbles instead of native HTML title attributes on FormatBar buttons', () => {
+    const { container } = render(<MindMapFormatBar />);
+    const titledButtons = container.querySelectorAll('button[title]');
+    expect(titledButtons).toHaveLength(0);
+  });
+
+  it('provides high-distinction, AAA-contrast dark and light highlight palettes', async () => {
+    const { QUICK_BG_COLORS, QUICK_BG_COLORS_DARK } = await import('../../../constants/colors');
+
+    const hexToRgb = (hex: string) => [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+    ] as const;
+
+    const luminance = ([r, g, b]: readonly [number, number, number]) => {
+      const toLin = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+    };
+
+    const contrastRatio = (hex1: string, hex2: string) => {
+      const l1 = luminance(hexToRgb(hex1));
+      const l2 = luminance(hexToRgb(hex2));
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    const saturation = ([r, g, b]: readonly [number, number, number]) => {
+      const rn = r / 255;
+      const gn = g / 255;
+      const bn = b / 255;
+      const max = Math.max(rn, gn, bn);
+      const min = Math.min(rn, gn, bn);
+      if (max === min) return 0;
+      const l = (max + min) / 2;
+      return (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+    };
+
+    expect(QUICK_BG_COLORS_DARK).toHaveLength(7);
+    for (const hex of QUICK_BG_COLORS_DARK) {
+      // Dark highlights must stay clearly chromatic (not muddy charcoal) and >= 7:1 vs dark-mode ink
+      expect(saturation(hexToRgb(hex))).toBeGreaterThanOrEqual(0.35);
+      expect(contrastRatio(hex, '#eef2f0')).toBeGreaterThanOrEqual(7);
+    }
+
+    expect(QUICK_BG_COLORS).toHaveLength(7);
+    for (const hex of QUICK_BG_COLORS) {
+      expect(saturation(hexToRgb(hex))).toBeGreaterThanOrEqual(0.4);
+      expect(contrastRatio(hex, '#182220')).toBeGreaterThanOrEqual(10);
+    }
+  });
 });
 
 describe('StyleSettings upgrades', () => {

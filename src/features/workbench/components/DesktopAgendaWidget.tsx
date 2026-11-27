@@ -15,14 +15,14 @@ import {
   CaretUp,
   Check,
   Plus,
-  WarningCircle,
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { ExamReadinessHud, useSprintLauncherSnapshot } from '@/components/exam-sprint';
-import type { TodoItem, TodoList } from '@/features/todo/types';
+import type { TodoItem } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWindowStore } from '../core/windowStore';
 import { WallpaperReplica } from '../core/liquidGlassLens';
+import { useAdaptiveGlassTone } from '../core/useAdaptiveGlassTone';
 import { useWorkbenchGestures } from '../hooks/useWorkbenchGestures';
 import {
   completeTodoAgendaItem,
@@ -34,7 +34,6 @@ import './DesktopAgendaWidget.css';
 
 const CALENDAR_DAY_COUNT = 42;
 const MAX_AGENDA_ITEMS = 4;
-const FALLBACK_COLORS = ['#ef4444', '#0ea5e9', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 export function formatLocalDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -61,16 +60,6 @@ export function buildCalendarDays(month: Date): Date[] {
   const mondayOffset = (first.getDay() + 6) % 7;
   const start = addLocalDays(first, -mondayOffset);
   return Array.from({ length: CALENDAR_DAY_COUNT }, (_, index) => addLocalDays(start, index));
-}
-
-function fallbackListColor(id: string): string {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) | 0;
-  return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
-}
-
-function listColor(list: TodoList | undefined, listId: string): string {
-  return list?.color?.trim() || fallbackListColor(listId);
 }
 
 function priorityRank(item: TodoItem): number {
@@ -127,6 +116,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
   const [completingId, setCompletingId] = useState<string | null>(null);
   const previousTodayKey = useRef(todayKey);
   const widgetRef = useRef<HTMLElement | null>(null);
+  useAdaptiveGlassTone(widgetRef);
   const pendingDayFocusRef = useRef<string | null>(null);
   const swipeCommittedRef = useRef(false);
 
@@ -331,7 +321,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
   return (
     <section
       ref={widgetRef}
-      className="wb-agenda-widget wb-glass wb-glass-highlight"
+      className="wb-agenda-widget wb-glass wb-glass-widget wb-glass-highlight"
       aria-label={t('agenda.label')}
       data-testid="wb-agenda-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
@@ -340,7 +330,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
         if (event.target === event.currentTarget) void openTodoView();
       }}
     >
-      <WallpaperReplica hostRef={widgetRef} />
+      <WallpaperReplica hostRef={widgetRef} variant="widget" />
       <header className="wb-agenda-header">
         <button
           type="button"
@@ -439,10 +429,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 ) : null}
                 <span className="wb-agenda-day-dots" aria-hidden="true">
                   {dayItems.slice(0, 3).map((item) => (
-                    <i
-                      key={item.id}
-                      style={{ backgroundColor: listColor(listsById.get(item.todoListId), item.todoListId) }}
-                    />
+                    <i key={item.id} />
                   ))}
                 </span>
               </button>
@@ -460,7 +447,6 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
           <strong>{selectedLabel}</strong>
           {selectedKey === todayKey && overdueItems.length > 0 ? (
             <span className="wb-agenda-overdue-count">
-              <WarningCircle size={12} weight="fill" />
               {t('agenda.overdueCount', { count: overdueItems.length })}
             </span>
           ) : null}
@@ -503,7 +489,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                   aria-label={t('agenda.completeCheckbox', { defaultValue: '标记此待办完成' })}
                   title={t('agenda.completeCheckbox', { defaultValue: '标记此待办完成' })}
                 >
-                  <span style={{ borderColor: listColor(list, item.todoListId) }}>
+                  <span>
                     {completingId === item.id ? <Check size={9} weight="bold" /> : null}
                   </span>
                 </button>
@@ -516,7 +502,6 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 >
                   <span className="wb-agenda-item-title">{item.title}</span>
                   <span className="wb-agenda-item-meta">
-                    <i style={{ backgroundColor: listColor(list, item.todoListId) }} />
                     <span>{list?.title ?? t('agenda.unknownList')}</span>
                     <span>·</span>
                     <time>{overdue ? item.dueDate : item.dueTime || t('agenda.allDay')}</time>

@@ -177,6 +177,8 @@ export interface BuildStyledCanvasEdgesParams {
   branchIndexById: Map<string, number>;
   isDarkTheme: boolean;
   spotlightActiveIds: Set<string> | null;
+  /** 上一帧已着色的边索引（用于结构共享复用未变化边引用，避免切焦点触发全图边重渲染） */
+  prevEdgesById?: ReadonlyMap<string, Edge>;
 }
 
 /**
@@ -186,6 +188,7 @@ export interface BuildStyledCanvasEdgesParams {
  * - 矿物彩虹分支连线（仅 colorful / colorful-dark 等 useBranchPalette 主题）
  * - CSS 变量回退槽位（--mm-hover-*），供零重渲染悬停路径类名直接覆盖
  * - Spotlight 演示模式非激活边淡化（.mm-spotlight-dimmed）
+ * - 结构共享：若边拓扑、类名、强调态与样式均未变，直接复用 prevEdgesById 中的旧引用
  */
 export function buildStyledCanvasEdges({
   allEdges,
@@ -196,6 +199,7 @@ export function buildStyledCanvasEdges({
   branchIndexById,
   isDarkTheme,
   spotlightActiveIds,
+  prevEdgesById,
 }: BuildStyledCanvasEdgesParams): Edge[] {
   return allEdges.map((edge) => {
     const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
@@ -228,13 +232,57 @@ export function buildStyledCanvasEdges({
     if (edge.className) classes.push(edge.className);
     if (isAncestorPath) classes.push('mm-edge-ancestor-path');
     if (isSpotlightDimmed) classes.push('mm-spotlight-dimmed');
+    const nextClassName = classes.length > 0 ? classes.join(' ') : undefined;
 
     const baseStroke =
       branchStroke ?? (edge.style?.stroke as string | undefined) ?? 'var(--mm-edge)';
+    const nextStyle = isAssociation
+      ? { ...edge.style, opacity: edge.selected ? 1 : 0.72 }
+      : isAncestorPath
+        ? {
+            ...edge.style,
+            stroke: 'var(--mm-edge-active, var(--mm-primary))',
+            strokeWidth: 2.25,
+            opacity: 1,
+          }
+        : {
+            ...edge.style,
+            stroke: `var(--mm-hover-stroke, ${baseStroke})`,
+            strokeWidth: `var(--mm-hover-stroke-width, ${taperedStrokeWidth}px)`,
+            opacity: `var(--mm-hover-opacity, ${taperedOpacity})` as unknown as number,
+          };
+
+    const prevEdge = prevEdgesById?.get(edge.id);
+    if (
+      prevEdge &&
+      prevEdge.source === edge.source &&
+      prevEdge.target === edge.target &&
+      prevEdge.type === edge.type &&
+      prevEdge.sourceHandle === edge.sourceHandle &&
+      prevEdge.targetHandle === edge.targetHandle &&
+      prevEdge.selected === edge.selected &&
+      prevEdge.selectable === edge.selectable &&
+      prevEdge.className === nextClassName &&
+      prevEdge.style?.stroke === nextStyle.stroke &&
+      prevEdge.style?.strokeWidth === nextStyle.strokeWidth &&
+      prevEdge.style?.opacity === nextStyle.opacity
+    ) {
+      if (isAssociation) {
+        if (prevEdge.data === edge.data) return prevEdge;
+      } else {
+        const prevData = prevEdge.data as { sourceLevel?: number; emphasized?: boolean } | undefined;
+        if (
+          prevData?.sourceLevel === sourceLevel &&
+          Boolean(prevData?.emphasized) === isEmphasized
+        ) {
+          return prevEdge;
+        }
+      }
+    }
 
     return {
       ...edge,
-      className: classes.length > 0 ? classes.join(' ') : undefined,
+      className: nextClassName,
       data: isAssociation
         ? edge.data
         : {
@@ -242,22 +290,7 @@ export function buildStyledCanvasEdges({
             sourceLevel,
             ...(isEmphasized ? { emphasized: true } : {}),
           },
-      style: {
-        ...edge.style,
-        ...(isAssociation
-          ? { opacity: edge.selected ? 1 : 0.72 }
-          : isAncestorPath
-            ? {
-                stroke: 'var(--mm-edge-active, var(--mm-primary))',
-                strokeWidth: 2.25,
-                opacity: 1,
-              }
-            : {
-                stroke: `var(--mm-hover-stroke, ${baseStroke})`,
-                strokeWidth: `var(--mm-hover-stroke-width, ${taperedStrokeWidth}px)`,
-                opacity: `var(--mm-hover-opacity, ${taperedOpacity})` as unknown as number,
-              }),
-      },
+      style: nextStyle,
     };
   });
 }

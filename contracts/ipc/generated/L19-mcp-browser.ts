@@ -69,12 +69,47 @@ export type BrowserNavigationBlockedPayload = {
   historyIndex: number | null;
   at: string;
 };
+/** BrowserHostFacts */
+export type BrowserHostFacts = {
+  sessionId: string;
+  mode: "interactive" | "headless" | "remote";
+  visitedOrigins: string[];
+  blockedNavigations: BrowserHostFactsBlockedNavigation[];
+  latestScreenshot: BrowserHostFactsScreenshot | null;
+  downloadsCount: number;
+  userTakeoverCount: number;
+  actionCount: number;
+  finalUrl: string | null;
+};
+/** BrowserHostFactsBlockedNavigation */
+export type BrowserHostFactsBlockedNavigation = {
+  url: string;
+  reason: string;
+  at: string;
+};
+/** BrowserHostFactsScreenshot */
+export type BrowserHostFactsScreenshot = {
+  path: string | null;
+  locator: string | null;
+  width: number;
+  height: number;
+  capturedAt: string;
+};
 /** dstu_browser::cmd::browser::BrowserSnapshotResult */
 export type BrowserSnapshotResult = {
   sessionId: string;
   url: string;
   title: string;
   snapshot: string;
+  epoch?: number | null;
+};
+/** BrowserTabInfo */
+export type BrowserTabInfo = {
+  tabId: string;
+  url: string;
+  title: string;
+  active: boolean;
+  isLoading?: boolean;
 };
 /** dstu_browser::cmd::browser::BrowserStateResult */
 export type BrowserStateResult = {
@@ -346,6 +381,15 @@ export interface Commands {
     result: null;
     error: string;
   };
+  /** host/plugins/browser/index.ts:1 `browser_close_tab` */
+  browser_close_tab: {
+    args: {
+      sessionId: string;
+      tabId: string;
+    };
+    result: unknown;
+    error: string;
+  };
   /** crates/dstu-browser/src/cmd/browser.rs:317 `browser_content_user_input` */
   browser_content_user_input: {
     args: {
@@ -354,6 +398,16 @@ export interface Commands {
       kind: string;
     };
     result: null;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_extract_content` */
+  browser_extract_content: {
+    args: {
+      sessionId: string;
+      maxChars?: number | null;
+      startIndex?: number | null;
+    };
+    result: unknown;
     error: string;
   };
   /** crates/dstu-browser/src/cmd/browser.rs:232 `browser_focus` */
@@ -370,6 +424,14 @@ export interface Commands {
       sessionId: string;
     };
     result: BrowserStateResult;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_get_host_facts` */
+  browser_get_host_facts: {
+    args: {
+      sessionId?: string | null;
+    };
+    result: BrowserHostFacts;
     error: string;
   };
   /** crates/dstu-browser/src/cmd/browser.rs:191 `browser_get_state` */
@@ -394,6 +456,14 @@ export interface Commands {
     result: BrowserDownloadObservation[];
     error: string;
   };
+  /** host/plugins/browser/index.ts:1 `browser_list_tabs` */
+  browser_list_tabs: {
+    args: {
+      sessionId: string;
+    };
+    result: BrowserTabInfo[];
+    error: string;
+  };
   /** crates/dstu-browser/src/cmd/browser.rs:454 `browser_list_task_downloads` */
   browser_list_task_downloads: {
     args: {
@@ -413,6 +483,16 @@ export interface Commands {
     result: BrowserStateResult;
     error: string;
   };
+  /** host/plugins/browser/index.ts:1 `browser_new_tab` */
+  browser_new_tab: {
+    args: {
+      sessionId: string;
+      url: string;
+      fromAgent?: boolean | null;
+    };
+    result: BrowserTabInfo;
+    error: string;
+  };
   /** crates/dstu-browser/src/cmd/browser.rs:109 `browser_open_session` */
   browser_open_session: {
     args: {
@@ -421,6 +501,14 @@ export interface Commands {
       chatSessionId?: string | null;
       reuseExisting?: boolean | null;
       fromAgent?: boolean | null;
+    };
+    result: BrowserStateResult;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_promote_to_interactive` */
+  browser_promote_to_interactive: {
+    args: {
+      sessionId: string;
     };
     result: BrowserStateResult;
     error: string;
@@ -440,6 +528,27 @@ export interface Commands {
       hard?: boolean | null;
     };
     result: BrowserStateResult;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_remote_input` */
+  browser_remote_input: {
+    args: {
+      sessionId: string;
+      event: unknown;
+    };
+    result: null;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_screenshot` */
+  browser_screenshot: {
+    args: {
+      sessionId: string;
+      fullPage?: boolean | null;
+      annotate?: boolean | null;
+      maxWidth?: number | null;
+      quality?: number | null;
+    };
+    result: unknown;
     error: string;
   };
   /** crates/dstu-browser/src/cmd/browser.rs:464 `browser_scroll` */
@@ -497,6 +606,15 @@ export interface Commands {
       maxChars?: number | null;
     };
     result: BrowserSnapshotResult;
+    error: string;
+  };
+  /** host/plugins/browser/index.ts:1 `browser_switch_tab` */
+  browser_switch_tab: {
+    args: {
+      sessionId: string;
+      tabId: string;
+    };
+    result: BrowserTabInfo;
     error: string;
   };
   /** crates/dstu-browser/src/cmd/browser.rs:335 `browser_take_over` */
@@ -1015,28 +1133,44 @@ export type BrowserClickCommandArgs = Commands['browser_click']['args'];
 export type BrowserClickCommandResult = Commands['browser_click']['result'];
 export type BrowserCloseCommandArgs = Commands['browser_close']['args'];
 export type BrowserCloseCommandResult = Commands['browser_close']['result'];
+export type BrowserCloseTabCommandArgs = Commands['browser_close_tab']['args'];
+export type BrowserCloseTabCommandResult = Commands['browser_close_tab']['result'];
 export type BrowserContentUserInputCommandArgs = Commands['browser_content_user_input']['args'];
 export type BrowserContentUserInputCommandResult = Commands['browser_content_user_input']['result'];
+export type BrowserExtractContentCommandArgs = Commands['browser_extract_content']['args'];
+export type BrowserExtractContentCommandResult = Commands['browser_extract_content']['result'];
 export type BrowserFocusCommandArgs = Commands['browser_focus']['args'];
 export type BrowserFocusCommandResult = Commands['browser_focus']['result'];
 export type BrowserForwardCommandArgs = Commands['browser_forward']['args'];
 export type BrowserForwardCommandResult = Commands['browser_forward']['result'];
+export type BrowserGetHostFactsCommandArgs = Commands['browser_get_host_facts']['args'];
+export type BrowserGetHostFactsCommandResult = Commands['browser_get_host_facts']['result'];
 export type BrowserGetStateCommandArgs = Commands['browser_get_state']['args'];
 export type BrowserGetStateCommandResult = Commands['browser_get_state']['result'];
 export type BrowserGetSurfaceHostModeCommandArgs = Commands['browser_get_surface_host_mode']['args'];
 export type BrowserGetSurfaceHostModeCommandResult = Commands['browser_get_surface_host_mode']['result'];
 export type BrowserListDownloadsCommandArgs = Commands['browser_list_downloads']['args'];
 export type BrowserListDownloadsCommandResult = Commands['browser_list_downloads']['result'];
+export type BrowserListTabsCommandArgs = Commands['browser_list_tabs']['args'];
+export type BrowserListTabsCommandResult = Commands['browser_list_tabs']['result'];
 export type BrowserListTaskDownloadsCommandArgs = Commands['browser_list_task_downloads']['args'];
 export type BrowserListTaskDownloadsCommandResult = Commands['browser_list_task_downloads']['result'];
 export type BrowserNavigateCommandArgs = Commands['browser_navigate']['args'];
 export type BrowserNavigateCommandResult = Commands['browser_navigate']['result'];
+export type BrowserNewTabCommandArgs = Commands['browser_new_tab']['args'];
+export type BrowserNewTabCommandResult = Commands['browser_new_tab']['result'];
 export type BrowserOpenSessionCommandArgs = Commands['browser_open_session']['args'];
 export type BrowserOpenSessionCommandResult = Commands['browser_open_session']['result'];
+export type BrowserPromoteToInteractiveCommandArgs = Commands['browser_promote_to_interactive']['args'];
+export type BrowserPromoteToInteractiveCommandResult = Commands['browser_promote_to_interactive']['result'];
 export type BrowserReleaseSurfaceFocusCommandArgs = Commands['browser_release_surface_focus']['args'];
 export type BrowserReleaseSurfaceFocusCommandResult = Commands['browser_release_surface_focus']['result'];
 export type BrowserReloadCommandArgs = Commands['browser_reload']['args'];
 export type BrowserReloadCommandResult = Commands['browser_reload']['result'];
+export type BrowserRemoteInputCommandArgs = Commands['browser_remote_input']['args'];
+export type BrowserRemoteInputCommandResult = Commands['browser_remote_input']['result'];
+export type BrowserScreenshotCommandArgs = Commands['browser_screenshot']['args'];
+export type BrowserScreenshotCommandResult = Commands['browser_screenshot']['result'];
 export type BrowserScrollCommandArgs = Commands['browser_scroll']['args'];
 export type BrowserScrollCommandResult = Commands['browser_scroll']['result'];
 export type BrowserSetInputFilesCommandArgs = Commands['browser_set_input_files']['args'];
@@ -1047,6 +1181,8 @@ export type BrowserSetSurfaceVisibilityCommandArgs = Commands['browser_set_surfa
 export type BrowserSetSurfaceVisibilityCommandResult = Commands['browser_set_surface_visibility']['result'];
 export type BrowserSnapshotCommandArgs = Commands['browser_snapshot']['args'];
 export type BrowserSnapshotCommandResult = Commands['browser_snapshot']['result'];
+export type BrowserSwitchTabCommandArgs = Commands['browser_switch_tab']['args'];
+export type BrowserSwitchTabCommandResult = Commands['browser_switch_tab']['result'];
 export type BrowserTakeOverCommandArgs = Commands['browser_take_over']['args'];
 export type BrowserTakeOverCommandResult = Commands['browser_take_over']['result'];
 export type BrowserTypeCommandArgs = Commands['browser_type']['args'];

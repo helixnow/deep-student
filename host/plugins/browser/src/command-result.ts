@@ -145,7 +145,10 @@ export type BrowserStateResult = BrowserSessionState & {
 
 /** `cmd/browser.rs::state_result`: flatten state, append history and platform capability. */
 export function stateResult(
-  state: BrowserSessionState, history: readonly HistoryEntry[], platform: AppPlatform,
+  state: BrowserSessionState,
+  history: readonly HistoryEntry[],
+  platform: AppPlatform,
+  automationSupported?: boolean,
 ): BrowserStateResult {
   return {
     ...state,
@@ -154,6 +157,6 @@ export function stateResult(
       title: entry.title,
       visitedAt: formatTimestamp(entry.visitedAt),
     })),
-    agentAutomationSupported: agentAutomationSupported(platform),
+    agentAutomationSupported: automationSupported ?? agentAutomationSupported(platform),
   };
 }

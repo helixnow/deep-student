@@ -53,8 +53,8 @@ export interface MediaScrubberProps {
 }
 
 const MARKER_TONE: Record<NonNullable<MediaScrubberMarker['state']>, string> = {
-  pending: 'bg-amber-400',
-  correct: 'bg-emerald-500',
+  pending: 'bg-warning',
+  correct: 'bg-success',
   wrong: 'bg-destructive',
 };
 

@@ -4,6 +4,7 @@
  * 未保存脏点渲染 / 长标题溢出 tooltip / 双击标题栏按设置分发。
  */
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -339,5 +340,60 @@ describe('移动端 / 触屏三键真实命中框（360px 回归）', () => {
     expect(mobileBlock).toContain('height: var(--wb-traffic-size, 12px);');
     expect(mobileBlock).toContain('.wb-titlebar.wb-title-bar .wb-traffic-zoom-wrap');
     expect(mobileBlock).toContain('left: 140px;');
+  });
+});
+
+describe('子应用 Portal 进标题栏槽位时的拖拽与双击冒泡', () => {
+  it('兄弟组件通过 createPortal 挂载到 [data-wb-titlebar-slot] 的非交互区域可正常起拖与双击，交互按钮/可拖拽标签仍放行', () => {
+    const onMovePointerDown = vi.fn();
+    const onZoom = vi.fn();
+    const Harness: React.FC = () => {
+      const [slot, setSlot] = React.useState<HTMLElement | null>(null);
+      React.useLayoutEffect(() => {
+        setSlot(document.querySelector('[data-wb-titlebar-slot]'));
+      }, []);
+      return (
+        <div>
+          <WindowTitleBar
+            windowId="win-portal"
+            appTypeId="todo"
+            title="待办"
+            focused
+            displayMode="floating"
+            onClose={vi.fn()}
+            onMinimize={vi.fn()}
+            onZoom={onZoom}
+            onTileAction={vi.fn()}
+            onMovePointerDown={onMovePointerDown}
+          />
+          {slot
+            ? createPortal(
+                <div className="pointer-events-auto flex items-center gap-2" data-testid="portal-row">
+                  <span data-testid="portal-title">今天</span>
+                  <button type="button" data-testid="portal-btn">新建</button>
+                  <div draggable data-testid="portal-draggable-tab">标签</div>
+                </div>,
+                slot,
+              )
+            : null}
+        </div>
+      );
+    };
+
+    const { getByTestId } = render(<Harness />);
+    // 1. 点击 portal 内非交互标题文字 → 经原生 DOM 冒泡到标题栏，触发起拖
+    fireEvent.pointerDown(getByTestId('portal-title'), { button: 0, pointerId: 1, clientX: 120, clientY: 16 });
+    expect(onMovePointerDown).toHaveBeenCalledTimes(1);
+
+    // 2. 双击 portal 内非交互区域 → 正常触发 zoom
+    fireEvent.doubleClick(getByTestId('portal-title'), { clientX: 120, clientY: 16 });
+    expect(onZoom).toHaveBeenCalledTimes(1);
+
+    // 3. 点击 portal 内按钮与 draggable 标签 → 不触发起拖也不触发 zoom
+    fireEvent.pointerDown(getByTestId('portal-btn'), { button: 0, pointerId: 2, clientX: 200, clientY: 16 });
+    fireEvent.pointerDown(getByTestId('portal-draggable-tab'), { button: 0, pointerId: 3, clientX: 240, clientY: 16 });
+    fireEvent.doubleClick(getByTestId('portal-btn'), { clientX: 200, clientY: 16 });
+    expect(onMovePointerDown).toHaveBeenCalledTimes(1);
+    expect(onZoom).toHaveBeenCalledTimes(1);
   });
 });

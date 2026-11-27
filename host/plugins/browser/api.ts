@@ -27,6 +27,26 @@ export type { BrowserToolExecutorPorts, BrowserToolService } from './src/browser
 export type {
   IndexStatusSummary, IndexWebpageExecutorPorts,
 } from './src/index-webpage-executor.ts';
+export { BrowserHostFactsTracker } from './src/host-facts.ts';
+export type {
+  BrowserHostFacts, BrowserBlockedNavigationFact, BrowserLatestScreenshotFact, BrowserFactsMode,
+} from './src/host-facts.ts';
+export { RemoteCdpBrowserSurface } from './src/remote-cdp-surface.ts';
+export type {
+  RemoteCdpSurfaceOptions, RemoteCdpWebSocketLike, BrowserScreencastFrame,
+  BrowserRemoteInputEvent, BrowserTabInfo, BrowserScreenshotOptions, BrowserScreenshotResult,
+  BrowserTarget, BrowserWaitOptions,
+} from './src/remote-cdp-surface.ts';
+export {
+  browserWorkerToolSchemas, webpageSaveWorkerToolSchema, BROWSER_WORKER_TOOL_NAMES,
+} from './src/browser-tool-schemas.ts';
+export type { BrowserWorkerToolSchema } from './src/browser-tool-schemas.ts';
+
+import type { BrowserHostFacts } from './src/host-facts.ts';
+import type {
+  BrowserRemoteInputEvent, BrowserScreencastFrame, BrowserScreenshotOptions,
+  BrowserScreenshotResult, BrowserTabInfo, BrowserTarget, BrowserWaitOptions,
+} from './src/remote-cdp-surface.ts';
 
 export const browserToolPolicyService = { name: 'browserToolPolicy', version: '1.0.0' } as const;
 export const webpageToolPolicyService = { name: 'webpageToolPolicy', version: '1.0.0' } as const;
@@ -35,6 +55,7 @@ export interface OpenSessionOptions {
   url: string; displayName?: string | null; chatSessionId?: string | null;
   width?: number | null; height?: number | null; focused?: boolean | null;
   reuseExisting?: boolean | null; fromAgent?: boolean | null;
+  headless?: boolean | null;
 }
 
 /**
@@ -50,6 +71,7 @@ export interface BrowserSurfaceCreateOptions {
   focused: boolean;
   profileDir: string;
   initializationScript: string;
+  headless?: boolean;
 }
 
 export interface SurfaceEventCallbacks {
@@ -59,6 +81,10 @@ export interface SurfaceEventCallbacks {
   titleChanged(title: string, url: string | null): void;
   /** Rust `ContentWindowHooks::on_navigation_blocked`. */
   navigationBlocked(url: string, reason: string): void;
+  /** Electron `will-download` started observation forwarded from shell main. */
+  downloadStarted?(url: string, filename: string, savePath?: string | null): void;
+  /** Electron `will-download` completion observation forwarded from shell main. */
+  downloadFinished?(url: string, path: string | null, success: boolean): void;
 }
 
 /**
@@ -71,8 +97,10 @@ export interface AgentNavigationPolicy {
 }
 
 export interface BrowserSurfaceHost {
-  /** `window.rs::surface_host_mode`: embedded / detached / unsupported. */
+  /** `window.rs::surface_host_mode`: embedded / detached / remote / headless / unsupported. */
   hostMode(): string;
+  /** Optional dynamic shell probe (e.g. WebUI discovering remote CDP mode). */
+  syncHostMode?(): Promise<string>;
   /** Whether the fixed-label content window still exists. */
   hasContentWindow(): boolean;
   createContentWindow(options: BrowserSurfaceCreateOptions): Promise<void>;
@@ -93,15 +121,34 @@ export interface BrowserSurfaceHost {
     inputOcclusions: readonly { x: number; y: number; width: number; height: number }[],
   ): Promise<void>;
   setContentVisibility(visible: boolean, focus: boolean): Promise<void>;
-  snapshot(options: { interactiveOnly: boolean; maxChars?: number }): Promise<JsonValue>;
-  click(ref: string): Promise<JsonValue>;
-  typeText(ref: string, text: string): Promise<JsonValue>;
+  snapshot(options: { interactiveOnly: boolean; maxChars?: number; diff?: boolean; selector?: string }): Promise<JsonValue>;
+  click(ref: string, options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' }): Promise<JsonValue>;
+  clickAt?(x: number, y: number, options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' }): Promise<JsonValue>;
+  typeText(ref: string, text: string, options?: { clear?: boolean; submit?: boolean }): Promise<JsonValue>;
   setInputFiles(ref: string, files: JsonValue): Promise<JsonValue>;
   scroll(options: { direction: string | null; amount: number | null; ref: string | null }): Promise<JsonValue>;
+  screenshot?(options?: BrowserScreenshotOptions): Promise<BrowserScreenshotResult>;
+  hover?(target: BrowserTarget): Promise<JsonValue>;
+  pressKey?(key: string, modifiers?: string[]): Promise<JsonValue>;
+  selectOption?(ref: string, values: string[]): Promise<JsonValue>;
+  waitFor?(options: BrowserWaitOptions): Promise<JsonValue>;
+  extractContent?(options?: { maxChars?: number; startIndex?: number }): Promise<JsonValue>;
+  listTabs?(): Promise<BrowserTabInfo[]>;
+  newTab?(url: string): Promise<BrowserTabInfo>;
+  switchTab?(tabId: string): Promise<BrowserTabInfo>;
+  closeTab?(tabId: string): Promise<JsonValue>;
+  consoleLogs?(options?: { level?: string; limit?: number }): Promise<JsonValue>;
+  networkLogs?(options?: { statusMin?: number; limit?: number }): Promise<JsonValue>;
+  promoteToInteractive?(): Promise<void>;
+  remoteInput?(event: BrowserRemoteInputEvent): Promise<void>;
+  startScreencast?(onFrame: (frame: BrowserScreencastFrame) => void): Promise<void>;
+  stopScreencast?(): Promise<void>;
   /** Subscribe to native callbacks; returns the disposer. */
   subscribe(callbacks: SurfaceEventCallbacks): () => void;
   /** Mirror of the shared `NavigationPolicyHandle` state for the native navigation hooks. */
   setAgentNavigationPolicy?(policy: AgentNavigationPolicy): Promise<void>;
+  /** Push agent-owned download artifact directory policy to Electron/native shell. */
+  setDownloadPolicy?(policy: { agentOwned: boolean; artifactDir: string | null }): Promise<void>;
   /** `BoundedDnsResolver::resolve`: addresses, or the Rust failure reason (`DNS resolution timed out`, ...). */
   resolveAgentHost?(host: string, port: number): Promise<IpAddress[] | string>;
 }
@@ -123,13 +170,42 @@ export interface BrowserService {
   close(sessionId: string | null): Promise<void>;
   closeSession(): Promise<void>;
   focus(sessionId: string | null): Promise<void>;
-  snapshot(sessionId: string, maxChars: number | null, interactiveOnly?: boolean): Promise<{
+  snapshot(
+    sessionId: string, maxChars: number | null, interactiveOnly?: boolean,
+    options?: { diff?: boolean; selector?: string },
+  ): Promise<{
     sessionId: string; url: string; title: string; snapshot: string; epoch?: JsonValue;
   }>;
-  click(sessionId: string, ref: string): Promise<JsonValue>;
-  type(sessionId: string, ref: string, text: string, submit: boolean): Promise<JsonValue>;
+  click(
+    sessionId: string, ref: string,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue>;
+  clickAt?(
+    sessionId: string, x: number, y: number,
+    options?: { doubleClick?: boolean; button?: 'left' | 'middle' | 'right' },
+  ): Promise<JsonValue>;
+  type(sessionId: string, ref: string, text: string, submit: boolean, clear?: boolean): Promise<JsonValue>;
   setInputFiles(sessionId: string, ref: string, files: JsonValue): Promise<JsonValue>;
   scroll(sessionId: string, direction: string | null, amount: number | null, ref: string | null): Promise<JsonValue>;
+  screenshot?(sessionId: string, options?: BrowserScreenshotOptions): Promise<BrowserScreenshotResult>;
+  recordScreenshotArtifact?(info: {
+    path: string | null; locator: string | null; width: number; height: number; capturedAt?: string;
+  }): void;
+  hover?(sessionId: string, target: BrowserTarget): Promise<JsonValue>;
+  pressKey?(sessionId: string, key: string, modifiers?: string[]): Promise<JsonValue>;
+  selectOption?(sessionId: string, ref: string, values: string[]): Promise<JsonValue>;
+  waitFor?(sessionId: string, options: BrowserWaitOptions): Promise<JsonValue>;
+  extractContent?(sessionId: string, options?: { maxChars?: number; startIndex?: number }): Promise<JsonValue>;
+  listTabs?(sessionId: string): Promise<BrowserTabInfo[]>;
+  newTab?(sessionId: string, url: string, fromAgent?: boolean): Promise<BrowserTabInfo>;
+  switchTab?(sessionId: string, tabId: string): Promise<BrowserTabInfo>;
+  closeTab?(sessionId: string, tabId: string): Promise<JsonValue>;
+  consoleLogs?(sessionId: string, options?: { level?: string; limit?: number }): Promise<JsonValue>;
+  networkLogs?(sessionId: string, options?: { statusMin?: number; limit?: number }): Promise<JsonValue>;
+  promoteToInteractive?(sessionId: string): Promise<void>;
+  remoteInput?(sessionId: string, event: BrowserRemoteInputEvent): Promise<void>;
+  getHostFacts?(sessionId?: string | null): BrowserHostFacts;
+  getHostFactsForChatSession?(chatSessionId: string): BrowserHostFacts | null;
   listDownloads(sessionId: string): import('../../../contracts/ipc/generated/L19-mcp-browser.ts').BrowserDownloadObservation[];
   listTaskDownloads(chatSessionId: string): import('../../../contracts/ipc/generated/L19-mcp-browser.ts').BrowserDownloadObservation[];
   takeOver(): Promise<BrowserSessionState>;

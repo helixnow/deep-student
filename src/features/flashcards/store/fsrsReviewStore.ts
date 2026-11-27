@@ -32,7 +32,7 @@ export {
   msUntilNextDayBoundary,
 } from './localDate';
 
-export type FlashcardsScreen = 'today' | 'library' | 'settings' | 'session';
+export type FlashcardsScreen = 'today' | 'library' | 'settings' | 'scheduler' | 'session';
 
 export type FsrsRating = 1 | 2 | 3 | 4;
 

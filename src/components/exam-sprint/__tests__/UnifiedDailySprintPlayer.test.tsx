@@ -616,17 +616,14 @@ describe('UnifiedDailySprintPlayer', () => {
       />,
     );
 
-    // 1. Crisp Mineral breadcrumb header above card face (1px border-border/35, 6px dot, zero emojis)
+    // 1. Crisp Mineral breadcrumb header above card face (1px border-border/35, zero traffic-light dots, zero emojis)
     const breadcrumb = screen.getByTestId('sprint-card-breadcrumb');
     expect(breadcrumb.className).toContain('border-border/35');
     expect(breadcrumb.textContent).toContain('思维导图');
     expect(breadcrumb.textContent).toContain('第三章');
     expect(breadcrumb.textContent).toContain('极限');
     expect(screen.getByTestId('sprint-breadcrumb-source-count').textContent).toBe('3 处出处');
-
-    const dot = screen.getByTestId('sprint-breadcrumb-dot');
-    expect(dot.className).toContain('h-1.5');
-    expect(dot.className).toContain('w-1.5');
+    expect(screen.queryByTestId('sprint-breadcrumb-dot')).toBeNull();
 
     // Redundant bracket prefix stripped from front prompt while keeping question crisp
     const stageEl = screen.getByTestId('sprint-fsrs-stage');

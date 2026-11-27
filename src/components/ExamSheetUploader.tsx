@@ -1138,7 +1138,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       onClick={handleClick}
                       data-testid="exam-uploader-add-more"
                       className={cn(
-                        'min-w-0 flex-1 gap-1.5 border border-dashed text-muted-foreground min-h-9 [@media(pointer:coarse)]:!min-h-11',
+                        'min-w-0 flex-1 gap-1.5 border border-dashed text-muted-foreground',
                         'hover:border-primary/50 hover:bg-primary/5 hover:text-foreground',
                         isDragActive ? 'border-primary bg-primary/10 text-primary' : 'border-border/60',
                       )}
@@ -1153,7 +1153,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       variant="secondary"
                       size="sm"
                       data-testid="exam-uploader-take-more-photo"
-                      className="md:hidden shrink-0 gap-1.5 min-h-9 [@media(pointer:coarse)]:!min-h-11"
+                      className="md:hidden shrink-0 gap-1.5"
                       onClick={(e) => {
                         e.stopPropagation();
                         cameraInputRef.current?.click();
@@ -1232,7 +1232,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover object-top"
                         />
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !rounded-full border border-border/50 bg-background/85 text-foreground shadow-sm hover:bg-background opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                           <X size={12} />
                         </DsButton>
                       </div>

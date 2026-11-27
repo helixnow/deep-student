@@ -2381,13 +2381,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         <div className="flex flex-wrap gap-2 max-md:justify-end">
           <DsButton
             variant="outline"
-            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={testConnection}
             disabled={testing || !isConfigValid()}
           >
             {testing ? (
               <>
-                <CircleNotch size={16} className="mr-2 animate-spin" />
+                <CircleNotch size={16} className="mr-2 animate-spin motion-reduce:animate-none" />
                 {t('cloudStorage:actions.testing')}
               </>
             ) : (
@@ -2398,11 +2397,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             )}
           </DsButton>
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={saveConfig} disabled={saving || !isConfigValid()}>
-            {saving && <CircleNotch size={16} className="mr-2 animate-spin" />}
+          <DsButton variant="primary" onClick={saveConfig} disabled={saving || !isConfigValid()}>
+            {saving && <CircleNotch size={16} className="mr-2 animate-spin motion-reduce:animate-none" />}
             {t('cloudStorage:actions.save')}
           </DsButton>
-          <DsButton variant="outline" className="!text-destructive [@media(pointer:coarse)]:!min-h-11" onClick={() => setClearConfirmOpen(true)} disabled={saving}>
+          <DsButton variant="outline" className="!text-destructive" onClick={() => setClearConfirmOpen(true)} disabled={saving}>
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
@@ -2557,7 +2556,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 {/* 非传输阶段：脉动进度条 */}
                 {!opProgress.error && !opProgress.isTransferring && (
                   <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-primary/60 h-1.5 rounded-full animate-pulse w-full" />
+                    <div className="bg-primary/60 h-1.5 rounded-full animate-pulse motion-reduce:animate-none w-full" />
                   </div>
                 )}
 
@@ -2566,7 +2565,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     <DsButton
                       size="sm"
                       variant="outline"
-                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                      className="px-2 text-xs"
                       disabled={uploading || downloading}
                       onClick={retryFailedOperation}
                     >
@@ -2575,7 +2574,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     <DsButton
                       size="sm"
                       variant="ghost"
-                      className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+                      className="px-2 text-xs text-muted-foreground"
                       onClick={() => setOpProgress(null)}
                     >
                       {t('common:actions.close')}
@@ -2590,14 +2589,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
-                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={requestBackupAndUpload}
                 disabled={uploading || downloading}
                 data-testid="cloud-backup-upload-now-btn"
               >
                 {uploading ? (
                   <>
-                    <CircleNotch size={16} className="mr-2 animate-spin" />
+                    <CircleNotch size={16} className="mr-2 animate-spin motion-reduce:animate-none" />
                     {t('cloudStorage:actions.uploading')}
                   </>
                 ) : (
@@ -2610,7 +2608,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
-                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowHistory(!showHistory)}
               >
                 <ClockCounterClockwise size={16} className="mr-2" />
@@ -2653,7 +2650,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <DsButton
                         size="sm"
                         variant="outline"
-                        className="[@media(pointer:coarse)]:!min-h-11"
                         title={
                           version.recoveryKind === 'partial_archive'
                             ? t('cloudStorage:history.portableArchiveNotRestorable')
@@ -2663,7 +2659,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         onClick={() => openRestoreConfirm(version.id)}
                       >
                         {downloading && restoreVersionId === version.id ? (
-                          <CircleNotch size={16} className="animate-spin" />
+                          <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
                         ) : (
                           <Download size={16} />
                         )}
@@ -2674,7 +2670,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="danger"
-                          className="whitespace-nowrap [@media(pointer:coarse)]:!min-h-11"
+                          className="whitespace-nowrap"
                           onClick={() => {
                             setConfirmingDeleteVersionId(null);
                             void handleDeleteVersion();
@@ -2687,7 +2683,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="outline"
-                          className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
+                          className="!text-destructive"
                           title={t('cloudStorage:history.delete')}
                           aria-label={t('cloudStorage:history.delete')}
                           onClick={() => {

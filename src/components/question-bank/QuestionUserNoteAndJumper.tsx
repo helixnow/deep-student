@@ -220,9 +220,18 @@ export const QuestionJumperPopover: React.FC<QuestionJumperPopoverProps> = ({
           })}
         </CustomScrollArea>
         <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/35 text-2xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('editor.legendMastered')}</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-warning" /> {t('editor.legendReview')}</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" /> {t('editor.legendNew')}</span>
+          <span className="inline-flex items-center gap-1.5 text-success">
+            <span className="h-3 w-3 rounded-[3px] border border-success/35 bg-success/[0.08]" aria-hidden="true" />
+            {t('editor.legendMastered')}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-warning">
+            <span className="h-3 w-3 rounded-[3px] border border-warning/35 bg-warning/[0.08]" aria-hidden="true" />
+            {t('editor.legendReview')}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span className="h-3 w-3 rounded-[3px] border border-border/45 bg-foreground/[0.02]" aria-hidden="true" />
+            {t('editor.legendNew')}
+          </span>
         </div>
       </PopoverContent>
     </Popover>

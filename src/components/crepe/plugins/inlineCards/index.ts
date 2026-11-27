@@ -2,7 +2,7 @@
  * Crepe inline card indicator decoration plugin (`editor:inline-cards`).
  *
  * Opt-in via `CrepePluginsOptions.inlineCards` (`defaultPluginOptions.inlineCards = false`).
- * Renders a non-editable Mineral indicator pill (`QA` / `C1`..`C12` + 6px green dot)
+ * Renders a non-editable indicator pill (`QA` / `C1`..`C12`)
  * at the end of compiled blocks without mutating the ProseMirror document or Markdown.
  *
  * Strictly skips scanning/rebuilding while `view.composing === true` (CJK IME safety)
@@ -46,7 +46,7 @@ export function createInlineCardIndicatorElement(
   pill.setAttribute('data-testid', 'inline-card-indicator');
   pill.setAttribute('data-card-kind', kind);
   pill.className =
-    'ml-2 inline-flex items-center gap-1 rounded-full border border-border/35 bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground select-none align-middle';
+    'ml-2 inline-flex items-center gap-1 rounded-full border border-border/35 bg-muted/50 px-1.5 py-0.5 text-2xs text-muted-foreground select-none align-middle';
 
   const typeLabel = kind === 'qa'
     ? i18next.t('notes:inlineCards.badge_qa')
@@ -55,15 +55,10 @@ export function createInlineCardIndicatorElement(
   pill.title = `${typeLabel} · ${syncedTooltip}`;
   pill.setAttribute('aria-label', pill.title);
 
-  const dot = document.createElement('span');
-  dot.className = 'inline-block h-1.5 w-1.5 rounded-full bg-success shrink-0';
-  dot.setAttribute('aria-hidden', 'true');
-
   const code = document.createElement('span');
   code.className = 'font-mono tabular-nums leading-none';
   code.textContent = kind === 'qa' ? 'QA' : `C${cardCount}`;
 
-  pill.appendChild(dot);
   pill.appendChild(code);
   return pill;
 }

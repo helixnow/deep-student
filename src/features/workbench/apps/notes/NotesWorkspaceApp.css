@@ -105,7 +105,7 @@
 }
 
 .notes-explorer header {
-  height: 38px;
+  height: 34px;
   padding: 0 8px 0 12px;
   display: flex;
   flex: 0 0 auto;
@@ -282,6 +282,48 @@
   height: 20px;
 }
 
+.notes-search-tag-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 4px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.notes-search-tag-btn:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.notes-search-tag-btn[data-active='true'] {
+  background: hsl(var(--primary) / 12%);
+  color: hsl(var(--primary));
+}
+
+.notes-search-tag-btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-search-tag-count {
+  line-height: 1;
+}
+
 /* 触屏：20px 目标过小，扩到 44px，负 margin 抵消占位；搜索栏本身也升到 ≥44px 触控高度
    （min-height 优先于桌面 height: 30px，桌面密度不受影响） */
 @media (pointer: coarse) {
@@ -298,6 +340,12 @@
     width: 44px;
     height: 44px;
     margin: -12px;
+  }
+
+  .notes-search-tag-btn {
+    min-width: 44px;
+    min-height: 44px;
+    margin: -11px -7px -11px 0;
   }
 }
 
@@ -321,8 +369,8 @@
 
 .notes-tree-root {
   width: calc(100% - 12px);
-  height: 26px;
-  margin: 5px 6px 2px;
+  height: 24px;
+  margin: 2px 6px;
   padding: 0 7px;
   display: flex;
   align-items: center;
@@ -532,7 +580,7 @@
 }
 
 .notes-main-content[data-backlinks-open='true'] {
-  grid-template-columns: minmax(0, 1fr) clamp(256px, 26vw, 340px);
+  grid-template-columns: minmax(0, 1fr) clamp(236px, 22vw, 300px);
 }
 
 .notes-main-content[data-backlinks-overlay='true'][data-backlinks-open='true'] {
@@ -641,7 +689,7 @@
 .notes-tabstrip {
   min-width: 0;
   height: 38px;
-  padding: 4px 6px;
+  padding: 4px 4px 4px 6px;
   gap: 2px;
   display: flex;
   align-items: center;
@@ -656,11 +704,12 @@
   height: 100%;
   min-width: 0;
   container: notes-tabbar / inline-size;
+
   /* .wb-title-app-slot 已从红绿灯预留区右侧开始，不能再次叠加完整侧栏宽度。 */
   padding-left: max(0px, calc(var(--notes-titlebar-sidebar-width, 0px) - var(--wb-macos-traffic-lights-inset, 72px)));
 
-  /* Keep a reliable titlebar drag target after the final tab, shrinking smoothly in narrow split windows (440-540px). */
-  padding-right: clamp(8px, calc(100% - 480px), 78px);
+  /* 右侧仅保留贴边呼吸边距，把顶栏右半侧绝大部分宽度留给标签页；侧栏上方与标签空余处保留拖拽热区。 */
+  padding-right: 10px;
   display: flex;
   align-items: stretch;
   pointer-events: none;
@@ -680,7 +729,7 @@
 .notes-tabs-overflow {
   position: relative;
   z-index: 2;
-  flex: 0 0 32px;
+  flex: 0 0 28px;
   display: grid;
   place-items: center;
   pointer-events: auto;
@@ -799,10 +848,10 @@
 .notes-tab {
   position: relative;
   height: 30px;
-  width: 184px;
-  min-width: 132px;
+  width: 172px;
+  min-width: 112px;
   max-width: 220px;
-  flex: 1 1 184px;
+  flex: 1 1 172px;
   display: flex;
   align-items: center;
   border-right: 0;
@@ -1389,9 +1438,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .notes-icon-button,
+  .notes-chrome-backlinks-btn,
   .notes-explorer-overflow-menu > button,
   .notes-tabs-overflow-menu button,
   .notes-search,
+  .notes-search-tag-btn,
   .notes-tree-root,
   .notes-tree-row,
   .notes-tree-message button,
@@ -1410,7 +1461,8 @@
     transition-duration: 0.01ms;
   }
 
-  .notes-icon-button:active:not(:disabled) {
+  .notes-icon-button:active:not(:disabled),
+  .notes-chrome-backlinks-btn:active:not(:disabled) {
     transform: none;
   }
 
@@ -1527,99 +1579,101 @@
   }
 }
 
-/* 视图切换分段按钮（文件树 / 列表 / 状态 / 复习） */
-.notes-view-switch {
-  display: flex;
-  gap: 2px;
-  margin: 4px 10px 6px;
-  padding: 2px;
-  border-radius: 7px;
-  background: hsl(var(--foreground) / 0.05);
-}
-
-.notes-view-switch-option {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 24px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
-  padding: 0 4px;
-  white-space: nowrap;
-  /* 英文等较长文案：裁切加省略号，不压到相邻选项上（完整文字见 title） */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.notes-view-switch-option[aria-checked='true'] {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  box-shadow: 0 1px 2px hsl(var(--shadow-base) / 0.1);
-}
-
-.notes-view-switch-option:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 1px;
-}
-
-@media (pointer: coarse) {
-  .notes-view-switch-option {
-    min-height: 44px;
-    height: auto;
-  }
-}
-
 /* 单顶栏：活动笔记的保存状态/阅读/页面▾ 并入标题栏标签带右端（对齐 Notion topbar）。
-   标题栏整体 pointer-events:none 以保留拖拽，操作位自身恢复命中。 */
+   标题栏整体 pointer-events:none 以保留拖拽，操作位自身恢复命中。
+   标签栏优先：右端动作默认以紧凑图标呈现，留出 1px 细分割线区隔标签与页面操作。 */
 .notes-titlebar-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  padding-left: 6px;
+  margin-left: 4px;
+  padding-left: 7px;
   pointer-events: auto;
+}
+
+.notes-titlebar-actions:empty {
+  display: none;
+}
+
+.notes-titlebar-actions::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 14px;
+  transform: translateY(-50%);
+  background: var(--notes-hairline, hsl(var(--border) / 60%));
+  pointer-events: none;
 }
 
 .notes-chrome-backlinks-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  align-self: center;
   gap: 5px;
-  height: 24px;
-  padding: 0 9px;
-  margin-left: 6px;
-  border: 1px solid hsl(var(--border));
+  height: 28px;
+  padding: 0 8px;
+  margin-left: 2px;
+  border: 0;
   border-radius: var(--notes-radius-control, 6px);
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background: transparent;
+  color: hsl(var(--muted-foreground));
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
   pointer-events: auto;
   cursor: pointer;
   transition:
     background-color var(--notes-hover-transition),
-    border-color var(--notes-hover-transition),
-    color var(--notes-hover-transition);
+    color var(--notes-hover-transition),
+    transform var(--notes-hover-transition);
+}
+
+/* 标题栏右端「链接」按钮常驻图标态（悬停 title 与 aria-label 保留完整说明），避免挤占标签宽度 */
+.notes-titlebar-tabs .notes-chrome-backlinks-btn {
+  width: 28px;
+  padding: 0;
+  margin-left: 2px;
+  justify-content: center;
+}
+
+.notes-titlebar-tabs .notes-chrome-backlinks-btn > span {
+  display: none;
+}
+
+.notes-titlebar-tabs .notes-titlebar-actions:empty + .notes-chrome-backlinks-btn {
+  margin-left: 6px;
 }
 
 .notes-chrome-backlinks-btn:hover {
   background: hsl(var(--accent));
-  border-color: hsl(var(--ring) / 50%);
+  color: hsl(var(--foreground));
+}
+
+.notes-chrome-backlinks-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .notes-chrome-backlinks-btn[data-active='true'] {
   background: hsl(var(--primary) / 12%);
-  border-color: hsl(var(--primary) / 45%);
+  color: hsl(var(--primary));
+}
+
+.notes-chrome-backlinks-btn[data-active='true']:hover {
+  background: hsl(var(--primary) / 18%);
   color: hsl(var(--primary));
 }
 
 .notes-chrome-backlinks-btn:focus-visible {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
@@ -1631,10 +1685,35 @@
 }
 
 .notes-chrome-backlinks-btn.is-statusbar {
-  height: 19px;
-  padding: 0 7px;
+  height: 20px;
+  padding: 0 6px;
   margin-left: 0;
-  font-size: 10.5px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+/* 触屏：标题栏在 coarse 下升至 44px，图标按钮实占 44×44px 避免与相邻按钮热区重叠 */
+@media (pointer: coarse) {
+  .notes-titlebar-tabs .notes-chrome-backlinks-btn:not(.is-statusbar) {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .notes-chrome-backlinks-btn:not(.is-statusbar) {
+    position: relative;
+  }
+
+  .notes-chrome-backlinks-btn:not(.is-statusbar)::after {
+    content: '';
+    position: absolute;
+    inset: -8px 0;
+  }
+
+  .notes-titlebar-tabs .notes-chrome-backlinks-btn:not(.is-statusbar)::after {
+    display: none;
+  }
 }
 
 /* ── 窄工作台分屏窗口（440–560px）标签栏容器查询：压缩标签与次要文字，不溢出不裁切主操作 ── */
@@ -1650,14 +1729,20 @@
   }
 
   .notes-titlebar-actions {
+    margin-left: 2px;
     padding-left: 2px;
     gap: 1px;
   }
 
-  .notes-chrome-backlinks-btn {
-    width: 26px;
+  .notes-titlebar-actions::before {
+    display: none;
+  }
+
+  .notes-chrome-backlinks-btn,
+  .notes-titlebar-tabs .notes-chrome-backlinks-btn {
+    width: 28px;
     padding: 0;
-    margin-left: 2px;
+    margin-left: 1px;
     justify-content: center;
   }
 
@@ -1666,10 +1751,8 @@
   }
 
   @media (pointer: coarse) {
-    .notes-chrome-backlinks-btn {
-      width: auto;
-      min-width: 44px;
-      min-height: 44px;
+    .notes-chrome-backlinks-btn:not(.is-statusbar)::after {
+      inset: -8px;
     }
   }
 }
@@ -1686,6 +1769,11 @@
 
   .notes-tabs-overflow {
     flex-basis: 28px;
+  }
+
+  .notes-chrome-backlinks-btn,
+  .notes-titlebar-tabs .notes-chrome-backlinks-btn {
+    width: 26px;
   }
 
   @media (pointer: coarse) {

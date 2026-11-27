@@ -32,8 +32,13 @@
  *   再 onCommit(startFrame, null)；
  *   未过启动阈值时取消 / 松手：onMoveDismissed（纯点击）。
  */
+import { addTypedEventListener } from '@/events';
 import type { Frame, Size, SnapZone, WindowPointerCallbacks } from './types';
-import { hitTestSnapZone } from './snapZones';
+import {
+  SNAP_EDGE_THRESHOLD,
+  hitTestSnapZone,
+  snapCornerThreshold,
+} from './snapZones';
 import { computeEdgeSnap, type AxisSnap, type EdgeSnapCandidates } from './edgeSnapping';
 
 export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -173,6 +178,11 @@ export interface PointerEngineOptions {
    * 已武装的结束路径走 onCommit，不触发本回调。
    */
   onMoveDismissed?: () => void;
+  /**
+   * tear-out 后的手势被取消（Esc / blur / capture 丢失）时回调：
+   * 消费方恢复原受管（maximized / tiled）外观，不调用 onCommit 覆写为 floating。
+   */
+  onMoveCancelled?: () => void;
 }
 
 interface PointerSample {
@@ -189,19 +199,145 @@ interface GesturePoint {
   alt: boolean;
 }
 
+interface SuppressedSnapEdges {
+  left: number | null;
+  right: number | null;
+  top: number | null;
+  bottom: number | null;
+}
+
+/** 贴边主动推入触发极值（px）：起始就在吸附带内时，向屏缘主动推到此阈值内即解除抑制 */
+const EDGE_PUSH_UNLOCK_PX = 4;
+
+function computeInitialSuppressedEdges(
+  startLocalX: number,
+  startLocalY: number,
+  desktop: Size,
+): SuppressedSnapEdges {
+  const W = desktop.w;
+  const H = desktop.h;
+  if (W <= 0 || H <= 0) {
+    return { left: null, right: null, top: null, bottom: null };
+  }
+  const edge = SNAP_EDGE_THRESHOLD;
+  const corner = snapCornerThreshold(W);
+  const inDesktopX = startLocalX >= 0 && startLocalX <= W;
+  const inDesktopY = startLocalY >= 0 && startLocalY <= H;
+  const inTL = inDesktopX && inDesktopY && startLocalX <= corner && startLocalY <= corner;
+  const inTR = inDesktopX && inDesktopY && startLocalX >= W - corner && startLocalY <= corner;
+  const inBL = inDesktopX && inDesktopY && startLocalX <= corner && startLocalY >= H - corner;
+  const inBR = inDesktopX && inDesktopY && startLocalX >= W - corner && startLocalY >= H - corner;
+
+  const left = inDesktopX && startLocalX <= edge ? edge : inTL || inBL ? corner : null;
+  const right =
+    inDesktopX && startLocalX >= W - edge
+      ? W - edge
+      : inTR || inBR
+        ? W - corner
+        : null;
+  const top = inDesktopY && startLocalY <= edge ? edge : inTL || inTR ? corner : null;
+  const bottom =
+    inDesktopY && startLocalY >= H - edge
+      ? H - edge
+      : inBL || inBR
+        ? H - corner
+        : null;
+
+  return { left, right, top, bottom };
+}
+
+function updateSuppressedEdges(
+  suppressed: SuppressedSnapEdges,
+  rawLocalX: number,
+  rawLocalY: number,
+  point: GesturePoint,
+  initialPointer: { x: number; y: number },
+  desktop: Size,
+): void {
+  if (point.alt) {
+    suppressed.left = null;
+    suppressed.right = null;
+    suppressed.top = null;
+    suppressed.bottom = null;
+    return;
+  }
+  if (
+    suppressed.top !== null &&
+    (rawLocalY > suppressed.top ||
+      (point.y <= initialPointer.y - MOVE_ARM_THRESHOLD_PX && rawLocalY <= EDGE_PUSH_UNLOCK_PX))
+  ) {
+    suppressed.top = null;
+  }
+  if (
+    suppressed.left !== null &&
+    (rawLocalX > suppressed.left ||
+      (point.x <= initialPointer.x - MOVE_ARM_THRESHOLD_PX && rawLocalX <= EDGE_PUSH_UNLOCK_PX))
+  ) {
+    suppressed.left = null;
+  }
+  if (
+    suppressed.right !== null &&
+    (rawLocalX < suppressed.right ||
+      (point.x >= initialPointer.x + MOVE_ARM_THRESHOLD_PX &&
+        rawLocalX >= desktop.w - EDGE_PUSH_UNLOCK_PX))
+  ) {
+    suppressed.right = null;
+  }
+  if (
+    suppressed.bottom !== null &&
+    (rawLocalY < suppressed.bottom ||
+      (point.y >= initialPointer.y + MOVE_ARM_THRESHOLD_PX &&
+        rawLocalY >= desktop.h - EDGE_PUSH_UNLOCK_PX))
+  ) {
+    suppressed.bottom = null;
+  }
+}
+
+function isZoneSuppressed(zone: Exclude<SnapZone, null>, suppressed: SuppressedSnapEdges): boolean {
+  switch (zone) {
+    case 'top-maximize':
+    case 'top-half':
+      return suppressed.top !== null;
+    case 'left':
+      return suppressed.left !== null;
+    case 'right':
+      return suppressed.right !== null;
+    case 'bottom-half':
+      return suppressed.bottom !== null;
+    case 'tl':
+      return suppressed.top !== null || suppressed.left !== null;
+    case 'tr':
+      return suppressed.top !== null || suppressed.right !== null;
+    case 'bl':
+      return suppressed.bottom !== null || suppressed.left !== null;
+    case 'br':
+      return suppressed.bottom !== null || suppressed.right !== null;
+    default:
+      return false;
+  }
+}
+
 interface ActiveGesture {
   kind: GestureKind;
   edge: ResizeEdge | null;
   pointerId: number;
   captureTarget: Element | null;
+  /** pointerdown 原始视口坐标（不受 tear-out 重锚影响，用于判断主动推入边缘方向） */
+  initialPointer: { x: number; y: number };
   startPointer: { x: number; y: number };
   startFrame: Frame;
+  /** tear-out 发生前的原始受管 frame（Esc 取消时回退到此，不落盘为 floating） */
+  preTearOutFrame: Frame | null;
   /** 纯几何 frame（含 rubber band，不含磁吸偏移） */
   baseFrame: Frame;
   /** 上次回调给消费方的 display frame（base + 磁吸） */
   lastFrame: Frame;
   lastPoint: GesturePoint;
   lastZone: SnapZone;
+  /** 起始指针已落入的边缘吸附带抑制表：防止 tear-out / 贴顶横拖立即被吸回 */
+  suppressedEdges: SuppressedSnapEdges;
+  /** 是否观测到真实主键按下（buttons > 0），用于鼠标丢 pointerup 时安全收尾 */
+  sawButtonsPressed: boolean;
   rafId: number;
   pendingPoint: GesturePoint | null;
   /** 磁吸当前偏移（向 magnetVector(zone) 指数趋近） */
@@ -224,6 +360,8 @@ interface ActiveGesture {
    * resize：起始即为 true。
    */
   armed: boolean;
+  /** 修饰键 keyup 监听卸载器 */
+  disposeKeyUp: (() => void) | null;
 }
 
 interface SettleAnimation {
@@ -335,10 +473,16 @@ export class WindowPointerEngine {
       return;
     }
     const cb = this.opts.getCallbacks();
+    const restoreFrame = g.preTearOutFrame ?? g.startFrame;
+    const wasTornOut = g.preTearOutFrame !== null;
     this.teardown();
-    cb.onFrameChange(g.startFrame);
+    cb.onFrameChange(restoreFrame);
     if (g.lastZone !== null) cb.onSnapZoneChange(null);
-    cb.onCommit(g.startFrame, null);
+    if (wasTornOut && this.opts.onMoveCancelled) {
+      this.opts.onMoveCancelled();
+      return;
+    }
+    cb.onCommit(restoreFrame, null);
   }
 
   dispose(): void {
@@ -382,17 +526,29 @@ export class WindowPointerEngine {
     };
     // resize 立即武装；move 等阈值
     const armed = kind === 'resize';
+    const suppressedEdges =
+      kind === 'move' && this.opts.enableSnap !== false
+        ? computeInitialSuppressedEdges(
+            e.clientX - desktopOffset.x,
+            e.clientY - desktopOffset.y,
+            this.opts.getDesktopSize(),
+          )
+        : { left: null, right: null, top: null, bottom: null };
     this.gesture = {
       kind,
       edge,
       pointerId: e.pointerId,
       captureTarget: target,
+      initialPointer: { x: e.clientX, y: e.clientY },
       startPointer: { x: e.clientX, y: e.clientY },
       startFrame,
+      preTearOutFrame: null,
       baseFrame: startFrame,
       lastFrame: startFrame,
       lastPoint: startPoint,
       lastZone: null,
+      suppressedEdges,
+      sawButtonsPressed: typeof e.buttons === 'number' && e.buttons > 0,
       rafId: 0,
       pendingPoint: null,
       magnetOffset: { x: 0, y: 0 },
@@ -402,12 +558,20 @@ export class WindowPointerEngine {
       reduced: prefersReducedMotion(),
       desktopOffset,
       armed,
+      disposeKeyUp: null,
     };
 
-    window.addEventListener('pointermove', this.handlePointerMove);
-    window.addEventListener('pointerup', this.handlePointerUp);
-    window.addEventListener('pointercancel', this.handlePointerCancel);
+    // 捕获阶段监听 pointermove / pointerup / pointercancel：
+    // 防止任意子树组件 stopPropagation 吞掉 pointerup，进而触发 lostpointercapture 把刚拖完的窗口误回退。
+    window.addEventListener('pointermove', this.handlePointerMove, true);
+    window.addEventListener('pointerup', this.handlePointerUp, true);
+    window.addEventListener('pointercancel', this.handlePointerCancel, true);
     window.addEventListener('keydown', this.handleKeyDown, true);
+    this.gesture.disposeKeyUp = addTypedEventListener(
+      'keyup',
+      (_detail, ev) => this.handleKeyUp(ev as unknown as KeyboardEvent),
+      true,
+    );
     window.addEventListener('blur', this.handleWindowBlur);
     target?.addEventListener('lostpointercapture', this.handleLostCapture as EventListener);
     e.preventDefault?.();
@@ -441,6 +605,7 @@ export class WindowPointerEngine {
       frame.w !== before.w ||
       frame.h !== before.h
     ) {
+      g.preTearOutFrame = before;
       g.startPointer = { x: point.x, y: point.y };
       g.startFrame = frame;
       g.baseFrame = frame;
@@ -455,6 +620,13 @@ export class WindowPointerEngine {
   private handlePointerMove = (e: PointerEvent): void => {
     const g = this.gesture;
     if (!g || e.pointerId !== g.pointerId) return;
+    if (typeof e.buttons === 'number' && e.buttons > 0) {
+      g.sawButtonsPressed = true;
+    } else if (g.sawButtonsPressed && e.pointerType === 'mouse' && e.buttons === 0) {
+      // 鼠标在视口外松手导致 pointerup 丢失时，回到页面首帧即安全落位，避免手势永久卡死
+      this.handlePointerUp(e);
+      return;
+    }
     g.pendingPoint = {
       x: e.clientX,
       y: e.clientY,
@@ -500,14 +672,39 @@ export class WindowPointerEngine {
 
     g.baseFrame = g.kind === 'move' ? this.computeMoveFrame(point) : this.computeResizeFrame(point);
 
-    // 吸附命中（仅 move）——先更新 zone，磁吸目标依赖它
+    // 吸附命中（仅 move）——先更新 zone，磁吸目标依赖它。
+    // 顶栏（y ∈ [-desktopOffset.y - 12, 0)）与紧贴屏幕左右/底边微越界时钳至桌面边缘，
+    // 避免用户把窗顶到菜单栏最大化或贴边平铺时热区瞬间闪烁丢失。
     if (g.kind === 'move' && this.opts.enableSnap !== false) {
-      const zone = hitTestSnapZone(
-        { x: point.x - g.desktopOffset.x, y: point.y - g.desktopOffset.y },
-        this.opts.getDesktopSize(),
+      const desktop = this.opts.getDesktopSize();
+      const rawLocalX = point.x - g.desktopOffset.x;
+      const rawLocalY = point.y - g.desktopOffset.y;
+      updateSuppressedEdges(
+        g.suppressedEdges,
+        rawLocalX,
+        rawLocalY,
+        point,
+        g.initialPointer,
+        desktop,
+      );
+      const topOvershoot = Math.max(12, g.desktopOffset.y + 12);
+      const snapX =
+        rawLocalX >= -12 && rawLocalX <= desktop.w + 12
+          ? Math.min(desktop.w, Math.max(0, rawLocalX))
+          : rawLocalX;
+      const snapY =
+        rawLocalY >= -topOvershoot && rawLocalY <= desktop.h + 24
+          ? Math.min(desktop.h, Math.max(0, rawLocalY))
+          : rawLocalY;
+      let zone = hitTestSnapZone(
+        { x: snapX, y: snapY },
+        desktop,
         g.lastZone,
         { altKey: point.alt },
       );
+      if (zone !== null && isZoneSuppressed(zone, g.suppressedEdges)) {
+        zone = null;
+      }
       if (zone !== g.lastZone) {
         g.lastZone = zone;
         cb.onSnapZoneChange(zone);
@@ -515,13 +712,12 @@ export class WindowPointerEngine {
     }
 
     // 邻窗边缘磁吸（Sequoia）：候选线为手势起始快照，帧内纯几何求修正。
-    // - 平铺吸附区命中时让位（以平铺为准，修正清零）；
-    // - ⌥/Alt 按住临时禁用（macOS 逃逸惯例；⌥ 同时也在扩大平铺热区，
-    //   语义一致——按 ⌥ 即表达「我要平铺」，不做邻窗对齐）；
-    // - 脱离：base frame 拖过阈值后修正自然消失（含滞回，见 edgeSnapping）。
+    // - ⌥/Alt 按住临时禁用（macOS 逃逸惯例）；
+    // - 进入平铺热区时不再突然清零修正，避免窗口在 24px 边缘线处横向抽动 8px
+    //   （松手若命中平铺区由 setDisplayMode 接管最终几何）。
     let edgeDx = 0;
     let edgeDy = 0;
-    if (g.kind === 'move' && g.edgeCandidates && g.lastZone === null && !point.alt) {
+    if (g.kind === 'move' && g.edgeCandidates && !point.alt) {
       const snap = computeEdgeSnap(g.baseFrame, g.edgeCandidates, g.edgeSnap);
       g.edgeSnap = { x: snap.x, y: snap.y };
       edgeDx = snap.dx;
@@ -547,15 +743,21 @@ export class WindowPointerEngine {
       g.magnetOffset = { x: ox, y: oy };
     }
 
-    const frame: Frame =
-      g.kind === 'move'
-        ? {
-            x: g.baseFrame.x + edgeDx + g.magnetOffset.x,
-            y: g.baseFrame.y + edgeDy + g.magnetOffset.y,
-            w: g.baseFrame.w,
-            h: g.baseFrame.h,
-          }
-        : g.baseFrame;
+    let frame: Frame;
+    if (g.kind === 'move') {
+      const { minX, maxX, maxY } = this.moveBounds(g.baseFrame.w);
+      // 邻窗磁吸修正后仍须守住桌面可见边界，防止高窗或偏置邻窗把标题栏拉进顶部菜单栏下方（y < 0）
+      const snappedX = Math.min(maxX, Math.max(minX, g.baseFrame.x + edgeDx));
+      const snappedY = Math.min(maxY, Math.max(0, g.baseFrame.y + edgeDy));
+      frame = {
+        x: snappedX + g.magnetOffset.x,
+        y: snappedY + g.magnetOffset.y,
+        w: g.baseFrame.w,
+        h: g.baseFrame.h,
+      };
+    } else {
+      frame = g.baseFrame;
+    }
 
     if (!framesEqual(frame, g.lastFrame)) {
       g.lastFrame = frame;
@@ -670,9 +872,35 @@ export class WindowPointerEngine {
       }
     }
 
-    // 3. min / 桌面尺寸硬钳位（无软阻尼 → 松手无需 settle）
-    w = Math.min(Math.max(w, minW), desktop.w);
-    h = Math.min(Math.max(h, minH), desktop.h);
+    // 3. 按移动边计算可视桌面硬边界，保证锚点不动且移动边永不越出桌面（北边不钻进菜单栏）；
+    //    若窗口起始已半停靠屏外，不强行在首帧突跳收缩，仍允许平滑缩回屏内。
+    const maxW = edge.includes('w')
+      ? Math.min(desktop.w, Math.max(minW, sf.w, sf.x + sf.w))
+      : edge.includes('e')
+        ? Math.min(desktop.w, Math.max(minW, sf.w, desktop.w - sf.x))
+        : desktop.w;
+    const maxH = edge.includes('n')
+      ? Math.min(desktop.h, Math.max(minH, sf.y + sf.h))
+      : edge.includes('s')
+        ? Math.min(desktop.h, Math.max(minH, sf.h, desktop.h - sf.y))
+        : desktop.h;
+
+    if (point.shift && sf.w > 0 && sf.h > 0) {
+      const ratio = sf.w / sf.h;
+      const clampedW = Math.min(Math.max(w, minW), maxW);
+      const clampedH = Math.min(Math.max(h, minH), maxH);
+      // 哪一轴被边界收得更紧就以该轴为主重新推导另一轴，兼顾比例与不越界
+      if (clampedW / ratio <= maxH && clampedW / ratio >= minH) {
+        w = clampedW;
+        h = clampedW / ratio;
+      } else {
+        h = clampedH;
+        w = Math.min(Math.max(clampedH * ratio, minW), maxW);
+      }
+    } else {
+      w = Math.min(Math.max(w, minW), maxW);
+      h = Math.min(Math.max(h, minH), maxH);
+    }
 
     // 4. 锚点从起始 frame 派生：对角/对边严格固定（x+w、y+h 精确守恒，无漂移）
     const x = edge.includes('w') ? sf.x + sf.w - w : sf.x;
@@ -738,12 +966,16 @@ export class WindowPointerEngine {
         edge: null,
         pointerId: 0,
         captureTarget: null,
+        initialPointer: { x: 0, y: 0 },
         startPointer: { x: 0, y: 0 },
         startFrame,
+        preTearOutFrame: null,
         baseFrame: last,
         lastFrame: last,
         lastPoint: { x: 0, y: 0, shift: false, alt: false },
         lastZone: null,
+        suppressedEdges: { left: null, right: null, top: null, bottom: null },
+        sawButtonsPressed: false,
         rafId: 0,
         pendingPoint: null,
         magnetOffset: { x: 0, y: 0 },
@@ -753,6 +985,7 @@ export class WindowPointerEngine {
         reduced: false,
         desktopOffset: { x: 0, y: 0 },
         armed: true,
+        disposeKeyUp: null,
       });
       const t = roundFrame(rest.frame);
       const dist = Math.max(Math.abs(t.x - last.x), Math.abs(t.y - last.y));
@@ -829,11 +1062,36 @@ export class WindowPointerEngine {
     this.cancel();
   };
 
+  private syncModifierKey(key: string, pressed: boolean): void {
+    const g = this.gesture;
+    if (!g || !g.armed) return;
+    if (key === 'Alt' && g.kind === 'move') {
+      const base = g.pendingPoint ?? g.lastPoint;
+      if (base.alt === pressed) return;
+      g.pendingPoint = { ...base, alt: pressed };
+      if (g.rafId === 0) g.rafId = requestAnimationFrame(this.processFrame);
+    } else if (key === 'Shift' && g.kind === 'resize') {
+      const base = g.pendingPoint ?? g.lastPoint;
+      if (base.shift === pressed) return;
+      g.pendingPoint = { ...base, shift: pressed };
+      if (g.rafId === 0) g.rafId = requestAnimationFrame(this.processFrame);
+    }
+  }
+
   private handleKeyDown = (e: KeyboardEvent): void => {
-    if (!this.gesture || e.key !== 'Escape') return;
-    e.preventDefault();
-    e.stopPropagation();
-    this.cancel();
+    if (!this.gesture) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.cancel();
+      return;
+    }
+    this.syncModifierKey(e.key, true);
+  };
+
+  private handleKeyUp = (e: KeyboardEvent): void => {
+    if (!this.gesture) return;
+    this.syncModifierKey(e.key, false);
   };
 
   private handleWindowBlur = (): void => {
@@ -846,10 +1104,12 @@ export class WindowPointerEngine {
     if (g.rafId !== 0) {
       cancelAnimationFrame(g.rafId);
     }
-    window.removeEventListener('pointermove', this.handlePointerMove);
-    window.removeEventListener('pointerup', this.handlePointerUp);
-    window.removeEventListener('pointercancel', this.handlePointerCancel);
+    window.removeEventListener('pointermove', this.handlePointerMove, true);
+    window.removeEventListener('pointerup', this.handlePointerUp, true);
+    window.removeEventListener('pointercancel', this.handlePointerCancel, true);
     window.removeEventListener('keydown', this.handleKeyDown, true);
+    g.disposeKeyUp?.();
+    g.disposeKeyUp = null;
     window.removeEventListener('blur', this.handleWindowBlur);
     g.captureTarget?.removeEventListener('lostpointercapture', this.handleLostCapture as EventListener);
     if (g.captureTarget && typeof (g.captureTarget as Element).releasePointerCapture === 'function') {

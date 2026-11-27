@@ -5,8 +5,8 @@ import { CaretLeft, CaretRight, Terminal, Warning } from '@phosphor-icons/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { DsDialog, DsDialogBody } from '@/components/ui/DsDialog';
-import { TextSwap } from '@/components/ui/TextSwap';
 import { WindowControls } from '@/components/WindowControls';
 import { DesktopShellTitleEditor } from '@/components/DesktopShellTitleEditor';
 import { NotificationContainer } from '@/components/NotificationContainer';
@@ -38,11 +38,17 @@ import { Z_INDEX } from '@/config/zIndex';
 import type { CurrentView } from '@/types/navigation';
 import type { ShellView } from '@/ui-kernel/contracts/shell';
 import { PageLoadingFallback } from '@/lazyComponents';
-import { CardsHubTabs } from './CardsHubTabs';
 import { DesktopShellSidebarLayers } from './DesktopShellSidebarLayers';
 import { DesktopSidebarResizeHandle } from './DesktopSidebarResizeHandle';
 import { DesktopShellSidebarPortalProvider } from './DesktopShellSidebarPortal';
 import { DesktopShellHeaderPortalProvider } from './DesktopShellHeaderPortal';
+import {
+  DesktopHeaderActiveViewSync,
+  DesktopHeaderProvider,
+  useDesktopHeaderContextSafe,
+  type DesktopBreadcrumbItem,
+} from '@/components/layout/DesktopHeaderContext';
+import { DesktopBreadcrumbBar } from '@/components/layout/DesktopBreadcrumbBar';
 import {
   DESKTOP_SHELL,
   getShellSidebarMaxWidth,
@@ -156,7 +162,7 @@ export function AppShellChrome(props: AppShellChromeProps) {
     commandPaletteNavigate, toggleDarkMode, isDarkMode, switchLanguage,
     handleMobileAppNavigate, mobileHeaderCanGoBack, handleMobileHeaderBack,
     unifiedCanGoBack, unifiedCanGoForward, unifiedGoBack, unifiedGoForward,
-    desktopShellViewLabel, desktopShellHeaderBreadcrumb, cardsHubMobileTabs, handleViewChange, setCurrentView,
+    desktopShellViewLabel, desktopShellHeaderBreadcrumb, cardsHubMobileTabs, setCurrentView,
     layout, interactions, toggleDesktopWindowMaximize, activeShell,
     currentChatHeaderTitle, currentChatHeaderGroupName, currentChatHeaderSessionId,
     saveCurrentChatHeaderTitle, setDesktopPageHeaderTarget, setDesktopChatHeaderTarget,
@@ -191,12 +197,10 @@ export function AppShellChrome(props: AppShellChromeProps) {
     handleHeaderHotzoneMouseUp,
     handleHeaderHotzoneMouseLeave,
     handleCreateChatSession,
-    openCommandPalette,
   } = interactions;
 
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession');
-  const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label');
   const desktopHeaderIconButtonSize = 32;
   const desktopHeaderControlGap = 4;
   // 收起态标题栏前导控件 = 侧栏开关 + DesktopHeaderNavControls 的三个按钮
@@ -272,6 +276,8 @@ export function AppShellChrome(props: AppShellChromeProps) {
         }}
       >
       <LearningHubNavigationProvider>
+      <DesktopHeaderProvider>
+      <DesktopHeaderActiveViewSync activeView={currentView} />
       <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
       <DesktopShellHeaderPortalProvider value={desktopShellHeaderPortalValue}>
       <div
@@ -359,96 +365,37 @@ export function AppShellChrome(props: AppShellChromeProps) {
 
               <div
                 data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-                className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
+                className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between gap-2 px-5"
                 style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
               >
+                <DesktopWorkspaceLeading
+                  t={t}
+                  activeShell={activeShell}
+                  desktopShellViewLabel={desktopShellViewLabel}
+                  desktopShellHeaderBreadcrumb={desktopShellHeaderBreadcrumb}
+                  currentChatHeaderSessionId={currentChatHeaderSessionId}
+                  currentChatHeaderTitle={currentChatHeaderTitle}
+                  currentChatHeaderGroupName={currentChatHeaderGroupName}
+                  saveCurrentChatHeaderTitle={saveCurrentChatHeaderTitle}
+                  onCommandPaletteReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }}
+                />
+
+                {/* 弹性空白区 + 兼容历史 toolbarSlot（不挂 data-no-drag，保证全站空白区可拖拽/双击最大化） */}
                 {activeShell?.toolbarSlot ? (
                   <div
                     ref={setDesktopPageHeaderTarget}
                     className="h-full min-w-0 flex-1"
-                    data-no-drag
                     data-shell-slot={activeShell.toolbarSlot}
-                  />
-                ) : activeShell?.chatHeader && currentChatHeaderSessionId && currentChatHeaderTitle ? (
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
-                    <div className="min-w-0 flex-1 pl-1" data-no-drag>
-                      <DesktopShellTitleEditor
-                        key={currentChatHeaderSessionId}
-                        sessionId={currentChatHeaderSessionId}
-                        title={desktopShellViewLabel}
-                        renameLabel={t('chatV2:page.renameSession')}
-                        emptyTitleError={t('chatV2:page.renameEmptyError')}
-                        saveError={t('chatV2:page.renameFailed')}
-                        onSave={saveCurrentChatHeaderTitle}
-                        className="desktop-shell-header-title"
-                      />
-                    </div>
-                    {/* goal 模式 P0：会话目标状态 chip（goal 为 null 时自渲染空） */}
-                    <GoalStatusChip sessionId={currentChatHeaderSessionId} />
-                  </div>
-                ) : (
-                  <div
-                    className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
-                    data-no-drag
-                    data-shell-hotzone="desktop-title"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={desktopHeaderTitleHotzoneLabel}
-                    onMouseDown={handleHeaderHotzoneMouseDown}
-                    onMouseMove={handleHeaderHotzoneMouseMove}
-                    onMouseUp={handleHeaderHotzoneMouseUp}
-                    onMouseLeave={handleHeaderHotzoneMouseLeave}
-                    onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
-                    onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
-                  >
-                    <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
-
-                    <div className="min-w-0 flex-1 pl-1">
-                      <div className="min-w-0 desktop-shell-header-title">
-                        {desktopShellHeaderBreadcrumb ? (
-                          <span
-                            className="flex min-w-0 items-center gap-1.5"
-                            data-shell-header-breadcrumb="true"
-                          >
-                            <span className="shrink-0 text-muted-foreground">
-                              {desktopShellViewLabel}
-                            </span>
-                            <span className="shrink-0 text-muted-foreground/50" aria-hidden="true">
-                              /
-                            </span>
-                            <TextSwap
-                              text={desktopShellHeaderBreadcrumb}
-                              className="block min-w-0 truncate"
-                            />
-                          </span>
-                        ) : (
-                          <TextSwap
-                            text={desktopShellViewLabel}
-                            className="block max-w-full truncate"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 闪卡中心分区切换：放在标题热区之外（热区点击会打开命令面板） */}
-                {activeShell?.cardsHubTabs ? (
-                  <CardsHubTabs
-                    variant="titlebar"
-                    currentView={currentView}
-                    onNavigate={handleViewChange}
-                    className="ml-3"
                   />
                 ) : null}
 
                 <div
                   ref={setDesktopChatHeaderTarget}
                   className="flex h-full min-w-0 flex-1 items-center justify-end"
-                  data-no-drag
                   data-shell-slot="chat-search"
                 />
+
+                <DesktopWorkspaceActions />
 
                 <div className="flex shrink-0 items-center gap-2" data-no-drag>
                   {isWindows() && <WindowControls />}
@@ -500,12 +447,12 @@ export function AppShellChrome(props: AppShellChromeProps) {
         >
           <MigrationStatusBanner />
 
-          {/* 🆕 维护模式全局横幅 */}
+          {/* 维护模式全局横幅 */}
           {maintenanceMode && (
             <div
               role="status"
               aria-live="polite"
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-warning/15 border-b border-warning/30 text-warning text-sm"
             >
               <Warning size={16} className="shrink-0" />
               <span className="font-medium shrink-0">{t('common:maintenance.banner_title')}</span>
@@ -515,7 +462,10 @@ export function AppShellChrome(props: AppShellChromeProps) {
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                className={cn(
+                  'shrink-0 text-warning hover:bg-warning/20 hover:text-warning px-2 text-xs',
+                  coarseHitClassFor24,
+                )}
                 onClick={() => {
                   if (maintenanceRequiresRestart) {
                     void (async () => {
@@ -634,6 +584,7 @@ export function AppShellChrome(props: AppShellChromeProps) {
       {/* 调试面板入口由全局悬浮按钮统一控制 */}
       </DesktopShellHeaderPortalProvider>
       </DesktopShellSidebarPortalProvider>
+      </DesktopHeaderProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderNavProvider>
       </MobileHeaderProvider>
@@ -645,7 +596,111 @@ export function AppShellChrome(props: AppShellChromeProps) {
 }
 
 /**
- * 命令面板按钮 - 用于顶部栏
+ * 桌面端右侧顶栏左区：统一固定 `[>_ 命令面板] + [面包屑]` 骨架。
+ * 仅本子组件订阅 DesktopHeaderContext，避免页面注册顶栏配置时触发整个 AppShellChrome 重渲染。
+ */
+function DesktopWorkspaceLeading({
+  t,
+  activeShell,
+  desktopShellViewLabel,
+  desktopShellHeaderBreadcrumb,
+  currentChatHeaderSessionId,
+  currentChatHeaderTitle,
+  currentChatHeaderGroupName,
+  saveCurrentChatHeaderTitle,
+  onCommandPaletteReady,
+}: {
+  t: TFunction;
+  activeShell: ShellView['shell'] | undefined;
+  desktopShellViewLabel: string;
+  desktopShellHeaderBreadcrumb?: string | null;
+  currentChatHeaderSessionId: string | null;
+  currentChatHeaderTitle: string;
+  currentChatHeaderGroupName: string;
+  saveCurrentChatHeaderTitle: (sessionId: string, title: string) => Promise<void>;
+  onCommandPaletteReady: (trigger: (() => void) | null) => void;
+}) {
+  const headerCtx = useDesktopHeaderContextSafe();
+  const registeredConfig = headerCtx?.config ?? null;
+
+  const chatBreadcrumbs: DesktopBreadcrumbItem[] | null =
+    activeShell?.chatHeader && currentChatHeaderSessionId && currentChatHeaderTitle
+      ? [
+          {
+            id: 'chat-root',
+            label: t('sidebar:navigation.sessions', { defaultValue: '会话' }),
+          },
+          ...(currentChatHeaderGroupName
+            ? [{ id: 'chat-group', label: currentChatHeaderGroupName }]
+            : []),
+          {
+            id: `chat-session-${currentChatHeaderSessionId}`,
+            label: desktopShellViewLabel,
+            render: (
+              <DesktopShellTitleEditor
+                key={currentChatHeaderSessionId}
+                sessionId={currentChatHeaderSessionId}
+                title={desktopShellViewLabel}
+                renameLabel={t('chatV2:page.renameSession')}
+                emptyTitleError={t('chatV2:page.renameEmptyError')}
+                saveError={t('chatV2:page.renameFailed')}
+                onSave={saveCurrentChatHeaderTitle}
+                className="desktop-shell-header-title"
+              />
+            ),
+          },
+        ]
+      : null;
+
+  const fallbackBreadcrumbs: DesktopBreadcrumbItem[] = desktopShellHeaderBreadcrumb
+    ? [
+        { id: 'view-root', label: desktopShellViewLabel },
+        { id: 'view-sub', label: desktopShellHeaderBreadcrumb },
+      ]
+    : [{ id: 'view-root', label: desktopShellViewLabel }];
+
+  const breadcrumbs =
+    chatBreadcrumbs ??
+    (registeredConfig?.breadcrumbs && registeredConfig.breadcrumbs.length > 0
+      ? registeredConfig.breadcrumbs
+      : fallbackBreadcrumbs);
+
+  const meta = chatBreadcrumbs ? (
+    <>
+      <GoalStatusChip sessionId={currentChatHeaderSessionId!} />
+      {registeredConfig?.meta}
+    </>
+  ) : (
+    registeredConfig?.meta
+  );
+
+  return (
+    <div className="flex min-w-0 max-w-full shrink items-center gap-2.5">
+      <CommandPaletteButton onOpenReady={onCommandPaletteReady} />
+      <DesktopBreadcrumbBar items={breadcrumbs} meta={meta} />
+    </div>
+  );
+}
+
+/** 桌面端右侧顶栏动作区（仅在当前视图注册 actions 时渲染） */
+function DesktopWorkspaceActions() {
+  const headerCtx = useDesktopHeaderContextSafe();
+  const actions = headerCtx?.config?.actions;
+  if (!actions) return null;
+
+  return (
+    <div
+      data-no-drag
+      data-shell-header-actions="true"
+      className="flex shrink-0 items-center gap-1.5"
+    >
+      {actions}
+    </div>
+  );
+}
+
+/**
+ * 命令面板按钮 - 用于顶部栏（全站常驻，点击仅打开命令面板）
  */
 function CommandPaletteButton({
   className,
@@ -669,15 +724,13 @@ function CommandPaletteButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* 外层标题热区本身就是可聚焦的「命令面板」按钮：内层图标按钮不再占一个 Tab 位，
-            但保留无障碍名（此前为空，读屏读作无名按钮） */}
         <DsButton
           variant="ghost"
           size="icon"
+          data-no-drag
           onClick={open}
-          tabIndex={-1}
           aria-label={t('common:command_palette_label')}
-          className={cn('desktop-shell-toolbar-button', className)}
+          className={cn('desktop-shell-toolbar-button shrink-0', className)}
         >
           <Terminal size={16} />
         </DsButton>

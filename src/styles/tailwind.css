@@ -37,6 +37,20 @@
     font-family: var(--font-family), var(--font-math-fallback), sans-serif;
   }
 
+  /* 标题默认字阶放进 @layer base，避免未分层规则碾压 @layer utilities 的 text-* 工具类 */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: var(--letter-spacing-normal);
+    line-height: var(--line-height-tight);
+  }
+
+  h1 { font-size: var(--font-size-3xl); }
+  h2 { font-size: var(--font-size-2xl); }
+  h3 { font-size: var(--font-size-xl); }
+  h4 { font-size: var(--font-size-lg); }
+  h5 { font-size: var(--font-size-base); }
+  h6 { font-size: var(--font-size-sm); color: hsl(var(--muted-foreground)); }
+
   /*
    * Native-feel: chrome is not selectable by default.
    * --------------------------------------------------

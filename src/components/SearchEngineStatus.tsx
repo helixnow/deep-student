@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { 
-  CheckCircle, 
-  XCircle, 
-  Warning, 
-  Clock, 
-  ArrowClockwise,
+import {
+  CheckCircle,
+  CircleNotch,
+  XCircle,
+  Warning,
+  Clock,
   Lightning,
   Globe
 } from '@phosphor-icons/react';
@@ -50,7 +50,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       response_time: undefined,
     }));
     setStatuses(initialStatuses as EngineStatus[]);
-  }, [engines]);
+  }, [engines, t]);
 
   // 测试单个引擎
   const testEngine = async (engineId: string): Promise<EngineStatus> => {
@@ -115,24 +115,24 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
   const getStatusIcon = (status: EngineStatus['status'], size = 'w-4 h-4') => {
     switch (status) {
       case 'available':
-        return <CheckCircle className={`${size} text-green-500`} />;
+        return <CheckCircle className={`${size} text-success`} aria-hidden="true" />;
       case 'unavailable':
-        return <XCircle className={`${size} text-red-500`} />;
+        return <XCircle className={`${size} text-destructive`} aria-hidden="true" />;
       case 'testing':
-        return <ArrowClockwise className={`${size} text-blue-500 animate-spin`} />;
+        return <CircleNotch className={`${size} text-info animate-spin motion-reduce:animate-none`} aria-hidden="true" />;
       default:
-        return <Warning className={`${size} text-muted-foreground`} />;
+        return <Warning className={`${size} text-muted-foreground`} aria-hidden="true" />;
     }
   };
 
   const getStatusColor = (status: EngineStatus['status']) => {
     switch (status) {
       case 'available':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-success/10 text-success border-success/30';
       case 'unavailable':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-destructive/10 text-destructive border-destructive/30';
       case 'testing':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-info/10 text-info border-info/30';
       default:
         return 'bg-muted text-muted-foreground border-border';
     }
@@ -153,9 +153,9 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
   return (
     <div className="space-y-4">
       {/* 控制面板 */}
-      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+      <div className="flex items-center justify-between p-3 bg-muted/50 border border-border rounded-lg">
         <div className="flex items-center space-x-2">
-          <Globe size={16} className="text-muted-foreground" />
+          <Globe size={16} className="text-muted-foreground" aria-hidden="true" />
           <span className="text-sm font-medium text-foreground">{t('searchEngine.title')}</span>
           {lastCheckTime && (
             <span className="text-xs text-muted-foreground">
@@ -163,12 +163,17 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
             </span>
           )}
         </div>
-        
-        <DsButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 [@media(pointer:coarse)]:!min-h-11 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+
+        <DsButton
+          variant="default"
+          size="sm"
+          onClick={testAllEngines}
+          disabled={testing || engines.filter(e => e.enabled).length === 0}
+        >
           {testing ? (
-            <ArrowClockwise size={16} className="animate-spin" />
+            <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
           ) : (
-            <Lightning size={16} />
+            <Lightning size={16} aria-hidden="true" />
           )}
           <span>{testing ? t('searchEngine.testing') : t('searchEngine.testAvailability')}</span>
         </DsButton>
@@ -210,17 +215,17 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       </div>
 
       {/* 摘要统计 */}
-      <div className="flex items-center justify-center space-x-6 p-3 bg-gray-50 rounded-lg text-sm">
+      <div className="flex items-center justify-center space-x-6 p-3 bg-muted/50 border border-border rounded-lg text-sm text-foreground">
         <div className="flex items-center space-x-1">
-          <CheckCircle size={16} className="text-green-500" />
+          <CheckCircle size={16} className="text-success" aria-hidden="true" />
           <span>{t('searchEngine.available')}: {statuses.filter(s => s.status === 'available').length}</span>
         </div>
         <div className="flex items-center space-x-1">
-          <XCircle size={16} className="text-red-500" />
+          <XCircle size={16} className="text-destructive" aria-hidden="true" />
           <span>{t('searchEngine.unavailable')}: {statuses.filter(s => s.status === 'unavailable').length}</span>
         </div>
         <div className="flex items-center space-x-1">
-          <Warning size={16} className="text-muted-foreground" />
+          <Warning size={16} className="text-muted-foreground" aria-hidden="true" />
           <span>{t('searchEngine.untested')}: {statuses.filter(s => s.status === 'unknown').length}</span>
         </div>
       </div>

@@ -26,7 +26,7 @@ import {
   ListChecks,
   MagnifyingGlass,
   Plus,
-  SortAscending,
+  SlidersHorizontal,
   X,
 } from '@phosphor-icons/react';
 import {
@@ -40,23 +40,32 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/shad/Select';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuLabel,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
 import {
   TITLEBAR_CONTROL_CLASS,
   TITLEBAR_INPUT_CLASS,
   TITLEBAR_TITLE_CLASS,
-} from '@/app/shell/titlebarUiTokens';
+} from '@/components/layout/desktopTitlebarTokens';
 import { useTodoStore } from '../stores/useTodoStore';
 import { PomodoroPanel } from '@/features/pomodoro';
 import '../styles/todo-motion.css';
-import type { EisenhowerQuadrant, TodoDueBucket, TodoItem, TodoSortBy } from '../types';
+import type { EisenhowerQuadrant, TodoDueBucket, TodoItem, TodoPriority, TodoSortBy } from '../types';
 import {
+  PRIORITY_CONFIG,
   addDays,
   classifyEisenhower,
   formatLocalDate,
@@ -69,12 +78,11 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { isEffectivelyVisible } from '../utils/domVisibility';
-import { TodoItemRow, SortableTodoItemRow } from './main/TodoItemRow';
+import { PriorityIcon, TodoItemRow, SortableTodoItemRow } from './main/TodoItemRow';
 import { TodoRowsList, type TodoRowSpec } from './main/TodoRowsList';
 import { TodoItemDetail } from './main/TodoItemDetail';
 import { MatrixBoard } from './main/MatrixBoard';
 import { TodoQuickAdd } from './main/TodoQuickAdd';
-import { PriorityFilterMenu } from './main/PriorityFilterMenu';
 import { BulkActionBar } from './main/BulkActionBar';
 import { mergeBatchItemsResults, runChunkedBulk } from './main/bulkChunks';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -266,14 +274,35 @@ interface TodoMainPanelProps {
    * 提供时工具栏整体迁入窗口标题栏，页内不再重复渲染一条顶栏。
    */
   titlebarPortalTarget?: HTMLElement | null;
+  /**
+   * 移动端：工具栏操作已收进全局 UnifiedMobileHeader（搜索 + 更多菜单），
+   * 隐藏页内冗余的 .study-shell-toolbar 顶栏行，仅在搜索开启时展开内联搜索框。
+   */
+  hideMobileToolbar?: boolean;
+  /** 移动端受控搜索展开态（由 TodoContentView 顶栏搜索按钮驱动） */
+  mobileSearchOpen?: boolean;
+  onMobileSearchOpenChange?: (open: boolean) => void;
+  /** 移动端受控批量多选态（由 TodoContentView 顶栏「更多」菜单驱动） */
+  checkMode?: boolean;
+  onCheckModeChange?: (active: boolean) => void;
 }
 
-export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubView, titlebarPortalTarget }) => {
-  const { t } = useTranslation(['todo', 'common']);
+export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
+  onOpenPomodoroSubView,
+  titlebarPortalTarget,
+  hideMobileToolbar = false,
+  mobileSearchOpen: mobileSearchOpenProp,
+  onMobileSearchOpenChange,
+  checkMode: checkModeProp,
+  onCheckModeChange,
+}) => {
+  const { t } = useTranslation(['todo', 'common', 'sidebar']);
   const { isSmallScreen } = useBreakpoint();
-  // workbench 窗口标题栏槽位优先；其次 legacy 壳标题栏。两者互斥（壳模式二选一）
-  const toolbarPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
-  const inTitlebar = Boolean(toolbarPortalTarget);
+  // workbench 窗口标题栏槽位走 portal；经典壳桌面端走统一 useDesktopHeader（面包屑范式）
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const toolbarPortalTarget = titlebarPortalTarget ?? null;
+  const useClassicDesktopHeader = !isSmallScreen && !toolbarPortalTarget && hasDesktopHeaderHost;
+  const inTitlebar = Boolean(toolbarPortalTarget) || useClassicDesktopHeader;
 
   // 细粒度订阅：只在各自切片变化时重渲染（zustand action 引用稳定）
   const items = useTodoStore((s) => s.items);
@@ -310,8 +339,17 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 
-  // 窄屏：搜索折叠为图标，点击后在工具栏下方展开内联输入行
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // 窄屏：搜索折叠为图标（或由全局顶栏触发），开启后在顶部展开内联输入行
+  const [internalMobileSearchOpen, setInternalMobileSearchOpen] = useState(false);
+  const mobileSearchOpen = mobileSearchOpenProp ?? internalMobileSearchOpen;
+  const setMobileSearchOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === 'function' ? next(mobileSearchOpen) : next;
+      if (onMobileSearchOpenChange) onMobileSearchOpenChange(resolved);
+      else setInternalMobileSearchOpen(resolved);
+    },
+    [mobileSearchOpen, onMobileSearchOpenChange],
+  );
 
   // 批量多选（Cmd/Ctrl 点选 + Shift 范围选）；非空时工具栏下方出现内联批量操作条
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
@@ -324,13 +362,21 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
   }, []);
 
-  // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏「选择」开关进入，
+  // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏/顶栏「选择」开关进入，
   // 进入后行首显示复选框、点行即勾选（不打开详情）。行内左右滑手势暂停避免误触。
-  const [checkMode, setCheckMode] = useState(false);
+  const [internalCheckMode, setInternalCheckMode] = useState(false);
+  const checkMode = checkModeProp ?? internalCheckMode;
+  const setCheckMode = useCallback(
+    (active: boolean) => {
+      if (onCheckModeChange) onCheckModeChange(active);
+      else setInternalCheckMode(active);
+    },
+    [onCheckModeChange],
+  );
   const exitCheckMode = useCallback(() => {
     setCheckMode(false);
     clearChecked();
-  }, [clearChecked]);
+  }, [setCheckMode, clearChecked]);
 
   // 多选模式下 Android 返回键 = 退出多选（先于导航返回）
   useEffect(() => {
@@ -869,144 +915,270 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
-  // 桌面端：工具栏整体 portal 进全局顶栏（workbench 窗口标题栏槽位 / legacy 壳标题栏），
-  // 页内不再重复渲染一条顶栏；移动端保持页内内联
+  // 各优先级在当前数据集中的条数（合并进视图选项菜单，选择前可预知筛选规模）
+  const countByPriority = useMemo(() => {
+    const map: Record<TodoPriority, number> = {
+      none: 0,
+      low: 0,
+      medium: 0,
+      high: 0,
+      urgent: 0,
+    };
+    for (const item of items) {
+      if (item.parentId) continue;
+      if (filter.view !== 'completed' && !filter.showCompleted && item.status === 'completed') {
+        continue;
+      }
+      map[item.priority as TodoPriority] = (map[item.priority as TodoPriority] ?? 0) + 1;
+    }
+    return map;
+  }, [items, filter.view, filter.showCompleted]);
+
+  const hasActiveViewOption =
+    Boolean(filter.priorityFilter) ||
+    filter.sortBy !== 'manual' ||
+    (filter.showCompleted && filter.view !== 'completed') ||
+    checkMode;
+
+  const statsMeta = (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span className="min-w-0 truncate font-mono text-xs tabular-nums text-muted-foreground/60">
+        {pendingCount}&nbsp;{t('todo:stats.pending')}
+        {completedCount > 0 && (
+          <>
+            <span className="mx-1 text-muted-foreground/30">·</span>
+            {completedCount}&nbsp;{t('todo:stats.completed')}
+          </>
+        )}
+        {todayPomodoroLoad > 0 && (
+          <>
+            <span className="mx-1 text-muted-foreground/30">·</span>
+            <span title={t('todo:stats.pomodoroLoadHint')}>
+              {t('todo:stats.pomodoroLoad', { count: todayPomodoroLoad })}
+            </span>
+          </>
+        )}
+      </span>
+      {/* 完成进度微条（与番茄目标条同款视觉；完成即清零的视图不显示） */}
+      {filter.view !== 'completed' && completedCount > 0 && pendingCount + completedCount > 0 && (
+        <span
+          className="inline-flex h-1 w-14 flex-shrink-0 self-center overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]"
+          title={t('todo:stats.progressTitle', {
+            done: completedCount,
+            total: pendingCount + completedCount,
+          })}
+        >
+          <span
+            className="h-full rounded-full bg-[color:hsl(var(--success))] transition-all duration-500 motion-reduce:transition-none"
+            style={{
+              width: `${Math.round((completedCount / (pendingCount + completedCount)) * 100)}%`,
+            }}
+          />
+        </span>
+      )}
+    </span>
+  );
+
+  const actionControls = (
+    <>
+      {isSmallScreen ? (
+        // 窄屏：搜索折叠为图标（≥44px 触控），点击展开下方内联输入行
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => setMobileSearchOpen((v) => !v)}
+          aria-expanded={mobileSearchOpen}
+          aria-label={t('todo:actions.search')}
+          title={t('todo:actions.search')}
+          className={cn(
+            (mobileSearchOpen || filter.search.trim()) && 'text-primary',
+          )}
+        >
+          <MagnifyingGlass size={16} />
+        </DsButton>
+      ) : useClassicDesktopHeader ? (
+        <DesktopHeaderSearch
+          value={filter.search}
+          onChange={setSearch}
+          placeholder={t('todo:actions.search')}
+          inputDataAttrs={{ 'data-todo-search': '' }}
+        />
+      ) : (
+        <div className="relative">
+          <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
+          <Input
+            type="search"
+            value={filter.search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('todo:actions.search')}
+            data-todo-search
+            className={inTitlebar
+              ? cn(TITLEBAR_INPUT_CLASS, 'w-36 pl-8 pr-3 transition-[width] duration-150 focus:w-48')
+              : 'h-8 w-28 pl-8 pr-3 text-xs sm:w-48'}
+          />
+        </div>
+      )}
+
+      {/* 已激活优先级筛选时外露一键清除芯片，避免用户忘记列表被筛选 */}
+      {filter.priorityFilter && (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setPriorityFilter(null)}
+          title={t('todo:filters.clearFilter', '清除筛选')}
+          aria-label={t('todo:filters.clearFilter', '清除筛选')}
+          className={cn(
+            inTitlebar && TITLEBAR_CONTROL_CLASS,
+            'bg-primary/10 text-primary hover:bg-primary/15',
+          )}
+        >
+          <PriorityIcon priority={filter.priorityFilter} className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{t(PRIORITY_CONFIG[filter.priorityFilter].labelKey)}</span>
+          <X size={12} />
+        </DsButton>
+      )}
+
+      {/* 多选模式激活时外露快捷退出入口 */}
+      {checkMode && (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={exitCheckMode}
+          data-selected="true"
+          aria-pressed="true"
+          aria-label={t('todo:bulk.selectMode', '选择')}
+          title={t('todo:bulk.selectMode', '选择')}
+          className={cn(
+            inTitlebar && TITLEBAR_CONTROL_CLASS,
+            'bg-primary/10 text-primary hover:bg-primary/15',
+          )}
+        >
+          <ListChecks size={14} />
+          <span className="hidden sm:inline">{t('todo:bulk.selectMode', '选择')}</span>
+          <X size={12} />
+        </DsButton>
+      )}
+
+      {/* 统一视图选项菜单：收敛排序、优先级筛选、显示已完成与批量选择，保持顶栏清爽 */}
+      <AppMenu>
+        <AppMenuTrigger asChild>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="todo-view-options-trigger"
+            data-selected={hasActiveViewOption}
+            aria-label={t('todo:filters.viewOptions', '视图')}
+            title={t('todo:filters.viewOptions', '视图')}
+            className={cn(
+              inTitlebar && TITLEBAR_CONTROL_CLASS,
+              hasActiveViewOption && 'bg-primary/10 text-primary hover:bg-primary/15',
+            )}
+          >
+            <SlidersHorizontal size={14} />
+            <span className="hidden sm:inline">{t('todo:filters.viewOptions', '视图')}</span>
+          </DsButton>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={204}>
+          <AppMenuLabel>{t('todo:sort.label')}</AppMenuLabel>
+          {(['manual', 'dueDate', 'priority', 'title'] as TodoSortBy[]).map((sortBy) => (
+            <AppMenuItem
+              key={sortBy}
+              checked={filter.sortBy === sortBy}
+              onClick={() => setSortBy(sortBy)}
+            >
+              {t(`todo:sort.${sortBy}`)}
+            </AppMenuItem>
+          ))}
+          <AppMenuSeparator />
+          <AppMenuLabel>{t('todo:filters.priority')}</AppMenuLabel>
+          <AppMenuItem
+            checked={!filter.priorityFilter}
+            onClick={() => setPriorityFilter(null)}
+          >
+            {t('todo:filters.allPriorities')}
+          </AppMenuItem>
+          {(['urgent', 'high', 'medium', 'low', 'none'] as TodoPriority[]).map((p) => (
+            <AppMenuItem
+              key={p}
+              checked={filter.priorityFilter === p}
+              icon={<PriorityIcon priority={p} className="h-3.5 w-3.5" />}
+              suffix={
+                countByPriority[p] > 0 ? (
+                  <span className="text-xs tabular-nums text-muted-foreground/60">
+                    {countByPriority[p]}
+                  </span>
+                ) : undefined
+              }
+              onClick={() => setPriorityFilter(p)}
+            >
+              {t(PRIORITY_CONFIG[p].labelKey)}
+            </AppMenuItem>
+          ))}
+          <AppMenuSeparator />
+          <AppMenuLabel>{t('todo:filters.display', '显示')}</AppMenuLabel>
+          <AppMenuItem
+            checked={filter.showCompleted}
+            disabled={filter.view === 'completed'}
+            icon={<CheckCircle size={14} />}
+            onClick={() => setShowCompleted(!filter.showCompleted)}
+          >
+            {t('todo:filters.showCompleted')}
+          </AppMenuItem>
+          <AppMenuItem
+            checked={checkMode}
+            icon={<ListChecks size={14} />}
+            onClick={() => (checkMode ? exitCheckMode() : setCheckMode(true))}
+          >
+            {t('todo:bulk.selectMode', '选择')}
+          </AppMenuItem>
+        </AppMenuContent>
+      </AppMenu>
+    </>
+  );
+
+  useDesktopHeader(
+    'todo',
+    {
+      breadcrumbs: [
+        { id: 'todo-root', label: t('sidebar:navigation.todo', { defaultValue: t('todo:sidebar.title') }) },
+        { id: 'todo-view', label: viewTitle },
+      ],
+      meta: statsMeta,
+      actions: actionControls,
+    },
+    [
+      t,
+      viewTitle,
+      pendingCount,
+      completedCount,
+      todayPomodoroLoad,
+      filter.view,
+      filter.search,
+      filter.priorityFilter,
+      filter.sortBy,
+      filter.showCompleted,
+      checkMode,
+      countByPriority,
+      hasActiveViewOption,
+    ],
+    useClassicDesktopHeader,
+  );
+
+  // Workbench 窗口标题栏与移动端内联共用工具栏组合
   const toolbarClusters = (
     <>
-      <div className={cn('flex min-w-0 flex-1 items-baseline gap-3', toolbarPortalTarget && 'pointer-events-auto')}>
-            {!isSmallScreen && (
-              <h2 className={inTitlebar ? TITLEBAR_TITLE_CLASS : 'truncate text-[15px] font-semibold text-foreground'}>
-                {viewTitle}
-              </h2>
-            )}
-            <span className="min-w-0 truncate font-mono text-xs tabular-nums text-muted-foreground/40">
-              {pendingCount}&nbsp;{t('todo:stats.pending')}
-              {completedCount > 0 && (
-                <>
-                  <span className="mx-1 text-muted-foreground/30">·</span>
-                  {completedCount}&nbsp;{t('todo:stats.completed')}
-                </>
-              )}
-              {todayPomodoroLoad > 0 && (
-                <>
-                  <span className="mx-1 text-muted-foreground/30">·</span>
-                  <span title={t('todo:stats.pomodoroLoadHint')}>
-                    {t('todo:stats.pomodoroLoad', { count: todayPomodoroLoad })}
-                  </span>
-                </>
-              )}
-            </span>
-            {/* 完成进度微条（与番茄目标条同款视觉；完成即清零的视图不显示） */}
-            {filter.view !== 'completed' && completedCount > 0 && pendingCount + completedCount > 0 && (
-              <span
-                className="inline-flex h-1 w-14 flex-shrink-0 self-center overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]"
-                title={t('todo:stats.progressTitle', {
-                  done: completedCount,
-                  total: pendingCount + completedCount,
-                })}
-              >
-                <span
-                  className="h-full rounded-full bg-[color:hsl(var(--success))] transition-all duration-500 motion-reduce:transition-none"
-                  style={{
-                    width: `${Math.round((completedCount / (pendingCount + completedCount)) * 100)}%`,
-                  }}
-                />
-              </span>
-            )}
-          </div>
+      <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+        {!isSmallScreen && (
+          <span className={inTitlebar ? cn(TITLEBAR_TITLE_CLASS, 'shrink-0') : 'shrink-0 truncate text-base font-semibold text-foreground'}>
+            {viewTitle}
+          </span>
+        )}
+        {statsMeta}
+      </div>
 
-      <div className={cn('flex flex-shrink-0 items-center gap-2', toolbarPortalTarget && 'pointer-events-auto')}>
-            {isSmallScreen ? (
-              // 窄屏：搜索折叠为图标（≥44px 触控），点击展开下方内联输入行
-              <DsButton
-                variant="utility"
-                size="icon"
-                iconOnly
-                onClick={() => setMobileSearchOpen((v) => !v)}
-                aria-expanded={mobileSearchOpen}
-                aria-label={t('todo:actions.search')}
-                title={t('todo:actions.search')}
-                className={cn(
-                  (mobileSearchOpen || filter.search.trim()) &&
-                    '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
-                )}
-              >
-                <MagnifyingGlass size={16} />
-              </DsButton>
-            ) : (
-              <div className="relative">
-                <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
-                <Input
-                  type="search"
-                  value={filter.search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('todo:actions.search')}
-                  data-todo-search
-                  className={inTitlebar
-                    ? cn(TITLEBAR_INPUT_CLASS, 'w-36 pl-8 pr-3')
-                    : 'h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11'}
-                />
-              </div>
-            )}
-
-            <PriorityFilterMenu triggerClassName={inTitlebar ? TITLEBAR_CONTROL_CLASS : undefined} />
-
-            <Select value={filter.sortBy} onValueChange={(v) => setSortBy(v as TodoSortBy)}>
-              <SelectTrigger
-                aria-label={t('todo:sort.label')}
-                className={inTitlebar
-                  ? cn(TITLEBAR_CONTROL_CLASS, '!w-auto')
-                  : 'w-auto gap-1'}
-              >
-                <SortAscending size={14} className="text-muted-foreground" />
-                {/* !hidden：对抗 SelectTrigger 基类的 [&>span]:line-clamp-1（会把 span 重置为 -webkit-box） */}
-                <span className="!hidden sm:!inline">
-                  {t(`todo:sort.${filter.sortBy}`)}
-                </span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                {(['manual', 'dueDate', 'priority', 'title'] as TodoSortBy[]).map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs [@media(pointer:coarse)]:min-h-[2.75rem]">
-                    {t(`todo:sort.${s}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <DsButton
-              variant="utility"
-              size="sm"
-              onClick={() => setShowCompleted(!filter.showCompleted)}
-              disabled={filter.view === 'completed'}
-              data-selected={filter.showCompleted}
-              className={cn(
-                inTitlebar && TITLEBAR_CONTROL_CLASS,
-                filter.showCompleted &&
-                  '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
-              )}
-            >
-              <CheckCircle size={14} />
-              <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
-            </DsButton>
-
-            {/* 批量多选开关：触屏没有 Cmd/Ctrl/Shift 点选入口，用模式切换替代 */}
-            <DsButton
-              variant="utility"
-              size="sm"
-              onClick={() => (checkMode ? exitCheckMode() : setCheckMode(true))}
-              data-selected={checkMode}
-              aria-pressed={checkMode}
-              aria-label={t('todo:bulk.selectMode', '选择')}
-              title={t('todo:bulk.selectMode', '选择')}
-              className={cn(
-                inTitlebar && TITLEBAR_CONTROL_CLASS,
-                checkMode &&
-                  '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
-              )}
-            >
-              <ListChecks size={14} />
-              <span className="hidden sm:inline">{t('todo:bulk.selectMode', '选择')}</span>
-            </DsButton>
+      <div className={cn('flex flex-shrink-0 items-center gap-1.5', toolbarPortalTarget && 'pointer-events-auto')}>
+        {actionControls}
       </div>
     </>
   );
@@ -1017,14 +1189,50 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* 顶部工具栏：桌面端 portal 进全局顶栏；移动端页内内联 */}
-        {toolbarPortalTarget ? (
+        {/* 顶部工具栏：经典壳桌面端走 useDesktopHeader；Workbench 窗口 portal 进窗口标题栏；移动端由 UnifiedMobileHeader 承载 */}
+        {useClassicDesktopHeader ? null : toolbarPortalTarget ? (
           createPortal(
             <div className="pointer-events-none flex h-full min-w-0 items-center gap-3 px-2">
               {toolbarClusters}
             </div>,
             toolbarPortalTarget,
           )
+        ) : isSmallScreen && hideMobileToolbar ? (
+          mobileSearchOpen ? (
+            <div className="ui-rise-in flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--shell-workspace-border)] px-4 py-2">
+              <div className="relative min-w-0 flex-1">
+                <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={15} />
+                <Input
+                  type="search"
+                  autoFocus
+                  value={filter.search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearch('');
+                      setMobileSearchOpen(false);
+                    }
+                  }}
+                  placeholder={t('todo:actions.search')}
+                  data-todo-search
+                  className="h-10 w-full pl-9 pr-3 text-base [@media(pointer:coarse)]:h-11"
+                />
+              </div>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => {
+                  setSearch('');
+                  setMobileSearchOpen(false);
+                }}
+                aria-label={t('common:actions.close', '关闭')}
+                className="flex-shrink-0"
+              >
+                <X size={16} />
+              </DsButton>
+            </div>
+          ) : null
         ) : (
           <div className="study-shell-toolbar flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
             {toolbarClusters}
@@ -1046,7 +1254,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   }}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-10 w-full pl-9 pr-3 text-sm [@media(pointer:coarse)]:h-11"
+                  className="h-10 w-full pl-9 pr-3 text-base [@media(pointer:coarse)]:h-11"
                 />
               </div>
               <DsButton
@@ -1058,7 +1266,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   setMobileSearchOpen(false);
                 }}
                 aria-label={t('common:actions.close', '关闭')}
-                className="!h-11 !w-11 flex-shrink-0"
+                className="flex-shrink-0"
               >
                 <X size={16} />
               </DsButton>
@@ -1107,18 +1315,13 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               </>
             )}
 
-            {/* 统一「今日学习汇总」：在今日视图完整聚合四路到期项，在收件箱有待复习项时主动提示并支持一键直达 */}
-            {(filter.view === 'today' || (filter.view === 'all' && !filter.search.trim())) && (
+            {/* 今日学习汇总：仅在「今日」视图以单行轻量摘要展示到期复习与冲刺入口，收件箱/自定义清单保持纯粹待办流 */}
+            {filter.view === 'today' && !filter.search.trim() && (
               <TodayStudySummaryCard
-                inTodayTodoView={filter.view === 'today'}
-                inEmptyListView={filter.view === 'all' && topLevelItems.length === 0}
-                todoDueCount={filter.view === 'today' ? pendingCount : activeTodayOrOverdueCount}
+                inTodayTodoView
+                todoDueCount={pendingCount}
                 onOpenTodos={() => {
-                  if (filter.view !== 'today') {
-                    setViewFilter('today');
-                    return;
-                  }
-                  const quickInput = panelRootRef.current?.querySelector<HTMLInputElement>('input[type="text"]');
+                  const quickInput = panelRootRef.current?.querySelector<HTMLInputElement>('[data-todo-quick-add]');
                   quickInput?.focus();
                 }}
               />
@@ -1141,7 +1344,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                       '!text-[color:hsl(var(--success))] todo-celebrate-pop motion-reduce:animate-none',
                   )}
                 >
-                  <emptyState.icon size={24} weight={emptyState.celebratory ? 'fill' : 'regular'} />
+                  <emptyState.icon size={28} weight={emptyState.celebratory ? 'fill' : 'regular'} aria-hidden="true" />
                 </div>
                 <h3 className="study-shell-empty-state__title">{emptyState.title}</h3>
                 {filter.view === 'all' && !filter.search.trim() && (

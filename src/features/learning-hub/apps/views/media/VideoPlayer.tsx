@@ -612,6 +612,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={mediaRef}
         src={src}
+        data-ds-managed-media="true"
         crossOrigin={crossOrigin}
         playsInline
         preload="metadata"
@@ -676,7 +677,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       >
         <p className="truncate text-sm font-medium text-white/90">{fileName}</p>
         {compatibilityHint && (
-          <p className="mt-0.5 text-xs text-amber-300/90">{compatibilityHint}</p>
+          <p className="mt-0.5 text-xs text-warning">{compatibilityHint}</p>
         )}
       </div>
 

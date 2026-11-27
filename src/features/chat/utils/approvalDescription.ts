@@ -13,6 +13,36 @@ function stringArg(
   return undefined;
 }
 
+function numberArg(
+  args: ApprovalArguments,
+  ...keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function stringArrayArg(
+  args: ApprovalArguments,
+  ...keys: string[]
+): string[] {
+  for (const key of keys) {
+    const value = args[key];
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim());
+    }
+  }
+  return [];
+}
+
+function formatCoord(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
 function shortToolName(toolName: string): string {
   return toolName.replace(/^builtin[-:]/, '');
 }
@@ -88,11 +118,104 @@ export function getLocalizedApprovalDescription(
       return value('browserOpen', { url: stringArg(args, 'url') ?? '?' });
     case 'browser_navigate':
       return value('browserNavigate', { url: stringArg(args, 'url') ?? '?' });
-    case 'browser_click':
+    case 'browser_click': {
+      const ref = stringArg(args, 'ref');
+      const x = numberArg(args, 'x');
+      const y = numberArg(args, 'y');
+      const element = stringArg(args, 'element');
+      if (!ref && x !== undefined && y !== undefined) {
+        return value(element ? 'browserClickCoordWithElement' : 'browserClickCoord', {
+          x: formatCoord(x),
+          y: formatCoord(y),
+          element: element ?? '',
+        });
+      }
       return value('browserClick', {
+        element: element ?? '?',
+        ref: ref ?? '?',
+      });
+    }
+    case 'browser_hover': {
+      const ref = stringArg(args, 'ref');
+      const x = numberArg(args, 'x');
+      const y = numberArg(args, 'y');
+      const element = stringArg(args, 'element');
+      if (!ref && x !== undefined && y !== undefined) {
+        return value(element ? 'browserHoverCoordWithElement' : 'browserHoverCoord', {
+          x: formatCoord(x),
+          y: formatCoord(y),
+          element: element ?? '',
+        });
+      }
+      return value('browserHover', {
+        element: element ?? '?',
+        ref: ref ?? '?',
+      });
+    }
+    case 'browser_press_key': {
+      const key = stringArg(args, 'key') ?? '?';
+      const modifiers = stringArrayArg(args, 'modifiers');
+      if (modifiers.length > 0) {
+        return value('browserPressKeyWithModifiers', {
+          key,
+          modifiers: modifiers.join('+'),
+        });
+      }
+      return value('browserPressKey', { key });
+    }
+    case 'browser_select_option': {
+      const values = stringArrayArg(args, 'values');
+      return value('browserSelectOption', {
         element: stringArg(args, 'element') ?? '?',
         ref: stringArg(args, 'ref') ?? '?',
+        values: values.length > 0 ? values.join(', ') : '?',
       });
+    }
+    case 'browser_wait_for': {
+      const text = stringArg(args, 'text');
+      if (text) return value('browserWaitForText', { text });
+      const selector = stringArg(args, 'selector');
+      if (selector) return value('browserWaitForSelector', { selector });
+      const loadState = stringArg(args, 'load_state', 'loadState');
+      if (loadState) return value('browserWaitForLoadState', { loadState });
+      return value('browserWaitFor');
+    }
+    case 'browser_extract_content':
+      return value('browserExtractContent');
+    case 'browser_tabs': {
+      const action = stringArg(args, 'action')?.toLowerCase();
+      if (action === 'new') {
+        const url = stringArg(args, 'url');
+        return url
+          ? value('browserTabsNew', { url })
+          : value('browserTabsNewBlank');
+      }
+      if (action === 'switch') {
+        return value('browserTabsSwitch', {
+          tabId: stringArg(args, 'tab_id', 'tabId') ?? '?',
+        });
+      }
+      if (action === 'close') {
+        return value('browserTabsClose', {
+          tabId: stringArg(args, 'tab_id', 'tabId') ?? '?',
+        });
+      }
+      if (action === 'list') {
+        return value('browserTabsList');
+      }
+      return value('browserOperation', { tool: toolName });
+    }
+    case 'browser_observe': {
+      const kind = stringArg(args, 'kind')?.toLowerCase();
+      if (kind === 'console') return value('browserObserveConsole');
+      if (kind === 'network') return value('browserObserveNetwork');
+      if (kind === 'both') return value('browserObserveBoth');
+      return value('browserObserve', { kind: kind ?? '?' });
+    }
+    case 'browser_screenshot':
+      return value('browserScreenshot');
+    case 'browser_downloads':
+      return value('browserDownloads');
     case 'browser_file_upload':
       return value('browserFileUpload', {
         count: Array.isArray(args.files) ? args.files.length : 0,

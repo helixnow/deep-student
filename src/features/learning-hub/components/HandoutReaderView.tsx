@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next';
 import DOMPurify from 'dompurify';
 import {
   BookOpen,
+  ChatCircleDots,
   Check,
   Copy,
   FileArrowDown,
   FilePlus,
   Play,
   Printer,
-  Sparkle,
   Translate,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -623,16 +623,10 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
               </span>
               <span
                 className={cn(
-                  'inline-flex items-center gap-1.5 px-2 py-0.5 text-2xs font-medium rounded-full border',
+                  'inline-flex items-center px-2 py-0.5 text-2xs font-medium rounded-full border',
                   DIFFICULTY_META[docDifficulty].badgeClass,
                 )}
               >
-                <span
-                  className={cn(
-                    'w-1.5 h-1.5 rounded-full',
-                    DIFFICULTY_META[docDifficulty].dotClass,
-                  )}
-                />
                 {difficultyLabels[docDifficulty]}
               </span>
             </div>
@@ -908,16 +902,9 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                       aria-current={isActive ? 'location' : undefined}
                       className="!h-auto !min-h-0 !justify-start gap-2 !px-0 !py-0.5 text-left text-xs min-w-0 flex-1 bg-transparent hover:bg-transparent text-inherit motion-reduce:transition-none"
                     >
-                      <span
-                        className={cn(
-                          'w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-150 motion-reduce:transition-none',
-                          isCompleted
-                            ? 'bg-success'
-                            : isActive
-                              ? 'bg-primary'
-                              : DIFFICULTY_META[difficulty].dotClass,
-                        )}
-                      />
+                      {isCompleted && (
+                        <Check className="w-3 h-3 shrink-0 text-success" aria-hidden="true" />
+                      )}
                       <span className="truncate font-medium">
                         {formatHandoutSectionHeading(index, section.heading)}
                       </span>
@@ -975,12 +962,6 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                 {/* 章节标题行 */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <span
-                      className={cn(
-                        'w-1.5 h-1.5 rounded-full transition-colors duration-150 motion-reduce:transition-none',
-                        isCompleted ? 'bg-success' : DIFFICULTY_META[difficulty].dotClass,
-                      )}
-                    />
                     <h2 className="text-lg font-semibold text-foreground">
                       {formatHandoutSectionHeading(index, section.heading)}
                     </h2>
@@ -1086,7 +1067,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                         }
                         className="!h-auto gap-1 !px-2 !py-1 text-xs rounded border border-border/35 text-muted-foreground hover:text-foreground hover:bg-muted/50 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
                       >
-                        <Sparkle className="w-3 h-3" aria-hidden="true" />
+                        <ChatCircleDots className="w-3 h-3" aria-hidden="true" />
                         <span>
                           {t('learningHub:handoutReader.askCompanion', {
                             defaultValue: '伴读提问',
@@ -1250,7 +1231,6 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                             className="rounded-lg border border-border/35 bg-muted/20 p-4 flex flex-col gap-1.5"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                               <span className="text-xs font-semibold text-primary">
                                 {calloutLabels[block.kind]}
                               </span>
@@ -1382,23 +1362,11 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                             className="rounded-lg border border-border/35 bg-card p-4 flex flex-col gap-3"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    'w-1.5 h-1.5 rounded-full transition-colors duration-150 motion-reduce:transition-none',
-                                    !isAnswered
-                                      ? 'bg-warning'
-                                      : isCorrect
-                                        ? 'bg-success'
-                                        : 'bg-destructive',
-                                  )}
-                                />
-                                <span className="text-xs font-semibold text-foreground">
-                                  {t('learningHub:handoutReader.checkpointHeader', {
-                                    defaultValue: '随堂自测与概念检验',
-                                  })}
-                                </span>
-                              </div>
+                              <span className="text-xs font-semibold text-foreground">
+                                {t('learningHub:handoutReader.checkpointHeader', {
+                                  defaultValue: '随堂自测与概念检验',
+                                })}
+                              </span>
                               {isAnswered && (
                                 <span
                                   className={cn(

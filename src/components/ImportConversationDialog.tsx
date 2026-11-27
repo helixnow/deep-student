@@ -64,7 +64,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
     setImportResult(null);
 
     try {
-      // 🎯 直接传递文件路径给后端，使用统一文件管理器读取
+      // 直接传递文件路径给后端，使用统一文件管理器读取
       // 这样支持移动端的特殊路径（content://, ph:// 等）
       const response = await TauriAPI.importConversationSnapshot(selectedFile);
       
@@ -137,7 +137,6 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
                 size="sm"
                 onClick={handleSelectFile}
                 disabled={importing}
-                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <FileText size={16} className="mr-1" />
                 {t('import.choose_file')}
@@ -147,9 +146,9 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
 
           {/* 错误信息 */}
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-3 flex items-start gap-2">
-              <WarningCircle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 text-sm text-red-600 dark:text-red-400">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2">
+              <WarningCircle size={20} className="text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 text-sm text-destructive">
                 {error}
               </div>
             </div>
@@ -157,14 +156,14 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
 
           {/* 警告信息 */}
           {warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
               <div className="flex items-center gap-2 mb-2">
-                <WarningCircle size={16} className="text-amber-600 dark:text-amber-400" />
-                <span className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                <WarningCircle size={16} className="text-warning" />
+                <span className="text-sm font-medium text-warning">
                   {t('import.warnings_title')}
                 </span>
               </div>
-              <ul className="text-xs text-amber-800 dark:text-amber-200 space-y-1 ml-6 list-disc">
+              <ul className="text-xs text-foreground/90 space-y-1 ml-6 list-disc">
                 {warnings.map((warning, idx) => (
                   <li key={idx}>{warning}</li>
                 ))}
@@ -174,14 +173,14 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
 
           {/* 成功信息 */}
           {importResult && (
-            <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 p-3 flex items-start gap-2">
-              <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            <div className="rounded-lg border border-success/30 bg-success/10 p-3 flex items-start gap-2">
+              <CheckCircle size={20} className="text-success shrink-0 mt-0.5" />
               <div className="flex-1">
-                <div className="text-sm font-medium text-green-900 dark:text-green-100">
+                <div className="text-sm font-medium text-success">
                   {importResult.message}
                 </div>
                 {/* ★ 2026-01 清理：使用 conversationId */}
-                <div className="text-xs text-green-700 dark:text-green-300 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   ID: {(importResult.conversationId || '').slice(0, 8)}...
                 </div>
               </div>
@@ -193,10 +192,9 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
         <DsDialogFooter>
           <DsButton
             type="button"
-            variant="default"
+            variant="ghost"
             onClick={handleClose}
             disabled={importing}
-            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {importResult ? (
               <>
@@ -207,12 +205,11 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               t('import.cancel')
             )}
           </DsButton>
-          
+
           {importResult ? (
             <DsButton
               type="button"
-              variant="primary"
-              className="[@media(pointer:coarse)]:!min-h-11"
+              variant="default"
               onClick={() => {
                 if (onImportSuccess && importResult) {
                   // ★ 2026-01 清理：使用 conversationId
@@ -226,10 +223,9 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
           ) : (
             <DsButton
               type="button"
-              variant="primary"
+              variant="default"
               onClick={handleImport}
               disabled={!selectedFile || importing}
-              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Upload size={16} className="mr-1" />
               {importing ? t('import.importing') : t('import.import_button')}

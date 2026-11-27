@@ -538,9 +538,9 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
-                    className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                    className="rounded-xl border-border/70 bg-background/60 px-3"
                   >
-                    {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
+                    {zoomSaving && <CircleNotch size={12} className="animate-spin motion-reduce:animate-none mr-1" />}
                     {t('settings:zoom.reset')}
                   </DsButton>
                 </div>
@@ -563,9 +563,9 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
-                  className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                  className="rounded-xl border-border/70 bg-background/60 px-3"
                 >
-                  {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
+                  {fontSaving && <CircleNotch size={12} className="animate-spin motion-reduce:animate-none mr-1" />}
                   {t('settings:font.reset')}
                 </DsButton>
                 <AppSelect
@@ -602,9 +602,9 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
-                  className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                  className="rounded-xl border-border/70 bg-background/60 px-3"
                 >
-                  {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
+                  {fontSizeSaving && <CircleNotch size={12} className="animate-spin motion-reduce:animate-none mr-1" />}
                   {t('settings:font.size_reset')}
                 </DsButton>
               </div>

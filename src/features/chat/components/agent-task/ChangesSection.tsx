@@ -23,6 +23,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { dstu } from '@/dstu/api';
@@ -412,8 +413,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               <span
                 key={item.id}
                 className={cn(
-                  // ★ 触控目标：本身不可点，但与可点 chip 同排（撤销后可点→不可点），触屏同步加高避免行高跳变
-                  'inline-flex items-center gap-1.5 h-6 [@media(pointer:coarse)]:min-h-11 px-2 max-w-[260px]',
+                  'inline-flex items-center gap-1.5 h-6 px-2 max-w-[260px]',
                   'rounded-full border',
                   isDestructive
                     ? 'border-[color:hsl(var(--destructive)/0.35)]'
@@ -433,22 +433,21 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             <span
               key={item.id}
               className={cn(
-                // ★ 触控目标：内部按钮均为 h-full，容器触屏加高即整体达标 ≥44px
-                'inline-flex items-center h-6 [@media(pointer:coarse)]:min-h-11 max-w-[280px]',
+                'inline-flex items-center h-6 max-w-[280px]',
                 'rounded-full border',
                 isDestructive
                   ? 'border-[color:hsl(var(--destructive)/0.35)]'
                   : 'border-[color:var(--border-soft)]',
                 'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
-                'overflow-hidden',
               )}
             >
               <button
                 type="button"
                 onClick={() => openChange(item)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 h-full px-2 min-w-0',
+                  'inline-flex items-center gap-1.5 h-full px-2 min-w-0 first:rounded-l-full last:rounded-r-full',
                   'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
+                  coarseHitClassFor24,
                 )}
                 title={
                   item.openId
@@ -466,11 +465,11 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                   type="button"
                   onClick={() => togglePreview(item)}
                   className={cn(
-                    'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                    'inline-flex items-center h-full px-1.5 last:rounded-r-full border-l border-[color:var(--border-soft)]',
                     'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
                     'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
-                    // ★ 触控目标：触屏加宽 + 纵向伪元素扩命中区（横向不外扩，避免吃掉相邻按钮）
-                    "[@media(pointer:coarse)]:px-3 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-1 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']",
+                    'z-10 [@media(pointer:coarse)]:px-2.5',
+                    coarseHitClassFor24,
                     isPreviewing && 'bg-[color:var(--interactive-hover)] text-[color:var(--text-primary)]',
                   )}
                   title={t('agentPanel.preview')}
@@ -485,10 +484,11 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                     type="button"
                     onClick={() => openSavedNote(savedNoteId)}
                     className={cn(
-                      'inline-flex items-center gap-1 h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                      'inline-flex items-center gap-1 h-full px-1.5 last:rounded-r-full border-l border-[color:var(--border-soft)]',
                       'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
                       'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
-                      "[@media(pointer:coarse)]:px-3 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-1 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']",
+                      'z-10 [@media(pointer:coarse)]:px-2.5',
+                      coarseHitClassFor24,
                     )}
                     title={t('agentPanel.openSavedNote')}
                     aria-label={t('agentPanel.openSavedNote')}
@@ -504,10 +504,11 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                     onClick={() => saveChangeAsNote(item)}
                     disabled={isSavingNote}
                     className={cn(
-                      'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                      'inline-flex items-center h-full px-1.5 last:rounded-r-full border-l border-[color:var(--border-soft)]',
                       'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
                       'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
-                      "[@media(pointer:coarse)]:px-3 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-1 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']",
+                      'z-10 [@media(pointer:coarse)]:px-2.5',
+                      coarseHitClassFor24,
                       isSavingNote && 'opacity-60 cursor-default',
                     )}
                     title={t('agentPanel.saveAsNote')}
@@ -526,11 +527,11 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                   type="button"
                   onClick={() => revertRuntimeChange(item)}
                   className={cn(
-                    'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                    'inline-flex items-center h-full px-1.5 last:rounded-r-full border-l border-[color:var(--border-soft)]',
                     'text-[color:var(--text-muted)] hover:text-[color:hsl(var(--destructive))]',
                     'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
-                    // ★ 触控目标：撤销是破坏性操作，触屏加宽并与相邻按钮留 ≥8px 间距防误触
-                    "[@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:ml-2 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-1 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']",
+                    'z-10 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:ml-1.5',
+                    coarseHitClassFor24,
                   )}
                   title={item.rootId === 'workspace'
                     ? t('agentPanel.revertWorkspace')

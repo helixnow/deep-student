@@ -285,7 +285,7 @@ export function makeCitationRemarkPlugin() {
               const bareAttr = bareNumeric ? ' data-citation-bare="true"' : '';
               parts.push({
                 type: 'html',
-                value: `<span data-citation="true" data-citation-type="${sourceType}" data-citation-index="${indexNum}"${showImageAttr}${bareAttr} class="citation-badge-placeholder">[${indexNum}]</span>`,
+                value: `<span data-citation="true" data-citation-type="${sourceType}" data-citation-index="${indexNum}"${showImageAttr}${bareAttr} class="citation-badge-placeholder">${indexNum}</span>`,
               });
             } else if (m.type === 'mindmap') {
               // 思维导图引用节点
@@ -317,12 +317,12 @@ export function makeCitationRemarkPlugin() {
               });
             } else if (m.type === 'media_ref') {
               // 媒体时间戳引用：React 侧（MarkdownRenderer span）替换为 MediaCitationBadge，
-              // 解析文件名并渲染「▶ mm:ss · 文件名」
+              // 解析文件名并渲染播放图标 + 时间戳 + 文件名
               const { resourceId, seconds } = m.data;
               const label = formatMediaRefTimestamp(seconds);
               parts.push({
                 type: 'html',
-                value: `<span data-media-ref="true" data-media-source="${resourceId}" data-media-seconds="${seconds}" class="media-ref-badge-placeholder">▶ ${label}</span>`,
+                value: `<span data-media-ref="true" data-media-source="${resourceId}" data-media-seconds="${seconds}" class="media-ref-badge-placeholder"><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex-shrink:0"><path d="M4.5 2.75a.75.75 0 0 1 1.13-.65l8.25 4.75a.75.75 0 0 1 0 1.3L5.63 12.9a.75.75 0 0 1-1.13-.65v-9.5Z"/></svg>${label}</span>`,
               });
             }
 

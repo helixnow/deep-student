@@ -144,7 +144,7 @@ const RootNodeComponent: React.FC<NodeProps<Node<RootNodeData>>> = ({
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
   const isEmbed = !!(data as Record<string, unknown>).isEmbed;
-  useNodeHeightObserver(nodeRef, nodeId, setMeasuredNodeHeight, !isEmbed);
+  useNodeHeightObserver(nodeRef, nodeId, setMeasuredNodeHeight, !isEmbed, isEditing);
 
   // 主题样式 - 从 theme.node.root 获取；fallback 走主题度量单一数据源
   const rootTheme = theme?.node?.root;

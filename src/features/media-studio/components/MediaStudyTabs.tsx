@@ -11,10 +11,8 @@ import {
   ChatCircleText,
   Check,
   CircleNotch,
-  ClockCounterClockwise,
   ListChecks,
   Notebook,
-  Sparkle,
   Target,
   X,
 } from '@phosphor-icons/react';
@@ -779,7 +777,6 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
 // 问答
 // ============================================================================
 
-const ASK_PROMPTS = ['summary', 'keyPoints'] as const;
 export const MINI_CHAT_WINDOW_RADIUS_SECONDS = 45;
 
 /** 「问刚才这段」：播放位置前 1 分钟的字幕连同锚点预填进新对话；还没字幕时只带锚点让模型按时间读转写 */
@@ -804,7 +801,7 @@ export const MediaAskTab: React.FC<{
   const { t } = useTranslation(['mediaStudio']);
   const companion = useMediaStudyCompanion();
   const isVisible = visible ?? (companion ? companion.activeTab === 'ask' : true);
-  const { starting, start } = useStartChat(meta, ctx.resourceId);
+  const { start } = useStartChat(meta, ctx.resourceId);
   const name = meta.name.replace(/\.[^.]+$/, '') || meta.name;
   const [playheadSeconds, setPlayheadSeconds] = useState<number>(() =>
     Math.max(0, Math.floor(ctx.getCurrentTime())),
@@ -909,60 +906,9 @@ export const MediaAskTab: React.FC<{
             void start('mini-chat-promote', promptOrConversation);
           }}
         />
-      </div>
-      <div className={sectionClass}>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:ask.intro')}</p>
-        <DsButton
-          variant="primary"
-          size="sm"
-          onClick={() => void start('ask')}
-          disabled={starting !== null}
-          data-media-ask=""
-          className="gap-1.5 self-start"
-        >
-          {starting === 'ask'
-            ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            : <ChatCircleText size={14} aria-hidden="true" />}
-          {t('mediaStudio:ask.start')}
-        </DsButton>
         {!ctx.hasTranscript ? (
-          <p className="text-xs text-muted-foreground">{t('mediaStudio:ask.needTranscript')}</p>
+          <p className="px-1 text-xs text-muted-foreground">{t('mediaStudio:ask.needTranscript')}</p>
         ) : null}
-      </div>
-      <div className={sectionClass}>
-        <h4 className={sectionTitleClass}>{t('mediaStudio:ask.quickTitle')}</h4>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          onClick={() => void start('moment', buildRecentMomentPrompt(ctx, name, t))}
-          disabled={starting !== null}
-          data-media-ask-moment=""
-          className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2 text-left')}
-        >
-          {starting === 'moment'
-            ? <CircleNotch size={14} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            : <ClockCounterClockwise size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="whitespace-normal text-sm text-foreground">{t('mediaStudio:ask.quick.moment')}</span>
-            <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:ask.quick.momentHint')}</span>
-          </span>
-        </DsButton>
-        {ASK_PROMPTS.map((key) => (
-          <DsButton
-            key={key}
-            variant="ghost"
-            size="sm"
-            onClick={() => void start(key, t(`mediaStudio:ask.prompt.${key}`, { name }))}
-            disabled={starting !== null}
-            className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2 text-left')}
-          >
-            {starting === key
-              ? <CircleNotch size={14} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              : <Sparkle size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
-            <span className="min-w-0 flex-1 whitespace-normal text-sm text-foreground">{t(`mediaStudio:ask.quick.${key}`)}</span>
-          </DsButton>
-        ))}
-        {/* 「时间引用可点击跳转」已在顶部 ask.intro 说明，这里不再重复一遍 */}
       </div>
     </TabScroll>
   );

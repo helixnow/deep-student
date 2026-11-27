@@ -253,7 +253,6 @@ interface ShortcutIconProps {
   selected: boolean;
   dragging: boolean;
   dropTarget: boolean;
-  dragOffset: { dx: number; dy: number } | null;
   menuOpen: boolean;
   editing: boolean;
   onSelect: (e: React.MouseEvent, shortcut: DesktopShortcut) => void;
@@ -273,7 +272,6 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
   selected,
   dragging,
   dropTarget,
-  dragOffset,
   menuOpen,
   editing,
   onSelect,
@@ -308,10 +306,6 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
     else onRenameCancel();
   }, [editName, shortcut.id, displayName, onRenameCommit, onRenameCancel]);
 
-  const dragStyle = dragging && dragOffset
-    ? { transform: `translate3d(${dragOffset.dx}px, ${dragOffset.dy}px, 0) scale(1.04)` }
-    : undefined;
-
   return (
     // div[role=button]（非 <button>）：重命名态内嵌 <input>，button 不允许
     // 交互式子元素，嵌套会破坏输入框的光标定位/文本选择
@@ -319,7 +313,8 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
       role="button"
       tabIndex={editing ? -1 : 0}
       className="wb-desk-icon"
-      style={dragStyle}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
       data-selected={selected ? 'true' : undefined}
       data-dragging={dragging ? 'true' : undefined}
       data-drop-target={dropTarget ? 'true' : undefined}
@@ -518,12 +513,15 @@ interface ReorderSession {
   startY: number;
   active: boolean;
   slots: ReorderSlot[];
+  dragEl: HTMLElement | null;
+  rafId: number;
+  pendingX: number;
+  pendingY: number;
+  lastTargetId: string | null;
 }
 
 interface IconDragVisual {
   id: string;
-  dx: number;
-  dy: number;
   targetId: string | null;
 }
 
@@ -610,12 +608,17 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
     });
   }, [t]);
 
-  // 卸载兜底：清掉菜单离场计时器
+  // 卸载兜底：清掉菜单离场计时器与未完成拖拽 rAF
   useEffect(
     () => () => {
       if (menuExitTimerRef.current !== null) {
         window.clearTimeout(menuExitTimerRef.current);
         menuExitTimerRef.current = null;
+      }
+      const reorder = reorderSessionRef.current;
+      if (reorder?.rafId) {
+        cancelAnimationFrame(reorder.rafId);
+        reorder.rafId = 0;
       }
     },
     [],
@@ -686,9 +689,11 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
       if (e.metaKey || e.ctrlKey) return;
       const container = containerRef.current;
       if (!container) return;
+      const escapeId = (id: string) =>
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(id) : id;
       const slots: ReorderSlot[] = [];
       shortcutsRef.current.forEach((item, idx) => {
-        const el = container.querySelector<HTMLElement>(`[data-wb-desk-shortcut="${item.id}"]`);
+        const el = container.querySelector<HTMLElement>(`[data-wb-desk-shortcut="${escapeId(item.id)}"]`);
         if (!el) return;
         const rect = el.getBoundingClientRect();
         slots.push({
@@ -697,6 +702,7 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
           rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
         });
       });
+      const dragEl = container.querySelector<HTMLElement>(`[data-wb-desk-shortcut="${escapeId(shortcut.id)}"]`);
       reorderSessionRef.current = {
         id: shortcut.id,
         originIndex: index,
@@ -705,18 +711,35 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
         startY: e.clientY,
         active: false,
         slots,
+        dragEl,
+        rafId: 0,
+        pendingX: e.clientX,
+        pendingY: e.clientY,
+        lastTargetId: null,
       };
     },
     [],
   );
 
+  const cleanupReorderDom = useCallback((reorder: ReorderSession | null) => {
+    if (!reorder) return;
+    if (reorder.rafId) {
+      cancelAnimationFrame(reorder.rafId);
+      reorder.rafId = 0;
+    }
+    if (reorder.dragEl) {
+      reorder.dragEl.style.transform = '';
+    }
+  }, []);
+
   // 桌面空白区橡胶筋框选 + 图标拖拽重排 + 空格直呼 Quick Look（统一经 useEventRegistry 注册）
   const cancelPointerSessions = useCallback(() => {
+    cleanupReorderDom(reorderSessionRef.current);
     marqueeSessionRef.current = null;
     reorderSessionRef.current = null;
     setMarquee(null);
     setDragVisual(null);
-  }, []);
+  }, [cleanupReorderDom]);
 
   useEventRegistry(
     [
@@ -760,21 +783,51 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
           const e = event as PointerEvent;
           const pointerId = e.pointerId ?? 0;
 
-          // 1. 图标拖拽重排
+          // 1. 图标拖拽重排（rAF 合帧直写 DOM transform，仅 targetId 变动时更新 React 态）
           const reorder = reorderSessionRef.current;
           if (reorder && pointerId === reorder.pointerId) {
+            reorder.pendingX = e.clientX;
+            reorder.pendingY = e.clientY;
             const dx = e.clientX - reorder.startX;
             const dy = e.clientY - reorder.startY;
             if (!reorder.active) {
               if (Math.hypot(dx, dy) < REORDER_DRAG_THRESHOLD) return;
               reorder.active = true;
+              const targetIndex = findReorderTargetIndex({ x: e.clientX, y: e.clientY }, reorder.slots);
+              const targetId =
+                targetIndex !== null && targetIndex !== reorder.originIndex
+                  ? (reorder.slots[targetIndex]?.id ?? null)
+                  : null;
+              reorder.lastTargetId = targetId;
+              if (reorder.dragEl) {
+                reorder.dragEl.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(1.04)`;
+              }
+              setDragVisual({ id: reorder.id, targetId });
+              return;
             }
-            const targetIndex = findReorderTargetIndex({ x: e.clientX, y: e.clientY }, reorder.slots);
-            const targetId =
-              targetIndex !== null && targetIndex !== reorder.originIndex
-                ? (reorder.slots[targetIndex]?.id ?? null)
-                : null;
-            setDragVisual({ id: reorder.id, dx, dy, targetId });
+            if (!reorder.rafId) {
+              reorder.rafId = requestAnimationFrame(() => {
+                reorder.rafId = 0;
+                if (reorderSessionRef.current !== reorder) return;
+                const fx = reorder.pendingX - reorder.startX;
+                const fy = reorder.pendingY - reorder.startY;
+                if (reorder.dragEl) {
+                  reorder.dragEl.style.transform = `translate3d(${fx}px, ${fy}px, 0) scale(1.04)`;
+                }
+                const targetIndex = findReorderTargetIndex(
+                  { x: reorder.pendingX, y: reorder.pendingY },
+                  reorder.slots,
+                );
+                const targetId =
+                  targetIndex !== null && targetIndex !== reorder.originIndex
+                    ? (reorder.slots[targetIndex]?.id ?? null)
+                    : null;
+                if (targetId !== reorder.lastTargetId) {
+                  reorder.lastTargetId = targetId;
+                  setDragVisual({ id: reorder.id, targetId });
+                }
+              });
+            }
             return;
           }
 
@@ -787,6 +840,7 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
             if (Math.hypot(dx, dy) < MARQUEE_DRAG_THRESHOLD) return;
             session.active = true;
           }
+          e.preventDefault();
 
           const clientBox: DesktopRectBox = {
             left: Math.min(session.startX, e.clientX),
@@ -850,6 +904,7 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
           const pointerId = e.pointerId ?? 0;
           const reorder = reorderSessionRef.current;
           if (reorder && pointerId === reorder.pointerId) {
+            cleanupReorderDom(reorder);
             reorderSessionRef.current = null;
             setDragVisual(null);
             if (reorder.active) {
@@ -921,7 +976,7 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
         },
       },
     ],
-    [cancelPointerSessions, desktopRef, editingId, menu, moveShortcut],
+    [cancelPointerSessions, cleanupReorderDom, desktopRef, editingId, menu, moveShortcut],
   );
 
   const openMenuAt = useCallback((x: number, y: number, shortcut: DesktopShortcut) => {
@@ -988,7 +1043,6 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
               selected={selectedIds.has(shortcut.id)}
               dragging={isDragging}
               dropTarget={dragVisual?.targetId === shortcut.id}
-              dragOffset={isDragging ? { dx: dragVisual.dx, dy: dragVisual.dy } : null}
               menuOpen={menu?.shortcut.id === shortcut.id && !menuClosing}
               editing={editingId === shortcut.id}
               onSelect={handleSelectIcon}

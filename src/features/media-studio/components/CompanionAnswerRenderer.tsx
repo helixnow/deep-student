@@ -17,6 +17,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import type { KatexOptions } from 'katex';
+import { Play } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { tokenizeTimestampText } from '../mediaCompanionQa';
@@ -228,7 +229,7 @@ export const CompanionCitationJumpPill: React.FC<{
     title={titleText}
     className="mx-0.5 !inline-flex !h-auto !min-h-0 !px-1.5 !py-0.5 align-baseline gap-0.5 rounded bg-primary/10 font-mono text-2xs font-medium tabular-nums !text-primary hover:!bg-primary/20 active:scale-[0.98] transition-colors motion-reduce:transition-none motion-reduce:active:scale-100"
   >
-    <span aria-hidden="true">▶</span>
+    <Play size={10} weight="fill" aria-hidden="true" />
     <span>{label}</span>
   </DsButton>
 );

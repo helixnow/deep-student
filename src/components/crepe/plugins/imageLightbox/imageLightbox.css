@@ -1,9 +1,7 @@
 /**
  * A6：图片 lightbox + 破图占位（CrepeEditor / imageLightbox 插件共用）
  *
- * 刻意硬编码暗基调：lightbox 是主题无关的全屏遮罩预览层，
- * 使用 rgba 黑底 / 浅色按钮以保证任意编辑器主题下对比度一致，
- * 不跟随 --background / --popover 等浅色 token。
+ * 使用语义化遮罩与弹层令牌，适配亮暗主题及 prefers-reduced-transparency 降级。
  */
 
 /* ---- 编辑器内图片可点击放大 ---- */
@@ -95,8 +93,8 @@
 .crepe-image-lightbox__backdrop {
   position: absolute;
   inset: 0;
-  /* 刻意硬编码：主题无关全屏影院黑遮罩 */
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--overlay, hsl(var(--background) / 84%));
+  backdrop-filter: blur(4px);
   cursor: zoom-out;
   animation: crepe-lightbox-backdrop-in 200ms
     var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
@@ -130,10 +128,9 @@
 
 .crepe-image-lightbox__btn {
   appearance: none;
-  /* 刻意硬编码：暗基工具栏，与主题无关 */
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(20, 20, 20, 0.55);
-  color: #f5f5f5;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 90%);
+  color: hsl(var(--foreground));
   border-radius: var(--notes-radius-control, 8px);
   padding: 8px 12px;
   font-size: 13px;
@@ -147,11 +144,11 @@
 }
 
 .crepe-image-lightbox__btn:hover {
-  background: rgba(40, 40, 40, 0.72);
+  background: hsl(var(--card));
 }
 
 .crepe-image-lightbox__btn:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 
@@ -195,9 +192,8 @@
   position: absolute;
   width: 32px;
   height: 32px;
-  /* 刻意硬编码：影院黑遮罩上的浅色 spinner */
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-top-color: rgba(255, 255, 255, 0.85);
+  border: 3px solid hsl(var(--muted-foreground) / 30%);
+  border-top-color: hsl(var(--foreground));
   border-radius: 50%;
   animation: crepe-lightbox-spin 0.8s linear infinite;
   pointer-events: none;
@@ -220,14 +216,27 @@
   transform: translateX(-50%);
   z-index: 1;
   padding: 4px 10px;
-  /* 刻意硬编码：影院黑遮罩上的浅色计数 */
-  background: rgba(20, 20, 20, 0.55);
-  color: #f5f5f5;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 90%);
+  color: hsl(var(--foreground));
   border-radius: var(--notes-radius-control, 8px);
   font-size: 12px;
   line-height: 1.4;
   pointer-events: none;
   backdrop-filter: blur(6px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .crepe-image-lightbox__backdrop {
+    background: hsl(var(--background) / 96%);
+    backdrop-filter: none;
+  }
+
+  .crepe-image-lightbox__btn,
+  .crepe-image-lightbox__counter {
+    background: hsl(var(--card));
+    backdrop-filter: none;
+  }
 }
 
 .crepe-image-lightbox__img--contain {

@@ -2,12 +2,45 @@
  * InlineLatex - 内联 LaTeX 渲染组件
  * 自动检测文本中的 $...$ / $$...$$ 并渲染为数学公式，
  * 无 LaTeX 时回退为纯文本显示。
+ *
+ * 性能契约：
+ * - 模块级有界 LRU 缓存已净化 HTML（text → sanitizedHtml | null），
+ *   画布平移/缩放虚拟化重挂与大纲滚动均 O(1) 命中，避免重复同步执行 KaTeX + DOMPurify；
+ * - `.katex-error` 视觉样式由静态 CSS 承载，仅在 HTML 实际含语法错误时才补挂 title 提示。
  */
 import React, { useEffect, useMemo, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import DOMPurify from 'dompurify';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { renderLatexToHtml } from '../../utils/renderLatex';
+
+const MAX_SANITIZED_LATEX_CACHE = 1000;
+const sanitizedLatexCache = new Map<string, string | null>();
+let katexStylesRequested = false;
+
+const DOMPURIFY_KATEX_CONFIG = {
+  ADD_TAGS: ['annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mphantom', 'mstyle'],
+  ADD_ATTR: ['xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'displaystyle', 'scriptlevel', 'lspace', 'rspace', 'movablelimits', 'largeop', 'symmetric', 'maxsize', 'minsize', 'linethickness', 'depth', 'height', 'voffset', 'notation'],
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+};
+
+function getSanitizedLatexHtml(text: string): string | null {
+  if (!text || !text.includes('$')) return null;
+  if (sanitizedLatexCache.has(text)) {
+    const cached = sanitizedLatexCache.get(text)!;
+    sanitizedLatexCache.delete(text);
+    sanitizedLatexCache.set(text, cached);
+    return cached;
+  }
+  const raw = renderLatexToHtml(text);
+  const sanitized = raw ? DOMPurify.sanitize(raw, DOMPURIFY_KATEX_CONFIG) : null;
+  if (sanitizedLatexCache.size >= MAX_SANITIZED_LATEX_CACHE) {
+    const oldestKey = sanitizedLatexCache.keys().next().value;
+    if (oldestKey !== undefined) sanitizedLatexCache.delete(oldestKey);
+  }
+  sanitizedLatexCache.set(text, sanitized);
+  return sanitized;
+}
 
 interface InlineLatexProps {
   text: string;
@@ -16,36 +49,29 @@ interface InlineLatexProps {
   fallback?: React.ReactNode;
 }
 
-export const InlineLatex: React.FC<InlineLatexProps> = ({ text, className, style, fallback }) => {
-  const { t } = useTranslation('mindmap');
+const InlineLatexComponent: React.FC<InlineLatexProps> = ({ text, className, style, fallback }) => {
   const containerRef = useRef<HTMLSpanElement>(null);
 
+  const html = useMemo(() => getSanitizedLatexHtml(text), [text]);
+  const hasError = Boolean(html && html.includes('katex-error'));
+
   useEffect(() => {
+    if (!html || katexStylesRequested) return;
+    katexStylesRequested = true;
     ensureKatexStyles();
-  }, []);
+  }, [html]);
 
-  const html = useMemo(() => {
-    const raw = renderLatexToHtml(text);
-    if (!raw) return null;
-    return DOMPurify.sanitize(raw, {
-      ADD_TAGS: ['annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mphantom', 'mstyle'],
-      ADD_ATTR: ['xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'displaystyle', 'scriptlevel', 'lspace', 'rspace', 'movablelimits', 'largeop', 'symmetric', 'maxsize', 'minsize', 'linethickness', 'depth', 'height', 'voffset', 'notation'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
-    });
-  }, [text]);
-
-  // 错误态展示：渲染失败的公式（.katex-error）标出警示色并附悬浮提示，
-  // 让用户能一眼看出公式语法错误，而非当作普通文本忽略
+  // 仅当公式实际包含语法错误时补挂悬停提示（视觉样式由 mm-nodes-edges.css 静态提供）
   useEffect(() => {
-    if (!html || !containerRef.current) return;
+    if (!hasError || !containerRef.current) return;
+    const errorTitle = i18next.t('mindmap:latex.renderError', {
+      defaultValue: '公式语法错误，已按原文显示',
+    });
     const errors = containerRef.current.querySelectorAll<HTMLElement>('.katex-error');
     errors.forEach((el) => {
-      el.style.color = 'var(--mm-warning, #b45309)';
-      el.style.borderBottom = '1px dashed currentColor';
-      el.style.cursor = 'help';
-      el.title = t('latex.renderError', { defaultValue: '公式语法错误，已按原文显示' });
+      el.title = errorTitle;
     });
-  }, [html, t]);
+  }, [hasError, html]);
 
   if (!html) {
     if (fallback !== undefined) return <>{fallback}</>;
@@ -63,3 +89,6 @@ export const InlineLatex: React.FC<InlineLatexProps> = ({ text, className, style
     />
   );
 };
+
+export const InlineLatex = React.memo(InlineLatexComponent);
+InlineLatex.displayName = 'InlineLatex';

@@ -19,7 +19,6 @@ export interface RatingDescriptor {
   /** 现场可读的评分判断标准（F09），避免用户凭感觉把「忘了」打成 Hard */
   hintKey: string;
   tone: string;
-  dotClass: string;
   /** 翻面后再次按空格/回车触发的默认节拍档位 */
   defaultRhythm?: boolean;
 }
@@ -30,29 +29,25 @@ export const RATING_DESCRIPTORS: RatingDescriptor[] = [
     labelKey: 'session.again',
     hintKey: 'session.againHint',
     tone: '!border-transparent !bg-transparent !text-foreground/85 hover:!bg-destructive/[0.08] hover:!text-destructive focus-visible:!text-destructive active:!bg-destructive/[0.12] data-[pressed=true]:!border-destructive/30 data-[pressed=true]:!bg-destructive/[0.12] data-[pressed=true]:!text-destructive',
-    dotClass: 'bg-destructive',
   },
   {
     value: 2,
     labelKey: 'session.hard',
     hintKey: 'session.hardHint',
-    tone: '!border-transparent !bg-transparent !text-foreground/85 hover:!bg-amber-500/[0.09] hover:!text-amber-700 dark:hover:!text-amber-400 focus-visible:!text-amber-700 dark:focus-visible:!text-amber-400 active:!bg-amber-500/[0.14] data-[pressed=true]:!border-amber-500/30 data-[pressed=true]:!bg-amber-500/[0.14] data-[pressed=true]:!text-amber-700 dark:data-[pressed=true]:!text-amber-400',
-    dotClass: 'bg-amber-500',
+    tone: '!border-transparent !bg-transparent !text-foreground/85 hover:!bg-warning/[0.10] hover:!text-warning focus-visible:!text-warning active:!bg-warning/[0.15] data-[pressed=true]:!border-warning/30 data-[pressed=true]:!bg-warning/[0.15] data-[pressed=true]:!text-warning',
   },
   {
     value: 3,
     labelKey: 'session.good',
     hintKey: 'session.goodHint',
-    tone: '!border-emerald-500/20 !bg-emerald-500/[0.04] !text-foreground hover:!border-emerald-500/35 hover:!bg-emerald-500/[0.10] hover:!text-emerald-700 dark:hover:!text-emerald-400 focus-visible:!text-emerald-700 dark:focus-visible:!text-emerald-400 active:!bg-emerald-500/[0.15] data-[pressed=true]:!border-emerald-500/40 data-[pressed=true]:!bg-emerald-500/[0.16] data-[pressed=true]:!text-emerald-700 dark:data-[pressed=true]:!text-emerald-400',
-    dotClass: 'bg-emerald-500',
+    tone: '!border-border/75 !bg-muted/45 !text-foreground hover:!border-success/35 hover:!bg-success/[0.10] hover:!text-success focus-visible:!text-success active:!bg-success/[0.15] data-[pressed=true]:!border-success/40 data-[pressed=true]:!bg-success/[0.16] data-[pressed=true]:!text-success',
     defaultRhythm: true,
   },
   {
     value: 4,
     labelKey: 'session.easy',
     hintKey: 'session.easyHint',
-    tone: '!border-transparent !bg-transparent !text-foreground/85 hover:!bg-sky-500/[0.09] hover:!text-sky-700 dark:hover:!text-sky-400 focus-visible:!text-sky-700 dark:focus-visible:!text-sky-400 active:!bg-sky-500/[0.14] data-[pressed=true]:!border-sky-500/30 data-[pressed=true]:!bg-sky-500/[0.14] data-[pressed=true]:!text-sky-700 dark:data-[pressed=true]:!text-sky-400',
-    dotClass: 'bg-sky-500',
+    tone: '!border-transparent !bg-transparent !text-foreground/85 hover:!bg-info/[0.10] hover:!text-info focus-visible:!text-info active:!bg-info/[0.15] data-[pressed=true]:!border-info/30 data-[pressed=true]:!bg-info/[0.15] data-[pressed=true]:!text-info',
   },
 ];
 
@@ -134,13 +129,6 @@ export const RatingBar: React.FC<RatingBarProps> = ({
               </span>
             ) : null}
             <span className="inline-flex items-center justify-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'wb-fc-rate-dot h-1.5 w-1.5 shrink-0 rounded-full opacity-75 transition-all duration-150 group-hover:scale-110 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[pressed=true]:scale-125 group-data-[pressed=true]:opacity-100 motion-reduce:transition-none',
-                  rating.dotClass,
-                )}
-              />
               <kbd aria-hidden="true" className="wb-fc-keycap">
                 {rating.value}
               </kbd>

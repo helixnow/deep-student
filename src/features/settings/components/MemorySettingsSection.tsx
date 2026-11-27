@@ -241,17 +241,13 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         <div className="group py-2.5 px-1 rounded">
           <div className="flex items-center gap-2">
             <span className={cn(
-              "w-1.5 h-1.5 rounded-full flex-shrink-0",
-              !isMemoryOn ? "bg-muted-foreground/40" : "bg-emerald-500"
-            )} />
-            <span className={cn(
-              "text-sm",
-              !isMemoryOn ? "text-muted-foreground/50" : "text-foreground/80"
+              "text-sm font-medium",
+              !isMemoryOn ? "text-muted-foreground/60" : "text-foreground/90"
             )}>
               {!isMemoryOn ? t('settings:memory.disabled') : isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-1">
             {t('settings:memory.description')}
           </p>
         </div>

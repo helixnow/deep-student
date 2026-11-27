@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { CaretDown } from '@phosphor-icons/react';
+import { CaretDown, Check, Minus } from '@phosphor-icons/react';
 import { SettingSection, settingsQuietInteractiveRowClassName } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
@@ -549,10 +549,11 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
                 { id: ocrEngineConfigured ? 'configured' : '', label: t('settings:status_labels.exam_sheet_ocr'), optional: true },
               ].map((item, idx) => (
                 <div key={idx} className="flex items-center gap-1.5 py-0.5">
-                  <span className={cn(
-                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                    item.id ? "bg-emerald-500" : item.optional ? "bg-amber-500/70" : "bg-muted-foreground/30"
-                  )} />
+                  {item.id ? (
+                    <Check size={12} weight="bold" className="flex-shrink-0 text-success" aria-hidden="true" />
+                  ) : (
+                    <Minus size={12} className={cn("flex-shrink-0", item.optional ? "text-warning/70" : "text-muted-foreground/40")} aria-hidden="true" />
+                  )}
                   <span className={cn("truncate text-xs", item.id ? "text-foreground/80" : "text-muted-foreground/60")}>
                     {item.label}
                   </span>
@@ -561,7 +562,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
             </div>
             
             {config.model2ConfigId && (
-              <div className="mt-3 text-xs text-emerald-600/80 py-1">
+              <div className="mt-3 text-xs text-success py-1">
                 {t('settings:status_labels.basic_config_complete')}
               </div>
             )}

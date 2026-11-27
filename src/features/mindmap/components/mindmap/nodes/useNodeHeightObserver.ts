@@ -9,30 +9,39 @@
  * - store 侧仍有 16ms 批量 flush（setMeasuredNodeHeight），此处是第一道闸门。
  */
 
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
-type HeightCallback = (height: number) => void;
+type SizeCallback = (size: { width: number; height: number }) => void;
 
-const elementCallbacks = new WeakMap<Element, HeightCallback>();
+const elementCallbacks = new WeakMap<Element, SizeCallback>();
 let sharedObserver: ResizeObserver | null = null;
 let sharedObserverCtor: typeof ResizeObserver | null = null;
 let observedCount = 0;
 
-function readObservedHeight(entry: ResizeObserverEntry): number {
-  // 优先读取浏览器 ResizeObserver 自带的 borderBoxSize（零同步回流，且在 CSS 缩放下保持未缩放盒子高度）
-  const blockSize = entry.borderBoxSize?.[0]?.blockSize;
-  if (typeof blockSize === 'number' && Number.isFinite(blockSize) && blockSize > 0) {
-    return Math.round(blockSize);
-  }
+function readObservedSize(entry: ResizeObserverEntry): { width: number; height: number } {
+  // 优先读取浏览器 ResizeObserver 自带的 borderBoxSize（零同步回流，且在 CSS 缩放下保持未缩放盒子尺寸）
+  const box = entry.borderBoxSize?.[0];
   const target = entry.target as HTMLElement | null;
-  if (target && target.offsetHeight > 0) {
-    return target.offsetHeight;
+
+  let width = 0;
+  if (typeof box?.inlineSize === 'number' && Number.isFinite(box.inlineSize) && box.inlineSize > 0) {
+    width = Math.round(box.inlineSize);
+  } else if (target && target.offsetWidth > 0) {
+    width = target.offsetWidth;
+  } else if (typeof entry.contentRect?.width === 'number' && Number.isFinite(entry.contentRect.width) && entry.contentRect.width > 0) {
+    width = Math.round(entry.contentRect.width);
   }
-  const rectHeight = entry.contentRect?.height;
-  if (typeof rectHeight === 'number' && Number.isFinite(rectHeight) && rectHeight > 0) {
-    return Math.round(rectHeight);
+
+  let height = 0;
+  if (typeof box?.blockSize === 'number' && Number.isFinite(box.blockSize) && box.blockSize > 0) {
+    height = Math.round(box.blockSize);
+  } else if (target && target.offsetHeight > 0) {
+    height = target.offsetHeight;
+  } else if (typeof entry.contentRect?.height === 'number' && Number.isFinite(entry.contentRect.height) && entry.contentRect.height > 0) {
+    height = Math.round(entry.contentRect.height);
   }
-  return 0;
+
+  return { width, height };
 }
 
 function getSharedResizeObserver(): ResizeObserver | null {
@@ -49,7 +58,7 @@ function getSharedResizeObserver(): ResizeObserver | null {
         if (!entry?.target) continue;
         const callback = elementCallbacks.get(entry.target);
         if (!callback) continue;
-        callback(readObservedHeight(entry));
+        callback(readObservedSize(entry));
       }
     });
   }
@@ -61,8 +70,32 @@ export function useNodeHeightObserver(
   nodeId: string,
   setMeasuredNodeHeight: (nodeId: string, height: number) => void,
   enabled: boolean,
+  isEditing = false,
 ): void {
   const lastHeightRef = useRef(0);
+  const lastDisplayWidthRef = useRef(0);
+  const isEditingRef = useRef(isEditing);
+  isEditingRef.current = isEditing;
+
+  // 进入编辑态前锁定当前非编辑展示宽度到 `--mm-edit-min-width`，
+  // 退出编辑态立即清除并同步回采展示宽度（避免新节点首次退出编辑且宽度未变时 ResizeObserver 未二次回调）。
+  useLayoutEffect(() => {
+    const element = nodeRef.current;
+    if (!element) return;
+    if (!isEditing) {
+      element.style.removeProperty('--mm-edit-min-width');
+      const measured = Math.round(element.offsetWidth);
+      if (measured > 0) {
+        lastDisplayWidthRef.current = measured;
+      }
+      return;
+    }
+    const lockedWidth = lastDisplayWidthRef.current || Math.round(element.offsetWidth);
+    if (lockedWidth > 0) {
+      element.style.setProperty('--mm-edit-min-width', `${lockedWidth}px`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nodeRef 为稳定 ref 容器
+  }, [isEditing]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -72,7 +105,10 @@ export function useNodeHeightObserver(
     }
     // nodeId / enabled 变化后重新上报一次基准值
     lastHeightRef.current = 0;
-    const reportHeight: HeightCallback = (height) => {
+    const reportSize: SizeCallback = ({ width, height }) => {
+      if (!isEditingRef.current && width > 0) {
+        lastDisplayWidthRef.current = width;
+      }
       if (height > 0 && height !== lastHeightRef.current) {
         lastHeightRef.current = height;
         setMeasuredNodeHeight(nodeId, height);
@@ -81,11 +117,11 @@ export function useNodeHeightObserver(
 
     const observer = getSharedResizeObserver();
     if (!observer) {
-      reportHeight(element.offsetHeight);
+      reportSize({ width: element.offsetWidth, height: element.offsetHeight });
       return;
     }
     // 交给共享 ResizeObserver 初始批量回调读取 entry.borderBoxSize，避免挂载期逐节点 offsetHeight 同步回流
-    elementCallbacks.set(element, reportHeight);
+    elementCallbacks.set(element, reportSize);
     observer.observe(element);
     observedCount += 1;
 

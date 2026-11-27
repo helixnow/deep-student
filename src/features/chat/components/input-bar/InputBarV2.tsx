@@ -1749,6 +1749,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         label: model.model || model.name || model.id,
         providerLabel: model.vendorName,
         providerId: model.vendorId,
+        providerType: typeof model.providerType === 'string' ? model.providerType : undefined,
         iconId: model.model || model.name || model.id,
         isRecent: recentRankById.has(model.id),
         recentRank: recentRankById.get(model.id),

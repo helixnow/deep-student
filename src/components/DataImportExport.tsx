@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChartBar, Cloud, Gauge, HardDrive, ShieldCheck } from '@phosphor-icons/react';
+import { Cloud, Gauge, HardDrive, ShieldCheck } from '@phosphor-icons/react';
 import { CustomScrollArea } from './custom-scroll-area';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { SettingSection } from '@/features/settings/components/SettingsCommon';
-import { HeaderTemplate } from './HeaderTemplate';
 import { DataChartsPanel } from './stats/DataChartsPanel';
 import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 import { openDataGovernanceSettings } from '@/utils/pendingSettingsTab';
@@ -47,6 +48,7 @@ const MaybeMobileDrawerShell: React.FC<{
   children: React.ReactNode;
 }> = ({ enabled, open, onOpenChange, children }) => {
   if (!enabled) return <>{children}</>;
+
   return (
     <div className="absolute inset-0 overflow-hidden">
       <MobileSlidingLayout
@@ -103,6 +105,27 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({
     !embedded
   );
 
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  useDesktopHeader(
+    'data-management',
+    {
+      breadcrumbs: [{ id: 'data-root', label: t('common:navigation.data_management') }],
+      actions: (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => openDataGovernanceSettings('overview')}
+          className={TITLEBAR_CONTROL_CLASS}
+        >
+          <ShieldCheck size={14} />
+          <span>{t('data:governance.title')}</span>
+        </DsButton>
+      ),
+    },
+    [t],
+    !embedded && !isSmallScreen && hasDesktopHeaderHost,
+  );
+
   return (
     <>
       <style>
@@ -148,14 +171,6 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({
         onOpenChange={setSidebarOpen}
       >
         <div className={`data-management-container ${embedded ? 'embedded' : ''}`}>
-          {!embedded && !isSmallScreen && (
-            <HeaderTemplate
-              icon={ChartBar}
-              title={t('data:statistics_section_title')}
-              subtitle={t('data:statistics_section_subtitle')}
-            />
-          )}
-
           <DataManagementContent embedded={embedded}>
             <div className="data-management-inner">
               {(mode === 'all' || mode === 'stats') &&

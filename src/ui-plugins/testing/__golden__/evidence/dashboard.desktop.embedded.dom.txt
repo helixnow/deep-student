@@ -3,7 +3,7 @@
     <div .sota-content>
       <div .sota-unified-content>
         <div .flex.gap-2.items-center.mb-4>
-          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
             <svg viewBox="0 0 256 256" />
             "返回"
           <div .flex-1 />
@@ -11,7 +11,7 @@
             <div .bg-transparent.border.focus:outline-none.focus:ring-2.focus:ring-offset-2.focus:ring-offset-background.focus:ring-ring.font-medium.inline-flex.items-center.px-1.5.py-0.5.rounded.text-muted-foreground.text-xs.transition-colors data-shad-badge>
               "自动刷新"
               "每分钟"
-            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
               <svg viewBox="0 0 256 256" />
               "导出统计"
         <div .mb-6>
@@ -19,10 +19,10 @@
             <h2 .font-semibold.text-[15px].text-foreground>
               "今日"
             <span .flex.gap-1.items-center.ml-auto>
-              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+              <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.relative.rounded.text-muted-foreground.text-xs.transition-colors type="button">
                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                 "本周周报"
-              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+              <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.relative.rounded.text-muted-foreground.text-xs.transition-colors type="button">
                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                 "与 AI 复盘"
           <div .flex.flex-wrap.gap-3>
@@ -82,19 +82,19 @@
                 "前往"
                 <svg viewBox="0 0 256 256" />
           <div .flex.flex-wrap.gap-1.5.items-center.mt-3>
-            <span .gap-1.inline-flex.items-center.mr-1.text-[12px].text-muted-foreground>
+            <span .gap-1.inline-flex.items-center.mr-1.text-muted-foreground.text-xs>
               <svg aria-hidden="true" viewBox="0 0 256 256" />
               "薄弱知识点"
-            <button .[@media(pointer:coarse)]:min-h-11.bg-card.border.border-border.gap-1.5.hover:bg-muted/60.inline-flex.items-center.px-2.5.py-1.rounded-full.text-[12px].text-foreground.transition-colors title="在对话中讲解并练习" type="button">
+            <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].bg-card.border.border-border.gap-1.5.hover:bg-muted/60.inline-flex.items-center.px-2.5.py-1.relative.rounded-full.text-foreground.text-xs.transition-colors title="在对话中讲解并练习" type="button">
               <span .max-w-[10em].truncate>
                 "函数单调性"
-              <span .text-[color:hsl(var(--destructive))]>
+              <span .text-destructive>
                 "31"
                 "%"
-            <button .[@media(pointer:coarse)]:min-h-11.bg-card.border.border-border.gap-1.5.hover:bg-muted/60.inline-flex.items-center.px-2.5.py-1.rounded-full.text-[12px].text-foreground.transition-colors title="在对话中讲解并练习" type="button">
+            <button .[@media(pointer:coarse)]:after:-inset-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].bg-card.border.border-border.gap-1.5.hover:bg-muted/60.inline-flex.items-center.px-2.5.py-1.relative.rounded-full.text-foreground.text-xs.transition-colors title="在对话中讲解并练习" type="button">
               <span .max-w-[10em].truncate>
                 "等比数列"
-              <span .text-[color:hsl(var(--warning,38_92%_45%))]>
+              <span .text-warning>
                 "55"
                 "%"
         <div .sota-stats-grid>
@@ -102,8 +102,7 @@
             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
               <div .flex.items-center.justify-between>
                 <div .flex.gap-2.items-center>
-                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                    <svg viewBox="0 0 256 256" />
+                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                     "学习记录"
                 <span .flex.gap-1.items-center.text-xs>
@@ -119,8 +118,7 @@
             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
               <div .flex.items-center.justify-between>
                 <div .flex.gap-2.items-center>
-                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                    <svg viewBox="0 0 256 256" />
+                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                     "标签体系"
               <p .text-muted-foreground.text-sm>
@@ -132,8 +130,7 @@
             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
               <div .flex.items-center.justify-between>
                 <div .flex.gap-2.items-center>
-                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                    <svg viewBox="0 0 256 256" />
+                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                     "近7天新增"
               <p .text-muted-foreground.text-sm>
@@ -145,8 +142,7 @@
             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
               <div .flex.items-center.justify-between>
                 <div .flex.gap-2.items-center>
-                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                    <svg viewBox="0 0 256 256" />
+                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                     "数据质量"
               <p .text-muted-foreground.text-sm>
@@ -158,8 +154,7 @@
             <div .flex.flex-col.p-4.pb-2.space-y-1.5>
               <div .flex.items-center.justify-between>
                 <div .flex.gap-2.items-center>
-                  <div .flex.h-8.items-center.justify-center.rounded-md.w-8>
-                    <svg viewBox="0 0 256 256" />
+                  <svg .shrink-0.text-muted-foreground aria-hidden="true" viewBox="0 0 256 256" />
                   <h3 .font-semibold.leading-none.text-base.tracking-tight>
                     "资源文件"
               <p .text-muted-foreground.text-sm>

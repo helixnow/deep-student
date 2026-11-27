@@ -14,7 +14,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ArrowLeft, Keyboard, X } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getShortcutGroups, detectShortcutPlatform } from '../../constants/shortcuts';
@@ -92,9 +92,9 @@ export function normalizeShortcutGroups(raw: unknown, t: TFunction): NormalizedS
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <kbd
     className={cn(
-      'px-1.5 py-0.5 rounded-[4px] text-[11px] leading-none whitespace-nowrap',
-      'border border-[var(--mm-border)] border-b-2 bg-[var(--mm-bg)]',
-      'text-[var(--mm-text-secondary)] font-medium shadow-sm',
+      'px-1.5 py-0.5 rounded-[4px] text-2xs leading-none whitespace-nowrap font-mono',
+      'border border-border/75 border-b-2 bg-muted/45',
+      'text-foreground/85 font-medium',
     )}
   >
     {children}
@@ -103,7 +103,7 @@ const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const ShortcutRow: React.FC<NormalizedShortcutItem> = ({ keys, label }) => (
   <div className="flex items-center justify-between gap-3 py-1 min-w-0">
-    <span className="text-[13px] text-[var(--mm-text-secondary)] truncate">{label}</span>
+    <span className="text-xs text-foreground/80 truncate">{label}</span>
     <span className="flex items-center gap-1 flex-shrink-0">
       {keys.map((key, index) => (
         <Kbd key={index}>{key}</Kbd>
@@ -124,6 +124,8 @@ export interface ShortcutHelpPanelProps {
   className?: string;
   /** 移动端全屏子屏：使用统一返回顶栏，并允许内容占满剩余高度 */
   mobile?: boolean;
+  /** 嵌入桌面居中大弹窗（DsDialog）时省略自身外框与标题行，一次完整平铺所有分组 */
+  embeddedInDialog?: boolean;
 }
 
 export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
@@ -132,6 +134,7 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
   onClose,
   className,
   mobile = false,
+  embeddedInDialog = false,
 }) => {
   const { t } = useTranslation(['mindmap']);
   // 画布空白拖拽模式（框选/平移）：手势提示按当前模式展示对应操作
@@ -200,6 +203,32 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
     ];
   }, [view, keymap, canvasDragMode, t]);
 
+  const gridContent = (
+    <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+      {allGroups.map((group) => (
+        <div key={group.id} className="min-w-0">
+          <div className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {group.title}
+          </div>
+          {group.items.map((item, itemIndex) => (
+            <ShortcutRow key={itemIndex} keys={item.keys} label={item.label} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  if (embeddedInDialog) {
+    return (
+      <div
+        className={cn('min-w-0', className)}
+        data-testid="mm-shortcut-help-grid"
+      >
+        {gridContent}
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -237,38 +266,28 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
         {!mobile && (
           <DsButton
             variant="ghost"
-            className="p-1 hover:bg-[var(--mm-bg-hover)] rounded [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            size="icon"
+            iconOnly
             onClick={onClose}
             aria-label={t('mindmap:toolbar.closeShortcuts')}
           >
-            <X className="w-4 h-4" />
+            <X size={16} />
           </DsButton>
         )}
       </div>
 
       <CustomScrollArea
         className={cn(
-          'max-h-72',
-          mobile && 'max-h-none flex-1 min-h-0',
+          'flex-1 min-h-0',
+          mobile && 'max-h-none',
         )}
         viewportClassName={cn(
-          'max-h-72 px-4 py-3',
+          'px-4 py-3',
           mobile && 'mm-mobile-subview-scroll max-h-none',
         )}
         fullHeight={false}
       >
-        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-          {allGroups.map((group) => (
-            <div key={group.id} className="min-w-0">
-              <div className="text-[11px] font-medium text-[var(--mm-text-muted)] uppercase tracking-wide mb-1.5">
-                {group.title}
-              </div>
-              {group.items.map((item, itemIndex) => (
-                <ShortcutRow key={itemIndex} keys={item.keys} label={item.label} />
-              ))}
-            </div>
-          ))}
-        </div>
+        {gridContent}
       </CustomScrollArea>
     </div>
   );

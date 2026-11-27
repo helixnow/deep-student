@@ -133,7 +133,7 @@ function installControllableIntersectionObserver() {
 
 async function clickRunButton(container: HTMLElement): Promise<void> {
   const runBtn = Array.from(container.querySelectorAll('button')).find((btn) =>
-    btn.textContent?.startsWith('▶'),
+    btn.textContent?.includes('运行') && !btn.textContent?.includes('运行中'),
   ) as HTMLButtonElement | undefined;
   expect(runBtn).toBeDefined();
   await act(async () => {

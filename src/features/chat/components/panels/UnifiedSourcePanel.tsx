@@ -99,7 +99,6 @@ function renderScore(item: UnifiedSourceItem) {
   const tier = pct >= 75 ? 'high' : pct >= 45 ? 'mid' : 'low';
   return (
     <span className="usp-item-score" data-tier={tier}>
-      <i className="usp-score-dot" aria-hidden />
       {pct}%
     </span>
   );

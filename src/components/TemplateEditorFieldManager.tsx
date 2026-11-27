@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash, ArrowUp, ArrowDown, CheckCircle } from '@phosphor-icons/react';
+import { Trash, ArrowUp, ArrowDown, CheckCircle } from '@phosphor-icons/react';
 import { FieldExtractionRule } from '../types';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
-import './TemplateEditorEnhancements.css';
+import { Switch } from './ui/shad/Switch';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/shad/Tooltip';
+import { Alert } from './ui/shad/Alert';
+import { cn } from '@/utils/cn';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface FieldRenameResult {
@@ -18,7 +21,6 @@ interface TemplateEditorFieldManagerProps {
   rules: Record<string, FieldExtractionRule>;
   /** 模板（正/反面）中实际引用到的字段名集合，用于展示使用标记 */
   usedFields: Set<string>;
-  onAddField: () => void;
   onRemoveField: (index: number) => void;
   onMoveField: (index: number, direction: -1 | 1) => void;
   /** 提交重命名（blur / Enter 时触发），由父级完成规则键迁移与模板引用同步 */
@@ -82,89 +84,137 @@ const FieldRow: React.FC<FieldRowProps> = ({
   };
 
   return (
-    <div className="template-editor-field-row">
-      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        <span className="template-editor-field-index">{index + 1}</span>
-        <Input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (isComposingKeyEvent(e)) return;
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') {
-              setDraft(field);
-              setError(null);
-            }
-          }}
-          placeholder={tTemplate('field_name_placeholder')}
-          className="md:!h-7 text-sm flex-1 min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-base"
-          aria-invalid={!!error}
-        />
-        {used && (
-          <span className="template-editor-field-badge" title={t('templateEditor.fieldUsedInTemplate') as string}>
-            <CheckCircle size={11} weight="fill" />
-            {t('templateEditor.fieldUsed')}
+    <div className="py-2.5 first:pt-1 last:pb-1">
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground/60">
+            {index + 1}
           </span>
-        )}
+          <Input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (isComposingKeyEvent(e)) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                setDraft(field);
+                setError(null);
+              }
+            }}
+            placeholder={tTemplate('field_name_placeholder')}
+            className="min-w-0 flex-1 font-mono"
+            aria-label={`${tTemplate('field_name_placeholder')} ${index + 1}`}
+            aria-invalid={!!error}
+          />
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 pl-7 sm:pl-0">
+          {used && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                  <CheckCircle size={13} weight="fill" className="text-success shrink-0" aria-hidden="true" />
+                  <span>{t('templateEditor.fieldUsed')}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t('templateEditor.fieldUsedInTemplate')}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          <label
+            className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none whitespace-nowrap"
+            title={t('templateEditor.toggleRequired') as string}
+          >
+            <Switch
+              size="sm"
+              checked={required}
+              onCheckedChange={onToggleRequired}
+              aria-label={`${field} ${t('templateEditor.toggleRequired')}`}
+            />
+            <span className={cn(required && 'font-medium text-foreground')}>
+              {required ? t('templateEditor.fieldRequired') : t('templateEditor.fieldOptional')}
+            </span>
+          </label>
+
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={onMoveUp}
+                  disabled={index === 0}
+                  aria-label={t('templateEditor.moveFieldUp') as string}
+                >
+                  <ArrowUp size={14} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('templateEditor.moveFieldUp')}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={onMoveDown}
+                  disabled={index === total - 1}
+                  aria-label={t('templateEditor.moveFieldDown') as string}
+                >
+                  <ArrowDown size={14} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('templateEditor.moveFieldDown')}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={onRemove}
+                  disabled={total <= 1}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label={t('templateEditor.deleteField') as string}
+                >
+                  <Trash size={14} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t('templateEditor.deleteField')}</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-0.5 shrink-0">
-        <button
-          type="button"
-          className={`template-editor-required-toggle [@media(pointer:coarse)]:!min-h-11 ${required ? 'active' : ''}`}
-          aria-pressed={required}
-          title={t('templateEditor.toggleRequired') as string}
-          onClick={() => onToggleRequired(!required)}
-        >
-          {required ? t('templateEditor.fieldRequired') : t('templateEditor.fieldOptional')}
-        </button>
-        <DsButton
-          type="button" variant="ghost" size="sm" iconOnly
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          title={t('templateEditor.moveFieldUp') as string}
-        >
-          <ArrowUp size={14} />
-        </DsButton>
-        <DsButton
-          type="button" variant="ghost" size="sm" iconOnly
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          title={t('templateEditor.moveFieldDown') as string}
-        >
-          <ArrowDown size={14} />
-        </DsButton>
-        <DsButton
-          type="button" variant="ghost" size="sm" iconOnly
-          onClick={onRemove}
-          disabled={total <= 1}
-          className="text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          title={t('templateEditor.deleteField') as string}
-        >
-          <Trash size={14} />
-        </DsButton>
-      </div>
+
       {error && (
-        <div className="template-editor-lint-item basis-full mt-1" role="alert">{error}</div>
+        <p className="mt-1.5 pl-7 text-xs text-destructive" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );
 };
 
 /**
- * 字段管理器：重命名（提交式，自动同步模板引用）、必填标记、
- * 上下移排序、增删，以及「模板已引用」标记。
+ * 字段管理器：无套娃分隔行列表，支持提交式重命名（自动同步模板引用）、
+ * 必填切换、上下排序、删除及模板引用状态展示。
  */
 export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProps> = ({
   fields,
   rules,
   usedFields,
-  onAddField,
   onRemoveField,
   onMoveField,
   onRenameField,
@@ -175,42 +225,41 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
   const { t: tTemplate } = useTranslation('template');
 
   return (
-    <div className="template-editor-field-manager">
+    <div className="min-w-0">
       {notice && (
-        <div className="template-editor-sync-notice" role="status">
-          <CheckCircle size={13} weight="fill" />
-          {notice}
+        <Alert variant="info" className="mb-3 flex items-center gap-2 py-2 text-xs" role="status">
+          <CheckCircle size={14} weight="fill" className="shrink-0" aria-hidden="true" />
+          <span>{notice}</span>
+        </Alert>
+      )}
+
+      {fields.length === 0 ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          {tTemplate('editor.no_fields_yet')}
+        </p>
+      ) : (
+        <div className="divide-y divide-border/40">
+          {fields.map((field, index) => (
+            <FieldRow
+              key={`${index}-${field}`}
+              field={field}
+              index={index}
+              total={fields.length}
+              required={rules[field]?.is_required ?? false}
+              used={usedFields.has(field)}
+              onRemove={() => onRemoveField(index)}
+              onMoveUp={() => onMoveField(index, -1)}
+              onMoveDown={() => onMoveField(index, 1)}
+              onRenameCommit={(newName) => onRenameField(index, newName)}
+              onToggleRequired={(required) => onToggleRequired(field, required)}
+            />
+          ))}
         </div>
       )}
-      <div className="flex flex-col gap-1.5">
-        {fields.map((field, index) => (
-          <FieldRow
-            key={`${index}-${field}`}
-            field={field}
-            index={index}
-            total={fields.length}
-            required={rules[field]?.is_required ?? false}
-            used={usedFields.has(field)}
-            onRemove={() => onRemoveField(index)}
-            onMoveUp={() => onMoveField(index, -1)}
-            onMoveDown={() => onMoveField(index, 1)}
-            onRenameCommit={(newName) => onRenameField(index, newName)}
-            onToggleRequired={(required) => onToggleRequired(field, required)}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-between mt-3">
-        <DsButton
-          type="button" variant="ghost" size="sm" onClick={onAddField}
-          className="[@media(pointer:coarse)]:!min-h-11"
-        >
-          <Plus size={14} className="mr-1.5" />
-          {tTemplate('add_field')}
-        </DsButton>
-        <span className="text-[10px] max-md:text-[11px] text-muted-foreground/60">
-          {t('templateEditor.renameSyncHint')}
-        </span>
-      </div>
+
+      <p className="mt-2 px-1 text-xs text-muted-foreground/70">
+        {t('templateEditor.renameSyncHint')}
+      </p>
     </div>
   );
 };

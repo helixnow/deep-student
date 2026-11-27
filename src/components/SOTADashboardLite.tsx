@@ -23,6 +23,8 @@ import {
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { fileManager } from '../utils/fileManager';
@@ -71,7 +73,6 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         aria-label={t('export_stats_button')}
         onClick={() => exportDataRef.current()}
         disabled={!data}
-        className="!h-11 !w-11"
       >
         <DownloadSimple size={18} />
       </DsButton>
@@ -116,6 +117,31 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   }, [data, t]);
   exportDataRef.current = exportData;
 
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !embedded && !isSmallScreen && hasDesktopHeaderHost;
+
+  useDesktopHeader(
+    'dashboard',
+    {
+      breadcrumbs: [{ id: 'dashboard-root', label: tCommon('navigation.dashboard', '总览') }],
+      meta: `${t('auto_refresh_label')} ${isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}`,
+      actions: (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => exportDataRef.current()}
+          disabled={!data}
+          className={TITLEBAR_CONTROL_CLASS}
+        >
+          <DownloadSimple size={14} />
+          <span>{t('export_stats_button')}</span>
+        </DsButton>
+      ),
+    },
+    [tCommon, t, isRefreshing, Boolean(data)],
+    useClassicDesktopHeader,
+  );
+
   const enhancedStats = data?.enhanced as DashboardStatistics | undefined;
   const onPlatform = (entry: { value: { platforms?: readonly string[] } }) =>
     !platform || !entry.value.platforms || entry.value.platforms.includes(platform);
@@ -136,18 +162,18 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <div className="sota-error">
           <WarningCircle size={48} color={DESIGN.colors.danger} />
           <p>{t('load_failed')}: {error.message}</p>
-          <DsButton onClick={refresh} className="mt-2 [@media(pointer:coarse)]:!min-h-11">{tCommon('actions.retry')}</DsButton>
+          <DsButton onClick={refresh} className="mt-2">{tCommon('actions.retry')}</DsButton>
         </div>
       );
     }
 
     return (
       <div className="sota-unified-content">
-        {/* 移动端：返回/导出统一走顶栏（useMobileHeader），页内不再渲染工具行 */}
-        {!isSmallScreen && (
+        {/* 独立桌面壳与移动端操作均已收口至全局统一顶栏；仅嵌入态或无壳宿主时保留局部操作行 */}
+        {!useClassicDesktopHeader && !isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
-            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">
               <ArrowLeft size={16} /> {tCommon('actions.back')}
             </DsButton>
           )}
@@ -172,7 +198,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             >
               {t('auto_refresh_label')} {isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}
             </Badge>
-            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1 [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1">
               <DownloadSimple size={16} /> {t('export_stats_button')}
             </DsButton>
           </div>
@@ -261,7 +287,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           border-radius: 0.75rem;
           padding: 2rem;
           border: 1px solid var(--border-default);
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+          box-shadow: var(--shadow-sm);
         }
 
         .sota-chart-card h3 {

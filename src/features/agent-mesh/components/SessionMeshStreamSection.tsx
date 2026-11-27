@@ -6,7 +6,7 @@ import {
   CaretRight,
   CheckCircle,
   FolderOpen,
-  Sparkle,
+  NotePencil,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -221,7 +221,7 @@ const NativeTurnDiffStrip: React.FC<NativeTurnDiffStripProps> = React.memo(({ th
             onClick={handleSummarize}
             className="!h-6 !px-1.5 !py-0 gap-1 text-caption font-normal text-muted-foreground hover:text-foreground"
           >
-            <Sparkle size={11} />
+            <NotePencil size={11} aria-hidden="true" />
             <span>{t('agentMesh:diffStrip.summarize', { defaultValue: '让主代理总结' })}</span>
           </DsButton>
         </div>

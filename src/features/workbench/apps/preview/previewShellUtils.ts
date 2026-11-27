@@ -15,6 +15,7 @@ export type PreviewShellMode =
   | 'xlsx'
   | 'pptx'
   | 'epub'
+  | 'xmind'
   | 'text'
   | 'audio'
   | 'video'

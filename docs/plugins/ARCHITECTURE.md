@@ -11,15 +11,18 @@ id 不能用保留的发布者，服务名由 id 派生（`host/kernel/API.md` �
 ## 1. 分层
 
 ```
-Electron 外壳（electron/）      窗口、协议、Tauri 兼容桥；不含业务
+Electron 外壳（electron/）      窗口、协议、IPC 桥接；不含业务
 Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校验、事件、协议、profile、插件生命周期
-平台服务（host/platform/）       storage · secrets · settings · log · paths · time · util · net-policy · native
-业务插件（host/plugins/）        llm · chat · vfs · notes · qbank · anki · sync · …（官方，id 为 dstu.*）
+平台服务（host/platform/）       crypto · diagnostics · errors · files · http · log · native · net-policy ·
+                                 paths · secrets · serde-compat · settings · storage · storage-mobile ·
+                                 time · util · vector · zip（18 个平台模块）
+业务插件（host/plugins/）        llm · chat · vfs · notes · qbank · anki · sync · agent-mesh ·
+                                 plugin-services · plugin-workshop · …（官方，id 为 dstu.*）
 社区插件                          与业务插件同一机制，经用户 profile 装载；装载前做清单与权限检查
 ```
 
 依赖只能自上而下：业务插件依赖平台服务和其他插件**发布的服务**，平台服务不依赖业务插件。门禁
-（`scripts/arch/boundaries.mjs`）机械保证这一点：插件之间只能 import 对方的 `api.ts`；原生模块只能出现在平台层。
+（`scripts/arch/boundaries.mjs`）机械保证这一点：插件之间只能 import 对方的 `api.ts` / `portable.ts`；原生模块只能出现在平台层。
 
 ## 2. 扩展点
 
@@ -39,7 +42,7 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 一项可替换能力 = **服务定义**（`api.ts` 中的接口与类型）+ **提供方**（实现它的插件）+ **消费方**。
 三者分离，才能做到"换一个提供方就改变整个产品"。
 
-**命名（新服务立即遵守，既有服务在迁移收尾时统一更名）**
+**命名**
 
 - `ctx` 上的服务名使用 lowerCamelCase 标识符，**不带版本号、点号或 @**，例如：`ctx.llm`、`ctx.anki`、
   `ctx.vfsRepo`、`ctx.webSearch`、`ctx.syncProvider`。这样插件作者写 `ctx.anki`，而不是 `ctx['anki@1']`。
@@ -60,7 +63,7 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 - 只暴露业务语义的方法（例如 `createNoteInFolder`），不暴露数据库连接或内部表结构。
 - 输入输出使用 `contracts/` 生成的类型或本插件 `api.ts` 中定义的类型；不得引用其他插件的实现文件类型。
 - 异步方法接受 `AbortSignal`；错误使用平台的 `AppError` / `CommandError` 形状。
-- 每个公开方法都有一行注释，说明对应的 Rust 来源（迁移期）或语义。
+- 每个公开方法都有一行注释，说明业务语义、前提条件与错误边界。
 
 ## 4. 数据所有权
 
@@ -70,7 +73,9 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 
 ## 5. Profile
 
-`host/profiles/desktop.json` 由 `host/profiles/generate.ts` 扫描 `host/plugins/*/index.ts` 生成，列出全部官方插件。
+`host/profiles/desktop.json`（45 条）与 `host/profiles/mobile.json`（37 条）由 `host/profiles/generate.ts`
+统一生成，覆盖内核入口（`host/kernel/plugins.ts`）、平台插件（`host/platform/`）、外壳插件（`electron/index.ts`）与
+业务插件（`host/plugins/`），并按平台过滤（移动端目录存在 `mobile.ts` 时优先选用）。
 用户 profile（`extends: "official"`）可以：
 
 - 设置 `disabled: true`，不装载某个官方插件（注入它服务的插件随之停用）；
@@ -100,10 +105,10 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 | `ctx.tools`、`ctx.llm` 等可替换注册表 | 智能体工具注册表、`ctx.llm` 及其适配器 |
 | 事件三分（会话、Agent、能力） | 前端事件（契约约束）与插件间 Cordis 事件 |
 
-## 附录 A：既有服务更名表（2026-11-03 起执行）
+## 附录 A：历史服务更名对照表
 
-提供方 lane 负责修改自己 `api.ts` 中的 `declare module` 键、`meta.provides`、`ctx.provide(...)`，并导出版本描述
-（`export const <名字>Service = { name: '<名字>', version: '1.0.0' } as const;`）。消费方一律使用新名字。
+下表记录历史服务名向 lowerCamelCase 规范名的对应关系（已完成更名，仅作历史对照）。服务版本由提供方 `api.ts` 中的
+描述对象声明（`export const <名字>Service = { name: '<名字>', version: '1.0.0' } as const;`），消费方一律使用规范名。
 
 | 旧名 | 新名 | 提供方 |
 |---|---|---|

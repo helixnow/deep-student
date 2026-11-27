@@ -66,6 +66,8 @@ When you keep multiple similarly titled notes open at once — for example, `Cal
 ### Daily Note-Taking Essentials
 
 - Type `[[` anywhere to link to another note (and explore connections in the local link graph).
+- Press `Backspace` / `⌘+Backspace` / `Delete` on a focused note in the Notes list to move it safely to Trash.
+- Press `⌘/Ctrl+K` while editing a note: when the caret is not on a link or word, it forwards straight to the global **Command Palette** so you never lose quick navigation.
 - Ask AI to polish, expand, or organize a note: AI presents edits as clear block-by-block suggestions you can review and undo cleanly instead of silently overwriting your writing.
 - Turn any finished note straight into a **Mind Map** or a batch of **Flashcards** from the note toolbar.
 
@@ -77,14 +79,14 @@ When you keep multiple similarly titled notes open at once — for example, `Cal
 
 ![Media Studio with timestamped transcript and lecture notes](../images/media-desktop-light.webp)
 
-1. **Import and add a transcript**: Drag a video/audio file (or supported lecture link) into **Media Studio**. Click **Transcribe** — or if you already have `.srt`, `.vtt`, or Bilibili `.json` subtitles, import them directly from the item menu to skip transcription time and cost.
+1. **Import and add a transcript**: Drag a video/audio file (or supported lecture link) into **Media Studio**. Click **Transcribe** — or if you already have subtitles, use **Import subtitle file…** from the item menu to import **`.srt`, `.vtt`, `.ass`, `.txt`, or Bilibili `.json`** files directly and skip transcription time and cost. Non-subtitle files are rejected cleanly instead of corrupting the transcript, and importing over an existing transcript asks for overwrite confirmation (**Replace existing subtitles?**).
 2. **Use Grounded Companion Q&A while watching**:
    - Open the **Ask** tab beside the player and click **Ask about what I just watched** (or type your own question).
-   - Companion Q&A automatically anchors its answer to your **current playhead timestamp and active chapter** (`At mm:ss (Chapter: ...)`), pulling the nearby transcript lines so the explanation stays strictly grounded in what the speaker actually said.
+   - Companion Q&A automatically anchors its answer to your **current playhead timestamp and active chapter** (`At mm:ss (Chapter: ...)`), pulling the nearby transcript lines so the explanation stays strictly grounded in what the speaker actually said, and renders full **Markdown + KaTeX math** cleanly.
    - Click any `mm:ss` timestamp badge in the answer to seek the video straight to that exact moment.
    - On mobile or compact layouts, Companion Q&A protects playback state cleanly so asking a quick question never resets your position.
 3. **Escalate or convert into study materials**:
-   - Need full derivations, follow-up practice, or multi-turn discussion? Click **Promote to main chat** in the top-right of the Companion card to carry the lecture context and timestamp into a full Chat session.
+   - Need full derivations, follow-up practice, or multi-turn discussion? Click **Promote to main chat** in the top-right of the Companion card — DeepStudent carries the lecture context, timestamp anchor, and the Companion AI's answer directly into a full Chat session.
    - Click **Make flashcards** to generate timestamp-linked cards in the background, build a sectioned **Handout** with key frames, or generate **in-lecture checkpoints** that quiz you every few minutes.
 
 **What you get**: Passive video watching turns into an interactive, searchable study session where every note, card, and AI answer jumps back to the exact second in the lecture.
@@ -113,4 +115,4 @@ When you keep multiple similarly titled notes open at once — for example, `Cal
 - Schedule your new highlights, lecture takeaways, and notes for long-term retention → [04 · Flashcards, FSRS-6, Exam Sprint & Question Sets](./04-flashcards-exams-fsrs.md)
 - Pair your phone to read notes and review on the go → [06 · Backups, Cloud Sync, Mobile & WebUI / PWA](./06-sync-backup-mobile-webui.md)
 
-<!-- Baseline: DeepStudent v0.20.9 -->
+<!-- Baseline: DeepStudent v0.20.10 -->

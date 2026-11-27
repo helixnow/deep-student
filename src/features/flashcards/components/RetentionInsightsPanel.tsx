@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { ChartLineUp } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { FSRS_STATS_REFRESH_EVENT, subscribeFlashcardsDueRefresh } from '../events';
 
@@ -147,7 +148,13 @@ const MiniBars: React.FC<{ values: number[]; labels: string[]; title: string }> 
   );
 };
 
-export const RetentionInsightsPanel: React.FC = () => {
+export interface RetentionInsightsPanelProps {
+  onOpenSchedulerSettings?: () => void;
+}
+
+export const RetentionInsightsPanel: React.FC<RetentionInsightsPanelProps> = ({
+  onOpenSchedulerSettings,
+}) => {
   const { t } = useTranslation('flashcards');
   const [insights, setInsights] = useState<RetentionInsights | null>(null);
   const mountedRef = useRef(true);
@@ -281,7 +288,20 @@ export const RetentionInsightsPanel: React.FC = () => {
             />
           </div>
         ) : null}
-        <p className="wb-fcx-footnote">{t(v7 ? 'stats.insights.hintV7' : 'stats.insights.hint')}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="wb-fcx-footnote">{t(v7 ? 'stats.insights.hintV7' : 'stats.insights.hint')}</p>
+          {!v7 && onOpenSchedulerSettings ? (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onOpenSchedulerSettings}
+              className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t('stats.insights.openScheduler')}
+            </DsButton>
+          ) : null}
+        </div>
       </div>
     </section>
   );

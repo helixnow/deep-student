@@ -22,6 +22,7 @@ import {
   Link,
   LineSegment,
   MagnifyingGlassPlus,
+  Check,
   CheckCircle,
   Circle,
   Copy,
@@ -97,7 +98,7 @@ const PanelRow: React.FC<{
   >
     <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center">{icon}</span>
     <span className="flex-1 text-left">{label}</span>
-    {active && <span aria-hidden="true" className="text-[var(--mm-primary)] text-xs">✓</span>}
+    {active && <Check size={12} aria-hidden="true" className="text-[var(--mm-primary)] shrink-0" />}
   </DsButton>
 );
 
@@ -391,7 +392,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
                 onClick={() =>
                   updateNode(nodeId, { style: { ...node.style, [prop]: cur === val ? undefined : val } })
                 }
-                title={t(`contextMenu.${key}`)}
+                aria-label={t(`contextMenu.${key}`)}
                 aria-pressed={cur === val}
               >
                 <Icon size={18} />
@@ -411,7 +412,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
                     },
                   })
                 }
-                title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
+                aria-label={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
                 aria-pressed={node.style?.headingLevel === level}
               >
                 <Icon size={18} />
@@ -421,7 +422,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
               variant="ghost"
               className={cn('mm-mobile-format-btn', !node.style?.headingLevel && 'is-active')}
               onClick={() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } })}
-              title={t('contextMenu.normalText')}
+              aria-label={t('contextMenu.normalText')}
               aria-pressed={!node.style?.headingLevel}
             >
               <TextT size={18} />

@@ -31,7 +31,8 @@ import {
   type ToolFacePrefixSnapshot,
 } from './tool-face.ts';
 import { shouldCompact } from './compaction-budget.ts';
-import { insertRetrievalPageImageMessage } from './retrieval-images.ts';
+import { insertOrReplaceBrowserScreenshotMessage, insertRetrievalPageImageMessage } from './retrieval-images.ts';
+import { foldHistoricalBrowserSnapshots } from './browser-snapshot-folding.ts';
 import { messageForModel2 } from './unified-text-stream.ts';
 import type { CompactionOutcome } from './compaction-outcome.ts';
 import { compactionDidCompact, compactionIsFailed, compactionReasonCode, compactionTokenEstimates } from './compaction-outcome.ts';
@@ -105,6 +106,7 @@ export interface ToolRoundState {
   injectedSkillIds: Set<string>;
   inLoopSkillBatches: [string, string | null, LegacyChatMessage[]][];
   retrievalPageImageBatches: [string, LegacyChatMessage][];
+  browserScreenshotBatch?: [string, LegacyChatMessage] | null;
   retrievalPageImageBudget: unknown;
   cumulativeSkillAudit: SkillInjectionAudit;
   previousEmptyRequiredTools: Set<string>;
@@ -231,7 +233,7 @@ export class ToolLoop {
     const frozenToolSchemas = new Map<string, unknown>();
     const state: ToolRoundState = {
       injectedSkillIds: new Set(), inLoopSkillBatches: [], retrievalPageImageBatches: [],
-      retrievalPageImageBudget: null,
+      browserScreenshotBatch: null, retrievalPageImageBudget: null,
       cumulativeSkillAudit: { injectedSkillIds: [], droppedSkillIds: [], missingSkillIds: [], estimatedTokens: 0, skillStateVersion: 0 },
       previousEmptyRequiredTools: new Set(),
     };
@@ -327,6 +329,10 @@ export class ToolLoop {
         }
         for (const [roundLast, page] of state.retrievalPageImageBatches) {
           insertRetrievalPageImageMessage(messages, roundLast, structuredClone(page));
+        }
+        if (state.browserScreenshotBatch != null) {
+          const [roundLast, screenshot] = state.browserScreenshotBatch;
+          insertOrReplaceBrowserScreenshotMessage(messages, roundLast, structuredClone(screenshot));
         }
         log.debug(`[ChatV2::pipeline] Added ALL ${toolMessages.length} tool result messages to chat history (tool_results count: ${ctx.toolResults.length})`);
       }
@@ -438,7 +444,8 @@ export class ToolLoop {
       const context: Record<string, JsonValue> = {};
       for (const [key, value] of llmContext) context[key] = value as JsonValue;
       context.deepseek_web_tools_disabled = ctx.options.disableTools ?? false;
-      const history = messages.map(messageForModel2);
+      const foldedMessages = foldHistoricalBrowserSnapshots(messages);
+      const history = foldedMessages.map(messageForModel2);
       const idle = loadStreamIdleConfig(this.deps.readSetting);
       const call = async (): Promise<StandardModel2Output> => {
         ensureActive();
@@ -606,7 +613,7 @@ export class ToolLoop {
       ctx.streamingContentBlockId = adapter.getContentBlockId();
       log.info(`[ChatV2::pipeline] After LLM call: final_content_len=${utf8ByteLength(ctx.finalContent)}, final_reasoning=${ctx.finalReasoning === null ? 'None' : `Some(${utf8ByteLength(ctx.finalReasoning)})`}, thinking_block_id=${ctx.streamingThinkingBlockId === null ? 'None' : `Some(${JSON.stringify(ctx.streamingThinkingBlockId)})`}, content_block_id=${ctx.streamingContentBlockId === null ? 'None' : `Some(${JSON.stringify(ctx.streamingContentBlockId)})`}`);
       if (ctx.finalContent === '' && output.assistant_message !== '') ctx.finalContent = output.assistant_message;
-      const usage = getOrEstimateUsage(adapter, messages, ctx.finalContent, systemPrompt, ctx.options.modelId, log);
+      const usage = getOrEstimateUsage(adapter, foldedMessages, ctx.finalContent, systemPrompt, ctx.options.modelId, log);
       accumulate(ctx.tokenUsage, usage);
       log.info(`[ChatV2::pipeline] Token usage for round ${recursionDepth}: prompt=${usage.promptTokens}, completion=${usage.completionTokens}, total=${usage.totalTokens}, source=${usage.source}; Accumulated: prompt=${ctx.tokenUsage.promptTokens}, completion=${ctx.tokenUsage.completionTokens}, total=${ctx.tokenUsage.totalTokens}, source=${ctx.tokenUsage.source}`);
       const active = await this.resolveActiveApiConfig(ctx);

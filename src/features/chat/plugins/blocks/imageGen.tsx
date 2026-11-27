@@ -22,7 +22,8 @@ import {
   WarningCircle,
   ArrowCounterClockwise,
   Image as ImageIcon,
-  Sparkle,
+  Cube,
+  TextT,
   ChatDots,
   CaretDown,
   CaretRight,
@@ -136,7 +137,7 @@ const ImageInfo: React.FC<ImageInfoProps> = ({ width, height, model }) => {
       {/* 模型 */}
       {model && (
         <div className="ml-auto flex min-w-0 items-center gap-1">
-          <Sparkle size={12} className="shrink-0" />
+          <Cube size={12} className="shrink-0" />
           <span className="truncate">{model}</span>
         </div>
       )}
@@ -196,7 +197,7 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
 
       {/* 重试按钮 */}
       {onRetry && (
-        <DsButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10">
           <ArrowCounterClockwise size={14} />
           <span>{t('blocks.imageGen.retry')}</span>
         </DsButton>
@@ -395,7 +396,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/30 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <Sparkle size={12} className="shrink-0" />
+                      <TextT size={12} className="shrink-0" />
                       <span className="shrink-0 font-medium">
                         {t('blocks.imageGen.prompt')}
                       </span>
@@ -468,7 +469,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     variant="ghost"
                     size="sm"
                     onClick={handleUseForFollowup}
-                    className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
+                    className="text-primary hover:bg-primary/10"
                   >
                     <ChatDots size={14} />
                     <span>{t('blocks.imageGen.useForFollowup')}</span>

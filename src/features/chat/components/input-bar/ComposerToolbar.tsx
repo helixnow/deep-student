@@ -56,6 +56,9 @@ const TRIGGER_MONO_CURRENT_COLOR_BRANDS: ReadonlySet<ProviderBrand> = new Set<Pr
   'opencode',
   'xai',
   'ollama',
+  'mimo',
+  'baai',
+  'pika',
   'flux',
   'ideogram',
   'midjourney',
@@ -184,7 +187,7 @@ const studyUiButtonSizeIconClassName =
 const studyUiSendButtonSizeClass =
   'native-touch-target h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]';
 const studyUiBlackActionButtonClass =
-  '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
+  '!border-foreground !bg-foreground hover:!bg-foreground/90 active:!bg-foreground/85 !text-background';
 const studyUiSendButtonEmptyStateClass =
   '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
 
@@ -298,7 +301,7 @@ function ContextWindowUsageRing({
           usageLevel === 'danger'
             ? 'text-destructive'
             : usageLevel === 'warn'
-              ? 'text-amber-500 dark:text-amber-400'
+              ? 'text-warning'
               : 'text-[color:var(--text-secondary)]',
         )}
       >
@@ -374,7 +377,6 @@ export interface ComposerToolbarProps {
   hasLoadedSkills: boolean;
   renderMcpPanel?: () => React.ReactNode;
   onOpenMcpPanel?: () => void;
-  mcpEnabled: boolean;
   selectedMcpServerCount: number;
   renderAdvancedPanel?: (options?: { embedded?: boolean; onClose?: () => void }) => React.ReactNode;
   advancedPanelRequested?: boolean;
@@ -442,8 +444,6 @@ export interface ComposerToolbarProps {
 // 主组件
 // ============================================================================
 
-const ANTHROPIC_TRIGGER_BRAND_STYLE: React.CSSProperties = { color: '#D97757' };
-
 export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   isMobile,
   isMobileEnv,
@@ -472,7 +472,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   hasLoadedSkills,
   renderMcpPanel,
   onOpenMcpPanel,
-  mcpEnabled,
   selectedMcpServerCount,
   renderAdvancedPanel,
   advancedPanelRequested = false,
@@ -695,7 +694,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           hasLoadedSkills={hasLoadedSkills}
           renderMcpPanel={renderMcpPanel}
           onOpenMcpPanel={onOpenMcpPanel}
-          mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
           onOpenAdvancedPanel={onOpenAdvancedPanel}
           pluginWorkshopActive={pluginWorkshopActive}
@@ -790,7 +788,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                         showTooltip={false}
                         variant={triggerUsesMonoBrand ? 'mono' : 'color'}
                         renderMode={triggerUsesMonoBrand ? 'default' : 'glyph'}
-                        style={resolvedTriggerBrand === 'anthropic' ? ANTHROPIC_TRIGGER_BRAND_STYLE : undefined}
                         className="shrink-0 text-foreground"
                       />
                     ) : (

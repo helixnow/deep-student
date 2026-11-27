@@ -213,11 +213,11 @@ export class QuickAssistantService {
         label: QUICK_ASSISTANT_WINDOW_LABEL, value: true,
       }));
     if (this.deps.platform === 'darwin') {
-      // Rust applies NSVisualEffectMaterial::HudWindow with state Active and radius 16.
+      // Align native NSVisualEffectView corner radius with --wb-overlay-radius (18px).
       await this.bestEffort('apply hud window vibrancy',
         this.deps.shell.request('plugin:window|set_effects', {
           label: QUICK_ASSISTANT_WINDOW_LABEL,
-          value: { effects: ['hudWindow'], state: 'active', radius: 16 },
+          value: { effects: ['hudWindow'], state: 'active', radius: 18 },
         }));
     }
     return true;

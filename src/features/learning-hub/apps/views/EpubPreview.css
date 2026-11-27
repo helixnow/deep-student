@@ -203,25 +203,38 @@
 .epub-preview-sidebar {
   --epub-sidebar-width: clamp(220px, 24vw, 300px);
 
-  flex: 0 0 auto;
+  position: absolute;
+  z-index: 5;
+  inset: 0 auto 0 0;
   width: var(--epub-sidebar-width);
+  max-width: min(82vw, 300px);
   min-width: 0;
   overflow: hidden;
   border-inline-end: 1px solid hsl(var(--border));
   background: color-mix(in srgb, var(--epub-paper) 10%, hsl(var(--muted)));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 14%);
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  visibility: visible;
+  will-change: transform;
+  contain: layout style paint;
   transition:
-    width var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform var(--panel-close-dur, 200ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 160ms ease,
+    visibility 0s linear 0s,
     background-color var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .epub-preview-sidebar[data-open='false'] {
-  width: 0;
+  pointer-events: none;
+  transform: translate3d(-100%, 0, 0);
+  opacity: 0;
   visibility: hidden;
-  border-inline-end-color: transparent;
+  box-shadow: none;
   transition:
-    width var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-    border-color var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-    visibility 0s linear var(--panel-close-dur, 350ms);
+    transform var(--panel-close-dur, 200ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 140ms ease,
+    visibility 0s linear var(--panel-close-dur, 200ms);
 }
 
 .epub-preview-sidebar-inner {

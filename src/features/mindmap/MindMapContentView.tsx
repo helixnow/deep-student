@@ -283,9 +283,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     if (wasRecite && !reciteMode) setMasteryRefreshNonce((n) => n + 1);
   }, [reciteMode]);
 
-  // 热力图开启时，订阅闪卡复习 / 投影 / 变更事件以实时刷新掌握度徽标
+  // 热力图开启时，仅在导图画布视图订阅闪卡复习 / 投影 / 变更事件以实时刷新掌握度徽标
   useEffect(() => {
-    if (!showMasteryOverlay || !resourceId) return;
+    if (!showMasteryOverlay || normalizedView !== 'mindmap' || !resourceId) return;
     const bump = () => setMasteryRefreshNonce((n) => n + 1);
     const unsubDue = subscribeFlashcardsDueRefresh(bump);
     const unsubProjected = addTypedEventListener<{ mapId?: string }>(
@@ -303,13 +303,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       unsubStats();
       unsubChanged();
     };
-  }, [showMasteryOverlay, resourceId]);
+  }, [showMasteryOverlay, normalizedView, resourceId]);
 
   useEffect(() => {
     if (!showMasteryOverlay || !resourceId) {
       setMasteryStatusByNodeId(EMPTY_MASTERY_STATUS);
       return;
     }
+    if (normalizedView !== 'mindmap') return;
     let cancelled = false;
     void loadMindMapMasterySummary(resourceId)
       .then((summary) => {
@@ -326,7 +327,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [showMasteryOverlay, resourceId, masteryRefreshNonce]);
+  }, [showMasteryOverlay, normalizedView, resourceId, masteryRefreshNonce]);
 
   useEffect(() => {
     if (!isActive || !focusOnActive) return;
@@ -373,6 +374,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
       state.setCurrentView(next);
       if (next === 'outline') {
+        setActivePanel((p) => (p === 'structure' || p === 'style' ? null : p));
+        setOverlayPanel((p) => (p === 'structure' || p === 'style' ? null : p));
+        setPresentationMode(false);
+        setPresentationStepIndex(-1);
         const targetId = prepareOutlineResume(state.focusedNodeId, outlineResumeRef.current);
         if (targetId) {
           window.requestAnimationFrame(() => {
@@ -451,10 +456,6 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   }, [storeApi]);
 
   const handleToggleMasteryOverlay = useCallback(() => setShowMasteryOverlay((p) => !p), []);
-  const handleToggleShortcutHelp = useCallback(
-    () => setOverlayPanel((p) => (p === 'shortcuts' ? null : 'shortcuts')),
-    [],
-  );
 
   useEffect(() => {
     if (isMobileScreen) {
@@ -1162,6 +1163,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
           <div className="mm-content-stage flex-1 overflow-hidden relative flex flex-col bg-[var(--mm-bg)]">
             <MindMapFormatDock
+              currentView={normalizedView}
               isCoarsePointer={isCoarsePointer}
               reciteMode={reciteMode}
               presentationMode={presentationMode}
@@ -1207,7 +1209,6 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                   ref={mindMapViewRef}
                   initialViewport={mindMapViewportRestore}
                   associationModeRequest={associationModeRequest}
-                  onToggleShortcutHelp={handleToggleShortcutHelp}
                   showMasteryOverlay={showMasteryOverlay}
                   masteryStatusByNodeId={masteryStatusByNodeId}
                   onAiNodeAction={handleAiNodeAction}

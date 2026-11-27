@@ -276,14 +276,15 @@ describe('ReviewSessionScreen interactions', () => {
     expect(useFsrsReviewStore.getState().queueIndex).toBe(1);
   });
 
-  it('does not run the Z shortcut from an input, during IME, or while busy', () => {
+  it('does not run the Z shortcut from an input, during IME, or while busy', async () => {
     useFsrsReviewStore.setState({
       queue: [{ id: 'state-1', ankiCardId: 'anki-1', front: 'Q', back: 'A' }],
       lastReview: { logId: 'log-0', cardStateId: 'state-0', queueIndex: 0 },
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '编辑卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(await screen.findByTestId('fc-review-edit'));
     fireEvent.keyDown(screen.getAllByRole('textbox')[0], { key: 'z', code: 'KeyZ' });
     expect(invokeMock).not.toHaveBeenCalled();
 
@@ -311,7 +312,8 @@ describe('ReviewSessionScreen interactions', () => {
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.click(screen.getByRole('button', { name: '暂停卡片' }));
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '暂停卡片' }));
 
     await screen.findByRole('alert');
     expect(screen.getByRole('button', { name: '良好' })).toBeEnabled();

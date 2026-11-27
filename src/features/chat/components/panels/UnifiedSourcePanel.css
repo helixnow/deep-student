@@ -327,7 +327,6 @@
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
@@ -335,14 +334,6 @@
   border-radius: 999px;
   padding: 2px 7px;
   background: hsl(var(--muted) / 0.4);
-}
-
-.chat-v2 .unified-source-panel .usp-score-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.85;
 }
 
 .chat-v2 .unified-source-panel .usp-item-score[data-tier="high"] {

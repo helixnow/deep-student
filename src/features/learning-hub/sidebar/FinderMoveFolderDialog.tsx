@@ -138,7 +138,7 @@ const FolderNodeRow: React.FC<FolderNodeRowProps> = ({
             size={16}
             className={cn(
               'shrink-0 transition-colors duration-150',
-              isSelected ? 'text-primary' : 'text-amber-500',
+              isSelected ? 'text-primary' : 'text-warning',
             )}
           />
           <span className="text-sm truncate">{node.folder.title}</span>

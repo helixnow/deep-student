@@ -821,4 +821,20 @@ describe('ResourceAppWorkspace', () => {
     expect(mocks.rename).not.toHaveBeenCalled();
     expect(screen.getByText('初始题集')).toBeInTheDocument();
   });
+
+  it('delegates the app title to the outer window titlebar without repeating it in the sidebar', async () => {
+    const onTitleChange = vi.fn();
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={onTitleChange}
+      />,
+    );
+    await screen.findByText('Synthetic essay');
+
+    expect(onTitleChange).toHaveBeenCalledWith('作文批改');
+    expect(screen.queryByText('作文批改')).not.toBeInTheDocument();
+    expect(document.querySelector('.wb-resource-workspace-create-btn')).toHaveAttribute('aria-label', '新建作文批改');
+  });
 });

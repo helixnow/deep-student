@@ -7,7 +7,7 @@ import { isSafeModeUrl } from '@/ui-kernel/services/host-status';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  BookOpen, CaretRight, PencilSimple, ChatCircle, DownloadSimple, LinkSimple, MagnifyingGlass, Package, PuzzlePiece, ShieldChevron, Sparkle,
+  BookOpen, CaretRight, PencilSimple, ChatCircle, DownloadSimple, LinkSimple, MagnifyingGlass, Package, PuzzlePiece, ShieldChevron,
   WarningCircle, Wrench,
 } from '@phosphor-icons/react';
 
@@ -56,6 +56,8 @@ export interface PluginManagerPanelProps {
   uiStatus?: PluginUiHostStatus | null;
   /** 统一模型清单：渠道插件（微信 iLink Bot）的回复模型选择使用它。 */
   models?: readonly UnifiedModelInfo[];
+  /** 由外层 PluginsSection 已渲染隔离提示时，避免再叠加故障横幅。 */
+  suppressFaultBanner?: boolean;
   className?: string;
 }
 
@@ -90,7 +92,7 @@ function SectionCount({ count, testId }: { count: number; testId: string }) {
  * （安静的分组行；别的功能正在依赖的基础服务显示为锁定，依据是 Host 的依赖数据），最后是渠道插件。
  * 视觉沿用设置页的原语与 token（`bg-muted` 圆角面、quiet 行、设置色板），不引入新的视觉语言。
  */
-export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, className, workshop: injectedWorkshop }: PluginManagerPanelProps) {
+export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, suppressFaultBanner = false, className, workshop: injectedWorkshop }: PluginManagerPanelProps) {
   const { t } = useTranslation('plugin_manager');
   const registeredWorkshop = usePluginManagerWorkshop();
   const workshop = injectedWorkshop ?? registeredWorkshop;
@@ -519,34 +521,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   return (
     <div ref={rootRef} className={cn('space-y-1 pb-10 text-left ui-fade-in-slow', className)} data-testid="plugin-manager">
       <SettingSection title={t('title')} description={t('subtitle')} hideHeader>
-        {safeMode ? (
-          <div
-            role="status"
-            data-testid="plugin-safe-mode"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
-          >
-            <div className="flex min-w-0 flex-1 items-start gap-2">
-              <ShieldChevron className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <div className="min-w-0 space-y-0.5">
-                <div className="font-medium">{t('safeMode.title')}</div>
-                <p className="text-xs leading-relaxed text-muted-foreground/80">{t('safeMode.description')}</p>
-                <p data-testid="plugin-safe-mode-mcp-note" className="text-xs leading-relaxed text-muted-foreground/80">
-                  {t('safeMode.mcpPausedNote')}
-                </p>
-              </div>
-            </div>
-            <DsButton
-              variant="outline"
-              size="sm"
-              data-testid="plugin-exit-safe-mode"
-              className={cn('shrink-0 border-warning/40 bg-background/85 text-foreground hover:bg-background', COARSE_TOUCH)}
-              onClick={() => setExitSafeModeOpen(true)}
-            >
-              {t('safeMode.exitButton')}
-            </DsButton>
-          </div>
-        ) : null}
-
+        {/* 单一优先级顶部提示条：避免安全模式 / 配置损坏 / 错误 / 故障横幅层层堆叠 */}
         {profileCorrupted ? (
           <div
             role="alert"
@@ -580,26 +555,57 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               {resettingProfile ? t('profileCorrupted.resetting') : t('profileCorrupted.resetButton')}
             </DsButton>
           </div>
-        ) : null}
-
-        {profileResetResult && !profileCorrupted ? (
+        ) : safeMode ? (
           <div
             role="status"
-            data-testid="plugin-profile-reset-success"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-foreground"
+            data-testid="plugin-safe-mode"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
           >
-            <p className="min-w-0 flex-1 break-words leading-relaxed">
-              {profileResetResult.backedUpTo
-                ? t('profileCorrupted.resetSuccessWithBackup', { path: profileResetResult.backedUpTo })
-                : t('profileCorrupted.resetSuccess')}
-            </p>
-            <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => setProfileResetResult(null)}>
-              {t('actions.dismiss')}
-            </DsButton>
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <ShieldChevron className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 space-y-0.5">
+                <div className="font-medium">{t('safeMode.title')}</div>
+                <p className="text-xs leading-relaxed text-muted-foreground/80">{t('safeMode.description')}</p>
+                <p data-testid="plugin-safe-mode-mcp-note" className="text-xs leading-relaxed text-muted-foreground/80">
+                  {t('safeMode.mcpPausedNote')}
+                </p>
+                {totalCommunityCount > 0 ? (
+                  <p data-testid="plugin-safe-mode-paused-section" className="text-xs leading-relaxed text-muted-foreground">
+                    {t('safeMode.pausedSectionTitle')} ({totalCommunityCount}) · {t('safeMode.pausedSectionDescription', { count: totalCommunityCount })}
+                  </p>
+                ) : null}
+                {faultedCommunityCount > 0 ? (
+                  <p data-testid="plugin-safe-mode-fault-summary" className="font-medium text-xs leading-relaxed text-destructive">
+                    {t('safeMode.pausedSectionFaultSummary', { count: faultedCommunityCount })}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {faultedCommunityCount > 0 && filter !== 'problem' ? (
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  data-testid="plugin-safe-mode-view-faulted"
+                  className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
+                  onClick={() => setFilter('problem')}
+                >
+                  <WarningCircle className="size-3.5" aria-hidden="true" />
+                  {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
+                </DsButton>
+              ) : null}
+              <DsButton
+                variant="outline"
+                size="sm"
+                data-testid="plugin-exit-safe-mode"
+                className={cn('shrink-0 border-warning/40 bg-background/85 text-foreground hover:bg-background', COARSE_TOUCH)}
+                onClick={() => setExitSafeModeOpen(true)}
+              >
+                {t('safeMode.exitButton')}
+              </DsButton>
+            </div>
           </div>
-        ) : null}
-
-        {state.error && !listFailedWithProfileReadError ? (() => {
+        ) : state.error && !listFailedWithProfileReadError ? (() => {
           const effectiveCode = resolveManagerErrorCode(state.error.code, state.error.detail);
           const friendly = describeManagerError(t, state.error.code, state.error.detail);
           return (
@@ -634,7 +640,54 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               </DsButton>
             </div>
           );
-        })() : null}
+        })() : profileResetResult ? (
+          <div
+            role="status"
+            data-testid="plugin-profile-reset-success"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-foreground"
+          >
+            <p className="min-w-0 flex-1 break-words leading-relaxed">
+              {profileResetResult.backedUpTo
+                ? t('profileCorrupted.resetSuccessWithBackup', { path: profileResetResult.backedUpTo })
+                : t('profileCorrupted.resetSuccess')}
+            </p>
+            <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => setProfileResetResult(null)}>
+              {t('actions.dismiss')}
+            </DsButton>
+          </div>
+        ) : !suppressFaultBanner && !listLoading && faultedCommunityCount > 0 ? (
+          <div
+            role="region"
+            aria-label={t('mine.faultBannerTitle')}
+            data-testid="plugin-mine-fault-banner"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs"
+          >
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex items-center gap-1.5 font-medium text-destructive">
+                <WarningCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>{t('mine.faultBannerTitle')}</span>
+                <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 tabular-nums text-2xs">
+                  {faultedCommunityCount}
+                </span>
+              </div>
+              <p className="leading-relaxed text-muted-foreground">
+                {t('mine.faultBannerDescription', { count: faultedCommunityCount })}
+              </p>
+            </div>
+            {filter !== 'problem' ? (
+              <DsButton
+                variant="outline"
+                size="sm"
+                data-testid="plugin-mine-view-faulted"
+                className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
+                onClick={() => setFilter('problem')}
+              >
+                <WarningCircle className="size-3.5" aria-hidden="true" />
+                {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
+              </DsButton>
+            ) : null}
+          </div>
+        ) : null}
 
         {state.notice?.kind === 'package' ? (
           <InstallFeedback result={state.notice.result} safeMode={safeMode} onDismiss={() => controller.dismissNotice()} />
@@ -642,7 +695,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
 
         <WorkshopComposer workshop={workshop} disabled={safeMode} safeMode={safeMode} />
 
-        {/* 一条轻的工具栏：搜索 + 范围。没有底板，不抢「我的插件」的位置。 */}
+        {/* 一条轻的工具栏：搜索 + 范围 + 导入/安全模式入口（单一权威入口）。 */}
         <div role="search" data-testid="plugin-toolbar" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <div className="relative min-w-[12rem] flex-1">
             <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
@@ -651,6 +704,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           </div>
           <SegmentedControl<PluginFilter> ariaLabel={t('manager.filterLabel')} value={filter} onValueChange={setFilter} size="compact" className="max-w-full flex-wrap"
             options={pluginFiltersForMode(safeMode).map((value) => ({ value, label: t(`manager.filters.${value}`) }))} />
+          {importButton}
         </div>
 
         {listLoading ? <p role="status" className={LIST_EMPTY_CLASS}>{t('list.loading')}</p> : null}
@@ -660,89 +714,6 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           <section data-testid="plugin-section-mine" className="min-w-0">
             <GroupTitle description={t('mine.description')}
               title={<>{t('mine.title')}<SectionCount testId="plugin-count-community" count={community.length} /></>} />
-            {safeMode ? (
-              <div
-                role="region"
-                aria-label={t('safeMode.pausedSectionTitle')}
-                data-testid="plugin-safe-mode-paused-section"
-                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1.5 font-medium text-warning">
-                    <ShieldChevron className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span>{t('safeMode.pausedSectionTitle')}</span>
-                    <span className="rounded-full bg-warning/15 px-1.5 py-0.5 tabular-nums text-2xs">
-                      {totalCommunityCount}
-                    </span>
-                  </div>
-                  <p className="leading-relaxed text-muted-foreground">
-                    {t('safeMode.pausedSectionDescription', { count: totalCommunityCount })}
-                  </p>
-                  {faultedCommunityCount > 0 ? (
-                    <p data-testid="plugin-safe-mode-fault-summary" className="font-medium leading-relaxed text-destructive">
-                      {t('safeMode.pausedSectionFaultSummary', { count: faultedCommunityCount })}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {faultedCommunityCount > 0 && filter !== 'problem' ? (
-                    <DsButton
-                      variant="outline"
-                      size="sm"
-                      data-testid="plugin-safe-mode-view-faulted"
-                      className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
-                      onClick={() => setFilter('problem')}
-                    >
-                      <WarningCircle className="size-3.5" aria-hidden="true" />
-                      {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
-                    </DsButton>
-                  ) : null}
-                  <DsButton
-                    variant="outline"
-                    size="sm"
-                    data-testid="plugin-safe-mode-import-shortcut"
-                    className={cn('shrink-0 gap-1.5', COARSE_TOUCH)}
-                    disabled={packageBusy}
-                    onClick={handleImportClick}
-                  >
-                    <DownloadSimple className="size-3.5" aria-hidden="true" />
-                    {packageBusy ? t('install.running') : t('actions.install')}
-                  </DsButton>
-                </div>
-              </div>
-            ) : faultedCommunityCount > 0 ? (
-              <div
-                role="region"
-                aria-label={t('mine.faultBannerTitle')}
-                data-testid="plugin-mine-fault-banner"
-                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1.5 font-medium text-destructive">
-                    <WarningCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span>{t('mine.faultBannerTitle')}</span>
-                    <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 tabular-nums text-2xs">
-                      {faultedCommunityCount}
-                    </span>
-                  </div>
-                  <p className="leading-relaxed text-muted-foreground">
-                    {t('mine.faultBannerDescription', { count: faultedCommunityCount })}
-                  </p>
-                </div>
-                {filter !== 'problem' ? (
-                  <DsButton
-                    variant="outline"
-                    size="sm"
-                    data-testid="plugin-mine-view-faulted"
-                    className={cn('shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10', COARSE_TOUCH)}
-                    onClick={() => setFilter('problem')}
-                  >
-                    <WarningCircle className="size-3.5" aria-hidden="true" />
-                    {t('safeMode.viewFaultedAction', { count: faultedCommunityCount })}
-                  </DsButton>
-                ) : null}
-              </div>
-            ) : null}
             {community.length ? (
               <div role="list" aria-label={t('mine.title')} data-testid="plugin-mine-grid"
                 className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-3">
@@ -761,7 +732,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               </div>
             ) : (
               <div data-testid="plugin-mine-empty" className="flex min-w-0 flex-col items-center gap-2 rounded-2xl bg-muted px-4 py-8 text-center">
-                <span aria-hidden="true" className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkle className="size-5" /></span>
+                <PuzzlePiece className="size-5 text-muted-foreground/70" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">{t('mine.emptyTitle')}</p>
                 <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{t('mine.emptyDescription')}</p>
               </div>
@@ -783,13 +754,13 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
 
         {!listLoading && showStarters ? (
           <section data-testid="plugin-starters" className="min-w-0">
-            <GroupTitle title={t('starters.title')} description={t('starters.description')} actions={importButton} />
+            <GroupTitle title={t('starters.title')} description={t('starters.description')} />
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {STARTERS.map((starter) => (
                 <DsButton key={starter} variant="outline" size="sm" data-testid="plugin-starter" data-starter={starter}
                   disabled={!workshop} onClick={() => workshop?.onCreate(t(`starters.${starter}`))}
                   className={cn('!h-auto min-h-9 max-w-full gap-1.5 !whitespace-normal !rounded-full bg-muted !px-3.5 !py-1.5 text-left', COARSE_TOUCH)}>
-                  <Sparkle className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                  <PuzzlePiece className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="min-w-0 [overflow-wrap:anywhere]">{t(`starters.${starter}`)}</span>
                 </DsButton>
               ))}

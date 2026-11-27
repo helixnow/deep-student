@@ -453,7 +453,7 @@ const RowHoverActions: React.FC<{
             variant="danger" size="sm"
             disabled={deleteLoading}
             onClick={(e) => { e.stopPropagation(); onDeleteAction(); }}
-            className="!h-5 !px-1.5 !py-0 text-[10px] opacity-100 [@media(pointer:coarse)]:!h-11"
+            className="!h-5 !px-1.5 !py-0 text-2xs opacity-100 [@media(pointer:coarse)]:!h-11"
             aria-label={t('learningHub:exam.library.confirmDeleteShort')}
           >
             {deleteLoading ? <CircleNotch size={10} className="animate-spin" /> : <Trash size={10} />}
@@ -565,18 +565,15 @@ const QuestionGridCard: React.FC<{
         />
       </p>
       
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].dot)} aria-hidden="true" />
-          <span>{t(`practice:${STATUS_CONFIG[status].labelKey}`)}</span>
-        </span>
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+        <span>{t(`practice:${STATUS_CONFIG[status].labelKey}`)}</span>
         {question.questionType && question.questionType !== 'other' && (
-          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
             {t(typeMeta.labelKey)}
           </span>
         )}
         {question.difficulty && (
-          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
             {t(`practice:${DIFFICULTY_CONFIG[question.difficulty].labelKey}`)}
           </span>
         )}
@@ -600,7 +597,6 @@ const QuestionListRow: React.FC<{
   onSelect?: (selected: boolean, shiftKey: boolean) => void;
 } & RowActionProps> = ({ question, index, listIndex, highlight, onClick, onEdit, isEditMode, isSelected, onSelect, ...actionProps }) => {
   const { t } = useTranslation(['practice', 'learningHub']);
-  const status = question.status || 'new';
   const hasAttempt = (question.attemptCount ?? 0) > 0;
   const isCorrect = hasAttempt && (question.correctCount ?? 0) > 0;
   const typeMeta = getQuestionTypeMeta(question.questionType);
@@ -640,8 +636,6 @@ const QuestionListRow: React.FC<{
         </span>
       )}
       
-      <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].dot)} aria-hidden="true" />
-      
       {question.images && question.images.length > 0 && (
         <ImageIcon size={14} className="flex-shrink-0 text-muted-foreground" />
       )}
@@ -654,12 +648,12 @@ const QuestionListRow: React.FC<{
       
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {question.questionType && question.questionType !== 'other' && (
-          <span className="hidden md:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          <span className="hidden md:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
             {t(typeMeta.labelKey)}
           </span>
         )}
         {question.difficulty && (
-          <span className="hidden sm:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          <span className="hidden sm:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-2xs text-muted-foreground">
             {t(`practice:${DIFFICULTY_CONFIG[question.difficulty].labelKey}`)}
           </span>
         )}
@@ -1718,9 +1712,11 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 className="rounded-xl border border-primary/35 bg-primary/[0.06] p-4 sm:p-5 text-left"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                    {primaryDraft.origin === 'ai_generation' ? <Sparkle size={20} /> : <Scan size={20} />}
-                  </div>
+                  {primaryDraft.origin === 'ai_generation' ? (
+                    <ListChecks size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                  ) : (
+                    <Scan size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                  )}
                   <div className="min-w-0 flex-1 space-y-1">
                     <h3 className="text-base font-medium text-foreground tabular-nums">
                       {primaryDraft.origin === 'ai_generation'
@@ -1839,9 +1835,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
         ) : (
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
-              <ExamIcon size={28} className="opacity-80" />
-            </div>
+            <ExamIcon size={28} className="mb-3 opacity-80" />
             <h3 className="mb-1.5 text-base font-medium">{t('practice:questionBank.emptyTitle')}</h3>
             <p className="text-sm text-muted-foreground">
               {hasLauncherActions
@@ -1970,21 +1964,18 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 {t('practice:questionBank.all')} <span className="font-mono ml-0.5">{questions.length}</span>
               </DsButton>
               {stats && (stats.newCount > 0 || statusFilter === 'new') && (
-                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'new' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" aria-hidden="true" />
-                  {t('practice:questionBank.newQuestions')} <span className="font-mono">{stats.newCount}</span>
+                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums', statusFilter === 'new' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                  {t('practice:questionBank.newQuestions')} <span className="font-mono ml-0.5">{stats.newCount}</span>
                 </DsButton>
               )}
               {stats && (stats.review > 0 || statusFilter === 'review') && (
-                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'review' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
-                  {t('practice:questionBank.needsReview')} <span className="font-mono">{stats.review}</span>
+                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums', statusFilter === 'review' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                  {t('practice:questionBank.needsReview')} <span className="font-mono ml-0.5">{stats.review}</span>
                 </DsButton>
               )}
               {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
-                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'mastered' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
-                  {t('practice:questionBank.masteredFilter')} <span className="font-mono">{stats.mastered}</span>
+                <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 !rounded-md text-xs tabular-nums', statusFilter === 'mastered' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                  {t('practice:questionBank.masteredFilter')} <span className="font-mono ml-0.5">{stats.mastered}</span>
                 </DsButton>
               )}
 
@@ -2058,8 +2049,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               )}
             </div>
 
-            {/* 常驻右侧的匹配计数 + 一键清除筛选（不随横向筛选条滚出视口） */}
-            {hasActiveFilters && (
+            {/* 常驻右侧的匹配计数 + 一键清除筛选（列表为空时由空态单一入口承载，不重复按钮） */}
+            {hasActiveFilters && filteredQuestions.length > 0 && (
               <div className="flex flex-shrink-0 items-center gap-1.5 border-l border-border/35 pl-1.5">
                 {!useBackendFilter && (
                   <span className="hidden sm:inline font-mono text-2xs tabular-nums text-muted-foreground whitespace-nowrap">
@@ -2528,7 +2519,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 <span className="text-xs text-muted-foreground whitespace-nowrap px-1">
                   {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
                 </span>
-                <span className="hidden lg:inline text-[11px] text-muted-foreground/60 whitespace-nowrap">
+                <span className="hidden lg:inline text-2xs text-muted-foreground/60 whitespace-nowrap">
                   {t('learningHub:exam.library.shiftRangeHint')}
                 </span>
               </div>

@@ -12,8 +12,87 @@ export const BROWSER_CONTENT_LABEL = 'browser-content' as const;
 
 export type BrowserControlMode = 'user' | 'agent';
 
-/** Native page host selected by Rust for the current platform. */
-export type BrowserSurfaceHostMode = 'embedded' | 'detached' | 'unsupported';
+/** Native page host selected by the backend for the current platform. */
+export type BrowserSurfaceHostMode =
+  | 'embedded'
+  | 'detached'
+  | 'remote'
+  | 'headless'
+  | 'unsupported';
+
+export interface BrowserTabInfo {
+  tabId: string;
+  url: string;
+  title: string;
+  active: boolean;
+}
+
+export interface BrowserExtractContentOptions {
+  maxChars?: number;
+  startIndex?: number;
+}
+
+export interface BrowserExtractedContent {
+  url: string;
+  title: string;
+  markdown: string;
+  totalChars: number;
+  truncated: boolean;
+}
+
+export interface BrowserHostFactsBlockedNavigation {
+  url: string;
+  reason: string;
+  at: string;
+}
+
+export interface BrowserHostFactsScreenshot {
+  path: string | null;
+  locator: string | null;
+  width: number;
+  height: number;
+  capturedAt: string;
+}
+
+export interface BrowserHostFacts {
+  sessionId: string;
+  mode: 'interactive' | 'headless' | 'remote';
+  visitedOrigins: string[];
+  blockedNavigations: BrowserHostFactsBlockedNavigation[];
+  latestScreenshot: BrowserHostFactsScreenshot | null;
+  downloadsCount: number;
+  userTakeoverCount: number;
+  actionCount: number;
+  finalUrl: string | null;
+}
+
+export interface BrowserScreencastFrame {
+  data: string;
+  mimeType: 'image/jpeg' | 'image/png';
+  width: number;
+  height: number;
+  timestamp: number;
+}
+
+export interface BrowserRemoteInputEvent {
+  type:
+    | 'mouseMoved'
+    | 'mousePressed'
+    | 'mouseReleased'
+    | 'mouseWheel'
+    | 'keyDown'
+    | 'keyUp'
+    | 'insertText';
+  x?: number;
+  y?: number;
+  button?: 'left' | 'middle' | 'right';
+  clickCount?: number;
+  deltaX?: number;
+  deltaY?: number;
+  key?: string;
+  modifiers?: string[];
+  text?: string;
+}
 
 /** A CSS-pixel rectangle where the native browser surface must yield to DOM UI. */
 export interface BrowserSurfaceOcclusion {
@@ -92,6 +171,12 @@ export interface BrowserSessionState extends BrowserSessionSnapshot {
   addressDraft: string;
   /** 最近一次 API/导航错误（友好文案） */
   lastError: string | null;
+  /** 当前会话打开的标签页列表 */
+  tabs: BrowserTabInfo[];
+  /** 当前激活标签页 ID */
+  activeTabId: string | null;
+  /** 远程 CDP 模式下最近一帧画面 */
+  screencastFrame: BrowserScreencastFrame | null;
 }
 
 export interface BrowserDownloadObservation {
@@ -131,4 +216,13 @@ export type BrowserCommandName =
   | 'browser_type'
   | 'browser_set_input_files'
   | 'browser_list_downloads'
-  | 'browser_scroll';
+  | 'browser_scroll'
+  | 'browser_screenshot'
+  | 'browser_list_tabs'
+  | 'browser_new_tab'
+  | 'browser_switch_tab'
+  | 'browser_close_tab'
+  | 'browser_extract_content'
+  | 'browser_remote_input'
+  | 'browser_get_host_facts'
+  | 'browser_promote_to_interactive';

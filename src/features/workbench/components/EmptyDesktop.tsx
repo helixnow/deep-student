@@ -5,9 +5,11 @@
  * 仅在存在可恢复的上次桌面快照时，顶部居中留一枚轻量的「恢复上次桌面」胶囊。
  * 整层 pointer-events: none，仅胶囊恢复指针，不拦截桌面右键 / 双击手势。
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ClockCounterClockwise } from '@phosphor-icons/react';
+import { useLiquidGlassSurfaceFilter } from '../core/liquidGlassSurface';
+import { useAdaptiveGlassTone } from '../core/useAdaptiveGlassTone';
 import '../styles/workbench.css';
 import './EmptyDesktop.css';
 
@@ -26,8 +28,12 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   onRestoreSession,
 }) => {
   const { t } = useTranslation();
+  const pillRef = useRef<HTMLButtonElement | null>(null);
+  const showPill = Boolean(restoreAvailable && onRestoreSession);
+  useLiquidGlassSurfaceFilter(pillRef, showPill, { variant: 'clear' });
+  useAdaptiveGlassTone(pillRef, showPill);
 
-  if (!restoreAvailable || !onRestoreSession) return null;
+  if (!showPill || !onRestoreSession) return null;
 
   const restoreLabel = restoreWindowCount > 0
     ? t('workbench:emptyDesktop.actionRestoreSessionCount', { count: restoreWindowCount })
@@ -36,6 +42,7 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   return (
     <div className="wb-empty-desktop">
       <button
+        ref={pillRef}
         type="button"
         className="wb-empty-restore-pill wb-glass"
         data-testid="wb-empty-restore-session"

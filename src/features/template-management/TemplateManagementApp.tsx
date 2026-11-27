@@ -19,24 +19,40 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass, FileText, Plus, Warning, X,
-  Gear, Upload, Download,
-  ArrowLeft, BookOpen, Code, Database,
+  ListChecks, GearSix, Upload, Download, DotsThree,
+  ArrowLeft, BookOpen, Code, Database, CircleNotch,
 } from '@phosphor-icons/react';
 import type { CustomAnkiTemplate, TemplateExportResponse } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
 import { templateManager } from '@/data/ankiTemplates';
 import { TemplateRenderService } from '@/services/templateRenderService';
-import MinimalTemplateEditor, { EditorTabType } from '@/components/MinimalTemplateEditor';
+import MinimalTemplateEditor, {
+  EditorTabType,
+  type MinimalTemplateEditorHandle,
+} from '@/components/MinimalTemplateEditor';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { Input as ShadInput } from '@/components/ui/shad/Input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
+import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
+import { CardsHubDesktopNav } from '@/components/layout/CardsHubDesktopNav';
+import { TITLEBAR_CONTROL_CLASS, TITLEBAR_ICON_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getErrorMessage, formatErrorMessage, logError } from '@/utils/errorUtils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { templateService } from '@/services/templateService';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { fileManager } from '@/utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import {
   mobileDrawerNavRowClassName,
   mobileDrawerRowIconWrapClassName,
@@ -46,7 +62,6 @@ import {
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import {
   registerTemplateAgentSurface,
@@ -107,7 +122,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   refreshToken = 0,
   workbenchWindowId,
 }) => {
-  const { t } = useTranslation(['template', 'common']);
+  const { t } = useTranslation(['template', 'common', 'sidebar', 'anki']);
   const { isSmallScreen } = useBreakpoint();
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const sidebarOpen = screenPosition === 'left';
@@ -646,20 +661,33 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }
   };
 
-  const isEditingMode = (activeTab === 'edit' || activeTab === 'create') && !!editingTemplate;
+  const isEditingMode = !isSelectingMode && (activeTab === 'create' || (activeTab === 'edit' && Boolean(editingTemplate)));
 
-  // 编辑器未保存更改标记（由 MinimalTemplateEditor 通过 onDirtyChange 同步）。
-  // 保存路径走 backToBrowse（不确认）；取消/返回浏览/面包屑离开走带二次确认的出口。
+  // 编辑器引用及未保存/提交状态（由 MinimalTemplateEditor 同步，供桌面顶栏与移动顶栏承载操作）
+  const editorHandleRef = useRef<MinimalTemplateEditorHandle | null>(null);
   const editorDirtyRef = useRef(false);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [editorSubmitting, setEditorSubmitting] = useState(false);
   const handleEditorDirtyChange = useCallback((dirty: boolean) => {
     editorDirtyRef.current = dirty;
+    setEditorDirty(dirty);
   }, []);
 
   const backToBrowse = useCallback(() => {
     editorDirtyRef.current = false;
+    setEditorDirty(false);
+    setEditorSubmitting(false);
     setActiveTab('browse');
     setEditingTemplate(null);
     setEditorTab('basic');
+  }, []);
+
+  const handleEditorSubmit = useCallback(() => {
+    editorHandleRef.current?.submit();
+  }, []);
+
+  const handleEditorDiscard = useCallback(() => {
+    editorHandleRef.current?.discard();
   }, []);
 
   // 带脏检查的离开确认：首次触发提示，确认窗口内再次触发才放行（unifiedConfirm 两击语义）
@@ -687,7 +715,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const selectingHeaderBack = isSelectingMode && Boolean(onCancel);
 
   // 浏览态显示页面标题 + 菜单（闪卡中心分区条由壳层注入在顶栏下方）；
-  // 编辑态切换为明确返回，并在右侧保留编辑器导航入口。
+  // 编辑态切换为明确返回，右侧保留代码切换（代码页）与保存主操作（最多 2 个快捷动作）。
   useMobileHeader('template-management', {
     title: isEditingMode
       ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
@@ -714,7 +742,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             title={t('template_code')}
             aria-pressed={screenPosition === 'right'}
             onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
-           
           >
             <Code size={18} />
           </DsButton>
@@ -722,17 +749,16 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          iconOnly
-          aria-label={t('manager_title')}
-          title={t('manager_title')}
-          onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
-         
+          disabled={editorSubmitting}
+          onClick={handleEditorSubmit}
+          className="font-medium text-primary"
         >
-          <Gear size={18} />
+          {editorSubmitting && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+          <span>{t('save')}</span>
         </DsButton>
       </>
     ) : undefined,
-  }, [isEditingMode, isSelectingMode, activeTab, editingTemplate?.name, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t, workbenchWindowId]);
+  }, [isEditingMode, isSelectingMode, activeTab, editingTemplate?.name, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, editorSubmitting, handleEditorSubmit, t, workbenchWindowId]);
 
   // Android 返回优先收起编辑器左右屏，其次走与顶栏相同的脏检查返回路径。
   useEffect(() => {
@@ -770,99 +796,325 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     { id: 'basic', icon: FileText, label: t('basic_info'), selected: editorTab === 'basic' },
     { id: 'templates', icon: Code, label: t('template_code'), selected: editorTab === 'templates' || editorTab === 'styles' },
     { id: 'data', icon: Database, label: t('preview_data'), selected: editorTab === 'data' },
-    { id: 'rules', icon: Gear, label: t('extraction_rules'), selected: editorTab === 'rules' },
-    { id: 'advanced', icon: Gear, label: t('advanced_settings'), selected: editorTab === 'advanced' },
+    { id: 'rules', icon: ListChecks, label: t('extraction_rules'), selected: editorTab === 'rules' },
+    { id: 'advanced', icon: GearSix, label: t('advanced_settings'), selected: editorTab === 'advanced' },
   ];
-  // ===== 顶部导航（桌面：workbench 窗口与经典壳闪卡中心「模板」分区共用） =====
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const useClassicDesktopHeader = !isSmallScreen && !workbenchWindowId && hasDesktopHeaderHost;
+  const navigateToFlashcards = useCallback(() => {
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' });
+  }, []);
+
+  useDesktopHeader(
+    'template-management',
+    {
+      breadcrumbs: isSelectingMode
+        ? [
+            {
+              id: 'fc-root',
+              label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+              onClick: onCancel ?? navigateToFlashcards,
+            },
+            { id: 'tm-select', label: t('page_title_select') },
+          ]
+        : isEditingMode
+          ? [
+              {
+                id: 'fc-root',
+                label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+                onClick: navigateToFlashcards,
+              },
+              {
+                id: 'tm-root',
+                label: t('sidebar:navigation.cards_hub.templates', { defaultValue: '模板' }),
+                onClick: handleCancelEdit,
+              },
+              {
+                id: 'tm-editing',
+                label: editingTemplate?.name || t('tab_create'),
+              },
+            ]
+          : [
+              {
+                id: 'fc-root',
+                label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
+                onClick: navigateToFlashcards,
+              },
+              {
+                id: 'tm-root',
+                label: t('sidebar:navigation.cards_hub.templates', { defaultValue: '模板' }),
+              },
+            ],
+      meta: isEditingMode
+        ? (editorDirty
+            ? t('editor.meta_unsaved')
+            : (activeTab === 'edit' && editingTemplate?.version ? `v${editingTemplate.version}` : undefined))
+        : String(filteredTemplates.length),
+      actions: isSelectingMode ? (
+        onCancel ? (
+          <DsButton variant="ghost" size="sm" onClick={onCancel} className={TITLEBAR_CONTROL_CLASS}>
+            <ArrowLeft size={14} />
+            {t('back_button')}
+          </DsButton>
+        ) : undefined
+      ) : isEditingMode ? (
+        <>
+          {editorDirty && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleEditorDiscard}
+              disabled={editorSubmitting}
+              className={cn(TITLEBAR_CONTROL_CLASS, 'text-muted-foreground hover:text-destructive')}
+            >
+              {t('anki:templateEditor.discardChanges')}
+            </DsButton>
+          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCancelEdit}
+            disabled={editorSubmitting}
+            className={TITLEBAR_CONTROL_CLASS}
+          >
+            {t('cancel_button')}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleEditorSubmit}
+            disabled={editorSubmitting}
+            className={cn(TITLEBAR_CONTROL_CLASS, 'bg-[color:var(--button-tonal-bg)] font-medium text-foreground')}
+          >
+            {editorSubmitting && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+            <span>{activeTab === 'create' ? t('submit_create') : t('submit_save')}</span>
+          </DsButton>
+        </>
+      ) : (
+        <>
+          <DesktopHeaderSearch
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder={t('search_placeholder', { defaultValue: t('common:search') })}
+            inputDataAttrs={{ 'data-template-search': '' }}
+          />
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={startCreateTemplate}
+            className={cn(TITLEBAR_CONTROL_CLASS, 'bg-[color:var(--button-tonal-bg)] text-foreground')}
+          >
+            <Plus size={14} />
+            {t('tab_create')}
+          </DsButton>
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('common:more')}
+                title={t('common:more')}
+                className={cn(TITLEBAR_ICON_CONTROL_CLASS, 'text-muted-foreground hover:text-foreground')}
+              >
+                <DotsThree size={18} weight="bold" />
+              </DsButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={210}>
+              <AppMenuItem
+                icon={<Download size={15} />}
+                disabled={isImporting}
+                onClick={handleImportBuiltinTemplates}
+              >
+                {isImporting ? t('importing') : t('import_builtin_templates')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<Upload size={15} />}
+                onClick={handleImportExternalClick}
+              >
+                {t('import_external_templates')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<Download size={15} />}
+                onClick={handleOpenBatchExportPanel}
+              >
+                {t('export_templates_sidebar')}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
+        </>
+      ),
+    },
+    [
+      t,
+      isSelectingMode,
+      isEditingMode,
+      activeTab,
+      editingTemplate?.name,
+      editingTemplate?.version,
+      editorDirty,
+      editorSubmitting,
+      filteredTemplates.length,
+      searchTerm,
+      isImporting,
+      onCancel,
+      navigateToFlashcards,
+      handleCancelEdit,
+      handleEditorDiscard,
+      handleEditorSubmit,
+      startCreateTemplate,
+      handleImportExternalClick,
+      handleOpenBatchExportPanel,
+    ],
+    useClassicDesktopHeader,
+  );
+
+  // ===== 顶部导航（经典壳编辑态：单层 5-Tab 导航，面包屑已承接返回；Workbench 窗口：左侧返回 + 5-Tab + 右侧动作） =====
   const workbenchNav = (
-    <nav className="wb-tm-nav" aria-label={t('manager_title')}>
+    <nav className="wb-tm-nav" aria-label={isEditingMode ? t('editor.tabs_aria') : t('manager_title')}>
       {isEditingMode && !isSelectingMode ? (
         <>
-          <button type="button" className="wb-tm-tab [@media(pointer:coarse)]:min-h-11" onClick={handleCancelEdit}>
-            <ArrowLeft size={16} weight="bold" />
-            {t('back_to_browse')}
-          </button>
+          {!useClassicDesktopHeader && (
+            <>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelEdit}
+                className="mb-1.5 mr-1 text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft size={15} />
+                <span>{t('back_to_browse')}</span>
+              </DsButton>
+              <span className="mb-1.5 mr-1 h-4 w-px bg-border/60" aria-hidden="true" />
+            </>
+          )}
           {editorNavItems.map(({ id, icon: Icon, label, selected }) => (
-            <button
+            <DsButton
               key={id}
-              type="button"
-              className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
+              variant="ghost"
+              size="sm"
               data-active={selected ? 'true' : undefined}
               aria-current={selected ? 'page' : undefined}
               onClick={() => setEditorTab(id)}
+              className="wb-tm-tab !h-auto !min-h-0 !rounded-b-none !border-x-0 !border-t-0 !bg-transparent hover:!bg-transparent"
             >
-              <Icon size={16} weight="duotone" />
-              {label}
-            </button>
+              <Icon size={15} weight="duotone" />
+              <span>{label}</span>
+            </DsButton>
           ))}
         </>
       ) : (
-        <button
-          type="button"
-          className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
+        <DsButton
+          variant="ghost"
+          size="sm"
           data-active="true"
           aria-current="page"
+          className="wb-tm-tab !h-auto !min-h-0 !rounded-b-none !border-x-0 !border-t-0 !bg-transparent hover:!bg-transparent"
         >
-          <BookOpen size={16} weight="duotone" />
-          {isSelectingMode ? t('page_title_select') : t('tab_browse')}
-          <span className="text-xs text-muted-foreground/60 tabular-nums">
+          <BookOpen size={15} weight="duotone" />
+          <span>{isSelectingMode ? t('page_title_select') : t('tab_browse')}</span>
+          <span className="text-xs tabular-nums text-muted-foreground/60">
             {filteredTemplates.length}
           </span>
-        </button>
+        </DsButton>
       )}
 
       <div className="wb-tm-nav-actions">
+        {isEditingMode && !useClassicDesktopHeader && (
+          <>
+            {editorDirty && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handleEditorDiscard}
+                disabled={editorSubmitting}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                {t('anki:templateEditor.discardChanges')}
+              </DsButton>
+            )}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelEdit}
+              disabled={editorSubmitting}
+            >
+              {t('cancel_button')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleEditorSubmit}
+              disabled={editorSubmitting}
+              className="bg-[color:var(--button-tonal-bg)] font-medium text-foreground"
+            >
+              {editorSubmitting && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+              <span>{activeTab === 'create' ? t('submit_create') : t('submit_save')}</span>
+            </DsButton>
+          </>
+        )}
         {!isSelectingMode && activeTab === 'browse' && (
           <>
-            <CommonTooltip content={t('tab_create')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7">
-                <Plus size={14} />
-              </DsButton>
-            </CommonTooltip>
-            <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7">
-                <Download size={14} />
-              </DsButton>
-            </CommonTooltip>
-            <CommonTooltip content={t('import_external_templates')}>
-              <DsButton
-                variant="utility"
-                size="icon"
-                iconOnly
-                onClick={handleImportExternalClick}
-                aria-label={t('import_external_templates')}
-                aria-pressed={activePanel === 'import'}
-                data-active={activePanel === 'import' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle"
-              >
-                <Upload size={14} />
-              </DsButton>
-            </CommonTooltip>
-            <CommonTooltip content={t('export_templates_sidebar')}>
-              <DsButton
-                variant="utility"
-                size="icon"
-                iconOnly
-                onClick={handleOpenBatchExportPanel}
-                aria-label={t('export_templates_sidebar')}
-                aria-pressed={activePanel === 'export'}
-                data-active={activePanel === 'export' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle"
-              >
-                <Download size={14} weight="bold" />
-              </DsButton>
-            </CommonTooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')}>
+                  <Plus size={15} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('tab_create')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')}>
+                  <Download size={15} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{isImporting ? t('importing') : t('import_builtin_templates')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={handleImportExternalClick}
+                  aria-label={t('import_external_templates')}
+                  aria-pressed={activePanel === 'import'}
+                  data-active={activePanel === 'import' ? 'true' : undefined}
+                  className="wb-tm-nav-toggle"
+                >
+                  <Upload size={15} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('import_external_templates')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={handleOpenBatchExportPanel}
+                  aria-label={t('export_templates_sidebar')}
+                  aria-pressed={activePanel === 'export'}
+                  data-active={activePanel === 'export' ? 'true' : undefined}
+                  className="wb-tm-nav-toggle"
+                >
+                  <Download size={15} weight="bold" />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('export_templates_sidebar')}</TooltipContent>
+            </Tooltip>
           </>
         )}
         {isSelectingMode && onCancel && (
           <DsButton
-            variant="default"
+            variant="ghost"
             size="sm"
             onClick={onCancel}
-            className="h-7"
           >
             <ArrowLeft size={14} />
-            {t('back_button')}
+            <span>{t('back_button')}</span>
           </DsButton>
         )}
       </div>
@@ -962,21 +1214,42 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         <div
           key="editor-view"
           data-agent-entity={activeTab === 'edit' && editingTemplate ? `templates:${editingTemplate.id}` : undefined}
-          className={cn(
-            'wb-tm-view flex-1 min-h-0 flex flex-col overflow-hidden',
-            !isCodeEditorTab && (isSmallScreen ? 'py-2 px-0' : 'p-4')
-          )}
+          className="wb-tm-view flex flex-1 min-h-0 flex-col overflow-hidden"
         >
+          {isSmallScreen && (
+            <div className="shrink-0 border-b border-border/40 px-3 py-1.5">
+              <Tabs
+                value={isCodeEditorTab ? 'templates' : editorTab}
+                onValueChange={(value) => setEditorTab(value as EditorTabType)}
+              >
+                <TabsList
+                  aria-label={t('editor.tabs_aria')}
+                  aria-orientation="horizontal"
+                  className="h-auto border-b-0 overflow-x-auto scrollbar-none pb-0"
+                >
+                  {editorNavItems.map(({ id, icon: Icon, label }) => (
+                    <TabsTrigger key={id} value={id} className="shrink-0 gap-1.5">
+                      <Icon size={15} weight="duotone" aria-hidden="true" />
+                      <span>{label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-hidden">
             <MinimalTemplateEditor
+              ref={editorHandleRef}
               key={`${activeTab}-${editingTemplate?.id ?? 'blank'}`}
               template={editingTemplate}
               mode={activeTab === 'create' ? 'create' : 'edit'}
               externalActiveTab={editorTab}
               onExternalTabChange={setEditorTab}
               hideSidebar={true}
+              hideFooter={true}
               mobileEditorPortalTarget={editorPortalTarget}
               onDirtyChange={handleEditorDirtyChange}
+              onSubmittingChange={setEditorSubmitting}
               onSave={async (templateData) => {
                 if (activeTab === 'create') {
                   try {
@@ -1021,17 +1294,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           </div>
         </div>
       ) : (
-        <CustomScrollArea
+        <ScrollArea
           key="browse-view"
           className="wb-tm-view flex-1 min-h-0"
           viewportClassName="h-full min-h-0 w-full min-w-0"
-          trackOffsetRight={isSmallScreen ? 0 : 6}
+          trackOffset={{ right: isSmallScreen ? 0 : 6 }}
         >
           {/* OverlayScrollbars 会把视口内联 padding 归零，内边距必须放在内容包装上 */}
           <div className={cn('wb-tm-scroll-content', isSmallScreen && 'wb-tm-scroll-content--mobile')}>
             {(isSelectingMode || activeTab === 'browse') && browseContent}
           </div>
-        </CustomScrollArea>
+        </ScrollArea>
       )}
     </div>
   );
@@ -1171,10 +1444,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       </div>
     );
   } else {
-    // ===== 桌面：顶部标签导航 =====
+    // ===== 桌面：经典壳浏览态走闪卡中心单层导航；编辑态/选择模式/Workbench 窗口走 wb-tm-nav =====
     layout = (
       <div ref={rootRef} className="wb-tm-root overflow-hidden">
-        {workbenchNav}
+        {useClassicDesktopHeader && !isEditingMode && !isSelectingMode ? (
+          <CardsHubDesktopNav activeSection="templates" />
+        ) : (
+          workbenchNav
+        )}
         <div className="wb-tm-body">
           {mainContent}
         </div>

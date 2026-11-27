@@ -2,7 +2,6 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { DEMO_SESSIONS } from '@/demo/fixtures';
 import type { StoreApi } from 'zustand';
 
 const { invokeMock, showGlobalNotificationMock, dstuCreateMock } = vi.hoisted(() => ({
@@ -1021,8 +1020,47 @@ describe('AgentTaskPanel', () => {
       if (cmd === 'browser_list_task_downloads') return [];
       return {};
     });
-    const fixture = DEMO_SESSIONS.find((item) => item.meta.id === 'demo-bilingual')!;
-    const intentBlock = fixture.followUp.find((block) => block.type === 'generative_ui')!;
+    const bilingualIntent = {
+      version: '1.1',
+      layout: { mode: 'stack' },
+      meta: { title: '数据并行训练 · 双语阅读笔记' },
+      blocks: [
+        {
+          type: 'table',
+          props: {
+            title: '逐句对照阅读',
+            columns: [
+              { key: 'en', label: '英文原文' },
+              { key: 'zh', label: '中文译文' },
+            ],
+            rows: [
+              {
+                en: 'In synchronous data-parallel training, each worker holds a complete replica of the model and processes a subset of the mini-batch.',
+                zh: '在同步数据并行训练中，每个工作节点持有完整的模型副本，并处理小批量数据中的一个子集。',
+              },
+              {
+                en: 'Gradients are aggregated before the next update.',
+                zh: '梯度在下一次更新前完成聚合。',
+              },
+            ],
+          },
+        },
+        {
+          type: 'action-bar',
+          props: {
+            actions: [{ id: 'export-intent', label: '复制为 Markdown', riskLevel: 'low' }],
+          },
+        },
+      ],
+    };
+    const intentBlock = {
+      type: 'generative_ui',
+      status: 'success',
+      toolName: 'builtin-render_generative_ui',
+      content: JSON.stringify(bilingualIntent),
+      toolInput: { intent: bilingualIntent },
+      toolOutput: { intent: bilingualIntent, isStreaming: false },
+    };
     const store = createMockStore({
       sessionId: 'sess-bilingual-export',
       blocks: new Map([['bilingual', { ...intentBlock, id: 'bilingual', messageId: 'msg-1', startedAt: 1, endedAt: 2 }]]),

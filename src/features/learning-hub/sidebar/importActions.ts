@@ -32,6 +32,7 @@ import {
 } from './sidebarConstants';
 import type { MarkdownNoteImport } from './useMarkdownNoteImport';
 import { canParseAsMobileTextbook, withStagedTextbookFile } from '../textbookFileImport';
+import { findCompleteZipEndOffset } from '../apps/views/officeZipContainer';
 
 type AttachImportProgress = { done: number; total: number } | null;
 
@@ -198,8 +199,6 @@ const MAX_MINDMAP_ARCHIVE_BYTES = 16 * 1024 * 1024;
 const MAX_MINDMAP_CONTENT_BYTES = 32 * 1024 * 1024;
 const MAX_MINDMAP_IMPORT_DEPTH = 100;
 const MAX_MINDMAP_IMPORT_NODES = 10_000;
-const ZIP_EOCD_MIN_BYTES = 22;
-const ZIP_MAX_COMMENT_BYTES = 65_535;
 
 interface ImportedMindMapNode {
   id: string;
@@ -251,29 +250,10 @@ interface XmindTopicJson {
   summaries?: Array<{ id?: string; range?: string; topicId?: string }>;
 }
 
-function hasCompleteZipArchive(bytes: Uint8Array): boolean {
-  if (bytes.length < ZIP_EOCD_MIN_BYTES) return false;
-  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
-    return false;
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const minOffset = Math.max(0, bytes.length - (ZIP_EOCD_MIN_BYTES + ZIP_MAX_COMMENT_BYTES));
-  for (let offset = bytes.length - ZIP_EOCD_MIN_BYTES; offset >= minOffset; offset -= 1) {
-    if (
-      bytes[offset] === 0x50 &&
-      bytes[offset + 1] === 0x4b &&
-      bytes[offset + 2] === 0x05 &&
-      bytes[offset + 3] === 0x06
-    ) {
-      const commentLen = view.getUint16(offset + 20, true);
-      if (offset + ZIP_EOCD_MIN_BYTES + commentLen !== bytes.length) continue;
-      const cdSize = view.getUint32(offset + 12, true);
-      const cdOffset = view.getUint32(offset + 16, true);
-      if (cdSize === 0xffffffff || cdOffset === 0xffffffff) return true;
-      return cdOffset + cdSize <= offset;
-    }
-  }
-  return false;
+function normalizeZipArchiveBytes(bytes: Uint8Array): Uint8Array | null {
+  const endOffset = findCompleteZipEndOffset(bytes);
+  if (endOffset === null) return null;
+  return endOffset < bytes.length ? bytes.subarray(0, endOffset) : bytes;
 }
 
 function allocateMindmapNodeId(
@@ -515,11 +495,12 @@ async function parseXmindBytesToDocument(bytes: Uint8Array, fallbackTitle: strin
   if (bytes.byteLength > MAX_MINDMAP_ARCHIVE_BYTES) {
     throw new Error(`.xmind archive exceeds maximum size (${MAX_MINDMAP_ARCHIVE_BYTES} bytes)`);
   }
-  if (!hasCompleteZipArchive(bytes)) {
+  const normalizedBytes = normalizeZipArchiveBytes(bytes);
+  if (!normalizedBytes) {
     throw new Error('Invalid or truncated .xmind archive');
   }
   const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await JSZip.loadAsync(normalizedBytes);
 
   const jsonEntry = zip.file('content.json');
   if (jsonEntry) {
@@ -651,11 +632,12 @@ async function parseMmapBytesToDocument(bytes: Uint8Array): Promise<ImportedMind
   if (bytes.byteLength > MAX_MINDMAP_ARCHIVE_BYTES) {
     throw new Error(`.mmap archive exceeds maximum size (${MAX_MINDMAP_ARCHIVE_BYTES} bytes)`);
   }
-  if (!hasCompleteZipArchive(bytes)) {
+  const normalizedBytes = normalizeZipArchiveBytes(bytes);
+  if (!normalizedBytes) {
     throw new Error('Invalid or truncated .mmap archive');
   }
   const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await JSZip.loadAsync(normalizedBytes);
   const entry = zip.file('Document.xml');
   if (!entry) throw new Error('Invalid .mmap archive: Document.xml not found');
 

@@ -19,8 +19,18 @@ it('matches actual consumer outputs captured from e73e0d98 (not the new capabili
   // all remaining consumers and inputs match `e73e0d98`.
   const groupIconKey = 'src/features/chat/components/groups/GroupEditorDialog.tsx:getResourceTypeIcon';
   expect(actual[groupIconKey]?.folder).toEqual({ result: '<function:FolderSimple>', calls: [] });
+  // UI consistency pass unified ContextRefChips color pills to neutral semantic surfaces
+  // (removing rainbow per-type badges); verify uniform neutral surface across all inputs.
+  const chipColorKey = 'src/features/chat/components/input-bar/ContextRefChips.tsx:getTypeColorClass';
+  for (const input of INPUTS) {
+    expect(actual[chipColorKey]?.[input]).toEqual({
+      result: 'bg-muted/70 text-foreground border-border/40',
+      calls: [],
+    });
+  }
   const normalized = structuredClone(actual);
   normalized[groupIconKey]!.folder = expected.consumers[groupIconKey].folder;
+  normalized[chipColorKey] = expected.consumers[chipColorKey];
   expect(normalized).toEqual(expected.consumers);
 }, 60_000);
 

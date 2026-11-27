@@ -1191,7 +1191,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                       <span
                         data-testid="todo-sidebar-overdue-badge"
                         aria-label={t('todo:overdue.badgeAria', { count: effectiveOverdueCount })}
-                        className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-1 text-2xs font-semibold leading-none tabular-nums text-white"
+                        className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-1 text-2xs font-semibold leading-none tabular-nums text-destructive-foreground"
                       >
                         {effectiveOverdueCount > 99 ? '99+' : effectiveOverdueCount}
                       </span>

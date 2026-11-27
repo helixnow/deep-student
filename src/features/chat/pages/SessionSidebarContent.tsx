@@ -29,7 +29,6 @@ import {
 import { cn } from '@/utils/cn';
 import { INBOX_SPACE_ID } from '@/shared/study-space/types';
 import { formatSpaceCountdown, stripEmojiText } from '@/shared/study-space/spaceCountdown';
-import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeStrip';
 import { useActiveStudySpace } from '@/components/study-space/useActiveStudySpace';
 import { useSpaceAutoScope } from '@/components/study-space/useSpaceAutoScope';
 import { DsButton } from '@/components/ui/DsButton';
@@ -357,7 +356,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
   const {
     activeSpaceId,
-    activeSpace,
     spaces,
     viewFilter,
     setActiveSpace,
@@ -520,7 +518,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       <span className={mobileDrawerSectionLabelClassName}>{label}</span>
     ) : (
       <div className="px-3">
-        <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{label}</p>
+        <p className="text-2xs font-normal text-[color:var(--sidebar-muted)]">{label}</p>
       </div>
     );
 
@@ -606,15 +604,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 />
               </span>
             ) : (
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
-                  style={group?.color ? { backgroundColor: group.color } : undefined}
-                />
+              <span className="inline-flex shrink-0 items-center">
                 <FolderSimple
                   size={16}
                   className="h-4 w-4 shrink-0 text-[color:var(--sidebar-foreground)]"
+                  style={group?.color ? { color: group.color } : undefined}
                 />
               </span>
             )}
@@ -623,12 +617,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               {countdown ? (
                 <span
                   data-testid={group ? `space-countdown-${group.id}` : undefined}
-                  className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]"
+                  className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 font-mono text-2xs tabular-nums text-[var(--text-secondary)]"
                 >
-                  <span
-                    aria-hidden="true"
-                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', countdown.dotColorClass)}
-                  />
                   <span>{countdown.label}</span>
                 </span>
               ) : null}
@@ -681,12 +671,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 <AppMenuContent align="end" width={200}>
                   <AppMenuGroup>
                     <AppMenuItem
-                      icon={<Plus size={16} />}
-                      onClick={() => handleCreateSessionInFolder(group.id)}
-                    >
-                      {t('page.newSession')}
-                    </AppMenuItem>
-                    <AppMenuItem
                       icon={<PencilSimple size={16} />}
                       onClick={() => onRenameGroup(group)}
                     >
@@ -711,20 +695,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             )}
           </div>
         </div>
-
-        {/* 移动端活跃课题状态条：直接内嵌到该课题行下方，不再游离在收件箱上方并重复课题名 */}
-        {unified && isActiveSpaceHighlight && activeSpace && group ? (
-          <StudySpaceBadgeStrip
-            hideName
-            space={activeSpace}
-            onEditSpace={
-              editableGroupIds.has(group.id)
-                ? () => onEditGroup(group)
-                : undefined
-            }
-            className="ml-4 rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-hover)]"
-          />
-        ) : null}
 
         {/* 分组归档行内确认条（替代模态确认框） */}
         {group && pendingArchiveGroupId === group.id && (
@@ -873,10 +843,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       </div>
     ) : null;
 
-    const activeGroupForStrip = activeSpace
-      ? visibleGroups.find((group) => group.id === activeSpace.spaceId) ?? null
-      : null;
-
     return (
       <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {(visibleSuperSession || pinnedSessions.length > 0) && (
@@ -908,16 +874,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <Plus size={unified ? 18 : 15} />
             </DsButton>
           </div>
-          {!unified && activeSpace && activeGroupForStrip ? (
-            <StudySpaceBadgeStrip
-              space={activeSpace}
-              onEditSpace={
-                editableGroupIds.has(activeGroupForStrip.id)
-                  ? () => onEditGroup(activeGroupForStrip)
-                  : undefined
-              }
-            />
-          ) : null}
           <div className="space-y-1">
             {ungroupedFolder}
             {filteredVisibleGroups.map((group) => {

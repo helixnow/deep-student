@@ -20,7 +20,7 @@ import {
   Trash,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -62,7 +62,7 @@ const SCOPE_OPTIONS = [
 
 function BudgetBar({ label, used, max }: { label: string; used: number; max: number }) {
   const ratio = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
-  const tone = ratio >= 90 ? 'bg-destructive' : ratio >= 70 ? 'bg-amber-500' : 'bg-primary/75';
+  const tone = ratio >= 90 ? 'bg-destructive' : ratio >= 70 ? 'bg-warning' : 'bg-primary/75';
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0">{label}</span>
@@ -387,7 +387,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
         </button>
 
         {view.privacyMode && (
-          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs bg-warning/15 text-warning">
             <WarningCircle size={11} /> {t('settings:memory.kernel.privacyPaused')}
           </span>
         )}
@@ -445,7 +445,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
           {reflectionReport && (
             <div
               data-testid="memory-kernel-reflection-drawer"
-              className="rounded-md border border-primary/25 bg-primary/[0.04] p-2.5 space-y-2 text-xs"
+              className="rounded-md bg-primary/[0.04] p-2.5 space-y-2 text-xs"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-foreground">{reflectionReport.summary}</span>
@@ -458,11 +458,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
                 </button>
               </div>
               {reflectionReport.proposals.length > 0 && (
-                <div className="space-y-1.5">
+                <div className="divide-y divide-border/35">
                   {reflectionReport.proposals.map(p => (
                     <div
                       key={p.id}
-                      className="flex items-start justify-between gap-2 rounded border border-border/40 bg-background/80 px-2 py-1.5"
+                      className="flex items-start justify-between gap-2 py-1.5 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
                         <div className="font-medium text-foreground/90">{p.title}</div>
@@ -546,16 +546,16 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             </div>
 
             {rules.length === 0 ? (
-              <div className="text-xs text-muted-foreground/75 px-2.5 py-2 rounded border border-dashed border-border/50">
+              <div className="text-xs text-muted-foreground/75 px-2.5 py-2 rounded bg-muted/30">
                 {t('settings:memory.kernel.noRulesHint')}
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div className="divide-y divide-border/30">
                 {rules.map(rule => (
                   <div
                     key={rule.id}
                     data-hard-rule-row={rule.id}
-                    className="flex items-start gap-2 rounded-md border border-border/40 bg-background/80 px-2.5 py-1.5 text-xs"
+                    className="flex items-start gap-2 px-1 py-1.5 text-xs"
                   >
                     <div className="flex-1 min-w-0 leading-relaxed">
                       {rule.pinned && (
@@ -593,7 +593,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             {pendingUndoRule && (
               <div
                 role="status"
-                className="flex items-center justify-between gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-xs text-foreground"
+                className="flex items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground"
               >
                 <span className="truncate">
                   {t('settings:memory.kernel.deletedRuleToast', {
@@ -670,14 +670,14 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
                   {t('settings:memory.kernel.noWeakPoints')}
                 </div>
               ) : (
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                <div className="divide-y divide-border/30 max-h-40 overflow-y-auto pr-1">
                   {profile.weak_points.slice(0, 12).map(wp => (
                     <div
                       key={`${wp.subject}:${wp.knowledge_point}`}
-                      className="flex items-start gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-xs"
+                      className="flex items-start gap-1.5 py-1.5 text-xs"
                     >
                       <div className="flex-1 min-w-0">
-                        <span className="mr-1 rounded bg-amber-500/12 px-1 py-0.5 text-2xs font-medium text-amber-700 dark:text-amber-300">
+                        <span className="mr-1 rounded bg-warning/15 px-1 py-0.5 text-2xs font-medium text-warning">
                           {wp.subject}
                         </span>
                         <span className="font-medium text-foreground">{wp.knowledge_point}</span>
@@ -707,11 +707,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
               <div className="text-xs font-medium text-foreground/85">
                 {t('settings:memory.kernel.goalsTitle', { count: profile.goals.length })}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
+                {profile.goals.length > 0 && (
+                  <div className="divide-y divide-border/30">
                 {profile.goals.map(g => (
                   <div
                     key={g.goal}
-                    className="flex items-center gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-xs"
+                    className="flex items-center gap-1.5 py-1.5 text-xs"
                   >
                     <span className="flex-1 truncate text-foreground">{g.goal}</span>
                     {g.deadline && <span className="text-2xs text-muted-foreground shrink-0">{g.deadline}</span>}
@@ -727,6 +729,8 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
                     </DsButton>
                   </div>
                 ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <Input
                     value={newGoalText}
@@ -752,11 +756,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
 
           {/* 3. 注入内容预览 */}
           {showPreview && (
-            <div className="rounded border border-border/45 bg-muted/40 p-2.5 space-y-1">
+            <div className="border-t border-border/35 pt-2.5 space-y-1">
               <div className="text-xs font-medium text-muted-foreground">
                 {t('settings:memory.kernel.previewHeading')}
               </div>
-              <pre className="text-xs text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
+              <pre className="rounded bg-muted/35 p-2 text-xs text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
                 {view.renderedKernelPreview || t('settings:memory.kernel.previewEmpty')}
               </pre>
             </div>
@@ -764,7 +768,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
 
           {/* 4. 审计变更历史 & 10 版画像快照回滚抽屉 */}
           {showHistory && historyCount > 0 && (
-            <div className="rounded border border-border/45 bg-muted/30 p-2.5 space-y-2.5" data-testid="memory-kernel-history-drawer">
+            <div className="border-t border-border/35 pt-2.5 space-y-2.5" data-testid="memory-kernel-history-drawer">
               {auditLogs.length > 0 && (
                 <div className="space-y-1.5">
                   <div className="text-xs font-medium text-muted-foreground">

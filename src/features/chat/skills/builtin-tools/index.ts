@@ -116,8 +116,8 @@ export function filterBuiltinToolSkillsForPlatform(
   platform: string,
 ): SkillDefinition[] {
   const p = platform.toLowerCase();
-  // Result-returning browser bridge: Windows WebView2 + macOS WKWebView.
-  if (p === 'windows' || p === 'macos') return [...skills];
+  // Desktop (Windows / macOS / Linux) and WebUI remote CDP surfaces support browser Agent tools.
+  if (p === 'windows' || p === 'macos' || p === 'linux') return [...skills];
   return skills.filter((skill) => skill.id !== browserToolsSkill.id);
 }
 

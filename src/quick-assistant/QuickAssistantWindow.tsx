@@ -11,7 +11,10 @@ import {
   ArrowRight,
   Brain,
   CaretLeft,
+  Cards,
+  ChatCircleText,
   Check,
+  CheckSquare,
   ClipboardText,
   CopySimple,
   FileMagnifyingGlass,
@@ -20,12 +23,11 @@ import {
   NotePencil,
   PushPin,
   PushPinSlash,
-  Sparkle,
   SpinnerGap,
   Stack,
-  Student,
   Translate,
   X,
+  XCircle,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -35,7 +37,8 @@ import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import useTheme from '@/hooks/useTheme';
 import { initializeFontSetting } from '@/hooks/useAppInitialization';
-import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
+import { cn } from '@/utils/cn';
 import { isMacOS } from '@/utils/platform';
 import { isTauriRuntime } from '@/utils/shared';
 import { syncNativeWindowAppearance } from '@/utils/sidebarTranslucency';
@@ -52,15 +55,14 @@ import {
   looksLikeSecret,
   performImageOcr,
   QUICK_RUN_STOPPED,
-  rateQuickReviewCard,
   saveAsCard,
   saveAsMistake,
   saveAsNote,
   saveAsTodo,
   searchLearningHistory,
+  shouldAutoCaptureClipboard,
   startQuickLearningAction,
   type QuickLearningAction,
-  type QuickReviewSnapshot,
   type QuickRunHandle,
   type QuickSearchResult,
 } from './service';
@@ -71,55 +73,76 @@ import {
   openQuickAssistantTarget,
 } from './window';
 
-type Route = 'home' | 'answer' | 'search' | 'review' | 'status';
+type Route = 'home' | 'answer' | 'search';
 type SaveKind = 'note' | 'mistake' | 'card' | 'todo';
+type QuickCaptureKind = 'note' | 'todo';
 type Notice = { text: string; kind: 'info' | 'success' | 'error' } | null;
 
 const CAPTURE_LIMIT = 20_000;
+const INLINE_SEARCH_LIMIT = 3;
 
 /**
- * macOS + Tauri 下 Rust 建窗时已挂载 NSVisualEffectView（HudWindow 材质），
- * WebView 侧只需叠低不透明 tint（见 quick-assistant.css 的 data-native-material）。
- * 其他平台没有原生材质，保持近实心卡面。
+ * macOS 下建窗时已挂载原生玻璃材质，WebView 侧叠低不透明 tint；
+ * 其他平台无原生材质，保持近实心面板。
  */
 const NATIVE_GLASS = isTauriRuntime && isMacOS();
 
 const ACTION_ICONS: Record<QuickLearningAction, Icon> = {
-  ask: Sparkle,
+  ask: ChatCircleText,
   explain: Brain,
   translate: Translate,
   summarize: Stack,
   hint: Lightbulb,
 };
 
-type FeatureKind = 'search' | 'review' | 'status';
-
-const FEATURE_ICONS: Record<FeatureKind, Icon> = {
-  search: MagnifyingGlass,
-  review: Student,
-  status: Stack,
-};
-
 type HomeItem =
-  | { kind: 'llm'; action: QuickLearningAction }
-  | { kind: 'search' }
-  | { kind: 'review' }
-  | { kind: 'status' };
+  | { kind: 'attach_clipboard'; group: 'clipboard'; preview: string }
+  | { kind: 'llm'; group: 'ai'; action: QuickLearningAction }
+  | { kind: 'capture_save'; group: 'capture'; target: QuickCaptureKind }
+  | { kind: 'inline_result'; group: 'records'; result: QuickSearchResult }
+  | { kind: 'open_search'; group: 'records' }
+  | { kind: 'workspace'; group: 'workspace'; target: 'search' | 'flashcards' | 'todo' | 'chat-v2' };
+
+interface WorkspaceBadges {
+  dueCards: number;
+  todayTodos: number;
+}
 
 const THEME_STORAGE_KEYS = {
   mode: 'dstu-theme-mode',
   palette: 'dstu-theme-palette',
   customColor: 'dstu-theme-custom-color',
+  glassClarity: 'desktop.workbenchGlassClarity',
 } as const;
 
+const DEFAULT_GLASS_CLARITY = 55;
+
+function syncGlassClarityFromStorage(): void {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEYS.glassClarity);
+    const parsed = raw !== null && raw.trim() !== '' ? Number(raw) : Number.NaN;
+    const clarity = Number.isFinite(parsed)
+      ? Math.round(Math.min(100, Math.max(0, parsed)))
+      : DEFAULT_GLASS_CLARITY;
+    const ratio = Number((clarity / 100).toFixed(2));
+    const root = document.documentElement;
+    root.style.setProperty('--wb-glass-clarity', String(clarity));
+    root.style.setProperty('--wb-glass-clarity-ratio', String(ratio));
+  } catch {
+    // localStorage 不可用时使用 workbench.tokens.css 默认值
+  }
+}
+
 /**
- * 主窗口的主题 / 语言修改会落到 localStorage，但对应的自定义事件不跨窗口，
- * 常驻的小窗永远收不到。每次呼出时重读一遍存储并广播给本窗口的 useTheme，
- * 保证小窗与主窗口的外观保持一致。
+ * 主窗口的主题 / 语言修改会落到 localStorage，但自定义事件不跨窗口，
+ * 每次呼出时重读存储并广播给本窗口的 useTheme，保持外观一致。
  */
 function syncPreferencesFromStorage(): void {
   try {
-    const mode = localStorage.getItem(THEME_STORAGE_KEYS.mode);
+    const queryTheme = new URLSearchParams(window.location.search).get('theme');
+    const mode = queryTheme === 'light' || queryTheme === 'dark'
+      ? queryTheme
+      : localStorage.getItem(THEME_STORAGE_KEYS.mode);
     if (mode === 'light' || mode === 'dark' || mode === 'auto') {
       window.dispatchEvent(new CustomEvent('dstu-theme-mode-changed', { detail: { mode } }));
     }
@@ -134,6 +157,7 @@ function syncPreferencesFromStorage(): void {
     }
     const language = localStorage.getItem('i18nextLng');
     if (language && language !== i18n.language) void i18n.changeLanguage(language);
+    syncGlassClarityFromStorage();
   } catch {
     // localStorage 不可用时保持当前偏好
   }
@@ -152,13 +176,22 @@ function stripSnippetHtml(value: string): string {
   return value.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function singleLinePreview(value: string, maxLen = 64): string {
+  const flat = value.replace(/\s+/g, ' ').trim();
+  return flat.length > maxLen ? `${flat.slice(0, maxLen)}…` : flat;
+}
+
 function isImeEvent(event: KeyboardEvent | React.KeyboardEvent): boolean {
   const native = 'nativeEvent' in event ? event.nativeEvent : event;
   return native.isComposing || event.key === 'Process';
 }
 
 function homeItemKey(item: HomeItem): string {
-  return item.kind === 'llm' ? `llm-${item.action}` : item.kind;
+  if (item.kind === 'llm') return `llm-${item.action}`;
+  if (item.kind === 'capture_save') return `capture-${item.target}`;
+  if (item.kind === 'inline_result') return `rec-${item.result.kind}-${item.result.id}`;
+  if (item.kind === 'workspace') return `ws-${item.target}`;
+  return item.kind;
 }
 
 export const QuickAssistantWindow: React.FC = () => {
@@ -168,6 +201,8 @@ export const QuickAssistantWindow: React.FC = () => {
   const [input, setInput] = useState('');
   const [capture, setCapture] = useState('');
   const [captureTruncated, setCaptureTruncated] = useState(false);
+  /** 剪贴板里被自动捕获跳过（如路径/URL/短标识符）的候选文本，仅在空态作为可选项提示 */
+  const [clipboardCandidate, setClipboardCandidate] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -178,18 +213,16 @@ export const QuickAssistantWindow: React.FC = () => {
   const [notice, setNotice] = useState<Notice>(null);
   const [pinned, setPinned] = useState(false);
   const [savedKinds, setSavedKinds] = useState<Set<SaveKind>>(new Set());
+  const [inlineResults, setInlineResults] = useState<QuickSearchResult[]>([]);
   const [searchResults, setSearchResults] = useState<QuickSearchResult[]>([]);
-  const [review, setReview] = useState<QuickReviewSnapshot | null>(null);
-  const [reviewRevealed, setReviewRevealed] = useState(false);
-  const [reviewStartedAt, setReviewStartedAt] = useState(Date.now());
-  const [todoSummary, setTodoSummary] = useState<Awaited<ReturnType<typeof getActiveTodoSummary>>>(null);
+  const [searchIndex, setSearchIndex] = useState(0);
+  const [badges, setBadges] = useState<WorkspaceBadges>({ dueCards: 0, todayTodos: 0 });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const shellRef = useRef<HTMLElement | null>(null);
   const lastShownAtRef = useRef(Date.now());
   const lastClipboardRef = useRef<string | null>(null);
   const runRef = useRef<QuickRunHandle | null>(null);
-  // 供事件回调读取最新交互状态（避免闭包过期导致的误判）
   const interactionRef = useRef({ route, busy, input, answer });
   useEffect(() => {
     interactionRef.current = { route, busy, input, answer };
@@ -201,27 +234,47 @@ export const QuickAssistantWindow: React.FC = () => {
     return parts.join('\n\n');
   }, [capture, input]);
 
-  const homeItems = useMemo<HomeItem[]>(() => [
-    ...inferQuickActions(content).map((action) => ({ kind: 'llm' as const, action })),
-    { kind: 'search' },
-    { kind: 'review' },
-    { kind: 'status' },
-  ], [content]);
+  const homeItems = useMemo<HomeItem[]>(() => {
+    if (content) {
+      const items: HomeItem[] = [
+        ...inferQuickActions(content).map((action) => ({ kind: 'llm' as const, group: 'ai' as const, action })),
+        { kind: 'capture_save', group: 'capture', target: 'note' },
+        { kind: 'capture_save', group: 'capture', target: 'todo' },
+      ];
+      if (inlineResults.length > 0) {
+        for (const result of inlineResults.slice(0, INLINE_SEARCH_LIMIT)) {
+          items.push({ kind: 'inline_result', group: 'records', result });
+        }
+        if (inlineResults.length > INLINE_SEARCH_LIMIT) {
+          items.push({ kind: 'open_search', group: 'records' });
+        }
+      }
+      return items;
+    }
 
-  const isItemDisabled = useCallback(
-    (item: HomeItem) => item.kind === 'llm' && !content,
-    [content],
-  );
+    const items: HomeItem[] = [];
+    if (clipboardCandidate) {
+      items.push({
+        kind: 'attach_clipboard',
+        group: 'clipboard',
+        preview: singleLinePreview(clipboardCandidate, 44),
+      });
+    }
+    items.push(
+      { kind: 'workspace', group: 'workspace', target: 'search' },
+      { kind: 'workspace', group: 'workspace', target: 'flashcards' },
+      { kind: 'workspace', group: 'workspace', target: 'todo' },
+      { kind: 'workspace', group: 'workspace', target: 'chat-v2' },
+    );
+    return items;
+  }, [content, clipboardCandidate, inlineResults]);
 
-  // 当前选中项失效（如清空内容后 LLM 动作被禁用）时，跳到第一个可用项
   useEffect(() => {
     if (route !== 'home') return;
-    const item = homeItems[selectedIndex];
-    if (!item || isItemDisabled(item)) {
-      const first = homeItems.findIndex((candidate) => !isItemDisabled(candidate));
-      if (first >= 0 && first !== selectedIndex) setSelectedIndex(first);
+    if (selectedIndex >= homeItems.length) {
+      setSelectedIndex(Math.max(0, homeItems.length - 1));
     }
-  }, [route, homeItems, selectedIndex, isItemDisabled]);
+  }, [route, homeItems.length, selectedIndex]);
 
   const notify = useCallback((text: string, kind: NonNullable<Notice>['kind'] = 'info') => {
     setNotice({ text, kind });
@@ -235,14 +288,28 @@ export const QuickAssistantWindow: React.FC = () => {
     const value = raw.trim();
     setCapture(value.slice(0, CAPTURE_LIMIT));
     setCaptureTruncated(value.length > CAPTURE_LIMIT);
+    setClipboardCandidate('');
     setSelectedIndex(0);
+  }, []);
+
+  const refreshWorkspaceBadges = useCallback(async () => {
+    try {
+      const [reviewSnap, todoSnap] = await Promise.all([
+        getQuickReviewSnapshot().catch(() => ({ card: null, dueCount: 0 })),
+        getActiveTodoSummary().catch(() => null),
+      ]);
+      setBadges({
+        dueCards: reviewSnap.dueCount,
+        todayTodos: (todoSnap?.stats.todayDue ?? 0) + (todoSnap?.stats.overdueCount ?? 0),
+      });
+    } catch {
+      // 静默忽略，仅作为辅助计数
+    }
   }, []);
 
   const loadClipboard = useCallback(async () => {
     const config = await getQuickAssistantConfig();
     if (!config.readClipboard) return;
-    // 用户已有进行中的状态（在其他视图 / 正在生成 / 输入过问题）时不打扰，
-    // 避免呼出小窗就把上一轮上下文静默替换掉。
     const state = interactionRef.current;
     if (state.route !== 'home' || state.busy || state.input || state.answer) return;
     try {
@@ -250,7 +317,11 @@ export const QuickAssistantWindow: React.FC = () => {
       if (!value || value === lastClipboardRef.current) return;
       lastClipboardRef.current = value;
       if (looksLikeSecret(value)) return;
-      setCaptureFromText(value);
+      if (shouldAutoCaptureClipboard(value)) {
+        setCaptureFromText(value);
+      } else {
+        setClipboardCandidate(value.slice(0, CAPTURE_LIMIT));
+      }
     } catch {
       // Clipboard permission may be unavailable on first launch.
     }
@@ -272,7 +343,7 @@ export const QuickAssistantWindow: React.FC = () => {
     setNotice(null);
     setSavedKinds(new Set());
     setSearchResults([]);
-    setReviewRevealed(false);
+    setSearchIndex(0);
     setSelectedIndex(0);
     focusInput();
   }, [focusInput]);
@@ -287,14 +358,11 @@ export const QuickAssistantWindow: React.FC = () => {
     return () => { delete document.documentElement.dataset.nativeMaterial; };
   }, []);
 
-  // 原生 NSVisualEffectView 的明暗由 NSWindow appearance 决定，CSS 主题变化后需同步，
-  // 否则原生材质会停在系统外观、与应用主题不一致。
   useEffect(() => {
     if (!NATIVE_GLASS) return;
     void syncNativeWindowAppearance(isDarkMode);
   }, [isDarkMode]);
 
-  /** 呼出时重播入场动画（窗口常驻复用，需手动重置 class 才能重跑 keyframes）。 */
   const playEnterAnimation = useCallback(() => {
     const shell = shellRef.current;
     if (!shell) return;
@@ -306,30 +374,60 @@ export const QuickAssistantWindow: React.FC = () => {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     playEnterAnimation();
-    void listen(QUICK_ASSISTANT_SHOWN_EVENT, () => {
-      lastShownAtRef.current = Date.now();
-      setNotice(null);
-      playEnterAnimation();
-      // 窗口常驻复用：每次呼出时重读全局字体/字号/主题/语言，同步主窗口里的最新设置
-      void initializeFontSetting();
-      syncPreferencesFromStorage();
-      void loadClipboard();
-      focusInput();
-    }).then((fn) => { unlisten = fn; });
+    if (isTauriRuntime) {
+      void listen(QUICK_ASSISTANT_SHOWN_EVENT, () => {
+        lastShownAtRef.current = Date.now();
+        setNotice(null);
+        playEnterAnimation();
+        void initializeFontSetting();
+        syncPreferencesFromStorage();
+        void loadClipboard();
+        void refreshWorkspaceBadges();
+        focusInput();
+      }).then((fn) => { unlisten = fn; }).catch(() => {});
+    }
     syncPreferencesFromStorage();
-    void loadClipboard();
+    if (isTauriRuntime) {
+      void loadClipboard();
+      void refreshWorkspaceBadges();
+    }
     focusInput();
     return () => unlisten?.();
-  }, [loadClipboard, focusInput, playEnterAnimation]);
+  }, [loadClipboard, refreshWorkspaceBadges, focusInput, playEnterAnimation]);
 
   useEffect(() => {
+    if (!isTauriRuntime) return;
     let unlisten: (() => void) | null = null;
     void getCurrentWindow().onFocusChanged(({ payload }) => {
       const focusSettled = Date.now() - lastShownAtRef.current > 350;
       if (!payload && focusSettled && !pinned && !busy) void hideCurrentQuickAssistantWindow();
-    }).then((fn) => { unlisten = fn; });
+    }).then((fn) => { unlisten = fn; }).catch(() => {});
     return () => unlisten?.();
   }, [pinned, busy]);
+
+  // Home 视图输入 ≥2 字时实时就地检索自己的笔记和历史会话
+  useEffect(() => {
+    if (route !== 'home' || !isTauriRuntime) return;
+    const query = input.trim();
+    if (query.length < 2) {
+      setInlineResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void searchLearningHistory(query)
+        .then((results) => {
+          if (!cancelled) setInlineResults(results);
+        })
+        .catch(() => {
+          if (!cancelled) setInlineResults([]);
+        });
+    }, 260);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [route, input]);
 
   const actionLabel = useCallback(
     (action: QuickLearningAction) => t(`actions.${action}.label`),
@@ -368,6 +466,30 @@ export const QuickAssistantWindow: React.FC = () => {
     }
   }, [busy, content, focusInput, notify, t, actionLabel]);
 
+  /** 0 延迟速记：不经 AI 直接把当前内容存为笔记或待办 */
+  const handleDirectCapture = useCallback(async (target: QuickCaptureKind) => {
+    if (busy || !content) return;
+    const label = t(`answer.${target}`);
+    setBusy(true);
+    notify(t('messages.saving', { target: label }));
+    try {
+      if (target === 'note') await saveAsNote(content, '');
+      if (target === 'todo') await saveAsTodo(content, '');
+      setInput('');
+      setCapture('');
+      setCaptureTruncated(false);
+      setInlineResults([]);
+      setSelectedIndex(0);
+      notify(t('messages.saved', { target: label }), 'success');
+      void refreshWorkspaceBadges();
+      focusInput();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, content, t, notify, refreshWorkspaceBadges, focusInput]);
+
   const runSearch = useCallback(async (query: string) => {
     if (query.trim().length < 2 || busy) return;
     setBusy(true);
@@ -375,6 +497,7 @@ export const QuickAssistantWindow: React.FC = () => {
     try {
       const results = await searchLearningHistory(query);
       setSearchResults(results);
+      setSearchIndex(0);
       if (results.length) {
         notify(t('search.found', { count: results.length }), 'success');
       } else {
@@ -387,55 +510,63 @@ export const QuickAssistantWindow: React.FC = () => {
     }
   }, [busy, notify, t]);
 
-  // 搜索视图输入防抖自动查询（Enter 仍可立即触发）
   useEffect(() => {
     if (route !== 'search') return;
     const value = input.trim();
-    if (value.length < 2) return;
-    const timer = window.setTimeout(() => { void runSearch(value); }, 350);
+    if (value.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = window.setTimeout(() => { void runSearch(value); }, 280);
     return () => window.clearTimeout(timer);
   }, [route, input, runSearch]);
 
-  const openReview = useCallback(async () => {
-    setRoute('review');
-    setNotice(null);
-    setBusy(true);
-    try {
-      setReview(await getQuickReviewSnapshot());
-      setReviewRevealed(false);
-      setReviewStartedAt(Date.now());
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const openStatus = useCallback(async () => {
-    setRoute('status');
-    setNotice(null);
-    setBusy(true);
-    try {
-      setTodoSummary(await getActiveTodoSummary());
-    } finally {
-      setBusy(false);
-    }
+  const openSearchResult = useCallback((result: QuickSearchResult) => {
+    void openQuickAssistantTarget(
+      result.kind === 'resource'
+        ? { kind: 'resource', id: result.id, path: result.path }
+        : { kind: 'session', id: result.id },
+    );
   }, []);
 
   const executeItem = useCallback((item: HomeItem) => {
+    if (item.kind === 'attach_clipboard') {
+      setCaptureFromText(clipboardCandidate);
+      focusInput();
+      return;
+    }
     if (item.kind === 'llm') {
       void handleAction(item.action);
       return;
     }
-    if (item.kind === 'search') {
-      setRoute('search');
-      setSearchResults([]);
-      setNotice(null);
-      focusInput();
-      if (input.trim().length >= 2) void runSearch(input);
+    if (item.kind === 'capture_save') {
+      void handleDirectCapture(item.target);
       return;
     }
-    if (item.kind === 'review') void openReview();
-    if (item.kind === 'status') void openStatus();
-  }, [handleAction, focusInput, input, runSearch, openReview, openStatus]);
+    if (item.kind === 'inline_result') {
+      openSearchResult(item.result);
+      return;
+    }
+    if (item.kind === 'open_search') {
+      setRoute('search');
+      setSearchResults(inlineResults);
+      setSearchIndex(0);
+      setNotice(null);
+      focusInput();
+      return;
+    }
+    if (item.kind === 'workspace') {
+      if (item.target === 'search') {
+        setRoute('search');
+        setSearchResults([]);
+        setSearchIndex(0);
+        setNotice(null);
+        focusInput();
+        return;
+      }
+      void openQuickAssistantTarget({ kind: 'view', view: item.target });
+    }
+  }, [clipboardCandidate, setCaptureFromText, focusInput, handleAction, handleDirectCapture, openSearchResult, inlineResults]);
 
   const handleEscape = useCallback(() => {
     if (busy && runRef.current) {
@@ -450,59 +581,75 @@ export const QuickAssistantWindow: React.FC = () => {
   }, [busy, route, goHome]);
 
   const moveSelection = useCallback((direction: 1 | -1) => {
-    setSelectedIndex((value) => {
-      const length = homeItems.length;
-      for (let step = 1; step <= length; step++) {
-        const next = (((value + direction * step) % length) + length) % length;
-        if (!isItemDisabled(homeItems[next])) return next;
-      }
-      return value;
-    });
-  }, [homeItems, isItemDisabled]);
+    if (route === 'home') {
+      setSelectedIndex((value) => {
+        const length = homeItems.length;
+        if (length === 0) return 0;
+        return (((value + direction) % length) + length) % length;
+      });
+      return;
+    }
+    if (route === 'search') {
+      setSearchIndex((value) => {
+        const length = searchResults.length;
+        if (length === 0) return 0;
+        return (((value + direction) % length) + length) % length;
+      });
+    }
+  }, [route, homeItems.length, searchResults.length]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (isImeEvent(event)) return;
-      if (event.key === 'Escape') {
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (isImeEvent(event)) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      handleEscape();
+      return;
+    }
+    if (route === 'home') {
+      if (event.key === 'ArrowDown') {
         event.preventDefault();
-        handleEscape();
+        moveSelection(1);
         return;
       }
-      if (route === 'home') {
-        if (event.key === 'ArrowDown') {
-          event.preventDefault();
-          moveSelection(1);
-          return;
-        }
-        if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          moveSelection(-1);
-          return;
-        }
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          const item = homeItems[selectedIndex] ?? homeItems[0];
-          if (isItemDisabled(item)) {
-            notify(t('messages.need_content'));
-            return;
-          }
-          executeItem(item);
-          return;
-        }
-        if (event.key === 'Backspace' && !input && capture) {
-          event.preventDefault();
-          clearCapture();
-        }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveSelection(-1);
         return;
       }
-      if (route === 'search' && event.key === 'Enter') {
+      if (event.key === 'Enter') {
         event.preventDefault();
-        void runSearch(input);
+        const item = homeItems[selectedIndex] ?? homeItems[0];
+        if (item) executeItem(item);
+        return;
       }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [route, homeItems, selectedIndex, input, capture, executeItem, handleEscape, clearCapture, runSearch, moveSelection, isItemDisabled, notify, t]);
+      if (event.key === 'Backspace' && !input && capture) {
+        event.preventDefault();
+        clearCapture();
+      }
+      return;
+    }
+    if (route === 'search') {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveSelection(1);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveSelection(-1);
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const active = searchResults[searchIndex];
+        if (active) {
+          openSearchResult(active);
+        } else {
+          void runSearch(input);
+        }
+      }
+    }
+  }, [route, homeItems, selectedIndex, searchResults, searchIndex, input, capture, handleEscape, moveSelection, executeItem, clearCapture, openSearchResult, runSearch]);
 
   const handlePaste = useCallback(async (event: React.ClipboardEvent<HTMLInputElement>) => {
     const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
@@ -516,8 +663,6 @@ export const QuickAssistantWindow: React.FC = () => {
         if (text) {
           setCaptureFromText(text);
           lastClipboardRef.current = text;
-        }
-        if (text) {
           notify(t('messages.ocr_done'), 'success');
         } else {
           notify(t('messages.ocr_empty'));
@@ -531,7 +676,6 @@ export const QuickAssistantWindow: React.FC = () => {
     }
     const text = event.clipboardData.getData('text/plain');
     if (route === 'home' && isCaptureLikeText(text)) {
-      // 学习材料进捕获区，输入框留给用户自己的问题。
       event.preventDefault();
       setCaptureFromText(text);
       lastClipboardRef.current = text.trim();
@@ -576,41 +720,9 @@ export const QuickAssistantWindow: React.FC = () => {
     });
   }, []);
 
-  const rateCard = useCallback(async (rating: number) => {
-    if (!review?.card) return;
-    setBusy(true);
-    try {
-      await rateQuickReviewCard(review.card.id, rating, Date.now() - reviewStartedAt);
-      setReview(await getQuickReviewSnapshot());
-      setReviewRevealed(false);
-      setReviewStartedAt(Date.now());
-      notify(t('review.rated'), 'success');
-    } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), 'error');
-    } finally {
-      setBusy(false);
-    }
-  }, [review, reviewStartedAt, notify, t]);
-
-  const footerHint = useMemo(() => {
-    if (notice) return notice.text;
-    if (route === 'home') return t('footer.home');
-    if (route === 'answer' && busy) return t('footer.answer_busy');
-    return t('footer.back');
-  }, [notice, route, busy, t]);
-
-  const backButton = (
-    <button className="qa-back" onClick={goHome}>
-      <CaretLeft size={14} />{t('common:back', '返回')}
-    </button>
-  );
-
   const activeItem = homeItems[selectedIndex];
   const activeDescendant = route === 'home' && activeItem ? `qa-opt-${homeItemKey(activeItem)}` : undefined;
-  const overdueIds = useMemo(
-    () => new Set((todoSummary?.overdueItems ?? []).map((item) => item.id)),
-    [todoSummary],
-  );
+
   const saveButtons: Array<{ kind: SaveKind; icon: Icon }> = [
     { kind: 'note', icon: NotePencil },
     { kind: 'mistake', icon: FileMagnifyingGlass },
@@ -618,101 +730,284 @@ export const QuickAssistantWindow: React.FC = () => {
     { kind: 'todo', icon: Check },
   ];
 
+  const windowControls = (
+    <div className="qa-window-actions">
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        className={cn('qa-icon-button', pinned && 'is-active')}
+        onClick={togglePinned}
+        title={pinned ? t('window.unpin') : t('window.pin')}
+        aria-label={pinned ? t('window.unpin') : t('window.pin')}
+      >
+        {pinned ? <PushPinSlash size={15} /> : <PushPin size={15} />}
+      </DsButton>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        className="qa-icon-button"
+        onClick={() => void hideCurrentQuickAssistantWindow()}
+        title={t('window.hide')}
+        aria-label={t('window.hide')}
+      >
+        <X size={15} />
+      </DsButton>
+    </div>
+  );
+
+  const renderGroupLabel = (group: HomeItem['group']) => {
+    if (group === 'clipboard') return t('groups.clipboard');
+    if (group === 'ai') return t('groups.ai');
+    if (group === 'capture') return t('groups.capture');
+    if (group === 'records') return t('groups.records');
+    return t('groups.workspace');
+  };
+
+  const renderItemMeta = (item: HomeItem): { icon: Icon; label: string; hint?: string; trailing?: string } => {
+    if (item.kind === 'attach_clipboard') {
+      return {
+        icon: ClipboardText,
+        label: t('clipboard.attach'),
+        hint: item.preview,
+      };
+    }
+    if (item.kind === 'llm') {
+      return {
+        icon: ACTION_ICONS[item.action],
+        label: t(`actions.${item.action}.label`),
+        hint: t(`actions.${item.action}.hint`),
+      };
+    }
+    if (item.kind === 'capture_save') {
+      return {
+        icon: item.target === 'note' ? NotePencil : CheckSquare,
+        label: t(`quick_capture.${item.target}.label`),
+        hint: t(`quick_capture.${item.target}.hint`),
+      };
+    }
+    if (item.kind === 'inline_result') {
+      return {
+        icon: item.result.kind === 'resource' ? NotePencil : ChatCircleText,
+        label: item.result.title,
+        hint: stripSnippetHtml(item.result.snippet),
+      };
+    }
+    if (item.kind === 'open_search') {
+      return {
+        icon: MagnifyingGlass,
+        label: t('search.view_all', { count: inlineResults.length }),
+      };
+    }
+    if (item.target === 'search') {
+      return {
+        icon: MagnifyingGlass,
+        label: t('features.search.label'),
+        hint: t('features.search.hint'),
+      };
+    }
+    if (item.target === 'flashcards') {
+      return {
+        icon: Cards,
+        label: t('features.review.label'),
+        hint: t('features.review.hint'),
+        trailing: badges.dueCards > 0
+          ? t('review.remaining', { count: badges.dueCards >= 50 ? '50+' : badges.dueCards })
+          : undefined,
+      };
+    }
+    if (item.target === 'todo') {
+      return {
+        icon: CheckSquare,
+        label: t('features.status.label'),
+        hint: t('features.status.hint'),
+        trailing: badges.todayTodos > 0 ? t('status.today_badge', { count: badges.todayTodos }) : undefined,
+      };
+    }
+    return {
+      icon: ChatCircleText,
+      label: t('features.open_main.label'),
+      hint: t('features.open_main.hint'),
+    };
+  };
+
+  const handleShellPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const rect = shell.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const xPct = Math.max(4, Math.min(96, ((event.clientX - rect.left) / rect.width) * 100));
+    shell.style.setProperty('--qa-cursor-x', `${xPct.toFixed(1)}%`);
+    if (shell.dataset.qaShimmer !== 'true') shell.dataset.qaShimmer = 'true';
+  }, []);
+
+  const handleShellPointerLeave = useCallback(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    delete shell.dataset.qaShimmer;
+  }, []);
+
   return (
-    <main ref={shellRef} className="qa-shell wb-glass wb-glass-rim wb-glass-highlight">
-      <header className="qa-titlebar" data-tauri-drag-region>
-        <div className="qa-brand" data-tauri-drag-region>
-          <span className="qa-brand-mark"><Brain size={16} weight="fill" /></span>
-          <span data-tauri-drag-region>{t('title')}</span>
-        </div>
-        <div className="qa-window-actions">
-          <button
-            className={cn('qa-icon-button', pinned && 'is-active')}
-            onClick={togglePinned}
-            title={pinned ? t('window.unpin') : t('window.pin')}
-            aria-label={pinned ? t('window.unpin') : t('window.pin')}
-          >
-            {pinned ? <PushPinSlash size={15} /> : <PushPin size={15} />}
-          </button>
-          <button
-            className="qa-icon-button"
-            onClick={() => void hideCurrentQuickAssistantWindow()}
-            title={t('window.hide')}
-            aria-label={t('window.hide')}
-          >
-            <X size={15} />
-          </button>
-        </div>
+    <main
+      ref={shellRef}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      onPointerMove={handleShellPointerMove}
+      onPointerLeave={handleShellPointerLeave}
+      data-tauri-drag-region="deep"
+      className="qa-shell wb-glass wb-glass-rim"
+    >
+      {/* 顶部整宽拖拽把手带（16px）：随手可抓，不增加独立标题栏噪音 */}
+      <div className="qa-grabber" data-tauri-drag-region="deep" aria-hidden="true">
+        <span className="qa-grabber-pill" />
+      </div>
+
+      {/* 顶栏即命令输入条（空白与图标处同样可拖，输入与按钮自动排除） */}
+      <header className="qa-topbar" data-tauri-drag-region="deep">
+        {route === 'home' && (
+          <>
+            <MagnifyingGlass size={16} className="qa-topbar-icon" aria-hidden="true" />
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(event) => { setInput(event.target.value); setSelectedIndex(0); }}
+              onPaste={(event) => void handlePaste(event)}
+              placeholder={capture ? t('input.placeholder_with_capture') : t('input.placeholder')}
+              className="qa-input"
+              spellCheck={false}
+              aria-label={t('title')}
+              aria-controls="qa-menu"
+              aria-activedescendant={activeDescendant}
+            />
+            {input && (
+              <>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  className="qa-icon-button"
+                  onClick={() => { setInput(''); setSelectedIndex(0); focusInput(); }}
+                  title={t('input.clear')}
+                  aria-label={t('input.clear')}
+                >
+                  <XCircle size={15} weight="fill" />
+                </DsButton>
+                <span className="qa-topbar-divider" aria-hidden="true" />
+              </>
+            )}
+          </>
+        )}
+
+        {route === 'search' && (
+          <>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="qa-icon-button"
+              onClick={goHome}
+              title={t('common:back', '返回')}
+              aria-label={t('common:back', '返回')}
+            >
+              <CaretLeft size={16} />
+            </DsButton>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(event) => { setInput(event.target.value); setSearchIndex(0); }}
+              placeholder={t('input.search_placeholder')}
+              className="qa-input"
+              spellCheck={false}
+              aria-label={t('search.title')}
+            />
+          </>
+        )}
+
+        {route === 'answer' && (
+          <>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="qa-back"
+              onClick={goHome}
+            >
+              <CaretLeft size={15} />
+              <span>{actionLabel(currentAction)}</span>
+            </DsButton>
+            <div className="qa-topbar-spacer" data-tauri-drag-region="deep" />
+            <DsButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="qa-icon-button"
+              onClick={() => void handleCopyAnswer()}
+              disabled={!answer}
+              title={t('answer.copy')}
+              aria-label={t('answer.copy')}
+            >
+              <CopySimple size={15} />
+            </DsButton>
+          </>
+        )}
+
+        {windowControls}
       </header>
 
       {route === 'home' && (
-        <section className="qa-content qa-home">
-          <div className="qa-input-row">
-            <div className="qa-input-shell">
-              <Sparkle size={15} className="qa-input-icon" />
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(event) => { setInput(event.target.value); setSelectedIndex(0); }}
-                onPaste={(event) => void handlePaste(event)}
-                placeholder={capture ? t('input.placeholder_with_capture') : t('input.placeholder')}
-                className="qa-input"
-                spellCheck={false}
-                aria-controls="qa-menu"
-                aria-activedescendant={activeDescendant}
-              />
-            </div>
-          </div>
-
+        <section className="qa-body">
           {capture && (
-            <div className="qa-capture-chip">
-              <span className="qa-capture-icon"><ClipboardText size={14} /></span>
-              <span className="qa-capture-text">{capture}</span>
-              <span className="qa-capture-count">
+            <div className="qa-context-strip" data-tauri-drag-region="false">
+              <ClipboardText size={13} className="qa-context-icon" aria-hidden="true" />
+              <span className="qa-context-text">{singleLinePreview(capture, 96)}</span>
+              <span className="qa-context-count">
                 {t(captureTruncated ? 'capture.chars_truncated' : 'capture.chars', { count: capture.length.toLocaleString() })}
               </span>
-              <button className="qa-capture-clear" onClick={clearCapture} title={t('capture.clear')} aria-label={t('capture.clear')}>
-                <X size={13} />
-              </button>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                className="qa-context-clear"
+                onClick={clearCapture}
+                title={t('capture.clear')}
+                aria-label={t('capture.clear')}
+              >
+                <X size={12} />
+              </DsButton>
             </div>
           )}
 
           <div className="qa-menu" id="qa-menu" role="listbox" aria-label={t('menu.aria_label')}>
             {homeItems.map((item, index) => {
               const key = homeItemKey(item);
-              const label = item.kind === 'llm' ? t(`actions.${item.action}.label`) : t(`features.${item.kind}.label`);
-              const hint = item.kind === 'llm' ? t(`actions.${item.action}.hint`) : t(`features.${item.kind}.hint`);
-              const IconComponent = item.kind === 'llm' ? ACTION_ICONS[item.action] : FEATURE_ICONS[item.kind];
-              const disabled = isItemDisabled(item);
+              const prev = homeItems[index - 1];
+              const showGroup = !prev || prev.group !== item.group;
+              const active = index === selectedIndex;
+              const { icon: IconComponent, label, hint, trailing } = renderItemMeta(item);
               return (
                 <React.Fragment key={key}>
-                  {index === 3 && <div className="qa-menu-divider" />}
-                  <button
+                  {showGroup && (
+                    <div className={cn('qa-group-label', index > 0 && 'has-gap')}>
+                      {renderGroupLabel(item.group)}
+                    </div>
+                  )}
+                  <div
                     id={`qa-opt-${key}`}
-                    className={cn('qa-menu-item', index === selectedIndex && 'is-active', disabled && 'is-dim')}
                     role="option"
-                    aria-selected={index === selectedIndex}
-                    aria-disabled={disabled || undefined}
+                    tabIndex={-1}
+                    aria-selected={active}
+                    className={cn('qa-row', active && 'is-active')}
                     onMouseMove={() => setSelectedIndex((value) => (value === index ? value : index))}
-                    onClick={() => {
-                      if (disabled) {
-                        notify(t('messages.need_content'));
-                        focusInput();
-                        return;
-                      }
-                      executeItem(item);
-                    }}
+                    onClick={() => executeItem(item)}
                   >
-                    <span className="qa-menu-icon"><IconComponent size={16} /></span>
-                    <span className="qa-menu-copy">
-                      <strong>{label}</strong>
-                      <small>{hint}</small>
+                    <IconComponent size={15} className="qa-row-icon" aria-hidden="true" />
+                    <span className="qa-row-main">
+                      <span className="qa-row-label">{label}</span>
+                      {hint && <span className="qa-row-hint">{hint}</span>}
                     </span>
-                    {item.kind === 'llm' && index === 0 && Boolean(content) && (
-                      <span className="qa-menu-badge">{t('menu.recommended')}</span>
-                    )}
-                    {index === selectedIndex && <span className="qa-menu-enter">↵</span>}
-                  </button>
+                    {trailing && <span className="qa-row-meta">{trailing}</span>}
+                    {active && <span className="qa-row-enter" aria-hidden="true">↵</span>}
+                  </div>
                 </React.Fragment>
               );
             })}
@@ -721,56 +1016,58 @@ export const QuickAssistantWindow: React.FC = () => {
       )}
 
       {route === 'answer' && (
-        <section className="qa-content qa-answer-view">
-          <div className="qa-subhead">
-            {backButton}
-            <span className="qa-subhead-title">{actionLabel(currentAction)}</span>
-            <button
-              className="qa-icon-button"
-              onClick={() => void handleCopyAnswer()}
-              disabled={!answer}
-              title={t('answer.copy')}
-              aria-label={t('answer.copy')}
-            >
-              <CopySimple size={15} />
-            </button>
-          </div>
+        <section className="qa-body qa-answer-view">
           {askedContent && (
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               className={cn('qa-asked', askedExpanded && 'is-expanded')}
               onClick={() => setAskedExpanded((value) => !value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setAskedExpanded((value) => !value);
+                }
+              }}
               title={t('asked.toggle')}
             >
               {askedContent}
-            </button>
+            </div>
           )}
-          <article className="qa-answer" aria-live="polite">
+          <article className="qa-answer" aria-live="polite" data-tauri-drag-region="false">
             {answer
               ? <QuickMarkdown content={answer} />
-              : <div className="qa-loading"><SpinnerGap size={17} className="qa-spin" />{t('answer.thinking')}</div>}
+              : <div className="qa-loading"><SpinnerGap size={15} className="qa-spin" /><span>{t('answer.thinking')}</span></div>}
           </article>
           {answer && !busy && (
-            <div className="qa-save-row">
-              <span>{t('answer.save_to')}</span>
+            <div className="qa-save-bar">
+              <span className="qa-save-label">{t('answer.save_to')}</span>
               {saveButtons.map(({ kind, icon: SaveIcon }) => {
                 const saved = savedKinds.has(kind);
                 return (
-                  <button
+                  <DsButton
                     key={kind}
-                    className={cn(saved && 'is-saved')}
+                    variant="ghost"
+                    size="sm"
+                    className={cn('qa-save-btn', saved && 'is-saved')}
                     disabled={saved}
                     onClick={() => void handleSave(kind)}
                   >
-                    {saved ? <Check size={14} /> : <SaveIcon size={14} />}
-                    {t(`answer.${kind}`)}
-                  </button>
+                    {saved ? <Check size={13} /> : <SaveIcon size={13} />}
+                    <span>{t(`answer.${kind}`)}</span>
+                  </DsButton>
                 );
               })}
               {sessionId && (
-                <button className="qa-continue" onClick={() => void openQuickAssistantTarget({ kind: 'session', id: sessionId })}>
-                  {t('answer.continue_in_main')}<ArrowRight size={14} />
-                </button>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="qa-continue-btn"
+                  onClick={() => void openQuickAssistantTarget({ kind: 'session', id: sessionId })}
+                >
+                  <span>{t('answer.continue_in_main')}</span>
+                  <ArrowRight size={13} />
+                </DsButton>
               )}
             </div>
           )}
@@ -778,113 +1075,61 @@ export const QuickAssistantWindow: React.FC = () => {
       )}
 
       {route === 'search' && (
-        <section className="qa-content qa-search-view">
-          <div className="qa-subhead">
-            {backButton}
-            <span className="qa-subhead-title">{t('search.title')}</span>
-          </div>
-          <div className="qa-input-row">
-            <div className="qa-input-shell">
-              <MagnifyingGlass size={15} className="qa-input-icon" />
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={t('input.search_placeholder')}
-                className="qa-input"
-                spellCheck={false}
-              />
-            </div>
-          </div>
-          <div className="qa-results">
-            {searchResults.map((result) => (
-              <button
-                key={`${result.kind}-${result.id}`}
-                className="qa-result"
-                onClick={() => void openQuickAssistantTarget(
-                  result.kind === 'resource'
-                    ? { kind: 'resource', id: result.id, path: result.path }
-                    : { kind: 'session', id: result.id },
-                )}
-              >
-                <span className="qa-result-icon">{result.kind === 'resource' ? <NotePencil size={16} /> : <Brain size={16} />}</span>
-                <span className="qa-result-copy"><strong>{result.title}</strong><small>{stripSnippetHtml(result.snippet)}</small></span>
-                <ArrowRight size={15} />
-              </button>
-            ))}
+        <section className="qa-body">
+          <div className="qa-menu" role="listbox" aria-label={t('search.title')}>
+            {searchResults.map((result, index) => {
+              const active = index === searchIndex;
+              return (
+                <div
+                  key={`${result.kind}-${result.id}`}
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={active}
+                  className={cn('qa-row', active && 'is-active')}
+                  onMouseMove={() => setSearchIndex((value) => (value === index ? value : index))}
+                  onClick={() => openSearchResult(result)}
+                >
+                  {result.kind === 'resource'
+                    ? <NotePencil size={15} className="qa-row-icon" aria-hidden="true" />
+                    : <ChatCircleText size={15} className="qa-row-icon" aria-hidden="true" />}
+                  <span className="qa-row-main">
+                    <span className="qa-row-label">{result.title}</span>
+                    <span className="qa-row-hint">{stripSnippetHtml(result.snippet)}</span>
+                  </span>
+                  {active && <span className="qa-row-enter" aria-hidden="true">↵</span>}
+                </div>
+              );
+            })}
             {!searchResults.length && !busy && (
-              <div className="qa-empty"><MagnifyingGlass size={22} /><span>{t('search.empty')}</span></div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {route === 'review' && (
-        <section className="qa-content qa-review">
-          <div className="qa-subhead">
-            {backButton}
-            <span className="qa-subhead-title">{t('review.title')}</span>
-            {review && review.dueCount > 0 && (
-              <span className="qa-subhead-meta">
-                {t('review.remaining', { count: review.dueCount >= 50 ? '50+' : review.dueCount })}
-              </span>
-            )}
-          </div>
-          {busy ? <div className="qa-empty"><SpinnerGap size={22} className="qa-spin" />{t('review.preparing')}</div> : review?.card ? (
-            <>
-              <div className="qa-review-front">{review.card.front || review.card.text || t('review.unnamed')}</div>
-              {reviewRevealed ? (
-                <>
-                  <div className="qa-review-back">{review.card.back || t('review.no_answer')}</div>
-                  <div className="qa-rating-row">
-                    <button data-rating="1" onClick={() => void rateCard(1)}>{t('review.again')}</button>
-                    <button data-rating="2" onClick={() => void rateCard(2)}>{t('review.hard')}</button>
-                    <button data-rating="3" onClick={() => void rateCard(3)}>{t('review.good')}</button>
-                    <button data-rating="4" onClick={() => void rateCard(4)}>{t('review.easy')}</button>
-                  </div>
-                </>
-              ) : <button className="qa-primary-button" onClick={() => setReviewRevealed(true)}>{t('review.show_answer')}</button>}
-            </>
-          ) : (
-            <div className="qa-empty">
-              <Check size={28} weight="bold" />
-              <strong>{t('review.done_title')}</strong>
-              <span>{t('review.done_subtitle')}</span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {route === 'status' && (
-        <section className="qa-content qa-status">
-          <div className="qa-subhead">
-            {backButton}
-            <span className="qa-subhead-title">{t('status.title')}</span>
-          </div>
-          <div className="qa-status-grid">
-            <div><span>{t('status.pending')}</span><strong>{todoSummary?.stats.totalPending ?? 0}</strong></div>
-            <div><span>{t('status.today_due')}</span><strong>{todoSummary?.stats.todayDue ?? 0}</strong></div>
-            <div className={cn((todoSummary?.stats.overdueCount ?? 0) > 0 && 'is-alert')}>
-              <span>{t('status.overdue')}</span><strong>{todoSummary?.stats.overdueCount ?? 0}</strong>
-            </div>
-            <div><span>{t('status.today_completed')}</span><strong>{todoSummary?.stats.todayCompleted ?? 0}</strong></div>
-          </div>
-          <div className="qa-status-list">
-            {[...(todoSummary?.overdueItems ?? []), ...(todoSummary?.todayItems ?? [])].slice(0, 5).map((item) => (
-              <div key={item.id} className={cn(overdueIds.has(item.id) && 'is-overdue')}>
-                <span>{item.title}</span><small>{item.listTitle}</small>
+              <div className="qa-empty">
+                <span>{input.trim().length >= 2 ? t('search.none') : t('search.empty')}</span>
               </div>
-            ))}
+            )}
           </div>
-          <button className="qa-primary-button" onClick={() => void openQuickAssistantTarget({ kind: 'view', view: 'todo' })}>
-            {t('status.open_plan')}<ArrowRight size={15} />
-          </button>
         </section>
       )}
 
       <footer className="qa-footer">
-        <span className={cn(notice?.kind === 'error' && 'is-error', notice?.kind === 'success' && 'is-success')}>
-          {busy && <SpinnerGap size={12} className="qa-spin" />}{footerHint}
+        <span className={cn('qa-footer-status', notice?.kind === 'error' && 'is-error', notice?.kind === 'success' && 'is-success')}>
+          {busy && <SpinnerGap size={12} className="qa-spin" />}
+          {notice?.text ?? ''}
+        </span>
+        <span className="qa-footer-keys" aria-hidden="true">
+          {route === 'home' ? (
+            <>
+              <kbd>↑↓</kbd><span>{t('footer.select')}</span>
+              <kbd>↵</kbd><span>{t('footer.run')}</span>
+              <kbd>Esc</kbd><span>{t('footer.hide')}</span>
+            </>
+          ) : route === 'answer' && busy ? (
+            <>
+              <kbd>Esc</kbd><span>{t('footer.stop')}</span>
+            </>
+          ) : (
+            <>
+              <kbd>Esc</kbd><span>{t('footer.back_short')}</span>
+            </>
+          )}
         </span>
       </footer>
     </main>

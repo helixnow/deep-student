@@ -6,7 +6,7 @@ import {
   WarningCircle,
   Lightbulb,
   ArrowClockwise,
-  Sparkle,
+  CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -81,10 +81,8 @@ export const QuestionSubmitResultCard: React.FC<QuestionSubmitResultCardProps> =
           {/* AI 评判中 */}
           {aiGrading.state.isGrading ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-5 h-5 rounded-full bg-info flex items-center justify-center">
-                  <Sparkle size={12} className="text-info-foreground animate-pulse" />
-                </div>
+              <div className="flex items-center gap-2">
+                <CircleNotch size={14} className="shrink-0 text-info animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 <span className="text-sm font-medium text-info">
                   {t('editor.aiGrading')}
                 </span>
@@ -100,7 +98,7 @@ export const QuestionSubmitResultCard: React.FC<QuestionSubmitResultCardProps> =
               {aiGrading.state.feedback ? (
                 <CustomScrollArea
                   className="max-h-48"
-                  viewportClassName="pl-7.5 text-sm leading-relaxed text-muted-foreground"
+                  viewportClassName="pl-6 text-sm leading-relaxed text-muted-foreground"
                   fullHeight={false}
                 >
                   <StreamingMarkdownRenderer
@@ -108,14 +106,7 @@ export const QuestionSubmitResultCard: React.FC<QuestionSubmitResultCardProps> =
                     isStreaming={true}
                   />
                 </CustomScrollArea>
-              ) : (
-                /* 流尚未产出内容：优雅加载态（三点跳动） */
-                <div className="pl-7.5 flex items-center gap-1 py-1" aria-hidden>
-                  <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:300ms]" />
-                </div>
-              )}
+              ) : null}
             </div>
           ) : aiGrading.state.error ? (
             /* AI 评判失败，回退手动批改 + 内联重试 */
@@ -275,7 +266,7 @@ export const QuestionSubmitResultCard: React.FC<QuestionSubmitResultCardProps> =
                 {submitResult.isCorrect ? (
                   <Check size={12} weight="bold" className="text-success-foreground" />
                 ) : submitResult.aiVerdict === 'partial' ? (
-                  <Sparkle size={12} className="text-warning-foreground" />
+                  <WarningCircle size={12} className="text-warning-foreground" />
                 ) : (
                   <X size={12} className="text-destructive-foreground" />
                 )}

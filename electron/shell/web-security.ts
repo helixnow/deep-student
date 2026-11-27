@@ -28,6 +28,8 @@ export interface WebSecurityPolicy {
   roleOf(contents: WebContents): ContentsRole | null;
   openerUrlAllow: readonly OpenerUrlEntry[];
   openExternal(url: string): Promise<void>;
+  /** 可选：browser-content 发起合法 http(s) window.open / target=_blank 时转为受管新标签。返回 false 表示拒绝。 */
+  onBrowserWindowOpen?: (source: WebContents, url: string) => boolean | void;
   log(message: string): void;
 }
 
@@ -164,8 +166,16 @@ export function installSessionPermissionGuards(ses: Session, policy: WebSecurity
 export function guardWebContents(contents: WebContents, policy: WebSecurityPolicy): void {
   const label = () => safeRole(policy, contents) ?? 'unmanaged';
   contents.setWindowOpenHandler((details: HandlerDetails) => {
-    if (windowOpenGoesExternal(safeRole(policy, contents), details.url, policy.openerUrlAllow)) {
+    const role = safeRole(policy, contents);
+    if (windowOpenGoesExternal(role, details.url, policy.openerUrlAllow)) {
       openExternally(policy, details.url, label());
+    } else if (role === 'browser' && browserNavigationAllowed(details.url) && policy.onBrowserWindowOpen !== undefined) {
+      const handled = policy.onBrowserWindowOpen(contents, details.url);
+      if (handled === false) {
+        policy.log(`[security] ${label()}: blocked new window for ${describeUrl(details.url)}`);
+      } else {
+        policy.log(`[security] ${label()}: opened managed tab for ${describeUrl(details.url)}`);
+      }
     } else {
       policy.log(`[security] ${label()}: blocked new window for ${describeUrl(details.url)}`);
     }

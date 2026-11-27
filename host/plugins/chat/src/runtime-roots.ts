@@ -26,6 +26,8 @@ export interface ChatWorkspaceRuntime {
   cleanupSessionRuntimeRoots(dataDir: string, sessionId: string): void;
   /** `listCustomAgentFiles(dir, logger)`：人设文件摘要（排序与 fail-closed 解析归 L05）。 */
   listCustomAgentFiles(dir: string, logger?: ChatWorkspaceLogger): CustomAgentFileInfo[];
+  /** `browserWorkerToolSchemas()`：桌面浏览器子代理工具 schema 列表（移动端缺省为空）。 */
+  browserWorkerToolSchemas?(): { name: string; description?: string; inputSchema?: unknown }[];
 }
 
 export class WorkspaceRuntimeUnavailableError extends Error {
@@ -40,6 +42,7 @@ const unavailable: ChatWorkspaceRuntime = {
   sessionRoot: (dataDir) => { throw new WorkspaceRuntimeUnavailableError(`session root ${dataDir}`); },
   cleanupSessionRuntimeRoots: () => undefined,
   listCustomAgentFiles: () => [],
+  browserWorkerToolSchemas: () => [],
 };
 
 let active: ChatWorkspaceRuntime = unavailable;

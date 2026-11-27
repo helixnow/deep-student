@@ -236,7 +236,7 @@ export const ContextUsageRing: React.FC<ContextUsageRingProps> = ({
     estimate.level === 'danger'
       ? 'text-destructive'
       : estimate.level === 'warn'
-        ? 'text-amber-500 dark:text-amber-400'
+        ? 'text-warning'
         : 'text-muted-foreground';
 
   const baseTooltip = t(
@@ -371,7 +371,7 @@ export const ContextUsageRing: React.FC<ContextUsageRingProps> = ({
                 <dt className="text-muted-foreground">
                   {t('chatV2:contextUsage.cacheHitRateLabel', '缓存命中率')}
                 </dt>
-                <dd className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                <dd className="font-mono tabular-nums text-success">
                   {Math.round(cacheHitRate * 100)}%
                 </dd>
               </div>

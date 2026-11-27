@@ -5,7 +5,6 @@
  * prefers-reduced-motion 下全部静态化。
  *
  * - .pomodoro-num-roll   数字变化时的一次性上滚进场（key 重挂载触发）
- * - .pomodoro-noise-dot  环境音播放态的呼吸圆点（挂在扬声器按钮角上）
  * - .pomodoro-noise-eq   环境音播放态的迷你声波柱（设置区音量行）
  */
 
@@ -23,32 +22,6 @@
 .pomodoro-num-roll {
   display: inline-block;
   animation: pomodoro-kf-num-roll 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-/* ---- 环境音播放态：呼吸圆点（宿主按钮需 position:relative） ---- */
-
-@keyframes pomodoro-kf-noise-dot {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-}
-
-.pomodoro-noise-dot {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: hsl(var(--primary));
-  pointer-events: none;
-  animation: pomodoro-kf-noise-dot 2.4s ease-in-out infinite;
 }
 
 /* ---- 环境音播放态：迷你声波柱（3 根，错峰 scaleY 呼吸） ---- */
@@ -93,11 +66,6 @@
 @media (prefers-reduced-motion: reduce) {
   .pomodoro-num-roll {
     animation: none;
-  }
-
-  .pomodoro-noise-dot {
-    animation: none;
-    opacity: 0.9;
   }
 
   .pomodoro-noise-eq i {

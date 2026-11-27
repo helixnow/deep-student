@@ -30,7 +30,7 @@ See the runnable example Study Pack in [`examples/plugins/kaoyan-math-pack/`](..
 - **`gradingRubrics`** (`host/plugins/llm/src/essay_grading/rubric-registry.ts`): Contribute first-class essay/proof grading rubrics dynamically (Tier 1 YAML rubrics auto-register here and auto-clean on unload).
 - **`reviewSchedulers`** (`host/plugins/review/src/scheduler-registry.ts`): Register custom spaced-repetition schedulers with automatic fallback to built-in `fsrs6` on error or disposal.
 - **`memoryProvider`** (`host/plugins/memory/src/memory-provider.ts`): Pluggable memory kernel contract (`buildSessionSnapshot`, `buildSessionDelta`, `ingestSignal`, `inspect`, `mutateFromUser`, `reflect`).
-- **Real `StudyEvents`** (`host/plugins/plugin-services/api.ts`): `study/note-saved`, `study/card-reviewed`, `study/answer-finished`, `study/essay-graded`, `study/question-answered`.
+- **Real `StudyEvents`** (`host/plugins/plugin-services/api.ts`): `study/note-saved`, `study/card-reviewed`, `study/answer-finished`, `study/cards-created`, `study/essay-graded`, `study/question-answered`.
 
 ## 4. Brokered UI-Only Domain Calls & Portable Sandbox
 
@@ -41,4 +41,4 @@ See the runnable example Study Pack in [`examples/plugins/kaoyan-math-pack/`](..
 
 - **Share-Time Namespace Rewrite** (`host/plugins/plugin-workshop/src/study-pack.ts`): `rewriteManifestForSharing()` converts private `workshop.plugin-<uuid>` or `local.*` works into validated `<publisher>.<slug>` community packages and strips `scripts`.
 - **Safe Remote Fetch** (`host/plugins/plugin-workshop/src/remote-pack-fetch.ts`): `fetchRemotePackArchive()` downloads `.dspack` / `.dstuplugin` archives over strict HTTPS with SSRF private-host/redirect blocking, 32 MiB streaming cap, and SHA-256 verification prior to `PluginPackages.install(...)` and K3 user consent.
-- **In-Window Iteration**: Every Plugin Workshop view includes a floating **「✦ 让 AI 优化」** trigger that re-opens the bound Workshop refinement conversation directly.
+- **In-Window Iteration**: Every Plugin Workshop view includes a floating **「让 AI 优化」** trigger that re-opens the bound Workshop refinement conversation directly.

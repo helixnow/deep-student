@@ -61,7 +61,7 @@ const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
             className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
           >
             {t('plugin_manager:workshop.actions.refineWithAi', {
-              defaultValue: isEn ? '✦ Refine with AI' : '✦ 让 AI 优化',
+              defaultValue: isEn ? 'Refine with AI' : '让 AI 优化',
             })}
           </button>
         </div>

@@ -12,10 +12,17 @@ import type {
   BrowserCommandName,
   BrowserControlMode,
   BrowserDownloadObservation,
+  BrowserExtractContentOptions,
+  BrowserExtractedContent,
   BrowserHistoryEntry,
+  BrowserHostFacts,
+  BrowserHostFactsBlockedNavigation,
+  BrowserHostFactsScreenshot,
+  BrowserRemoteInputEvent,
   BrowserSessionSnapshot,
   BrowserSurfaceBounds,
   BrowserSurfaceHostMode,
+  BrowserTabInfo,
 } from './types';
 
 export class BrowserApiError extends Error {
@@ -150,16 +157,35 @@ export function parseControlMode(raw: unknown): BrowserControlMode {
 
 /** Fail-safe to detached for older/unknown backend payloads. */
 export function parseBrowserSurfaceHostMode(raw: unknown): BrowserSurfaceHostMode {
-  if (typeof raw === 'string') {
-    const normalized = raw.toLowerCase();
-    if (normalized === 'embedded' || normalized === 'unsupported') return normalized;
+  const resolveMode = (value: string | undefined): BrowserSurfaceHostMode => {
+    const normalized = value?.toLowerCase();
+    if (
+      normalized === 'embedded' ||
+      normalized === 'remote' ||
+      normalized === 'headless' ||
+      normalized === 'unsupported'
+    ) {
+      return normalized;
+    }
     return 'detached';
-  }
+  };
+  if (typeof raw === 'string') return resolveMode(raw);
   const obj = asRecord(raw);
   const mode = obj ? pickString(obj, 'hostMode', 'host_mode', 'mode') : undefined;
-  const normalized = mode?.toLowerCase();
-  if (normalized === 'embedded' || normalized === 'unsupported') return normalized;
-  return 'detached';
+  return resolveMode(mode);
+}
+
+export function parseBrowserTabInfo(raw: unknown): BrowserTabInfo | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const tabId = pickString(obj, 'tabId', 'tab_id', 'id');
+  if (!tabId) return null;
+  return {
+    tabId,
+    url: pickString(obj, 'url') ?? '',
+    title: pickString(obj, 'title') ?? '',
+    active: pickBool(obj, 'active') ?? false,
+  };
 }
 
 function parseHistoryEntry(raw: unknown): BrowserHistoryEntry | null {
@@ -359,6 +385,28 @@ export async function getSurfaceHostMode(): Promise<BrowserSurfaceHostMode> {
   return parseBrowserSurfaceHostMode(raw);
 }
 
+export async function promoteToInteractive(
+  sessionId: string,
+): Promise<BrowserSurfaceHostMode> {
+  try {
+    const raw = await invokeBrowser<unknown>('browser_promote_to_interactive', { sessionId });
+    if (typeof raw === 'string') return parseBrowserSurfaceHostMode(raw);
+    const obj = asRecord(raw);
+    if (obj && (obj.hostMode !== undefined || obj.host_mode !== undefined || obj.mode !== undefined)) {
+      return parseBrowserSurfaceHostMode(obj);
+    }
+    return await getSurfaceHostMode();
+  } catch (err) {
+    if (
+      (err instanceof BrowserApiError && err.code === 'BROWSER_COMMAND_MISSING') ||
+      isCommandMissingError(err)
+    ) {
+      return setSurfaceVisibility(sessionId, true, true);
+    }
+    throw err;
+  }
+}
+
 /** 用户接管：打断 agent 控制态 */
 export async function takeOver(): Promise<BrowserSessionSnapshot> {
   return invokeState('browser_take_over');
@@ -377,6 +425,147 @@ export async function setInputFiles(
   return invokeBrowser('browser_set_input_files', { sessionId, ref, files });
 }
 
+export async function listTabs(sessionId: string): Promise<BrowserTabInfo[]> {
+  const raw = await invokeBrowser<unknown>('browser_list_tabs', { sessionId });
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(parseBrowserTabInfo)
+    .filter((tab): tab is BrowserTabInfo => tab !== null);
+}
+
+export async function newTab(sessionId: string, url: string): Promise<BrowserTabInfo> {
+  const trimmed = url.trim();
+  const normalized = trimmed === '' || trimmed === 'about:blank'
+    ? 'about:blank'
+    : normalizeNavigationInput(trimmed);
+  const raw = await invokeBrowser<unknown>('browser_new_tab', {
+    sessionId,
+    url: normalized,
+  });
+  return (
+    parseBrowserTabInfo(raw) ?? {
+      tabId: 'default',
+      url: normalized,
+      title: '',
+      active: true,
+    }
+  );
+}
+
+export async function switchTab(sessionId: string, tabId: string): Promise<BrowserTabInfo> {
+  const raw = await invokeBrowser<unknown>('browser_switch_tab', { sessionId, tabId });
+  return (
+    parseBrowserTabInfo(raw) ?? {
+      tabId,
+      url: '',
+      title: '',
+      active: true,
+    }
+  );
+}
+
+export async function closeTab(sessionId: string, tabId: string): Promise<unknown> {
+  return invokeBrowser('browser_close_tab', { sessionId, tabId });
+}
+
+export async function remoteInput(
+  sessionId: string,
+  event: BrowserRemoteInputEvent,
+): Promise<void> {
+  await invokeBrowser('browser_remote_input', { sessionId, event });
+}
+
+export function parseBrowserExtractedContent(raw: unknown): BrowserExtractedContent {
+  if (typeof raw === 'string') {
+    return {
+      url: '',
+      title: '',
+      markdown: raw,
+      totalChars: raw.length,
+      truncated: false,
+    };
+  }
+  const obj = asRecord(raw) ?? {};
+  const markdown = pickString(obj, 'markdown', 'content', 'text') ?? '';
+  return {
+    url: pickString(obj, 'url') ?? '',
+    title: pickString(obj, 'title') ?? '',
+    markdown,
+    totalChars: pickNumber(obj, 'totalChars', 'total_chars') ?? markdown.length,
+    truncated: pickBool(obj, 'truncated') ?? false,
+  };
+}
+
+export async function extractContent(
+  sessionId: string,
+  options?: BrowserExtractContentOptions,
+): Promise<BrowserExtractedContent> {
+  const args: Record<string, unknown> = { sessionId };
+  if (options?.maxChars != null) args.maxChars = options.maxChars;
+  if (options?.startIndex != null) args.startIndex = options.startIndex;
+  const raw = await invokeBrowser<unknown>('browser_extract_content', args);
+  return parseBrowserExtractedContent(raw);
+}
+
+function parseBlockedNavigationFact(raw: unknown): BrowserHostFactsBlockedNavigation | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const url = pickString(obj, 'url');
+  if (!url) return null;
+  return {
+    url,
+    reason: pickString(obj, 'reason') ?? '',
+    at: pickString(obj, 'at') ?? '',
+  };
+}
+
+function parseLatestScreenshotFact(raw: unknown): BrowserHostFactsScreenshot | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  return {
+    path: pickString(obj, 'path') ?? null,
+    locator: pickString(obj, 'locator') ?? null,
+    width: pickNumber(obj, 'width') ?? 0,
+    height: pickNumber(obj, 'height') ?? 0,
+    capturedAt: pickString(obj, 'capturedAt', 'captured_at') ?? '',
+  };
+}
+
+export function parseBrowserHostFacts(raw: unknown): BrowserHostFacts {
+  const obj = asRecord(raw) ?? {};
+  const modeRaw = pickString(obj, 'mode')?.toLowerCase();
+  const mode: BrowserHostFacts['mode'] =
+    modeRaw === 'headless' || modeRaw === 'remote' ? modeRaw : 'interactive';
+  const visitedOriginsRaw = obj.visitedOrigins ?? obj.visited_origins;
+  const visitedOrigins = Array.isArray(visitedOriginsRaw)
+    ? visitedOriginsRaw.filter((item): item is string => typeof item === 'string')
+    : [];
+  const blockedRaw = obj.blockedNavigations ?? obj.blocked_navigations;
+  const blockedNavigations = Array.isArray(blockedRaw)
+    ? blockedRaw
+        .map(parseBlockedNavigationFact)
+        .filter((item): item is BrowserHostFactsBlockedNavigation => item !== null)
+    : [];
+  return {
+    sessionId: pickString(obj, 'sessionId', 'session_id') ?? '',
+    mode,
+    visitedOrigins,
+    blockedNavigations,
+    latestScreenshot: parseLatestScreenshotFact(obj.latestScreenshot ?? obj.latest_screenshot),
+    downloadsCount: pickNumber(obj, 'downloadsCount', 'downloads_count') ?? 0,
+    userTakeoverCount: pickNumber(obj, 'userTakeoverCount', 'user_takeover_count') ?? 0,
+    actionCount: pickNumber(obj, 'actionCount', 'action_count') ?? 0,
+    finalUrl: pickString(obj, 'finalUrl', 'final_url') ?? null,
+  };
+}
+
+export async function getHostFacts(sessionId?: string | null): Promise<BrowserHostFacts> {
+  const args: Record<string, unknown> = {};
+  if (sessionId) args.sessionId = sessionId;
+  const raw = await invokeBrowser<unknown>('browser_get_host_facts', args);
+  return parseBrowserHostFacts(raw);
+}
+
 export const browserApi = {
   openSession,
   closeSession,
@@ -390,12 +579,23 @@ export const browserApi = {
   setSurfaceBounds,
   setSurfaceVisibility,
   getSurfaceHostMode,
+  promoteToInteractive,
   takeOver,
   listDownloads,
   setInputFiles,
+  listTabs,
+  newTab,
+  switchTab,
+  closeTab,
+  remoteInput,
+  extractContent,
+  getHostFacts,
   normalizeNavigationInput,
   parseBrowserSessionSnapshot,
   parseBrowserSurfaceHostMode,
+  parseBrowserTabInfo,
+  parseBrowserExtractedContent,
+  parseBrowserHostFacts,
   isCommandMissingError,
   toBrowserApiError,
   BrowserApiError,

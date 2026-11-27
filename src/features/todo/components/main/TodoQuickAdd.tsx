@@ -223,6 +223,9 @@ export const TodoQuickAdd: React.FC<{
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
           setStreakAddedCount(0);
+          if (!title.trim() && priority === 'none' && !dueDate) {
+            setIsExpanded(false);
+          }
         }
       }}
     >
@@ -370,13 +373,13 @@ export const TodoQuickAdd: React.FC<{
       </div>
 
       {isExpanded && (
-        <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2.5 pb-2.5 pl-[2.6rem] pr-4 sm:pl-[3.1rem] sm:pr-6">
           <SegmentedControl<TodoPriority>
             ariaLabel={t('todo:fields.priority')}
             value={priority}
             onValueChange={setPriority}
             size="compact"
-            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!px-3"
+            itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium"
             options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
               const config = PRIORITY_CONFIG[p];
               const isActive = priority === p;
@@ -390,13 +393,13 @@ export const TodoQuickAdd: React.FC<{
             })}
           />
 
-          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]">
-            <Calendar size={14} className="text-muted-foreground" />
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-border/50 bg-transparent px-2 py-0.5 transition-colors hover:bg-muted/40">
+            <Calendar size={13} className="text-muted-foreground" />
             <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              className="h-auto min-h-0 w-auto cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
             />
           </div>
 
@@ -410,7 +413,7 @@ export const TodoQuickAdd: React.FC<{
             </span>
           )}
 
-          <span className="ml-auto hidden font-mono text-2xs text-muted-foreground/60 sm:inline [@media(pointer:coarse)]:hidden">
+          <span className="ml-auto hidden font-mono text-2xs text-muted-foreground/55 sm:inline [@media(pointer:coarse)]:hidden">
             {t('todo:quickAdd.continuousHint')}
           </span>
         </div>

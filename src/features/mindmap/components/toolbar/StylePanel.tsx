@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   BACK_PRIORITY,
@@ -146,7 +147,7 @@ const ColorPicker: React.FC<{
           )}
           style={{ backgroundColor: color !== 'transparent' && color !== 'inherit' ? color : undefined }}
           onClick={() => onChange(color)}
-          title={color}
+          aria-label={color}
           aria-pressed={value === color}
         >
           {color === 'inherit' && (
@@ -470,57 +471,73 @@ export const StyleSettings: React.FC<{
               { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic' as const, cur: primaryNode.style?.fontStyle },
               { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline' as const, cur: primaryNode.style?.textDecoration },
               { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through' as const, cur: primaryNode.style?.textDecoration },
-            ].map(({ key, icon: Icon, prop, val, cur }) => (
-              <DsButton
-                variant="ghost"
-                key={key}
-                onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
-                className={cn(
-                  'mm-style-icon-button',
-                  cur === val ? 'is-active' : '',
-                )}
-                aria-pressed={cur === val}
-                title={t(`contextMenu.${key}`)}
-                aria-label={t(`contextMenu.${key}`)}
-              >
-                <Icon className="w-4 h-4" />
-              </DsButton>
-            ))}
+            ].map(({ key, icon: Icon, prop, val, cur }) => {
+              const label = t(`contextMenu.${key}`);
+              return (
+                <Tooltip key={key}>
+                  <TooltipTrigger asChild>
+                    <DsButton
+                      variant="ghost"
+                      onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
+                      className={cn(
+                        'mm-style-icon-button',
+                        cur === val ? 'is-active' : '',
+                      )}
+                      aria-pressed={cur === val}
+                      aria-label={label}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </DsButton>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">{label}</TooltipContent>
+                </Tooltip>
+              );
+            })}
           </div>
 
           {/* H1 / H2 / H3 / T */}
           <div>
             <div className="mm-style-label">{t('contextMenu.headingLevel')}</div>
             <div className="mm-style-button-row">
-              {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-                <DsButton
-                  variant="ghost"
-                  key={level}
-                  onClick={() => handleNodeStyleUpdate({ headingLevel: primaryNode.style?.headingLevel === level ? undefined : level })}
-                  className={cn(
-                    'mm-style-icon-button',
-                    primaryNode.style?.headingLevel === level ? 'is-active' : '',
-                  )}
-                  aria-pressed={primaryNode.style?.headingLevel === level}
-                  title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-                  aria-label={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-                >
-                  <Icon className="w-4 h-4" />
-                </DsButton>
-              ))}
-              <DsButton
-                variant="ghost"
-                onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
-                className={cn(
-                  'mm-style-icon-button',
-                  !primaryNode.style?.headingLevel ? 'is-active' : '',
-                )}
-                aria-pressed={!primaryNode.style?.headingLevel}
-                title={t('contextMenu.normalText')}
-                aria-label={t('contextMenu.normalText')}
-              >
-                <TextT className="w-4 h-4" />
-              </DsButton>
+              {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => {
+                const label = t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`);
+                return (
+                  <Tooltip key={level}>
+                    <TooltipTrigger asChild>
+                      <DsButton
+                        variant="ghost"
+                        onClick={() => handleNodeStyleUpdate({ headingLevel: primaryNode.style?.headingLevel === level ? undefined : level })}
+                        className={cn(
+                          'mm-style-icon-button',
+                          primaryNode.style?.headingLevel === level ? 'is-active' : '',
+                        )}
+                        aria-pressed={primaryNode.style?.headingLevel === level}
+                        aria-label={label}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </DsButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DsButton
+                    variant="ghost"
+                    onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
+                    className={cn(
+                      'mm-style-icon-button',
+                      !primaryNode.style?.headingLevel ? 'is-active' : '',
+                    )}
+                    aria-pressed={!primaryNode.style?.headingLevel}
+                    aria-label={t('contextMenu.normalText')}
+                  >
+                    <TextT className="w-4 h-4" />
+                  </DsButton>
+                </TooltipTrigger>
+                <TooltipContent side="top">{t('contextMenu.normalText')}</TooltipContent>
+              </Tooltip>
             </div>
           </div>
 

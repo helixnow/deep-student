@@ -188,12 +188,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
         </>
       ) : duePlans.length === 0 ? (
         <div className="flex flex-col items-center py-8 text-center">
-          <div
-            aria-hidden="true"
-            className="mb-3 flex h-11 w-11 items-center justify-center rounded-lg border border-border/50 bg-muted/20"
-          >
-            <Calendar size={20} className="text-muted-foreground/60" />
-          </div>
+          <Calendar size={22} className="mb-2 text-muted-foreground/60" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">{t('review:calendar.noData')}</p>
         </div>
       ) : null}

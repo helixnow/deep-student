@@ -6,5 +6,4 @@ export * from './hooks/useActiveStudySpace';
 export * from './hooks/useSpaceAutoScope';
 export * from './utils/spaceCountdown';
 export * from './utils/workbenchPresetApplier';
-export * from './components/StudySpaceBadgeStrip';
 export * from './components/SpaceMountPickerDialog';

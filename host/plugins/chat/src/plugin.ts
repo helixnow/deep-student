@@ -54,6 +54,7 @@ import { registerWorkspaceWorkerCommands, workerRuntimeDeps } from './register-w
 import { workerRuntimeSurfaces, type WorkerPipelinePort, type WorkerRuntimeDeps } from './workspace-run-agent.ts';
 import { createWorkerRuntimeService } from './worker-runtime-service.ts';
 import type { AgentCompletionOutbox } from '../../agent-workspace/api.ts';
+import type { BrowserHostFacts } from '../../browser/api.ts';
 
 type CompletionDispatcherRuntimeHeadless = ReturnType<ConstructorParameters<typeof CompletionDispatcherRuntime>[0]['headlessTurn']>;
 
@@ -309,6 +310,17 @@ export function createChatPlugin(options: ChatPluginOptions = {}): HostPlugin {
       const workerDeps = {
         db: sessions.database, state, surfaces, log, dispatcher: completionDispatcher,
         coordinator: () => workspace, outbox: () => completionOutbox,
+        getBrowserHostFacts: (sessionId?: string | null): BrowserHostFacts | null => {
+          const browser = ctx.get('browser') as {
+            getHostFactsForChatSession?: (chatSessionId: string) => BrowserHostFacts | null;
+            getHostFacts?: (sessionId?: string | null) => BrowserHostFacts | null;
+          } | undefined;
+          if (!browser) return null;
+          if (sessionId && typeof browser.getHostFactsForChatSession === 'function') {
+            return browser.getHostFactsForChatSession(sessionId);
+          }
+          return browser.getHostFacts?.(sessionId ?? null) ?? null;
+        },
         pipeline: {
           execute: executable.execute.bind(executable),
           attachChildToTree: (parent: string, child: string, declared?: Parameters<WorkerPipelinePort['attachChildToTree']>[2]) =>

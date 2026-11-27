@@ -390,7 +390,7 @@ describe('PluginManagerPanel', () => {
       managedPlugin({ id: 'community.imported-in-safe-mode', origin: 'community', version: '1.2.0', enabled: false, runtime: 'stopped' }),
     ];
 
-    await user.click(screen.getByTestId('plugin-safe-mode-import-shortcut'));
+    await user.click(screen.getByTestId('plugin-import'));
 
     const feedback = await screen.findByTestId('plugin-install-feedback');
     expect(feedback).toHaveAttribute('data-status', 'installed');

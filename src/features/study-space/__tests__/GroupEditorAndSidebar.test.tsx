@@ -439,12 +439,8 @@ describe('GroupEditorPanel & SessionSidebarContent Study Space UX', () => {
     expect(spaceCount.className).toContain('font-mono');
     expect(spaceCount.className).toContain('tabular-nums');
 
-    // StudySpaceBadgeStrip rendered for active space
-    const badgeStrip = screen.getByTestId('study-space-badge-strip');
-    expect(badgeStrip).toHaveTextContent('大学英语六级冲刺');
-    expect(badgeStrip).toHaveTextContent('D-15');
-    expect(badgeStrip).toHaveTextContent('60m/日');
-    expect(badgeStrip).toHaveTextContent('92%');
+    // StudySpaceBadgeStrip is intentionally omitted from the sidebar
+    expect(screen.queryByTestId('study-space-badge-strip')).not.toBeInTheDocument();
 
     // Zero emojis anywhere in rendered sidebar DOM
     expect(container.textContent ?? '').not.toMatch(/\p{Extended_Pictographic}/u);

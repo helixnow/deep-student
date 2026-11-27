@@ -346,13 +346,13 @@
 
 /* ── Notion 式页面操作行（添加图标 / 添加标签）──────────────────────
  * 不占视觉：平时透明，悬停标题区或键盘聚焦其中按钮时淡入；
- * 触屏没有 hover，常显但保持弱化。高度固定，显隐不引起正文跳动。 */
+ * 触屏没有 hover，常显但保持弱化。压缩占位高度减少标题上方空白，显隐不引起正文跳动。 */
 .notes-document-affordances {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
-  margin: 0 0 6px -6px;
+  height: 22px;
+  margin: 0 0 2px -6px;
   opacity: 0;
   transition: opacity 150ms ease;
 }
@@ -385,11 +385,11 @@
 .notes-document-affordance {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
   border-radius: var(--notes-radius-control, 5px);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
   white-space: nowrap;
   color: hsl(var(--muted-foreground) / 80%);

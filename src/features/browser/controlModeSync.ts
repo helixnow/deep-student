@@ -25,6 +25,8 @@ export const BROWSER_TITLE_CHANGED_EVENT = 'browser:title-changed';
 export const BROWSER_CLOSED_EVENT = 'browser:closed';
 /** Authenticated native content input; consumed by the Workbench browser shell. */
 export const BROWSER_CONTENT_USER_INPUT_EVENT = 'browser:content-user-input';
+/** Remote CDP screencast frames streamed to WebUI/Workbench browser viewport. */
+export const BROWSER_SCREENCAST_FRAME_EVENT = 'browser:screencast-frame';
 
 export interface BrowserControlModeChangedPayload {
   sessionId?: string;
@@ -204,6 +206,31 @@ function applyClosedPayload(payload: unknown): void {
   useBrowserSessionStore.getState().reset();
 }
 
+function applyScreencastFramePayload(payload: unknown): void {
+  if (!payload || typeof payload !== 'object') return;
+  const p = payload as {
+    data?: unknown;
+    dataBase64?: unknown;
+    mimeType?: unknown;
+    width?: unknown;
+    height?: unknown;
+    timestamp?: unknown;
+  };
+  const data = typeof p.data === 'string' && p.data.length > 0
+    ? p.data
+    : typeof p.dataBase64 === 'string' && p.dataBase64.length > 0
+      ? p.dataBase64
+      : null;
+  if (!data) return;
+  const mimeType = p.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+  const width = typeof p.width === 'number' && Number.isFinite(p.width) && p.width > 0 ? p.width : 1280;
+  const height = typeof p.height === 'number' && Number.isFinite(p.height) && p.height > 0 ? p.height : 720;
+  const timestamp = typeof p.timestamp === 'number' && Number.isFinite(p.timestamp) ? p.timestamp : Date.now();
+  useBrowserSessionStore.setState({
+    screencastFrame: { data, mimeType, width, height, timestamp },
+  });
+}
+
 /**
  * 订阅 ControlMode 权威事件。可重入：挂载计数，末次 dispose 才拆监听。
  */
@@ -216,6 +243,7 @@ export function ensureBrowserControlModeSync(): () => void {
       hubListen(BROWSER_NAVIGATION_BLOCKED_EVENT, applyNavigationBlockedPayload),
       hubListen(BROWSER_TITLE_CHANGED_EVENT, applyTitlePayload),
       hubListen(BROWSER_CLOSED_EVENT, applyClosedPayload),
+      hubListen(BROWSER_SCREENCAST_FRAME_EVENT, applyScreencastFramePayload),
     ];
   }
   let disposed = false;
@@ -249,6 +277,10 @@ export function __applyTitlePayloadForTest(payload: unknown): void {
 
 export function __applyClosedPayloadForTest(payload: unknown): void {
   applyClosedPayload(payload);
+}
+
+export function __applyScreencastFramePayloadForTest(payload: unknown): void {
+  applyScreencastFramePayload(payload);
 }
 
 /** 单测：重置订阅计数 */

@@ -392,9 +392,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         {isEmpty ? (
           // 空态：无原文也无译文
           <div className="flex flex-col items-center justify-center h-full min-h-[12rem] gap-3 py-8">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-muted/40">
-              <Translate size={28} className="text-muted-foreground" aria-hidden="true" />
-            </div>
+            <Translate size={28} className="text-muted-foreground" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">
               {t('translation:viewer.empty_title')}
             </p>

@@ -397,7 +397,7 @@ function ShortcutCard({
       )}
 
       {/* 图标 */}
-      <div className="relative transition-transform duration-200 group-hover:scale-110">
+      <div className="relative">
         <Icon size={56} />
         {/* 应用类型标记（仅 app 类型显示） */}
         {shortcut.type === 'app' && shortcut.target.action === 'create' && (
@@ -693,9 +693,7 @@ export function DesktopView({
         >
           {shortcuts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <div className="w-24 h-24 rounded-full bg-accent/50 flex items-center justify-center mb-4">
-                <Plus size={40} />
-              </div>
+              <Plus size={24} className="mb-2 text-muted-foreground/60" aria-hidden="true" />
               <p className="text-sm mb-4">{t('desktop.empty')}</p>
               <p className="text-xs text-muted-foreground/60 mb-4">
                 {t(isSmallScreen ? 'desktop.touchHint' : 'desktop.rightClickHint', isSmallScreen ? '点击下方按钮添加快捷方式' : '右键点击添加快捷方式')}
@@ -704,7 +702,6 @@ export function DesktopView({
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setShowAddDialog(true)}
                 >
                   {t('desktop.addFirst')}
@@ -714,7 +711,7 @@ export function DesktopView({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+                  className="text-muted-foreground"
                   onClick={() => setShowRootFolderPicker(true)}
                 >
                   {t('desktop.setRootFolder')}

@@ -30,9 +30,10 @@ vi.mock('@phosphor-icons/react', async (importOriginal) => {
 
 vi.mock('../../noteAppearance', () => ({
   NOTE_APPEARANCE_PRESETS: ['standard', 'compact', 'wide'],
-  NOTE_APPEARANCE_ICONS: ['', '📄', '📚', '💡', '🧪', '📝'],
+  NOTE_APPEARANCE_ICONS: ['', 'file-text', 'book-open', 'lightbulb', 'flask', 'pencil-simple'],
   NOTE_ICON_GROUPS: [],
-  ALL_NOTE_ICONS: ['📄', '📚', '💡'],
+  ALL_NOTE_ICONS: ['file-text', 'book-open', 'lightbulb'],
+  renderNoteIcon: (icon: string) => (icon ? <svg data-testid={`note-icon-${icon}`} /> : null),
   useNoteAppearance: () => mockAppearance,
   useNoteIcon: () => mockAppearance.value.icon,
 }));
@@ -102,17 +103,23 @@ describe('NotesEditorHeader — DSTU breadcrumbs, Smiley affordance, title & tag
           noteId="note-dp"
           initialTitle="Dynamic Programming Notes"
           lastSaved={null}
+          tags={['CS']}
           breadcrumbs={breadcrumbs}
           onBreadcrumbClick={onBreadcrumbClick}
         />,
       );
 
       const header = container.querySelector('header');
-      expect(header).toHaveClass('pt-6');
-      expect(header).not.toHaveClass('pt-8');
+      expect(header).toHaveClass('pt-5');
 
       const nav = screen.getByRole('navigation', { name: '笔记路径' });
       expect(nav).toBeInTheDocument();
+
+      // Breadcrumbs sit below the document title and tags row
+      const titleEl = screen.getByRole('textbox', { name: 'notes:header.documentTitle' });
+      const tagsEl = screen.getByTestId('notes-editor-tags');
+      expect(titleEl.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(tagsEl.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
       const csButton = screen.getByRole('button', { name: 'Computer Science' });
       const algoButton = screen.getByRole('button', { name: 'Algorithms & Data Structures' });
@@ -161,7 +168,7 @@ describe('NotesEditorHeader — DSTU breadcrumbs, Smiley affordance, title & tag
       expect(onBreadcrumbClick).toHaveBeenNthCalledWith(2, breadcrumbs[1]);
     });
 
-    it('hides breadcrumb nav and applies balanced pt-8 spacing when breadcrumbs are omitted or empty', () => {
+    it('hides breadcrumb nav and keeps compact pt-5 spacing when breadcrumbs are omitted or empty', () => {
       const { container, rerender } = render(
         <NotesEditorHeader
           noteId="note-root"
@@ -171,7 +178,7 @@ describe('NotesEditorHeader — DSTU breadcrumbs, Smiley affordance, title & tag
       );
 
       expect(screen.queryByRole('navigation')).toBeNull();
-      expect(container.querySelector('header')).toHaveClass('pt-8');
+      expect(container.querySelector('header')).toHaveClass('pt-5');
 
       rerender(
         <NotesEditorHeader
@@ -183,7 +190,7 @@ describe('NotesEditorHeader — DSTU breadcrumbs, Smiley affordance, title & tag
       );
 
       expect(screen.queryByRole('navigation')).toBeNull();
-      expect(container.querySelector('header')).toHaveClass('pt-8');
+      expect(container.querySelector('header')).toHaveClass('pt-5');
     });
   });
 

@@ -198,7 +198,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
           size="sm"
           onClick={addTool}
           disabled={disabled}
-          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs"
+          className="text-xs"
         >
           <Plus size={14} className="mr-1" />
           {t('skills:editor.add_tool')}
@@ -226,7 +226,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                 onOpenChange={() => toggleToolExpanded(toolIndex)}
                 className={cn(
                   'border rounded-lg transition-all',
-                  hasError ? 'border-amber-500/50' : 'border-border/40',
+                  hasError ? 'border-warning/50' : 'border-border/40',
                   isExpanded && 'border-border/60'
                 )}
               >
@@ -248,7 +248,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                       {tool.name || t('skills:editor.unnamed_tool')}
                     </span>
                     {hasError && (
-                      <WarningCircle size={12} className="text-amber-500 flex-shrink-0" />
+                      <WarningCircle size={12} className="text-warning flex-shrink-0" />
                     )}
                   </CollapsibleTrigger>
                   <div className="flex items-center gap-2">
@@ -264,7 +264,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         removeTool(toolIndex);
                       }}
                       disabled={disabled}
- className="w-6 h-6 max-lg:!h-11 max-lg:!w-11 max-lg:-my-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive"
                     >
                       <Trash size={12} />
                     </DsButton>
@@ -284,7 +284,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         disabled={disabled}
                         className={cn(
                           'h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 text-sm font-mono bg-muted/30 border-transparent',
-                          !tool.name && 'border-amber-500/50'
+                          !tool.name && 'border-warning/50'
                         )}
 />
                     </div>
@@ -301,7 +301,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         minHeight={60}
                         className={cn(
                           'text-sm bg-muted/30 border-transparent resize-none',
-                          !tool.description && 'border-amber-500/50'
+                          !tool.description && 'border-warning/50'
                         )}
 />
                     </div>
@@ -317,7 +317,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           size="sm"
                           onClick={() => addProperty(toolIndex)}
                           disabled={disabled}
-                          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-6 text-xs"
+                          className="text-xs"
                         >
                           <Plus size={12} className="mr-1" />
                           {t('skills:editor.add_param')}
@@ -376,7 +376,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="sm"
                                   onClick={() => toggleRequired(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-2xs px-2"
+                                  className="text-2xs px-2"
                                   title={isRequired ? t('skills:editor.required') : t('skills:editor.optional')}
                                 >
                                   {isRequired ? '*' : '?'}
@@ -387,7 +387,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="icon"
                                   onClick={() => removeProperty(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="h-7 w-7 max-lg:!h-11 max-lg:!w-11 max-lg:-mx-1 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-destructive"
+                                  className="text-muted-foreground hover:text-destructive"
                                 >
                                   <Trash size={12} />
                                 </DsButton>

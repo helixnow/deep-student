@@ -90,10 +90,15 @@ const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
 export interface TodayScreenProps {
   /** 从移动顶栏点击「+ 新建卡片」时的回调；缺省切到卡片库 */
   onQuickNewCard?: () => void;
+  /** 打开调度设置弹窗（可指定聚焦字段）；缺省回退切换到统计/设置屏 */
+  onOpenSchedulerSettings?: (focusField?: 'newPerDay') => void;
 }
 
-export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
-  const { t, i18n } = useTranslation('flashcards');
+export const TodayScreen: React.FC<TodayScreenProps> = ({
+  onQuickNewCard,
+  onOpenSchedulerSettings,
+}) => {
+  const { t } = useTranslation('flashcards');
   const { isSmallScreen } = useBreakpoint();
   const dueCards = useFsrsReviewStore((s) => s.dueCards);
   const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
@@ -187,15 +192,6 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
   }, [loadDue, loadStats, reloadActivity]);
 
 
-  const dateLabel = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, {
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long',
-    }).format(new Date()),
-    [i18n.language],
-  );
-
   const activeDays = useMemo(
     () => new Set(activity.dayCounts.keys()),
     [activity.dayCounts],
@@ -253,7 +249,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
     openImageOcclusionBuilder();
   }, []);
 
-  const mobileChrome = useFlashcardsMobileChrome({
+  useFlashcardsMobileChrome({
     title: t('sidebar:navigation.flashcards', { defaultValue: t('today.title') }),
     rightActions: <>
       <DsButton
@@ -283,21 +279,6 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
 
   return (
     <div className="wb-fc-screen wb-fc-today">
-      {!mobileChrome && <header className="wb-fc-header">
-        <div className="min-w-0">
-          <h2 className="wb-fc-title">
-            {t('today.title')}
-          </h2>
-          <p className="wb-fc-subtitle">
-            {loading
-              ? t('today.loading')
-              : error
-                ? t('today.loadFailed')
-                : `${dateLabel} · ${t('today.dueCount', { count: displayDueCount })}`}
-          </p>
-        </div>
-      </header>}
-
       {error ? (
         <div className="wb-fc-list">
           <div role="alert" className="wb-fc-empty gap-3 px-5 text-center">
@@ -312,7 +293,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
               type="button"
               variant="default"
               onClick={() => void loadDue()}
-              className="text-sm [@media(pointer:coarse)]:!min-h-11"
+              className="text-sm"
             >
               <ArrowClockwise size={16} />
               {t('today.retry')}
@@ -321,6 +302,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
+          <div className="wb-fcx-scroll">
           <ExamReadinessHud variant="mobile-banner" />
           <section className="wb-fcx-panel wb-fcx-hero">
             <div className="wb-fcx-hero-ring">
@@ -340,28 +322,20 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
             <div className="wb-fcx-hero-main">
               <div className="wb-fcx-counts">
                 <div className="wb-fcx-count" data-tone="due">
-                  <div className="wb-fcx-count-label flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
-                    />
+                  <div className="wb-fcx-count-label">
                     <span>{t('today.statDue')}</span>
                   </div>
                   <div
                     className={cn(
                       'wb-fcx-count-value font-mono tabular-nums',
-                      !loading && displayDueCount > 0 && 'text-emerald-700 dark:text-emerald-400',
+                      !loading && displayDueCount > 0 && 'text-success',
                     )}
                   >
                     <CountValue value={loading ? null : displayDueCount} />
                   </div>
                 </div>
                 <div className="wb-fcx-count" data-tone="new">
-                  <div className="wb-fcx-count-label flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-                    />
+                  <div className="wb-fcx-count-label">
                     <span>{t('today.statNew')}</span>
                   </div>
                   <div
@@ -374,17 +348,13 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                   </div>
                 </div>
                 <div className="wb-fcx-count" data-tone="learning">
-                  <div className="wb-fcx-count-label flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                    />
+                  <div className="wb-fcx-count-label">
                     <span>{t('today.statLearning')}</span>
                   </div>
                   <div
                     className={cn(
                       'wb-fcx-count-value font-mono tabular-nums',
-                      (learningCount ?? 0) > 0 && 'text-amber-700 dark:text-amber-400',
+                      (learningCount ?? 0) > 0 && 'text-warning',
                     )}
                   >
                     <CountValue value={learningCount} />
@@ -398,7 +368,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                   disabled={loading || dueCards.length === 0}
                   onClick={() => { setLibraryReturnOrigin('today'); startDueSession(); }}
                   data-testid="fc-today-start-review"
-                  className="wb-fcx-cta [@media(pointer:coarse)]:!min-h-11"
+                  className="wb-fcx-cta"
                 >
                   <Play size={16} weight="fill" />
                   {t('today.startReview')}
@@ -447,7 +417,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setScreen('settings')}
+                    onClick={() => (
+                      onOpenSchedulerSettings
+                        ? onOpenSchedulerSettings('newPerDay')
+                        : setScreen('scheduler')
+                    )}
                     className="rounded-xl border-border/65 bg-background/50 px-3 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   >
                     {t('today.adjustDailyLimit')}
@@ -504,7 +478,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                     type="button"
                     variant={libraryEmpty || pendingEnqueue > 0 ? 'primary' : 'default'}
                     onClick={() => setScreen('library')}
-                    className="wb-fcx-empty-cta text-sm [@media(pointer:coarse)]:!min-h-11"
+                    className="wb-fcx-empty-cta text-sm"
                   >
                     <Books size={15} weight="duotone" />
                     {pendingEnqueue > 0 && !showDoneState
@@ -515,7 +489,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                     type="button"
                     variant="ghost"
                     onClick={() => setScreen('settings')}
-                    className="wb-fcx-empty-cta text-sm [@media(pointer:coarse)]:!min-h-11"
+                    className="wb-fcx-empty-cta text-sm"
                   >
                     <ChartBar size={15} weight="duotone" />
                     {t('today.goStats')}
@@ -553,13 +527,6 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                       >
                         <div className="min-w-0 flex-1">
                           <div className="wb-fc-row-front flex items-center gap-2">
-                            <span
-                              aria-hidden="true"
-                              className={cn(
-                                'h-1.5 w-1.5 shrink-0 rounded-full',
-                                card.lastReviewMs === null ? 'bg-primary/80' : 'bg-emerald-500/80',
-                              )}
-                            />
                             <span className="min-w-0 truncate">
                               {cardDisplayFront(card)
                                 ? <CardMathText text={cardDisplayFront(card)} inline allowBasicHtml />
@@ -600,6 +567,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
               </div>
             </section>
           )}
+          </div>
         </div>
       )}
     </div>

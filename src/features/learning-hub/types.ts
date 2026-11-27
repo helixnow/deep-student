@@ -86,7 +86,7 @@ export interface ResourceListItem {
   /** 资源类型 */
   type: ResourceType;
   /** 预览类型 */
-  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap';
+  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap' | 'xmind';
   /** 缩略图 URL（可选，用于 Grid 视图） */
   thumbnail?: string;
   /** 内容预览（用于笔记的 Markdown 预览，仅前 200 字符） */
@@ -368,6 +368,10 @@ const TEXT_PREVIEW_EXTENSIONS = new Set([
   'vue', 'svelte', 'graphql', 'diff', 'patch', 'dockerfile', 'makefile',
 ]);
 
+const IMAGE_PREVIEW_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'heic', 'heif',
+]);
+
 /**
  * 从文件名推断预览类型（用于 file 资源兜底）
  */
@@ -385,6 +389,8 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (ext === 'xlsx') return 'xlsx';
   if (ext === 'pptx') return 'pptx';
   if (ext === 'epub') return 'epub';
+  if (ext === 'xmind') return 'xmind';
+  if (IMAGE_PREVIEW_EXTENSIONS.has(ext)) return 'image';
 
   // 文本判定先于音视频：'ts' 等扩展名两边都认识，按 TypeScript 而非 MPEG-TS 处理
   if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
@@ -441,6 +447,7 @@ const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([
   'audio',
   'video',
   'mindmap',
+  'xmind',
 ]);
 
 /**

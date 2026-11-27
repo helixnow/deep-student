@@ -85,12 +85,16 @@ describe('mindmap CSS modular architecture & visual contracts', () => {
     const nodesEdgesCss = readCss('src/features/mindmap/styles/modules/mm-nodes-edges.css');
     const nodesCss = readCss('src/features/mindmap/components/mindmap/nodes/nodes.css');
 
-    // Edit-mode width/height/z-index unlock lives exclusively in mm-nodes-edges.css (max-width 600px, z-index 40)
+    // Edit-mode width/height/z-index unlock lives exclusively in mm-nodes-edges.css
+    // without inflating short nodes (min-width: 60px + --mm-edit-min-width) or shrinking wrapped nodes
     expect(nodesEdgesCss).toContain(":has([data-node-editing='true'])");
     expect(nodesEdgesCss).toContain('width: max-content !important');
     expect(nodesEdgesCss).toContain('height: auto !important');
     expect(nodesEdgesCss).toContain('z-index: 40 !important');
     expect(nodesEdgesCss).toContain('max-width: 600px');
+    expect(nodesEdgesCss).toContain('--mm-edit-min-width');
+    expect(nodesEdgesCss).toContain('max-width: max(300px, var(--mm-edit-min-width, 300px))');
+    expect(nodesEdgesCss).not.toContain('min-width: 140px');
     expect(nodesEdgesCss).not.toContain('max-width: 320px');
     expect(nodesCss).not.toContain(":has([data-node-editing='true'])");
 
@@ -120,11 +124,11 @@ describe('mindmap CSS modular architecture & visual contracts', () => {
     expect(enhancementsCss).not.toContain('.react-flow__edge:hover .tree-edge');
   });
 
-  it('hides shortcut hint pill and minimap under @container mm-root (max-width: 760px)', () => {
+  it('hides minimap under @container mm-root (max-width: 760px)', () => {
     const toolbarCss = readCss('src/features/mindmap/styles/modules/mm-toolbar.css');
     expect(toolbarCss).toMatch(/@container\s+mm-root\s*\(max-width:\s*760px\)/);
-    expect(toolbarCss).toContain('.mm-shortcut-hint-pill');
     expect(toolbarCss).toContain('.react-flow__minimap');
+    expect(toolbarCss).not.toContain('.mm-shortcut-hint-pill');
   });
 
   it('includes coarse pointer 44px touch targets and prefers-reduced-motion in excerpt, ghost, and association CSS', () => {

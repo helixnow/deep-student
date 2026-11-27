@@ -250,7 +250,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <DsButton
               variant="outline"
               size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={!quickAssistantConfig?.enabled}
               onClick={() => void openQuickAssistantWindow()}
             >
@@ -321,7 +320,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   { value: 'guide', label: t('chatV2:queue.settings.modeGuide') },
                 ]}
               />
-              {queueModeLoading && <div aria-hidden="true" className="h-7 w-[132px] animate-pulse rounded-[var(--radius-shell-control)] bg-muted/50" />}
+              {queueModeLoading && <div aria-hidden="true" className="h-7 w-[132px] animate-pulse motion-reduce:animate-none rounded-[var(--radius-shell-control)] bg-muted/50" />}
             </SettingRow>
 
             <MarkdownEditorWindowSettings />
@@ -368,7 +367,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
+                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
                 onClick={() => setShowAgreementPreview(true)}
               >
                 {t('settings:developer.preview_agreement.button')}
@@ -408,7 +407,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={diagnosticsExporting}
                 onClick={async () => {
                   setDiagnosticsExporting(true);
@@ -440,7 +438,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 }}
               >
                 {diagnosticsExporting
-                  ? <CircleNotch size={12} className="animate-spin" />
+                  ? <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" />
                   : isAndroid()
                     ? t('settings:diagnostics.export.share_action', 'Share ZIP')
                     : t('settings:diagnostics.export.action', 'Export ZIP')}
@@ -530,7 +528,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <DsButton
               variant="outline"
               size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 try {
                   const win: any = window;
@@ -573,7 +570,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={async () => {
                   try {
                     await tauriInvoke('open_logs_folder', { logType: logTypeForOpen });
@@ -744,7 +740,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="outline"
                   size="sm"
-                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={async () => {
                     try {
                       const debugLogsDir = await tauriInvoke('ensure_debug_log_dir') as string;
@@ -761,7 +756,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="[@media(pointer:coarse)]:!min-h-11"
                   disabled={debugLogsClearing}
                   onClick={async () => {
                     setDebugLogsClearing(true);
@@ -776,7 +770,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                     }
                   }}
                 >
-                  {debugLogsClearing ? <CircleNotch size={12} className="animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
+                  {debugLogsClearing ? <CircleNotch size={12} className="animate-spin motion-reduce:animate-none" /> : t('settings:developer.debug_logs.clear_all')}
                 </DsButton>
               </div>
             </SettingRow>
@@ -853,7 +847,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="outline"
                   size="sm"
-                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；
                     // pending 值兜底 Settings 尚未挂载的竞态（与 openArchivedSessionsSettings 同模式）

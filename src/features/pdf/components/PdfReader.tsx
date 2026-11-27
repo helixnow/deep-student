@@ -6,6 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
+import { TITLEBAR_CONTROL_CLASS } from '@/components/layout/desktopTitlebarTokens';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -48,6 +51,33 @@ export const PdfReader: React.FC = () => {
   const [externalUrl, setExternalUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('document.pdf');
   const [numPages, setNumPages] = useState<number | null>(null);
+  const { isSmallScreen } = useBreakpoint();
+
+  const hasDocument = Boolean(file || externalUrl);
+  useDesktopHeader(
+    'pdf-reader',
+    {
+      breadcrumbs: hasDocument
+        ? [
+            { id: 'pdf-root', label: t('common:navigation.pdf_reader') },
+            { id: 'pdf-file', label: fileName },
+          ]
+        : [{ id: 'pdf-root', label: t('common:navigation.pdf_reader') }],
+      actions: (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => handleSelectFileRef.current()}
+          className={TITLEBAR_CONTROL_CLASS}
+        >
+          <UploadSimple size={14} />
+          <span>{t('pdf:empty.select_button')}</span>
+        </DsButton>
+      ),
+    },
+    [t, hasDocument, fileName],
+    !isSmallScreen,
+  );
   const [pageNumber, setPageNumber] = useState<number>(1);
   // 加载阶段：parsing=pdf.js 解析中；idle=就绪
   const [loadingStage, setLoadingStage] = useState<'idle' | 'parsing'>('idle');
@@ -271,14 +301,14 @@ export const PdfReader: React.FC = () => {
       />
 
       {error && (
-        <div className="pdf-reader-status ui-drop-in border-b border-border/35 bg-destructive/[0.04] border-l-2 border-l-destructive" role="alert">
+        <div className="pdf-reader-status ui-drop-in border-b border-destructive/25 bg-destructive/[0.04]" role="alert">
           <WarningCircle size={18} className="pdf-reader-status__icon" aria-hidden />
           <div className="pdf-reader-status__body">
             <p className="pdf-reader-status__title">{error}</p>
             {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}
           </div>
           <div className="pdf-reader-status__actions">
-            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
               <UploadSimple size={14} />
               {t('pdf:empty.select_button')}
             </DsButton>
@@ -286,7 +316,6 @@ export const PdfReader: React.FC = () => {
               variant="ghost"
               size="sm"
               iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               aria-label={t('pdf:a11y.close')}
               onClick={clearError}
             >
@@ -303,7 +332,7 @@ export const PdfReader: React.FC = () => {
           </div>
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
-          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5 [@media(pointer:coarse)]:!min-h-11">
+          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
             <UploadSimple size={16} />
             {t('pdf:empty.select_button')}
           </DsButton>

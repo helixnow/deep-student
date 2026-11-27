@@ -5,6 +5,8 @@
   min-height: 0;
   overflow: hidden;
   background: hsl(var(--background));
+  container-name: wb-ai-dash;
+  container-type: inline-size;
 }
 
 .wb-ai-dashboard-header {
@@ -13,79 +15,383 @@
   justify-content: space-between;
   gap: 8px;
   flex-shrink: 0;
-  padding: 12px 16px 10px;
+  padding: 10px 16px;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary, hsl(var(--foreground)));
-  border-bottom: 1px solid hsl(var(--border) / 0.35);
-}
-
-.wb-ai-dashboard-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.wb-ai-dashboard-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.wb-ai-dashboard-insights {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-@media (max-width: 480px) {
-  .wb-ai-dashboard-insights {
-    grid-template-columns: 1fr;
-  }
-}
-
-.wb-ai-dashboard-insight-card {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid hsl(var(--border) / 0.55);
-  background: hsl(var(--card));
-}
-
-.wb-ai-dashboard-insight-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: hsl(var(--muted-foreground));
-}
-
-.wb-ai-dashboard-insight-value {
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.2;
-  color: hsl(var(--foreground));
-}
-
-.wb-ai-dashboard-insight-sub {
-  font-size: 11px;
-  color: hsl(var(--muted-foreground) / 0.85);
+  border-bottom: 1px solid hsl(var(--border) / 35%);
 }
 
 .wb-ai-dashboard-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 14px 20px 20px;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  padding: 14px 18px 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.wb-ai-dashboard-body .generative-ui-root,
-.wb-ai-dashboard-body .generative-ui-panel {
+.wb-ai-dashboard-content {
+  height: auto;
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- 顶部周期统计条：统一面板 + 1px 细分割线，避免套娃与零散盒墙 ---- */
+
+.wb-ai-dashboard-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: var(--radius-card, 12px);
+  border: 1px solid hsl(var(--border) / 55%);
+  background: hsl(var(--card));
+  overflow: hidden;
+}
+
+.wb-ai-dashboard-insight-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 14px;
+}
+
+.wb-ai-dashboard-insight-card + .wb-ai-dashboard-insight-card {
+  border-left: 1px solid hsl(var(--border) / 45%);
+}
+
+.wb-ai-dashboard-insight-meta {
+  display: contents;
+}
+
+.wb-ai-dashboard-insight-label {
+  order: 1;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-dashboard-insight-value {
+  order: 2;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-dashboard-insight-sub {
+  order: 3;
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground) / 85%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- GenUI 下半区：与顶部指标条统一表面、字阶与紧凑节奏 ---- */
+
+.wb-ai-dashboard-body .generative-ui-panel,
+.wb-ai-dashboard-body .generative-ui-root {
+  margin: 0;
+}
+
+.wb-ai-dashboard-body .generative-ui-panel > * + *,
+.wb-ai-dashboard-body .generative-ui-root > * + * {
+  margin-top: 10px;
+}
+
+/* 默认（宽窗 >= 800px，同时作为不支持 @container 时的兜底）：10 列网格
+ * - 5 张实时状态卡各 span 2，单行满格
+ * - 快捷操作栏紧贴状态卡下方，首屏立即可达
+ * - 柱状图左 6 列 + 明细表与复习日历右 4 列垂直对齐 */
+.wb-ai-dashboard-body [data-layout-mode] {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 10px;
+  align-items: stretch;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type] {
+  min-width: 0;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='stat-card'] {
+  order: 0;
+  grid-column: span 2;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='alert'] {
+  order: 1;
+  grid-column: 1 / -1;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='action-bar'] {
+  order: 2;
+  grid-column: 1 / -1;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='chart'] {
+  order: 3;
+  grid-column: 1 / span 6;
+}
+
+.wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='chart'] {
+  grid-row: span 2;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='table'] {
+  order: 4;
+  grid-column: 7 / span 4;
+}
+
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='review-calendar'],
+.wb-ai-dashboard-body [data-layout-mode] > [data-block-type='list'] {
+  order: 5;
+  grid-column: 7 / span 4;
+}
+
+/* 统一卡片表面与高度拉伸 */
+.wb-ai-dashboard-body [data-block-type] > [role='region'],
+.wb-ai-dashboard-body [data-block-type='chart'] > [data-generative-chart] {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-color: hsl(var(--border) / 55%);
+  background: hsl(var(--card));
+}
+
+/* 实时状态卡紧凑排布：与顶部指标条同密度，杜绝空洞大盒 */
+.wb-ai-dashboard-body [data-block-type='stat-card'] > [role='region'] > div:first-child {
+  padding: 10px 12px 2px;
+}
+
+.wb-ai-dashboard-body [data-block-type='stat-card'] > [role='region'] > div:first-child h3 {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-dashboard-body [data-block-type='stat-card'] > [role='region'] > div:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 12px 10px;
+}
+
+.wb-ai-dashboard-body [data-block-type='stat-card'] [data-stat-value] {
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+/* 图表 / 表格 / 日历头部与内边距统一收紧 */
+.wb-ai-dashboard-body [data-block-type='chart'] > [data-generative-chart] > div:first-child,
+.wb-ai-dashboard-body [data-block-type='table'] > [role='region'] > div:first-child,
+.wb-ai-dashboard-body [data-block-type='review-calendar'] > [role='region'] > div:first-child,
+.wb-ai-dashboard-body [data-block-type='list'] > [role='region'] > div:first-child {
+  padding: 11px 14px 6px;
+}
+
+.wb-ai-dashboard-body [data-block-type='chart'] > [data-generative-chart] > div:last-child,
+.wb-ai-dashboard-body [data-block-type='table'] > [role='region'] > div:last-child,
+.wb-ai-dashboard-body [data-block-type='review-calendar'] > [role='region'] > div:last-child,
+.wb-ai-dashboard-body [data-block-type='list'] > [role='region'] > div:last-child {
+  flex: 1;
+  padding: 0 14px 12px;
+}
+
+.wb-ai-dashboard-body [data-block-type='table'] th {
+  height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.wb-ai-dashboard-body [data-block-type='table'] td {
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+/* 保留表格 caption 的无障碍语义，但不在紧凑仪表盘卡片底端占行 */
+.wb-ai-dashboard-body [data-block-type='table'] caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 快捷操作条：贴近状态卡，保持干净横排与轻分割 */
+.wb-ai-dashboard-body [data-block-type='action-bar'] [role='toolbar'] {
+  padding: 2px 0;
+}
+
+/* ---- 中窗（560px–799px）：6 列网格（上 3 复习 + 下 2 任务，图表通栏，表+日历并排） ---- */
+
+@container wb-ai-dash (max-width: 799px) {
+  .wb-ai-dashboard-body [data-layout-mode] {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='stat-card'] {
+    grid-column: span 2;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-id='dashboard-anki-tasks'],
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-id='dashboard-todos'] {
+    grid-column: span 3;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='chart'],
+  .wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='chart'] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='table'] {
+    grid-column: span 3;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='review-calendar'],
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='list'] {
+    grid-column: 1 / -1;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='review-calendar'],
+  .wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='list'] {
+    grid-column: span 3;
+  }
+}
+
+/* ---- 窄窗（< 560px，含默认 480×620 浮窗）：2 列紧凑网格，末张待办卡通栏无缺口 ---- */
+
+@container wb-ai-dash (max-width: 559px) {
+  .wb-ai-dashboard-header {
+    padding: 8px 14px;
+  }
+
+  .wb-ai-dashboard-body {
+    padding: 12px 14px 16px;
+  }
+
+  .wb-ai-dashboard-content {
+    gap: 10px;
+  }
+
+  .wb-ai-dashboard-insight-card {
+    padding: 9px 10px;
+  }
+
+  .wb-ai-dashboard-insight-value {
+    font-size: 18px;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='stat-card'] {
+    grid-column: span 1;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-id='dashboard-anki-tasks'] {
+    grid-column: span 1;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-id='dashboard-todos'] {
+    grid-column: 1 / -1;
+  }
+
+  .wb-ai-dashboard-body [data-block-id='dashboard-todos'] > [role='region'] {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+
+  .wb-ai-dashboard-body [data-block-id='dashboard-todos'] > [role='region'] > div:first-child {
+    padding: 0;
+  }
+
+  .wb-ai-dashboard-body [data-block-id='dashboard-todos'] > [role='region'] > div:last-child {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='table'],
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='review-calendar'],
+  .wb-ai-dashboard-body [data-layout-mode] > [data-block-type='list'],
+  .wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='review-calendar'],
+  .wb-ai-dashboard-body [data-layout-mode]:has(> [data-block-type='table']) > [data-block-type='list'] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---- 极窄窗（< 420px，含 360px minSize）：顶部指标条转单列横排键值行 ---- */
+
+@container wb-ai-dash (max-width: 419px) {
+  .wb-ai-dashboard-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .wb-ai-dashboard-insight-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 12px;
+  }
+
+  .wb-ai-dashboard-insight-card + .wb-ai-dashboard-insight-card {
+    border-left: 0;
+    border-top: 1px solid hsl(var(--border) / 45%);
+  }
+
+  .wb-ai-dashboard-insight-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .wb-ai-dashboard-insight-label {
+    order: 1;
+  }
+
+  .wb-ai-dashboard-insight-sub {
+    order: 2;
+  }
+
+  .wb-ai-dashboard-insight-value {
+    order: 3;
+    flex-shrink: 0;
+    font-size: 17px;
+  }
 }

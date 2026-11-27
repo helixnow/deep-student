@@ -14,6 +14,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
+import { UnifiedMobileHeader } from '@/components/layout/UnifiedMobileHeader';
 import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -49,7 +50,6 @@ import {
 } from './sprintCheckpointStorage';
 import {
   formatElapsedTimerMmSs,
-  getExamPhaseDotClass,
   type DailySprintPlan,
   type ResolvedSprintSourceAnchor,
   type SprintAnchorRevealer,
@@ -238,6 +238,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
 }) => {
   const { t } = useTranslation('review');
   const isNarrowMobile = useMediaQuery('(max-width: 639px)');
+  const isMobileViewport = useMediaQuery('(max-width: 767px)');
   const checkpointScopeKey = spaceId ?? null;
 
   const [phase, setPhase] = useState<PlayerPhase>(() => {
@@ -1000,15 +1001,6 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
     [currentItem],
   );
 
-  const modalityDotClass = useMemo(() => {
-    if (!currentItem) return 'bg-primary';
-    if (currentItem.kind === 'mindmap_cloze') return 'bg-emerald-500';
-    if (currentItem.kind === 'mistake_question') {
-      return currentItem.isVariant ? 'bg-primary' : 'bg-amber-500';
-    }
-    return 'bg-primary';
-  }, [currentItem]);
-
   const progressPct =
     queue.length > 0 ? Math.min(100, Math.round((cursor / queue.length) * 100)) : 0;
 
@@ -1070,98 +1062,46 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
         splitDocked && 'sm:left-auto sm:w-[min(560px,50vw)] sm:border-l sm:border-border/35 sm:shadow-2xl',
       )}
     >
-      <header className="shrink-0 border-b border-border/35 bg-background/80 pt-[var(--mobile-safe-area-top,env(safe-area-inset-top,0px))]">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-2 px-4">
-          <div className="flex shrink-0 items-center gap-1">
-            <DsButton
-              type="button"
-              variant="ghost"
-              iconOnly
-              data-testid="sprint-player-exit"
-              aria-label={t('examSprint.player.exitLabel')}
-              onClick={handleExitRequest}
-              className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
-            >
-              <X size={18} aria-hidden="true" />
-            </DsButton>
-
-            {splitDocked && !isNarrowMobile ? (
-              <DsButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="sprint-restore-fullscreen"
-                onClick={() => setSplitDocked(false)}
-                className="min-h-[36px] shrink-0 gap-1.5 rounded-lg border border-border/35 bg-card/80 px-2.5 text-xs font-medium text-foreground hover:bg-muted/60"
-              >
-                <ArrowsOutSimple size={14} aria-hidden="true" />
-                <span>{t('examSprint.player.restoreFullscreen', { defaultValue: '恢复全屏' })}</span>
-              </DsButton>
-            ) : null}
-          </div>
-
-          {phase.kind === 'active' && currentItem && activePlan ? (
-            <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-              <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5 text-xs">
-                <span
-                  key={`${currentItem.kind}:${currentItem.kind === 'mistake_question' && currentItem.isVariant ? 'variant' : 'base'}`}
-                  data-testid="sprint-modality-badge"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-card px-2 py-0.5 font-medium text-foreground animate-chat-fade-in motion-reduce:animate-none"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', modalityDotClass)}
-                  />
-                  <span>{modalityBadgeLabel}</span>
-                </span>
-
-                {currentEntry?.requeuedOnce ? (
-                  <span
-                    data-testid="sprint-requeued-badge"
-                    className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400"
-                  >
-                    {t('examSprint.player.requeuedBadge')}
-                  </span>
-                ) : null}
-
-                {resumedFromCheckpoint ? (
-                  <span
-                    data-testid="sprint-resumed-badge"
-                    className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary"
-                  >
-                    {t('examSprint.player.resumedBadge', { defaultValue: '已续接进度' })}
-                  </span>
-                ) : null}
-
-                {countdownBadge ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-card/70 px-2 py-0.5 text-muted-foreground">
+      {isMobileViewport ? (
+        <div className="shrink-0 border-b border-border/35 bg-background/85">
+          <UnifiedMobileHeader
+            className="relative shrink-0"
+            progressiveBlur={false}
+            configOverride={{
+              showBackArrow: true,
+              onMenuClick: handleExitRequest,
+              title: phase.kind === 'active' && currentItem ? modalityBadgeLabel : t('examSprint.player.dialogLabel'),
+              titleNode:
+                phase.kind === 'active' && currentItem && activePlan ? (
+                  <div className="flex max-w-full items-center justify-center gap-1.5 text-xs">
                     <span
-                      className={cn(
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        getExamPhaseDotClass(activePlan.readinessBefore.phase),
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span>{t(`examSprint.hud.phase.${activePlan.readinessBefore.phase}`)}</span>
-                    <span>·</span>
-                    <span className="font-mono tabular-nums text-foreground">{countdownBadge}</span>
+                      key={`${currentItem.kind}:${currentItem.kind === 'mistake_question' && currentItem.isVariant ? 'variant' : 'base'}`}
+                      data-testid="sprint-modality-badge"
+                      className="truncate font-medium text-foreground"
+                    >
+                      {modalityBadgeLabel}
+                    </span>
+                    <span
+                      data-testid="sprint-progress-ordinal"
+                      className="shrink-0 font-mono tabular-nums text-muted-foreground"
+                    >
+                      {cursor + 1} / {queue.length}
+                    </span>
+                  </div>
+                ) : undefined,
+              rightActions:
+                phase.kind === 'active' ? (
+                  <span
+                    data-testid="sprint-live-timer"
+                    className="min-w-[44px] text-right font-mono text-xs tabular-nums text-muted-foreground"
+                  >
+                    {formatElapsedTimerMmSs(elapsedSeconds)}
                   </span>
-                ) : null}
-
-                <span
-                  data-testid="sprint-progress-ordinal"
-                  className="font-mono tabular-nums text-muted-foreground"
-                >
-                  {cursor + 1} / {queue.length}
-                </span>
-
-                {remainingMinutesLabel ? (
-                  <span className="hidden font-mono tabular-nums text-muted-foreground sm:inline">
-                    · {remainingMinutesLabel}
-                  </span>
-                ) : null}
-              </div>
-
+                ) : undefined,
+            }}
+          />
+          {phase.kind === 'active' && currentItem && activePlan ? (
+            <div className="px-4 pb-2">
               <div
                 role="progressbar"
                 aria-label={t('examSprint.player.progressAriaLabel')}
@@ -1169,7 +1109,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                 aria-valuemax={queue.length}
                 aria-valuenow={cursor}
                 data-testid="sprint-progress-bar"
-                className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-muted"
+                className="h-1 w-full overflow-hidden rounded-full bg-muted"
               >
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-300 ease-standard motion-reduce:transition-none"
@@ -1177,20 +1117,120 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                 />
               </div>
             </div>
-          ) : (
-            <div className="text-sm font-medium text-foreground">
-              {t('examSprint.player.dialogLabel')}
-            </div>
-          )}
-
-          <div
-            data-testid="sprint-live-timer"
-            className="min-w-[48px] shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground"
-          >
-            {phase.kind === 'active' ? formatElapsedTimerMmSs(elapsedSeconds) : ''}
-          </div>
+          ) : null}
         </div>
-      </header>
+      ) : (
+        <header className="shrink-0 border-b border-border/35 bg-background/80">
+          <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-2 px-4">
+            <div className="flex shrink-0 items-center gap-1">
+              <DsButton
+                type="button"
+                variant="ghost"
+                iconOnly
+                data-testid="sprint-player-exit"
+                aria-label={t('examSprint.player.exitLabel')}
+                onClick={handleExitRequest}
+                className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+              >
+                <X size={18} aria-hidden="true" />
+              </DsButton>
+
+              {splitDocked && !isNarrowMobile ? (
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid="sprint-restore-fullscreen"
+                  onClick={() => setSplitDocked(false)}
+                  className="min-h-[36px] shrink-0 gap-1.5 rounded-lg border border-border/35 bg-card/80 px-2.5 text-xs font-medium text-foreground hover:bg-muted/60"
+                >
+                  <ArrowsOutSimple size={14} aria-hidden="true" />
+                  <span>{t('examSprint.player.restoreFullscreen', { defaultValue: '恢复全屏' })}</span>
+                </DsButton>
+              ) : null}
+            </div>
+
+            {phase.kind === 'active' && currentItem && activePlan ? (
+              <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+                <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5 text-xs">
+                  <span
+                    key={`${currentItem.kind}:${currentItem.kind === 'mistake_question' && currentItem.isVariant ? 'variant' : 'base'}`}
+                    data-testid="sprint-modality-badge"
+                    className="inline-flex items-center rounded-md border border-border/35 bg-card px-2 py-0.5 font-medium text-foreground animate-chat-fade-in motion-reduce:animate-none"
+                  >
+                    <span>{modalityBadgeLabel}</span>
+                  </span>
+
+                  {currentEntry?.requeuedOnce ? (
+                    <span
+                      data-testid="sprint-requeued-badge"
+                      className="rounded-md border border-warning/30 bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning"
+                    >
+                      {t('examSprint.player.requeuedBadge')}
+                    </span>
+                  ) : null}
+
+                  {resumedFromCheckpoint ? (
+                    <span
+                      data-testid="sprint-resumed-badge"
+                      className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary"
+                    >
+                      {t('examSprint.player.resumedBadge', { defaultValue: '已续接进度' })}
+                    </span>
+                  ) : null}
+
+                  {countdownBadge ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-card/70 px-2 py-0.5 text-muted-foreground">
+                      <span>{t(`examSprint.hud.phase.${activePlan.readinessBefore.phase}`)}</span>
+                      <span>·</span>
+                      <span className="font-mono tabular-nums text-foreground">{countdownBadge}</span>
+                    </span>
+                  ) : null}
+
+                  <span
+                    data-testid="sprint-progress-ordinal"
+                    className="font-mono tabular-nums text-muted-foreground"
+                  >
+                    {cursor + 1} / {queue.length}
+                  </span>
+
+                  {remainingMinutesLabel ? (
+                    <span className="hidden font-mono tabular-nums text-muted-foreground sm:inline">
+                      · {remainingMinutesLabel}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div
+                  role="progressbar"
+                  aria-label={t('examSprint.player.progressAriaLabel')}
+                  aria-valuemin={0}
+                  aria-valuemax={queue.length}
+                  aria-valuenow={cursor}
+                  data-testid="sprint-progress-bar"
+                  className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-muted"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300 ease-standard motion-reduce:transition-none"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm font-medium text-foreground">
+                {t('examSprint.player.dialogLabel')}
+              </div>
+            )}
+
+            <div
+              data-testid="sprint-live-timer"
+              className="min-w-[48px] shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground"
+            >
+              {phase.kind === 'active' ? formatElapsedTimerMmSs(elapsedSeconds) : ''}
+            </div>
+          </div>
+        </header>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
         {phase.kind === 'loading' || phase.kind === 'settling' ? (
@@ -1208,7 +1248,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
           </div>
         ) : phase.kind === 'error' ? (
           <div className="mx-auto flex h-full min-h-[260px] max-w-md flex-col items-center justify-center gap-3 text-center">
-            <WarningCircle size={26} className="text-amber-500" aria-hidden="true" />
+            <WarningCircle size={26} className="text-warning" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">
               {t('examSprint.player.loadFailed')}
             </p>
@@ -1241,7 +1281,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
           </div>
         ) : phase.kind === 'empty' ? (
           <div className="mx-auto flex h-full min-h-[260px] max-w-md flex-col items-center justify-center gap-3 text-center">
-            <CheckCircle size={28} className="text-emerald-500" aria-hidden="true" />
+            <CheckCircle size={28} className="text-success" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">
               {t('examSprint.player.emptyTitle')}
             </p>
@@ -1408,37 +1448,33 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                     {
                       rating: 1 as const,
                       labelKey: 'examSprint.player.rating.again',
-                      tone: 'rose',
-                      dotClass: 'bg-rose-500',
+                      tone: 'destructive',
                       interactiveTone:
-                        'hover:!border-rose-500/40 hover:!bg-rose-500/10 data-[pressed=true]:!border-rose-500/50 data-[pressed=true]:!bg-rose-500/15',
+                        'hover:!border-destructive/40 hover:!bg-destructive/[0.08] hover:!text-destructive focus-visible:!text-destructive data-[pressed=true]:!border-destructive/45 data-[pressed=true]:!bg-destructive/[0.12] data-[pressed=true]:!text-destructive',
                     },
                     {
                       rating: 2 as const,
                       labelKey: 'examSprint.player.rating.hard',
-                      tone: 'amber',
-                      dotClass: 'bg-amber-500',
+                      tone: 'warning',
                       interactiveTone:
-                        'hover:!border-amber-500/40 hover:!bg-amber-500/10 data-[pressed=true]:!border-amber-500/50 data-[pressed=true]:!bg-amber-500/15',
+                        'hover:!border-warning/40 hover:!bg-warning/[0.10] hover:!text-warning focus-visible:!text-warning data-[pressed=true]:!border-warning/45 data-[pressed=true]:!bg-warning/[0.15] data-[pressed=true]:!text-warning',
                     },
                     {
                       rating: 3 as const,
                       labelKey: 'examSprint.player.rating.good',
-                      tone: 'emerald',
-                      dotClass: 'bg-emerald-500',
+                      tone: 'success',
                       interactiveTone:
-                        'hover:!border-emerald-500/40 hover:!bg-emerald-500/10 data-[pressed=true]:!border-emerald-500/50 data-[pressed=true]:!bg-emerald-500/15',
+                        'hover:!border-success/40 hover:!bg-success/[0.10] hover:!text-success focus-visible:!text-success data-[pressed=true]:!border-success/45 data-[pressed=true]:!bg-success/[0.15] data-[pressed=true]:!text-success',
                     },
                     {
                       rating: 4 as const,
                       labelKey: 'examSprint.player.rating.easy',
-                      tone: 'primary',
-                      dotClass: 'bg-primary',
+                      tone: 'info',
                       interactiveTone:
-                        'hover:!border-primary/40 hover:!bg-primary/10 data-[pressed=true]:!border-primary/50 data-[pressed=true]:!bg-primary/15',
+                        'hover:!border-info/40 hover:!bg-info/[0.10] hover:!text-info focus-visible:!text-info data-[pressed=true]:!border-info/45 data-[pressed=true]:!bg-info/[0.15] data-[pressed=true]:!text-info',
                     },
                   ] as const
-                ).map(({ rating, labelKey, tone, dotClass, interactiveTone }) => {
+                ).map(({ rating, labelKey, tone, interactiveTone }) => {
                   const isSuggested = suggestedRating === rating;
                   return (
                     <DsButton
@@ -1453,19 +1489,15 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                       onClick={(event) => handleRateClick(rating, event)}
                       className={cn(
                         'flex !h-auto min-h-[44px] max-sm:min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-xs transition-all active:scale-[0.98] disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100',
-                        isSuggested && tone === 'emerald'
-                          && '!border-emerald-500/45 !bg-emerald-500/12 !text-foreground',
-                        isSuggested && tone === 'rose'
-                          && '!border-rose-500/45 !bg-rose-500/12 !text-foreground',
+                        isSuggested && tone === 'success'
+                          && '!border-success/40 !bg-success/[0.10] !text-success',
+                        isSuggested && tone === 'destructive'
+                          && '!border-destructive/40 !bg-destructive/[0.10] !text-destructive',
                         !isSuggested && '!border-border/35 !bg-card !text-foreground',
                         interactiveTone,
                       )}
                     >
                       <span className="flex items-center gap-1.5 font-medium">
-                        <span
-                          aria-hidden="true"
-                          className={cn('h-1.5 w-1.5 shrink-0 rounded-full opacity-80', dotClass)}
-                        />
                         <kbd className="hidden font-mono text-2xs tabular-nums text-muted-foreground sm:inline">
                           {rating}
                         </kbd>

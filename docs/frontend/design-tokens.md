@@ -35,7 +35,7 @@
 
 例外：`--success-bg`、`--warning-muted` 等状态辅助 token 和 `--neutral` 是“通道 + 透明度”字符串（`var(--success) / 0.14`），用法是 `hsl(var(--success-bg))`。`--brand-primary` 也是通道值（见 §2.4）。
 
-**禁止**：TSX/CSS 里写 hex、`rgb()`、Tailwind 原色板（`bg-gray-100`、`text-blue-500`、`bg-white`、`text-black`）。分类色用 `--settings-nav-accent-*`，状态色用 `success/warning/info/danger`。存量见 [README 欠账表](./README.md#debt)。
+**禁止**：TSX/CSS 里写 hex、`rgb()`、Tailwind 原色板（`bg-gray-100`、`text-blue-500`、`bg-white`、`text-black`）。JSX `className` / `style` 中的硬编码颜色（hex、`rgb()`/`hsl()` 字面量及 `bg-[#…]` 等任意值颜色类）由 `ds-components/no-hardcoded-color`（warn，`npm run check:lint-ratchet` 基线 22 处，见 `scripts/lint/lint-ratchet-baseline.json`）冻结，新代码不得新增。分类色用 `--settings-nav-accent-*`，状态色用 `success/warning/info/danger`。其余存量见 [README 欠账表](./README.md#debt)。
 
 ### 2.2 基础层（`shadcn-variables.css`）
 
@@ -308,7 +308,7 @@ Tailwind 写法里 `text-muted-foreground`（4110 处）与 `text-[color:var(--t
 
 规则：
 
-- portal 到 `body` 或 `fixed` 全屏的层：TS 里用 `style={{ zIndex: Z_INDEX.modal }}`，或 Tailwind token 类 `z-modal`。不要写 `z-[N]` 魔数（存量 35 处），也不要用 `z-50`（Tooltip 曾因 `z-50` 被弹窗盖住）。
+- portal 到 `body` 或 `fixed` 全屏的层：TS 里用 `style={{ zIndex: Z_INDEX.modal }}`，或 Tailwind token 类 `z-modal`。不要写 `z-[N]` 或 `style={{ zIndex: N }}` 数字魔数（由 `ds-components/no-arbitrary-z-index` warn 拦截，`npm run check:lint-ratchet` 基线 28 处，见 `scripts/lint/lint-ratchet-baseline.json`），也不要用 `z-50`（Tooltip 曾因 `z-50` 被弹窗盖住）。
 - 组件自身 stacking context 内的局部叠放可以用 Tailwind 默认 `z-0`…`z-50`。
 - 自绘浮层里再开菜单：外层包 `<OverlayLayerProvider baseZ={Z_INDEX.modal}>`（`src/components/shared/OverlayLayer.tsx`），内部 AppMenu 自动抬高。
 

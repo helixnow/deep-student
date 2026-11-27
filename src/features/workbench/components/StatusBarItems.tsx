@@ -148,7 +148,9 @@ const SyncConflictStatusItem: React.FC<{ onBeforeNavigate?: () => void }> = ({
 };
 
 /** 番茄信号叶子：单独订阅 timeLeft，专注中 1Hz 重渲染只落在本按钮 */
-const PomodoroStatusItem: React.FC = () => {
+const PomodoroStatusItem: React.FC<{ onBeforeNavigate?: () => void }> = ({
+  onBeforeNavigate,
+}) => {
   const { t } = useTranslation('workbench');
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
   const mode = usePomodoroStore((s) => s.mode);
@@ -177,18 +179,21 @@ const PomodoroStatusItem: React.FC = () => {
       type="button"
       className={cn(
         'wb-menubar-item',
-        paused ? 'bg-muted/40' : isBreak ? 'bg-emerald-500/10' : 'bg-primary/10',
+        paused ? 'bg-muted/40' : isBreak ? 'bg-success/10' : 'bg-primary/10',
       )}
       data-testid="wb-menubar-pomodoro"
       data-wb-status-item="pomodoro"
       data-status={paused ? 'paused' : isBreak ? 'break' : 'focus'}
       aria-label={pomodoroLabel}
       title={pomodoroLabel}
-      onClick={() => launchApp('pomodoro')}
+      onClick={() => {
+        onBeforeNavigate?.();
+        launchApp('pomodoro');
+      }}
     >
       <Timer size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
       <span
-        className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+        className="wb-menubar-item-tag hidden xl:inline text-2xs opacity-80"
         data-testid="wb-menubar-pomodoro-tag"
         aria-hidden="true"
       >
@@ -273,21 +278,24 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
   return (
     <>
       <SyncConflictStatusItem onBeforeNavigate={onBeforeNavigate} />
-      {showPomodoro ? <PomodoroStatusItem /> : null}
+      {showPomodoro ? <PomodoroStatusItem onBeforeNavigate={onBeforeNavigate} /> : null}
 
       {dueCount > 0 ? (
         <button
           type="button"
-          className="wb-menubar-item bg-amber-500/10"
+          className="wb-menubar-item bg-warning/10"
           data-testid="wb-menubar-flashcards"
           data-wb-status-item="flashcards"
           aria-label={flashcardsLabel}
           title={flashcardsLabel}
-          onClick={launchFlashcardsDue}
+          onClick={() => {
+            onBeforeNavigate?.();
+            launchFlashcardsDue();
+          }}
         >
           <Stack size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
           <span
-            className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+            className="wb-menubar-item-tag hidden xl:inline text-2xs opacity-80"
             data-testid="wb-menubar-flashcards-tag"
             aria-hidden="true"
           >
@@ -305,11 +313,14 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
           data-wb-status-item="ankiTasks"
           aria-label={tasksLabel}
           title={tasksLabel}
-          onClick={() => launchApp('taskDashboard')}
+          onClick={() => {
+            onBeforeNavigate?.();
+            launchApp('taskDashboard');
+          }}
         >
           <ChartBar size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
           <span
-            className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+            className="wb-menubar-item-tag hidden xl:inline text-2xs opacity-80"
             data-testid="wb-menubar-anki-tasks-tag"
             aria-hidden="true"
           >
@@ -334,7 +345,10 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
         data-status={runningCount > 0 ? 'running' : failedCount > 0 ? 'error' : 'idle'}
         aria-label={automationAriaLabel}
         title={automationTitle}
-        onClick={launchAutomations}
+        onClick={() => {
+          onBeforeNavigate?.();
+          launchAutomations();
+        }}
       >
         <span
           className="wb-menubar-automation-iconwrap"

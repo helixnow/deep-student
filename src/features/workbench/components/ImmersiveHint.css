@@ -16,12 +16,12 @@
   gap: 10px;
   max-width: min(92vw, 560px);
   padding: 7px 8px 7px 14px;
-  border: 1px solid var(--wb-glass-border);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background-color: var(--wb-glass-bg-strong);
-  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
+  background-image: var(--wb-glass-sheen);
+  backdrop-filter: var(--wb-glass-liquid-blur, var(--wb-glass-blur));
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover, var(--wb-dock-shadow));
   color: var(--text-primary, hsl(var(--foreground)));
   font-size: 12.5px;
   line-height: 1.3;
@@ -29,6 +29,44 @@
   transition:
     opacity var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out),
     transform var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out);
+}
+
+.wb-immersive-hint::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 0.75px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--wb-glass-liquid-rim, var(--wb-dock-liquid-rim));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@media (resolution >= 2dppx) {
+  .wb-immersive-hint::before {
+    padding: 0.5px;
+  }
+}
+
+:root[data-wb-material='reduced'] .wb-immersive-hint,
+:root[data-wb-material='minimal'] .wb-immersive-hint {
+  border-color: var(--wb-glass-border);
+}
+
+:root[data-wb-material='reduced'] .wb-immersive-hint::before,
+:root[data-wb-material='minimal'] .wb-immersive-hint::before {
+  display: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .wb-immersive-hint {
+    border-color: var(--wb-glass-border);
+  }
+
+  .wb-immersive-hint::before {
+    display: none;
+  }
 }
 
 .wb-immersive-hint[data-visible='true'] {

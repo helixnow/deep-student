@@ -22,17 +22,6 @@
   line-height: 1.4;
 }
 
-.nlv-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: hsl(var(--muted-foreground) / 50%);
-}
-
-.nlv-group[data-mastery='learning'] .nlv-dot { background: hsl(var(--primary)); }
-.nlv-group[data-mastery='mastered'] .nlv-dot { background: hsl(var(--success, 142 60% 40%)); }
-.nlv-group[data-mastery='needs-review'] .nlv-dot { background: hsl(var(--warning, 38 92% 50%)); }
-
 .nlv-empty {
   margin: 0;
   padding: 4px 8px 6px;

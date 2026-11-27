@@ -285,6 +285,9 @@
     "add_streaming_hint": "翻译完成后可加入聊天"
   },
   "prompt_panel": {
+    "preferences_title": "翻译偏好",
+    "auto_save_hint": "修改即自动生效",
+    "back_to_translate": "返回翻译",
     "style_title": "翻译风格",
     "style_hint": "控制译文的语气与正式程度",
     "domain_hint": "针对所选领域优化术语与行文",

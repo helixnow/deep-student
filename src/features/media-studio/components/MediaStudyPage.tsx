@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, CircleNotch, SpeakerHigh } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { isWebUiShell } from '@/utils/platform';
@@ -15,7 +15,8 @@ import {
   TITLEBAR_ICON_CONTROL_CLASS,
   TITLEBAR_META_CLASS,
   TITLEBAR_TITLE_CLASS,
-} from '@/app/shell/titlebarUiTokens';
+} from '@/components/layout/desktopTitlebarTokens';
+import { useDesktopHeader } from '@/components/layout/DesktopHeaderContext';
 import { dstu } from '@/dstu';
 import type { DstuNode } from '@/dstu/types';
 import FileContentView from '@/features/learning-hub/apps/views/FileContentView';
@@ -44,6 +45,10 @@ export interface MediaStudyPageProps {
   isActive: boolean;
   isSmallScreen: boolean;
   titlebarTarget: HTMLElement | null;
+  /** 经典壳桌面端统一顶栏（useDesktopHeader 面包屑范式） */
+  useClassicDesktopHeader?: boolean;
+  /** 外部窗口标题栏已承载应用与资源名（学习桌面）时隐藏页内重复标题 */
+  hideInternalTitle?: boolean;
   onBack: () => void;
   /** 标题回调（手机顶栏 / 学习桌面窗口标题） */
   onTitleChange?: (title: string | null) => void;
@@ -60,6 +65,8 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
   isActive,
   isSmallScreen,
   titlebarTarget,
+  useClassicDesktopHeader = false,
+  hideInternalTitle = false,
   onBack,
   onTitleChange,
 }) => {
@@ -69,6 +76,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
   const [activeTab, setActiveTab] = useState<string>(MEDIA_STUDY_TRANSCRIPT_TAB);
   const [mutedAutoplayNotice, setMutedAutoplayNotice] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [embeddedToolbarSlot, setEmbeddedToolbarSlot] = useState<HTMLElement | null>(null);
   const studyContainerRef = useRef<HTMLDivElement | null>(null);
   const lastToastedErrorRef = useRef<string | null>(null);
 
@@ -413,29 +421,70 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
     ],
   }), [activeTab, meta, t]);
 
-  const headerRow = (inTitlebar: boolean) => (
-    <div className={cn('flex min-w-0 items-center gap-1.5 sm:gap-2', inTitlebar && 'pointer-events-auto h-full flex-1')}>
-      <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        onClick={onBack}
-        aria-label={t('mediaStudio:study.back')}
-        title={t('mediaStudio:study.back')}
-        data-media-study-back=""
-        className={cn('shrink-0 text-muted-foreground', inTitlebar ? TITLEBAR_ICON_CONTROL_CLASS : '!h-8 !w-8')}
-      >
-        <ArrowLeft size={16} aria-hidden="true" />
-      </DsButton>
-      <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'text-sm font-semibold text-foreground', 'shrink-0')}>
-        {t('mediaStudio:title')}
-      </span>
-      <span className="shrink-0 text-muted-foreground/40">/</span>
-      <span className={cn(inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground', 'min-w-0 flex-1 truncate')}>
-        {displayName}
-      </span>
-    </div>
+  const headerRow = (inTitlebar: boolean) => {
+    const showTitle = inTitlebar || !hideInternalTitle;
+    return (
+      <div className={cn('flex min-w-0 items-center gap-1.5 sm:gap-2', inTitlebar && 'pointer-events-auto h-full flex-1')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onBack}
+          aria-label={t('mediaStudio:study.back')}
+          title={t('mediaStudio:study.back')}
+          data-media-study-back=""
+          className={cn('shrink-0 text-muted-foreground', inTitlebar ? TITLEBAR_ICON_CONTROL_CLASS : '!h-8 !w-8')}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+        </DsButton>
+        {showTitle ? (
+          <>
+            <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'text-sm font-semibold text-foreground', 'shrink-0')}>
+              {t('mediaStudio:title')}
+            </span>
+            <span className="shrink-0 text-muted-foreground/40">/</span>
+            <span className={cn(inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground', 'min-w-0 flex-1 truncate')}>
+              {displayName}
+            </span>
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
+  useDesktopHeader(
+    'media',
+    {
+      breadcrumbs: [
+        { id: 'media-root', label: t('mediaStudio:title'), onClick: onBack },
+        { id: 'media-study-title', label: displayName },
+      ],
+    },
+    [t, onBack, displayName],
+    useClassicDesktopHeader && !isSmallScreen,
   );
+
+  const embedHeaderInMediaToolbar = !titlebarTarget && !useClassicDesktopHeader && !isSmallScreen;
+
+  useEffect(() => {
+    const container = studyContainerRef.current;
+    if (!embedHeaderInMediaToolbar || !container || !node || error) {
+      setEmbeddedToolbarSlot(null);
+      return;
+    }
+    const syncSlot = () => {
+      const slot = container.querySelector<HTMLElement>('[data-media-study-toolbar-leading]');
+      setEmbeddedToolbarSlot((prev) => (prev === slot ? prev : slot));
+    };
+    syncSlot();
+    const observer =
+      typeof MutationObserver === 'function' ? new MutationObserver(syncSlot) : null;
+    observer?.observe(container, { childList: true, subtree: true });
+    return () => {
+      observer?.disconnect();
+      setEmbeddedToolbarSlot(null);
+    };
+  }, [embedHeaderInMediaToolbar, error, node]);
 
   return (
     <div ref={studyContainerRef} className="flex h-full min-h-0 min-w-0 flex-col" data-media-study={resourceId}>
@@ -443,7 +492,14 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
         <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{headerRow(true)}</div>,
         titlebarTarget,
       ) : null}
-      {!titlebarTarget && !isSmallScreen ? (
+      {embedHeaderInMediaToolbar && embeddedToolbarSlot ? createPortal(
+        <>
+          {headerRow(false)}
+          <span className="h-4 w-px shrink-0 bg-border/35" aria-hidden="true" />
+        </>,
+        embeddedToolbarSlot,
+      ) : null}
+      {embedHeaderInMediaToolbar && !embeddedToolbarSlot ? (
         <div className="study-shell-toolbar flex h-11 shrink-0 items-center px-3">{headerRow(false)}</div>
       ) : null}
       {mutedAutoplayNotice ? (

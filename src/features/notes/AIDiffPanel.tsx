@@ -140,13 +140,6 @@ export function DiffHunksView({ lines }: { lines: readonly DiffLine[] }) {
   );
 }
 
-const STATUS_DOT_CLASS: Record<HunkDecisionState, string> = {
-  pending: 'bg-[hsl(var(--warning))]',
-  accepted: 'bg-[hsl(var(--success))]',
-  rejected: 'bg-muted-foreground/45',
-  tweaked: 'bg-primary',
-};
-
 interface HunkCardProps {
   hunk: ReviewableHunk;
   totalHunks: number;
@@ -197,14 +190,10 @@ function HunkReviewCard({ hunk, totalHunks, disabled, onDecision }: HunkCardProp
   return (
     <div
       data-testid={`ai-diff-hunk-card-${hunk.id}`}
-      className="rounded-lg border border-border/35 bg-card/60"
+      className="py-1"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/35 px-3 py-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT_CLASS[hunk.status])}
-          />
           <span className="font-mono text-xs tabular-nums text-foreground">
             {hunk.id + 1} / {totalHunks}
           </span>
@@ -503,13 +492,10 @@ export function AIDiffPanel({
       <div className="notes-column flex min-h-0 flex-col py-2">
         <div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border/35 bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]">
           {/* 操作条：贴住 diff 区顶部，不随 diff 内容滚动 */}
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-border/35 bg-muted/40 px-3 py-2">
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <Robot size={14} className="text-primary" />
-            </div>
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-border/35 bg-muted/40 px-3 py-2">
+            <Robot size={16} className="flex-shrink-0 text-primary" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 <h3 className="truncate text-sm font-medium leading-tight">{t('aiDiff.title')}</h3>
                 {totalHunks > 0 && (
                   <span
@@ -692,7 +678,7 @@ export function AIDiffPanel({
 
             {(!hasOfficialReview || viewMode === 'hunks') && (
               totalHunks > 0 ? (
-                <div className="flex flex-col gap-2 px-2">
+                <div className="flex flex-col divide-y divide-border/35">
                   {hunkPlan.hunks.map((hunk) => (
                     <HunkReviewCard
                       key={`${hunkState.cardRevision}:${hunk.id}`}

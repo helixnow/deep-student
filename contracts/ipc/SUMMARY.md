@@ -4,7 +4,7 @@
 
 源文件：`contracts/ipc/*.json`。生成与校验不读取实现源码，不依赖 Rust 工具链。
 
-命令 1069；事件 128（按所属契约计）；类型定义 992。
+命令 1081；事件 128（按所属契约计）；类型定义 1002。
 
 | 契约 | 命令 | 事件 | 类型 |
 |---|---:|---:|---:|
@@ -13,7 +13,7 @@
 | F3-storage | 33 | 0 | 15 |
 | F4-security | 44 | 1 | 26 |
 | L01-llm-providers | 5 | 0 | 8 |
-| L02-llm-manager | 27 | 24 | 32 |
+| L02-llm-manager | 30 | 24 | 38 |
 | L04-chat-session | 107 | 6 | 101 |
 | L05-agent-workspace | 12 | 9 | 18 |
 | L06-agent-orchestration | 18 | 8 | 18 |
@@ -26,7 +26,7 @@
 | L16-anki | 61 | 2 | 44 |
 | L17-memory-research | 34 | 3 | 14 |
 | L18-media-docs | 78 | 7 | 59 |
-| L19-mcp-browser | 62 | 13 | 33 |
+| L19-mcp-browser | 71 | 13 | 37 |
 | L20-sync | 28 | 1 | 31 |
 | L21-backup-governance | 33 | 2 | 34 |
 | L23-sync-providers | 14 | 1 | 7 |

@@ -25,6 +25,11 @@ vi.mock('react-i18next', () => ({
       'statistics.subtitle': 'FSRS 队列与今日复习概览',
       'statistics.suspended': '已暂停',
       'statistics.title': '学习统计',
+      'settings.scheduler.title': '调度设置',
+      'stats.advanced.title': '进阶记忆分析',
+      'stats.advanced.subtitle': '真实保留率、全库稳定度与难度分布、卡片状态构成',
+      'stats.advanced.expand': '展开',
+      'stats.advanced.collapse': '收起',
       'statistics.total': '已入队总数',
     }[key] ?? key),
     i18n: { language: 'zh-CN' },
@@ -81,16 +86,17 @@ describe('StatisticsScreen', () => {
 
   });
 
-  it('places scheduler settings after the statistics panels', async () => {
+  it('keeps scheduler forms out of statistics and collapses advanced analytics by default', async () => {
     mocks.getStats.mockResolvedValueOnce(firstStats);
 
     render(<StatisticsScreen />);
-    const statistics = await screen.findByTestId('fsrs-statistics');
-    const settings = screen.getByTestId('fsrs-scheduler-settings');
+    expect(await screen.findByTestId('fsrs-statistics')).toBeInTheDocument();
+    expect(screen.queryByTestId('fsrs-scheduler-settings')).toBeNull();
+    expect(screen.queryByTestId('fsrs-params-panel')).toBeNull();
+    expect(screen.queryByTestId('fsrs-advanced-analytics')).toBeNull();
 
-    expect(
-      statistics.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId('fsrs-advanced-analytics-toggle'));
+    expect(screen.getByTestId('fsrs-advanced-analytics')).toBeInTheDocument();
   });
 
   it('shows backend errors and retries successfully', async () => {
@@ -107,15 +113,15 @@ describe('StatisticsScreen', () => {
     expect(mocks.getStats).toHaveBeenCalledTimes(2);
   });
 
-  // 2026-08 修复回归：调度设置读写独立的 scheduler_config 命令，
-  // 统计加载失败时必须保持可用（此前整块 UI 被 stats 分支一起拖垮）。
-  it('keeps scheduler settings reachable when statistics loading fails', async () => {
+  it('exposes a direct scheduler settings action when statistics loading fails', async () => {
     mocks.getStats.mockRejectedValueOnce(new Error('stats backend is offline'));
+    const onOpenSchedulerSettings = vi.fn();
 
-    render(<StatisticsScreen />);
+    render(<StatisticsScreen onOpenSchedulerSettings={onOpenSchedulerSettings} />);
     await screen.findByRole('alert');
 
-    expect(screen.getByTestId('fsrs-scheduler-settings')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('fsrs-error-open-scheduler'));
+    expect(onOpenSchedulerSettings).toHaveBeenCalledTimes(1);
   });
 
   it('refreshes when the FSRS statistics domain event is dispatched', async () => {

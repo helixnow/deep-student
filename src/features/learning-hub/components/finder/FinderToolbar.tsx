@@ -156,7 +156,7 @@ function CompressedBreadcrumbs({
       aria-label={rootLabel}
       disabled={breadcrumbs.length === 0}
     >
-      <span className="block truncate max-w-[72px]">{rootLabel}</span>
+      <span className="block truncate max-w-[120px]">{rootLabel}</span>
     </DsButton>
   );
 
@@ -201,7 +201,7 @@ function CompressedBreadcrumbs({
             className={cn('shrink-0 !h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
             title={parentCrumb.name}
           >
-            <span className="block truncate max-w-[72px]">{parentCrumb.name}</span>
+            <span className="block truncate max-w-[120px]">{parentCrumb.name}</span>
           </DsButton>
         ) : null}
         {parentCrumb ? sep : null}
@@ -365,8 +365,9 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     </div>
   ) : null;
 
-  // ★ 窄窗溢出菜单：新建文件夹 / 刷新 / 排序 收进一个 … 菜单
-  const overflowMenu = (onNewFolder || onSortChange) ? (
+  // ★ 窄窗溢出菜单：新建文件夹（仅在无统一创建菜单时） / 排序 收进一个 … 菜单
+  const showStandaloneNewFolder = Boolean(onNewFolder && !createMenuItems);
+  const overflowMenu = (showStandaloneNewFolder || onSortChange) ? (
     <AppMenu open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
       <AppMenuTrigger asChild>
         <DsButton
@@ -382,12 +383,12 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={190}>
-        {onNewFolder && (
+        {showStandaloneNewFolder && onNewFolder && (
           <AppMenuItem icon={<FolderPlus size={14} />} onClick={onNewFolder}>
             {t('finder.toolbar.newFolder')}
           </AppMenuItem>
         )}
-        {sortMenuEntries && (onNewFolder) && <AppMenuSeparator />}
+        {sortMenuEntries && showStandaloneNewFolder && <AppMenuSeparator />}
         {sortMenuEntries}
       </AppMenuContent>
     </AppMenu>
@@ -444,7 +445,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         </AppMenu>
       )}
 
-      {onNewFolder && (
+      {showStandaloneNewFolder && onNewFolder && (
         <DsButton
           variant="ghost"
           size="icon"
@@ -466,28 +467,63 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     value: searchQuery,
     onChange: (event) => onSearchChange?.(event.target.value),
   });
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const isSearchOpen = !titlebarMode || searchExpanded || Boolean(searchQuery);
 
   const searchField = onSearchChange ? (
-    <div
-      className={cn(
-        'pointer-events-auto relative min-w-[80px] shrink',
-        isCompact ? 'w-[128px]' : titlebarMode ? 'w-[168px]' : 'ml-1 w-[180px]'
-      )}
-    >
-      <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/45" size={14} />
-      <input
-        type="search"
-        {...searchInputProps}
-        disabled={searchDisabled}
-        placeholder={resolvedSearchPlaceholder}
-        aria-label={resolvedSearchPlaceholder}
+    isSearchOpen ? (
+      <div
         className={cn(
-          'h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:!text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden',
-          // 标题栏模式受 38px 窗口 chrome 约束，触屏保持 40px；内嵌顶栏无高度约束，触屏升至 44px 命中区
-          titlebarMode ? '[@media(pointer:coarse)]:!h-10' : '[@media(pointer:coarse)]:!min-h-11'
+          'pointer-events-auto relative min-w-[80px] shrink',
+          isCompact ? 'w-[128px]' : titlebarMode ? 'w-[168px]' : 'ml-1 w-[180px]'
         )}
-      />
-    </div>
+      >
+        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/45" size={14} />
+        <input
+          ref={searchInputRef}
+          type="search"
+          {...searchInputProps}
+          disabled={searchDisabled}
+          placeholder={resolvedSearchPlaceholder}
+          aria-label={resolvedSearchPlaceholder}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && titlebarMode && !searchQuery) {
+              event.preventDefault();
+              setSearchExpanded(false);
+              event.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            if (titlebarMode && !searchQuery) {
+              setSearchExpanded(false);
+            }
+          }}
+          className={cn(
+            'h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:!text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden',
+            // 标题栏模式受 38px 窗口 chrome 约束，触屏保持 40px；内嵌顶栏无高度约束，触屏升至 44px 命中区
+            titlebarMode ? '[@media(pointer:coarse)]:!h-10' : '[@media(pointer:coarse)]:!min-h-11'
+          )}
+        />
+      </div>
+    ) : (
+      <DsButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        disabled={searchDisabled}
+        className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+        title={resolvedSearchPlaceholder}
+        aria-label={resolvedSearchPlaceholder}
+        aria-expanded={false}
+        onClick={() => {
+          setSearchExpanded(true);
+          requestAnimationFrame(() => searchInputRef.current?.focus());
+        }}
+      >
+        <MagnifyingGlass size={15} />
+      </DsButton>
+    )
   ) : null;
 
   const breadcrumbCenter = (

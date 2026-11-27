@@ -10,7 +10,8 @@ import { registerMemoryDomainRefresh } from '../views/memoryDomainRefresh';
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import {
   Folder,
   FileText,
@@ -136,7 +137,7 @@ const TreeNode: React.FC<{
         )}
 
         {/* Icon */}
-        <Folder size={14} className="text-amber-500 shrink-0" />
+        <Folder size={14} className="text-warning shrink-0" />
 
         {/* Title */}
         <span className="text-[12px] truncate flex-1">{localizeMemoryFolderTitle(node.folder.title, t)}</span>
@@ -156,8 +157,10 @@ const TreeNode: React.FC<{
           {/* Navigate button */}
           <DsButton
             variant="ghost" size="icon" iconOnly
-            // 触屏放大命中区（≥44px），负 margin 抵消占位保持行高稳定
-            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-3 transition-opacity"
+            className={cn(
+              '!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 transition-opacity',
+              coarseHitClassFor24,
+            )}
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title={t('memory.open_folder')}
             aria-label={t('memory.open_folder')}

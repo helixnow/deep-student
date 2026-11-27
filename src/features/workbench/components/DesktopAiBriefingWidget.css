@@ -1,15 +1,15 @@
 .wb-ai-briefing-widget {
   /* 定位由父容器 .wb-desktop-widget-column 承担（右上角纵列，日程下方）；
-     内容定高约 170px，空间不足时收缩滚动，日程保持定高 */
+     对标 macOS Tahoe Clear Widget：24px 柔润圆角 + 零内嵌套娃框 + 纯净字阶排版 */
   display: flex;
   width: 100%;
   min-height: 96px;
   flex: 0 1 auto;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px 14px;
-  overflow: auto;
-  border-radius: var(--wb-radius-xl, 18px);
+  gap: 12px;
+  padding: 15px 16px 16px;
+  overflow: hidden auto;
+  border-radius: 24px;
   box-shadow: var(--wb-shadow-idle);
   pointer-events: auto;
   color: var(--text-primary, hsl(var(--foreground)));
@@ -52,7 +52,7 @@
   margin-left: auto;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  color: hsl(var(--foreground) / 62%);
   white-space: nowrap;
 }
 
@@ -65,14 +65,14 @@
   justify-content: center;
   margin-right: -4px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 999px;
   background: transparent;
-  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  color: hsl(var(--foreground) / 62%);
   cursor: pointer;
 }
 
 .wb-ai-briefing-collapse:hover {
-  background: hsl(var(--foreground) / 0.08);
+  background: hsl(var(--foreground) / 8%);
   color: var(--text-primary, hsl(var(--foreground)));
 }
 
@@ -83,13 +83,14 @@
 
 .wb-ai-briefing-widget[data-collapsed] {
   min-height: 0;
-  padding-block: 10px;
+  padding-block: 12px;
 }
 
+/* 四项数据直接浮于液态玻璃之上，无套娃小框，仅用 Tahoe 式细竖线分隔 */
 .wb-ai-briefing-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 2px;
 }
 
 .wb-ai-briefing-tile {
@@ -98,20 +99,40 @@
   min-width: 0;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  border: 1px solid hsl(var(--foreground) / 0.08);
+  gap: 3px;
+  padding: 6px 8px;
+  border: 0;
   border-radius: 12px;
-  background: hsl(var(--foreground) / 0.05);
+  background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms ease;
+}
+
+.wb-ai-briefing-tile:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  right: -1px;
+  bottom: 20%;
+  width: 1px;
+  background: hsl(var(--foreground) / 10%);
+  pointer-events: none;
 }
 
 .wb-ai-briefing-tile:hover {
-  border-color: hsl(var(--foreground) / 0.16);
-  background: hsl(var(--foreground) / 0.1);
+  background: hsl(var(--foreground) / 7%);
+}
+
+:root.dark .wb-ai-briefing-tile:not(:last-child)::after,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-tile:not(:last-child)::after {
+  background: rgb(255 255 255 / 16%);
+}
+
+:root.dark .wb-ai-briefing-tile:hover,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-tile:hover {
+  background: rgb(255 255 255 / 12%);
 }
 
 .wb-ai-briefing-tile:focus-visible {
@@ -120,9 +141,10 @@
 }
 
 .wb-ai-briefing-tile-count {
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.1;
+  font-size: 24px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
   font-variant-numeric: tabular-nums;
 }
 
@@ -130,70 +152,98 @@
   max-width: 100%;
   overflow: hidden;
   font-size: 11.5px;
-  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  font-weight: 500;
+  color: hsl(var(--foreground) / 64%);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .wb-ai-briefing-tile[data-empty] .wb-ai-briefing-tile-count {
-  color: var(--text-secondary, hsl(var(--muted-foreground)));
-  font-weight: 500;
+  color: hsl(var(--foreground) / 48%);
+  font-weight: 450;
 }
 
 .wb-ai-briefing-tile-alert {
   position: absolute;
   top: 6px;
-  right: 6px;
+  right: 4px;
   padding: 0 5px;
   border-radius: 999px;
-  background: hsl(var(--destructive) / 0.14);
-  color: hsl(var(--destructive));
-  font-size: 10.5px;
+  background: hsl(var(--foreground) / 10%);
+  color: hsl(var(--foreground) / 86%);
+  font-size: 10px;
   font-weight: 600;
   line-height: 16px;
+  text-shadow: none;
   white-space: nowrap;
 }
 
-:is(.dark, [data-theme='dark']) .wb-ai-briefing-tile-alert {
-  background: hsl(0 84% 62% / 0.22);
-  color: hsl(0 86% 76%);
+:is(.dark, [data-theme='dark']) .wb-ai-briefing-tile-alert,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-tile-alert {
+  background: rgb(255 255 255 / 22%);
+  color: rgb(255 255 255 / 94%);
 }
 
 .wb-ai-briefing-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .wb-ai-briefing-actions:empty {
   display: none;
 }
 
+/* Tahoe 单色无框玻璃胶囊：主操作高反差实心胶囊（同日历今日圆点），次操作轻透玻璃胶囊 */
 .wb-ai-briefing-action {
   flex: 1 1 0;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid hsl(var(--foreground) / 0.1);
-  border-radius: 10px;
-  background: hsl(var(--foreground) / 0.05);
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: hsl(var(--foreground) / 8%);
   color: inherit;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 550;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms ease, opacity 150ms ease;
 }
 
 .wb-ai-briefing-action:hover {
-  background: hsl(var(--foreground) / 0.1);
+  background: hsl(var(--foreground) / 14%);
+}
+
+:root.dark .wb-ai-briefing-action,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-action {
+  background: rgb(255 255 255 / 16%);
+  color: rgb(255 255 255 / 92%);
+}
+
+:root.dark .wb-ai-briefing-action:hover,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-action:hover {
+  background: rgb(255 255 255 / 24%);
 }
 
 .wb-ai-briefing-action-primary {
-  border-color: transparent;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  background: hsl(var(--foreground) / 86%);
+  box-shadow: none;
+  color: hsl(var(--background));
+  text-shadow: none;
 }
 
 .wb-ai-briefing-action-primary:hover {
-  background: hsl(var(--primary) / 0.9);
+  background: hsl(var(--foreground) / 96%);
+}
+
+:root.dark .wb-ai-briefing-action-primary,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-action-primary {
+  background: rgb(255 255 255 / 90%);
+  color: rgb(18 28 36 / 92%);
+  text-shadow: none;
+}
+
+:root.dark .wb-ai-briefing-action-primary:hover,
+.wb-ai-briefing-widget[data-wb-glass-tone='dark'] .wb-ai-briefing-action-primary:hover {
+  background: rgb(255 255 255 / 98%);
 }
 
 .wb-ai-briefing-action:focus-visible {

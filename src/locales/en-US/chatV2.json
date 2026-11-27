@@ -777,7 +777,12 @@
       "openRuntimeSettings": "Authorize runtime folders",
       "generatingArgs": "Generating arguments...",
       "expandLongOutput": "Show all (~{{count}} chars)",
-      "collapseLongOutput": "Collapse long output"
+      "collapseLongOutput": "Collapse long output",
+      "browserScreenshot": {
+        "annotated": "Annotated refs",
+        "artifact": "Artifact:",
+        "unavailable": "Screenshot unavailable"
+      }
     },
     "workbenchOps": {
       "title": "Desktop ops",
@@ -1312,7 +1317,7 @@
     "groupName": "Group name",
     "groupNamePlaceholder": "Describe the task in one sentence",
     "groupIcon": "Group icon",
-    "groupIconPlaceholder": "e.g. 📁 or folder",
+    "groupIconPlaceholder": "e.g. book or folder",
     "groupColor": "Group color",
     "groupDescription": "Description",
     "groupDescriptionPlaceholder": "Optional, describe this group",
@@ -2110,6 +2115,30 @@
       "browserOpen": "Will open in the built-in browser: {{url}}",
       "browserNavigate": "Will navigate to: {{url}}",
       "browserClick": "Will click webpage element: {{element}} (ref={{ref}})",
+      "browserClickCoord": "Will click webpage coordinates ({{x}}, {{y}})",
+      "browserClickCoordWithElement": "Will click webpage element: {{element}} (coords {{x}}, {{y}})",
+      "browserHover": "Will hover over webpage element: {{element}} (ref={{ref}})",
+      "browserHoverCoord": "Will hover at webpage coordinates ({{x}}, {{y}})",
+      "browserHoverCoordWithElement": "Will hover over webpage element: {{element}} (coords {{x}}, {{y}})",
+      "browserPressKey": "Will press key on webpage: {{key}}",
+      "browserPressKeyWithModifiers": "Will press key combination on webpage: {{modifiers}}+{{key}}",
+      "browserSelectOption": "Will select option(s) in {{element}} (ref={{ref}}): {{values}}",
+      "browserWaitFor": "Will wait for webpage condition",
+      "browserWaitForText": "Will wait for text on webpage: {{text}}",
+      "browserWaitForSelector": "Will wait for webpage selector: {{selector}}",
+      "browserWaitForLoadState": "Will wait for webpage load state: {{loadState}}",
+      "browserExtractContent": "Will extract readable content from the current webpage",
+      "browserTabsList": "Will list open browser tabs",
+      "browserTabsNew": "Will open a new browser tab: {{url}}",
+      "browserTabsNewBlank": "Will open a new blank browser tab",
+      "browserTabsSwitch": "Will switch browser tab to: {{tabId}}",
+      "browserTabsClose": "Will close browser tab: {{tabId}}",
+      "browserObserveConsole": "Will read browser console logs for the current page",
+      "browserObserveNetwork": "Will read browser network logs for the current page",
+      "browserObserveBoth": "Will read browser console and network logs for the current page",
+      "browserObserve": "Will read browser diagnostic logs ({{kind}})",
+      "browserScreenshot": "Will capture a screenshot of the current webpage and save it as a session artifact",
+      "browserDownloads": "Will list downloads from the built-in browser session",
       "browserFileUpload": "Will upload {{count}} authorized file(s) to: {{element}}",
       "browserType": "Will type into webpage element: {{element}} (ref={{ref}}; content hidden)",
       "browserOperation": "Will perform browser operation: {{tool}}",
@@ -2524,7 +2553,18 @@
     "noSessionId": "Subagent session ID missing",
     "collapse": "Collapse",
     "expand": "Expand",
-    "viewFull": "View Full Session"
+    "viewFull": "View Full Session",
+    "profile": {
+      "browser": "Browser"
+    },
+    "hostFacts": {
+      "verifiedLabel": "Host-verified browsing",
+      "noOrigins": "No external origins visited",
+      "actions": "{{count}} actions",
+      "downloads": "{{count}} downloads",
+      "blocked": "{{count}} blocked",
+      "takeovers": "{{count}} takeovers"
+    }
   },
   "subagentSession": {
     "readOnlyNotice": "Subagent session (read-only) · Triggered by the main agent; messages cannot be edited or resent"
@@ -2869,11 +2909,9 @@
       "missingHint": "Safe to unmount"
     },
     "badges": {
-      "kbAutoScoped": "Scoped to Space KB",
       "countdownDays": "D-{{days}}",
       "countdownToday": "D-Day",
-      "countdownPassed": "D+{{days}}",
-      "budgetMinutes": "{{minutes}}m/d"
+      "countdownPassed": "D+{{days}}"
     },
     "actions": {
       "reviewDeck": "Review Space Cards",

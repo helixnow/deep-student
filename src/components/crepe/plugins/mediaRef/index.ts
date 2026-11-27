@@ -31,8 +31,28 @@ export const mediaRefKey = new PluginKey<DecorationSet>('crepeMediaRef');
 /** 徽章上显示的文字（不含资源 id）；完整标记只在光标进入时露出供编辑 */
 export const MEDIA_REF_LABEL_ATTR = 'data-media-ref-label';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function createPlayIconSvg(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '10');
+  svg.setAttribute('height', '10');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.display = 'inline-block';
+  svg.style.verticalAlign = '-0.1em';
+  svg.style.marginRight = '3px';
+  svg.style.flexShrink = '0';
+
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M4 3.2v9.6L12.6 8 4 3.2z');
+  svg.appendChild(path);
+  return svg;
+}
+
 /**
- * @param editing 光标 / 选区所在区间：与之相交的标记显示原文（可编辑），其余收成「▶ 00:05」徽章，
+ * @param editing 光标 / 选区所在区间：与之相交的标记显示原文（可编辑），其余收成时间戳徽章，
  *   不再把 `[媒体@file_xxx:00:05]` 原样露给读者。
  */
 export function buildMediaRefDecorations(
@@ -51,7 +71,7 @@ export function buildMediaRefDecorations(
       const isEditing = !!editing && editing.from <= to && editing.to >= from;
       const title = i18next.t('learningHub:mediaTranscript.seekTo', {
         time,
-        defaultValue: `▶ ${time}`,
+        defaultValue: time,
       });
       const anchorAttrs = {
         [MEDIA_REF_ANCHOR_ATTR]: m.resourceId,
@@ -62,9 +82,9 @@ export function buildMediaRefDecorations(
         decorations.push(Decoration.inline(from, to, { class: 'crepe-media-ref', ...anchorAttrs }));
         continue;
       }
-      // 原文隐藏（仍在文档里，光标进入时切回原文），前面插一个「▶ mm:ss」徽章 widget
+      // 原文隐藏（仍在文档里，光标进入时切回原文），前面插一个时间戳徽章 widget
       decorations.push(
-        Decoration.inline(from, to, { class: 'crepe-media-ref-raw', [MEDIA_REF_LABEL_ATTR]: `▶ ${time}` }),
+        Decoration.inline(from, to, { class: 'crepe-media-ref-raw', [MEDIA_REF_LABEL_ATTR]: time }),
       );
       decorations.push(
         Decoration.widget(
@@ -72,7 +92,8 @@ export function buildMediaRefDecorations(
           () => {
             const badge = document.createElement('span');
             badge.className = 'crepe-media-ref crepe-media-ref--badge';
-            badge.textContent = `▶ ${time}`;
+            badge.appendChild(createPlayIconSvg());
+            badge.appendChild(document.createTextNode(time));
             badge.setAttribute(MEDIA_REF_ANCHOR_ATTR, m.resourceId);
             badge.setAttribute(MEDIA_REF_SECONDS_ATTR, String(m.seconds));
             badge.setAttribute('title', title);

@@ -19,7 +19,7 @@ import {
   ArrowRight,
   Trash,
   Pen,
-  Sparkle,
+  Plus,
   Copy,
   Check,
   ListChecks,
@@ -28,6 +28,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SentenceDetailViewProps {
@@ -46,10 +47,10 @@ interface SentenceDetailViewProps {
   markerIndexOffset?: never;
 }
 
-/** 语义色徽章 — 与行内批注色系一致：错误红系、建议琥珀系、亮点绿系 */
+/** 语义色徽章 — 与行内批注色系一致：错误 destructive、建议 warning、亮点 success */
 const BADGE_ERROR = 'bg-destructive/10 text-destructive border-destructive/20';
-const BADGE_SUGGESTION = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
-const BADGE_HIGHLIGHT = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+const BADGE_SUGGESTION = 'bg-warning/10 text-warning border-warning/20';
+const BADGE_HIGHLIGHT = 'bg-success/10 text-success border-success/20';
 
 const getErrBadgeStyle = (marker: StreamingMarker): string =>
   isSuggestionErr(marker) ? BADGE_SUGGESTION : BADGE_ERROR;
@@ -58,9 +59,9 @@ const getErrBadgeStyle = (marker: StreamingMarker): string =>
 const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; style: string }>> = {
   del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', style: BADGE_ERROR },
   replace: { icon: Pen, i18nKey: 'essay_grading:markers.replace', style: BADGE_SUGGESTION },
-  ins: { icon: Sparkle, i18nKey: 'essay_grading:markers.insert', style: BADGE_SUGGESTION },
+  ins: { icon: Plus, i18nKey: 'essay_grading:markers.insert', style: BADGE_SUGGESTION },
   note: { icon: Warning, i18nKey: 'essay_grading:markers.note', style: BADGE_SUGGESTION },
-  good: { icon: Sparkle, i18nKey: 'essay_grading:markers.good', style: BADGE_HIGHLIGHT },
+  good: { icon: Check, i18nKey: 'essay_grading:markers.good', style: BADGE_HIGHLIGHT },
 };
 
 type GroupId = 'errors' | 'suggestions' | 'highlights';
@@ -84,18 +85,6 @@ const groupOfMarker = (marker: StreamingMarker): GroupId | null => {
 };
 
 const GROUP_ORDER: GroupId[] = ['errors', 'suggestions', 'highlights'];
-
-const GROUP_DOT_CLASS: Record<GroupId, string> = {
-  errors: 'bg-destructive',
-  suggestions: 'bg-amber-500',
-  highlights: 'bg-emerald-500',
-};
-
-const GROUP_LEFT_BORDER_CLASS: Record<GroupId, string> = {
-  errors: 'border-l-destructive/75',
-  suggestions: 'border-l-amber-500/75',
-  highlights: 'border-l-emerald-500/75',
-};
 
 interface IndexedMarker {
   marker: StreamingMarker;
@@ -131,7 +120,8 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
       aria-label={copied ? copiedLabel : label}
       onClick={handleCopy}
       className={cn(
-        'h-6 px-1.5 ml-auto shrink-0 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5',
+        coarseHitClassFor24,
+        'h-6 px-1.5 ml-auto shrink-0 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',
         copied
           ? 'text-success hover:text-success'
           : 'text-muted-foreground/50 hover:text-foreground'
@@ -155,7 +145,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
         <div className="flex flex-wrap items-start gap-2 text-sm">
           <span className="max-w-full break-words text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.oldText}</span>
           <ArrowRight size={15} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-          <span className="max-w-full break-words text-amber-700 dark:text-amber-400 font-medium bg-amber-500/[0.07] px-1 rounded-sm">{marker.newText}</span>
+          <span className="max-w-full break-words text-warning font-medium bg-warning/[0.08] px-1 rounded-sm">{marker.newText}</span>
           {marker.newText && (
             <InlineCopyButton text={marker.newText} label={copyLabel} copiedLabel={copiedLabel} />
           )}
@@ -170,7 +160,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
     case 'ins':
       return (
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="max-w-full break-words text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1 rounded-sm">{marker.content}</span>
+          <span className="max-w-full break-words text-warning bg-warning/[0.08] px-1 rounded-sm">{marker.content}</span>
           <InlineCopyButton text={marker.content} label={copyLabel} copiedLabel={copiedLabel} />
         </div>
       );
@@ -181,7 +171,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
             className={cn(
               'underline decoration-wavy underline-offset-4',
               isSuggestionErr(marker)
-                ? 'text-amber-700 dark:text-amber-400 decoration-amber-400/60'
+                ? 'text-warning decoration-warning/60'
                 : 'text-destructive/85 decoration-destructive/50'
             )}
           >
@@ -191,14 +181,14 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
       );
     case 'note':
       return (
-        <div className="text-sm text-amber-700 dark:text-amber-400 border-b border-dashed border-amber-400/70 inline">
+        <div className="text-sm text-warning border-b border-dashed border-warning/70 inline">
           {marker.content}
         </div>
       );
     case 'good':
       return (
         <div className="text-sm">
-          <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-500/[0.07] rounded-sm px-1">
+          <span className="text-success bg-success/[0.08] rounded-sm px-1">
             {marker.content}
           </span>
         </div>
@@ -296,7 +286,6 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                 '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3'
               )}
             >
-              <span className={cn('w-1.5 h-1.5 rounded-full', GROUP_DOT_CLASS[group])} />
               <span>{t(`essay_grading:legend.filter_${group}`)}</span>
               <span className="tabular-nums font-medium">{items.length}</span>
             </button>
@@ -318,7 +307,6 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
           >
             {/* 分组标题 */}
             <div className="flex items-center gap-2 px-1 pt-1">
-              <span className={cn('w-1.5 h-1.5 rounded-full', GROUP_DOT_CLASS[group])} />
               <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
                 {t(`essay_grading:legend.filter_${group}`)}
               </span>
@@ -381,13 +369,12 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                     }
                   }}
                   className={cn(
-                    'rounded-r-xl rounded-l-sm border-y border-r border-l-2 bg-foreground/[0.015] overflow-hidden scroll-mt-12',
-                    GROUP_LEFT_BORDER_CLASS[group],
+                    'rounded-xl border bg-foreground/[0.015] overflow-hidden scroll-mt-12',
                     'transition-[box-shadow,border-color,background-color] duration-150 motion-reduce:transition-none',
                     isActive
-                      ? 'ring-1 ring-primary/40 bg-primary/[0.05] border-y-primary/30 border-r-primary/30'
-                      : 'border-y-border/35 border-r-border/35',
-                    onMarkerSelect && !isActive && 'cursor-pointer hover:bg-foreground/[0.03] hover:border-y-border/60 hover:border-r-border/60',
+                      ? 'ring-1 ring-primary/40 bg-primary/[0.05] border-primary/30'
+                      : 'border-border/35',
+                    onMarkerSelect && !isActive && 'cursor-pointer hover:bg-foreground/[0.03] hover:border-border/60',
                     onMarkerSelect && isActive && 'cursor-pointer'
                   )}
                 >
@@ -422,7 +409,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                       <div className="flex flex-wrap items-center gap-1.5 text-xs">
                         <span className="text-muted-foreground/60">{t('essay_grading:annotation_card.suggestion')}</span>
                         <ArrowRight size={12} className="text-muted-foreground/40 shrink-0" />
-                        <span className="font-medium text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1.5 py-0.5 rounded-sm">
+                        <span className="font-medium text-warning bg-warning/[0.08] px-1.5 py-0.5 rounded-sm">
                           {suggestionText}
                         </span>
                       </div>
@@ -443,7 +430,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                       {applyChange && onApplySuggestion && (
                         isApplied ? (
                           <>
-                            <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
+                            <span className="inline-flex items-center gap-1 px-2 text-xs text-success select-none">
                               <Check size={12} weight="bold" />
                               {t('essay_grading:markers.applied')}
                             </span>

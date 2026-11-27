@@ -2,7 +2,7 @@
 import { ioMessage } from '../../../platform/paths/io-error.ts';
 import { utf8Decode, utf8Encode } from '../../../platform/crypto/encoding.ts';
 import { chatLocalFs } from './local-fs.ts';
-import { AgentProfileResolver, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID,
+import { AgentProfileResolver, BROWSER_PROFILE_ID, DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID,
   validatePersonaModelConfig } from '../../agent-workspace/portable.ts';
 import type { WorkspaceCoordinator } from '../../agent-workspace/api.ts';
 import { chatWorkspaceRuntime } from './runtime-roots.ts';
@@ -22,7 +22,7 @@ export function listAgentProfiles(
   catch (error) {
     log.warn(`[Workspace::handlers] Failed to ensure custom agents dir ${agentsDir}: ${ioMessage(error)}`);
   }
-  const builtin = [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID].flatMap(id => {
+  const builtin = [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID, BROWSER_PROFILE_ID].flatMap(id => {
     const profile = AgentProfileResolver.builtIn(id);
     return profile === null ? [] : [{ id: profile.id, description: profile.description,
       model: profile.model, toolCount: profile.allowedTools.length }];

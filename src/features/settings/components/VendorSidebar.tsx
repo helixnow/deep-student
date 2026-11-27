@@ -167,7 +167,7 @@ const SortableVendorRow: React.FC<SortableVendorRowProps> = ({
           size={14}
           showTooltip={false}
           variant="color"
-          renderMode="glyph"
+          renderMode="plate-glyph"
         />
       </span>
       <div className="flex-1 min-w-0 text-left">
@@ -270,17 +270,19 @@ export const VendorSidebar: React.FC = () => {
             <div className="text-sm font-medium text-foreground">
               {t('settings:vendor_panel.list_title')}
             </div>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              iconOnly
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-              onClick={() => handleOpenVendorModal(null)}
-              title={t('settings:vendor_panel.add_vendor_button')}
-              aria-label={t('settings:vendor_panel.add_vendor_button')}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </DsButton>
+            <div className="flex items-center gap-0.5">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                onClick={() => handleOpenVendorModal(null)}
+                title={t('settings:vendor_panel.add_vendor_button')}
+                aria-label={t('settings:vendor_panel.add_vendor_button')}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </DsButton>
+            </div>
           </div>
         )}
 

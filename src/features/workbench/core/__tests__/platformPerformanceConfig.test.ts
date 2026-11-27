@@ -73,7 +73,7 @@ describe('OS mode drag performance anti-regression', () => {
     expect(snap).toContain('beginShellSettling');
     expect(snap).toMatch(/只动画最近聚焦/);
     expect(snap.indexOf('beginShellSettling();')).toBeLessThan(
-      snap.indexOf('// 等 React 提交新布局后再 FLIP'),
+      snap.indexOf('flushRaf1 = requestAnimationFrame'),
     );
   });
 

@@ -210,7 +210,7 @@ export const LearningHubPage: React.FC = () => {
           order={1}
           className="h-full min-h-0 overflow-hidden"
         >
-          <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
+          <div className={cn("study-shell-pane study-shell-pane--flush-top h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
               hostId={FINDER_HOST_IDS.page}
@@ -255,7 +255,7 @@ export const LearningHubPage: React.FC = () => {
           className="h-full min-h-0 overflow-hidden"
         >
           {tabs.length > 0 && (
-            <div className="study-shell-panel flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+            <div className="study-shell-panel border-t-0 flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
               {/* ★ 标签页栏 */}
               <TabBar
                 tabs={tabs}

@@ -21,12 +21,12 @@ export interface SprintSettlementScreenProps {
   onReinforceConcept?: (concept: string) => void;
 }
 
-function getConceptOutcomeDotClass(outcome: ConceptMasteryDelta['outcome']): string {
+function getConceptOutcomeBarClass(outcome: ConceptMasteryDelta['outcome']): string {
   switch (outcome) {
     case 'improved':
-      return 'bg-emerald-500';
+      return 'bg-success';
     case 'needs_reinforce':
-      return 'bg-amber-500';
+      return 'bg-warning';
     case 'steady':
     default:
       return 'bg-primary/70';
@@ -168,7 +168,6 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
     >
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('examSprint.settlement.eyebrow')}
           </span>
@@ -218,8 +217,8 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
                 className={cn(
                   'rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums',
                   deltaNonNegative
-                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                    ? 'border-success/25 bg-success/10 text-success'
+                    : 'border-warning/25 bg-warning/10 text-warning',
                 )}
               >
                 {deltaBadge}
@@ -239,7 +238,7 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
           />
           {gainWidthPct > 0 ? (
             <div
-              className="absolute inset-y-0 bg-emerald-500 transition-[left,width] duration-500 ease-standard motion-reduce:transition-none"
+              className="absolute inset-y-0 bg-success transition-[left,width] duration-500 ease-standard motion-reduce:transition-none"
               style={{ left: `${baseWidthPct}%`, width: `${gainWidthPct}%` }}
             />
           ) : null}
@@ -347,22 +346,15 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
                     })}
                     className={cn(
                       'group flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100',
-                      needsReinforce && 'bg-amber-500/[0.04] hover:bg-amber-500/[0.1]',
+                      needsReinforce && 'bg-warning/[0.04] hover:bg-warning/[0.1]',
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          getConceptOutcomeDotClass(concept.outcome),
-                        )}
-                        aria-hidden="true"
-                      />
                       <span className="truncate text-sm text-foreground">{concept.concept}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {needsReinforce ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
                           <Sparkle size={11} weight="bold" aria-hidden="true" />
                           <span>
                             {t('examSprint.settlement.reinforceCta', { defaultValue: 'AI 讲练' })}
@@ -380,7 +372,7 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
                         <span
                           className={cn(
                             'block h-full rounded-full transition-[width] duration-300 ease-standard motion-reduce:transition-none',
-                            getConceptOutcomeDotClass(concept.outcome),
+                            getConceptOutcomeBarClass(concept.outcome),
                           )}
                           style={{ width: `${scorePct}%` }}
                         />

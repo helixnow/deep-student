@@ -194,20 +194,25 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   }
 
   // 🆕 生成折叠模式的摘要文本
-  const getCollapsedSummary = () => {
-    if (isInitTool || isGetTool) {
-      // 初始化或获取：显示进度
-      return title || t('timeline.todoList.progress', { done: doneCount, total: totalCount });
+  const showChangedStepSummary = !isInitTool && !isGetTool && Boolean(changedStep);
+  const collapsedSummary = showChangedStepSummary && changedStep
+    ? changedStep.description
+    : (title || t('timeline.todoList.progress', { done: doneCount, total: totalCount }));
+
+  const renderChangedStepIcon = () => {
+    if (!showChangedStepSummary || !changedStep) return null;
+    switch (changedStep.status) {
+      case 'completed':
+        return <Check size={12} weight="bold" className="shrink-0 text-success" aria-hidden="true" />;
+      case 'running':
+        return <PulseDot className="h-1.5 w-1.5 shrink-0 text-primary" />;
+      case 'failed':
+        return <X size={12} weight="bold" className="shrink-0 text-destructive" aria-hidden="true" />;
+      case 'skipped':
+        return <SkipForward size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />;
+      default:
+        return <Circle size={10} className="shrink-0 text-muted-foreground" aria-hidden="true" />;
     }
-    if (changedStep) {
-      // 更新：显示变更的步骤
-      const statusText = changedStep.status === 'completed' ? '✓' 
-        : changedStep.status === 'running' ? '●' 
-        : changedStep.status === 'failed' ? '✗'
-        : '○';
-      return `${statusText} ${changedStep.description}`;
-    }
-    return title || t('timeline.todoList.progress', { done: doneCount, total: totalCount });
   };
 
   return (
@@ -218,7 +223,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         size="sm"
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
-        className="w-full !justify-between gap-2 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-left text-muted-foreground hover:text-foreground"
+        className="w-full !justify-between gap-2 !py-0.5 text-left text-muted-foreground hover:text-foreground"
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <CaretDown
@@ -228,13 +233,14 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
             )}
             size={14}
           />
+          {renderChangedStepIcon()}
           <span className={cn(
             'truncate',
             !isExpanded && changedStep?.status === 'completed' && 'text-success',
             !isExpanded && changedStep?.status === 'running' && 'text-primary',
             !isExpanded && changedStep?.status === 'failed' && 'text-destructive'
           )}>
-            {getCollapsedSummary()}
+            {collapsedSummary}
           </span>
         </div>
         <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground tabular-nums">

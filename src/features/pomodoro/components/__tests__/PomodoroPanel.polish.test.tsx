@@ -102,6 +102,14 @@ describe('PomodoroPanel tactile & keyboard UX polish', () => {
     expect(usePomodoroStore.getState().mode).toBe('idle');
   });
 
+  it('keeps desktop idle bar single-row without an empty HeroRing svg and shows today badge inline', () => {
+    const { container } = render(<PomodoroPanel />);
+    // No 44px progress ring SVG in idle state
+    expect(container.querySelector('svg[viewBox="0 0 44 44"]')).toBeNull();
+    // Single inline today badge still rendered
+    expect(screen.getAllByTestId('pomodoro-today-badge')).toHaveLength(1);
+  });
+
   it('switches focus duration via preset capsules and reflects aria-pressed state', () => {
     render(<PomodoroPanel />);
 

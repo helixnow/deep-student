@@ -17,6 +17,8 @@ You do not need to be a programmer to customize DeepStudent. **Plugin v2** organ
 | **Tier 3 · Full Extensions** | `.dstuplugin` | Developer-built | Deeper desktop integrations such as custom review schedulers, custom grading engines, or external channel bots |
 
 > **From Skills to Study Packs**: DeepStudent already ships with **58 built-in study skills**. If you write pure-Markdown study skills (`SKILL.md`), grading rubrics, or card templates, you can bundle them directly into a zero-code **`.dspack` Study Pack** to share with classmates — no JavaScript or build tools required.
+>
+> **Built-in Integrations & Sync**: Under **Settings → Plugins → Integrations and sync**, Desktop builds also include the built-in **External Coding CLI (`dstu.agent-mesh`)** plugin alongside Encrypted Sync and Third-Party Integrations — powering inline local coding CLI collaboration (`@claude`, `@codex`, `/swarm`, `/handoff`) in Chat. See [02 · AI Chat, Study Spaces & Memory v2](./02-chat-and-memory-v2.md).
 
 ---
 
@@ -38,14 +40,14 @@ You do not need to be a programmer to customize DeepStudent. **Plugin v2** organ
 
 ---
 
-## 3. AI Plugin Workshop & `✦ Refine with AI`
+## 3. AI Plugin Workshop & Refine with AI
 
 **What you want to do**: Ask DeepStudent to build a tailored study tool (like a searchable formula sheet, Pomodoro tracker, or citation helper) and polish it interactively as you use it.
 
 1. **Describe what you want**: Open **Plugin Workshop** (under **Settings → Plugins** or from **All Apps**), type your idea in plain English — for example, *"Add a searchable physics formula reference app to my desktop"* — and click **Build it with AI**.
 2. **Let AI build, verify, and ask for your OK**: The Workshop builds the tool, runs functional checks automatically, shows you what it adds and any permissions it needs, and installs it only after you approve.
-3. **Improve on the spot with `✦ Refine with AI`**:
-   - Open your Workshop plugin window and click **`✦ Refine with AI`** right in the window header whenever you want to tweak the layout, add a button, or fix a quirk.
+3. **Improve on the spot with Refine with AI**:
+   - Open your Workshop plugin window and click **Refine with AI** right in the window header whenever you want to tweak the layout, add a button, or fix a quirk.
    - Don't like the newest change? Open the plugin's menu in **Settings → Plugins** and click **Go back to the previous version (vN)** — DeepStudent reinstalls your previous working version cleanly while keeping the draft in Workshop history.
 
 **What you get**: Bespoke study utilities created and iterated in minutes, with one-click version rollback if an edit misses the mark.
@@ -101,4 +103,4 @@ Plugin v2 separates declarative zero-code Study Packs (`kind: "study-pack"`, `.d
 - Back up your workspace, sync across devices, or use DeepStudent on your phone and browser → [06 · Backups, Cloud Sync, Mobile & WebUI / PWA](./06-sync-backup-mobile-webui.md)
 - Jump back to the 1-minute rescue checklist anytime → [01 · Quickstart & Three-Minute Workflows](./01-quickstart.md#quick-scenario-3-1-minute-safe-mode-self-rescue)
 
-<!-- Baseline: DeepStudent v0.20.9 -->
+<!-- Baseline: DeepStudent v0.20.10 -->

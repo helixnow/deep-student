@@ -16,9 +16,7 @@ import { RollingTime } from './RollingTime';
  * 沉浸式专注模式 —— 全屏覆盖视图
  *
  * 设计理念：
- * - 背景随主题（语义 token），不再硬编码暗色
- * - 双层"极光"呼吸光晕随阶段氛围色漂移（work = primary，short_break = success，
- *   long_break = info），阶段切换时颜色 800ms 平滑过渡；暂停时动画凝固
+ * - 背景随主题（语义 token），保持纯净无干扰专注画布
  * - 大号圆形进度 + 数字倒计时居中，进度环颜色随阶段语义色
  * - 进入/退出由父级 AnimatePresence 驱动（根节点 motion.div 淡入淡出，
  *   中央内容微缩放上浮入场）；prefers-reduced-motion 下全部退化
@@ -31,14 +29,6 @@ import { RollingTime } from './RollingTime';
 // 局部动效 keyframes：只动 opacity / translate / scale，与 ui-motion 约定一致；
 // reduced-motion 下全部退化（JS 侧同时用 useMediaQuery 二重保险）
 const IMMERSIVE_MOTION_CSS = `
-@keyframes pomodoro-kf-aurora-a {
-  0%, 100% { translate: -4% -3%; scale: 0.92; opacity: 0.09; }
-  50% { translate: 4% 5%; scale: 1.08; opacity: 0.16; }
-}
-@keyframes pomodoro-kf-aurora-b {
-  0%, 100% { translate: 4% 6%; scale: 1.06; opacity: 0.07; }
-  50% { translate: -4% -5%; scale: 0.9; opacity: 0.13; }
-}
 @keyframes pomodoro-kf-strict-shake {
   0%, 100% { translate: 0 0; }
   20% { translate: -5px 0; }
@@ -64,22 +54,11 @@ const IMMERSIVE_MOTION_CSS = `
   from { opacity: 0; translate: 0 12px; scale: 0.97; }
   to { opacity: 1; translate: 0 0; scale: 1; }
 }
-/* 极光光斑：错相位呼吸漂移；氛围色切换时 background-color 平滑过渡。
-   缓动统一消费 --ease-standard token（transitions-dev.css），字面量仅兜底 */
-.pomodoro-aurora-a {
-  animation: pomodoro-kf-aurora-a 9s ease-in-out infinite;
-  transition: background-color 800ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1));
-}
-.pomodoro-aurora-b {
-  animation: pomodoro-kf-aurora-b 12s ease-in-out infinite;
-  transition: background-color 800ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1));
-}
 .pomodoro-center-enter { animation: pomodoro-kf-center-enter 450ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 .pomodoro-strict-shake { animation: pomodoro-kf-strict-shake 400ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 .pomodoro-celebrate-ring { animation: pomodoro-kf-celebrate-ring 1200ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 .pomodoro-celebrate-pop { animation: pomodoro-kf-celebrate-pop 1600ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 @media (prefers-reduced-motion: reduce) {
-  .pomodoro-aurora-a, .pomodoro-aurora-b { animation: none; transition: none; }
   .pomodoro-center-enter, .pomodoro-strict-shake, .pomodoro-celebrate-ring { animation: none; }
   .pomodoro-celebrate-pop { animation: pomodoro-kf-fade-in 250ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 }
@@ -456,27 +435,6 @@ export const ImmersiveFocusMode: React.FC<{
     >
       <style>{IMMERSIVE_MOTION_CSS}</style>
 
-      {/* 双层极光呼吸光晕：错相位漂移营造纵深；暂停时动画凝固（氛围保留但不再"呼吸"）；
-          reduced-motion 下退化为静态低透明度光斑（无动画/无过渡） */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <div
-          className="pomodoro-aurora-a absolute left-[8%] top-[12%] h-[52vmin] w-[52vmin] rounded-full blur-[110px]"
-          style={{
-            backgroundColor: 'var(--focus-accent)',
-            opacity: prefersReducedMotion ? 0.08 : undefined,
-            animationPlayState: status === 'running' ? 'running' : 'paused',
-          }}
-        />
-        <div
-          className="pomodoro-aurora-b absolute bottom-[8%] right-[6%] h-[44vmin] w-[44vmin] rounded-full blur-[100px]"
-          style={{
-            backgroundColor: 'var(--focus-accent)',
-            opacity: prefersReducedMotion ? 0.06 : undefined,
-            animationPlayState: status === 'running' ? 'running' : 'paused',
-          }}
-        />
-      </div>
-
       {/* 一次性完成庆祝（reduced-motion 退化为纯淡入淡出徽章） */}
       {celebrating && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none" aria-hidden="true">
@@ -511,21 +469,12 @@ export const ImmersiveFocusMode: React.FC<{
           {completedPomodorosToday > 0 && (
             <span
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-xs tabular-nums transition-colors duration-200 motion-reduce:transition-none',
+                'inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-xs tabular-nums transition-colors duration-200 motion-reduce:transition-none',
                 settings.dailyGoal > 0 && completedPomodorosToday >= settings.dailyGoal
                   ? 'border-[color:hsl(var(--success))]/30 bg-[color:hsl(var(--success))]/10 text-[color:hsl(var(--success))]'
                   : 'border-border/60 bg-muted text-muted-foreground',
               )}
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'h-1.5 w-1.5 shrink-0 rounded-full',
-                  settings.dailyGoal > 0 && completedPomodorosToday >= settings.dailyGoal
-                    ? 'bg-[color:hsl(var(--success))]'
-                    : 'bg-primary',
-                )}
-              />
               {settings.dailyGoal > 0
                 ? t('pomodoro.stats.todayGoalBadge', {
                     done: completedPomodorosToday,

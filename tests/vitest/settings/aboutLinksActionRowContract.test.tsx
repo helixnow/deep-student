@@ -111,7 +111,7 @@ describe('AboutTab official link action rows', () => {
   });
 
   it('uses the Phosphor shield icon for the privacy policy action', () => {
-    expect(source).toContain("import { Shield as PhosphorShield } from '@phosphor-icons/react';");
+    expect(source).toMatch(/import\s*\{[^}]*\bShield as PhosphorShield\b[^}]*\}\s*from ['"]@phosphor-icons\/react['"]/);
     expect(source).toContain('icon={PhosphorShield}');
     expect(source).not.toMatch(/import\s*\{[^}]*\bShield\b[^}]*\}\s*from 'lucide-react';/);
   });

@@ -6,7 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, CheckCircle, Play, X, XCircle } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -23,9 +23,9 @@ export const CHECKPOINT_REWATCH_LEAD_SECONDS = 15;
 
 const MEDIA_REF_RE = new RegExp(MEDIA_REF_PATTERN_SOURCE, 'g');
 
-/** 解析里的 `[媒体@id:mm:ss]` 显示为「▶ mm:ss」 */
+/** 解析里的 `[媒体@id:mm:ss]` 显示为 `mm:ss` */
 export function readableExplanation(text: string): string {
-  return text.replace(MEDIA_REF_RE, (_match, _id: string, time: string) => `▶ ${time}`).trim();
+  return text.replace(MEDIA_REF_RE, (_match, _id: string, time: string) => time).trim();
 }
 
 type Phase =
@@ -102,7 +102,7 @@ export const MediaCheckpointCard: React.FC<MediaCheckpointCardProps> = ({
       role="region"
       aria-label={t('learningHub:mediaCheckpoint.title', { time })}
       data-media-checkpoint={checkpoint.questionId}
-      className="shrink-0 border-b border-border/35 bg-foreground/[0.025] backdrop-blur-sm px-3.5 py-3"
+      className="shrink-0 border-b border-border/35 bg-card px-3.5 py-3"
     >
       <div className="flex items-center gap-2">
         <span className="font-mono text-xs font-medium tabular-nums text-primary">{t('learningHub:mediaCheckpoint.title', { time })}</span>
@@ -196,7 +196,7 @@ export const MediaCheckpointCard: React.FC<MediaCheckpointCardProps> = ({
         <div className="mt-2 flex flex-col gap-1.5" role="status">
           <p className={cn(
             'flex items-center gap-1.5 text-sm font-medium',
-            phase.isCorrect === true ? 'text-emerald-600 dark:text-emerald-400' : phase.isCorrect === false ? 'text-destructive' : 'text-muted-foreground',
+            phase.isCorrect === true ? 'text-success' : phase.isCorrect === false ? 'text-destructive' : 'text-muted-foreground',
           )}>
             {phase.isCorrect === true ? <CheckCircle size={15} weight="fill" aria-hidden="true" /> : null}
             {phase.isCorrect === false ? <XCircle size={15} weight="fill" aria-hidden="true" /> : null}

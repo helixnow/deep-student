@@ -45,6 +45,7 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
   const MAX_SAVE_AUTO_RETRIES = 3;
   const SAVE_RETRY_BASE_DELAY_MS = 5000;
   let draftPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  let draftIdleId: number | null = null;
   let measuredFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let measuredFirstQueuedAt: number | null = null;
   const measuredHeightsQueue = new Map<string, number>();
@@ -81,7 +82,15 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
     });
   };
 
+  const cancelDraftIdle = () => {
+    if (draftIdleId !== null && typeof globalThis.cancelIdleCallback === 'function') {
+      globalThis.cancelIdleCallback(draftIdleId);
+    }
+    draftIdleId = null;
+  };
+
   const persistDraftNow = (force = false) => {
+    cancelDraftIdle();
     const s = get();
     if (!s.isDirty || !s.mindmapId) return;
 
@@ -98,9 +107,21 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
     if (draftPersistTimer) {
       clearTimeout(draftPersistTimer);
     }
+    cancelDraftIdle();
     draftPersistTimer = setTimeout(() => {
       draftPersistTimer = null;
-      persistDraftNow();
+      // 非同步草稿落盘尽量让出空闲帧执行 JSON.stringify + localStorage，避免打字热路径掉帧
+      if (typeof globalThis.requestIdleCallback === 'function') {
+        draftIdleId = globalThis.requestIdleCallback(
+          () => {
+            draftIdleId = null;
+            persistDraftNow();
+          },
+          { timeout: 600 },
+        );
+      } else {
+        persistDraftNow();
+      }
     }, 240);
   };
 
@@ -118,6 +139,7 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
       clearTimeout(draftPersistTimer);
       draftPersistTimer = null;
     }
+    cancelDraftIdle();
     if (measuredFlushTimer) {
       clearTimeout(measuredFlushTimer);
       measuredFlushTimer = null;

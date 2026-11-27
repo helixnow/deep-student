@@ -13,18 +13,34 @@
     "hint": { "label": "Hints only", "hint": "No answer — focus and approach" }
   },
   "features": {
-    "search": { "label": "Find learning records", "hint": "Notes, textbooks, mistakes, chats" },
-    "review": { "label": "Review due cards", "hint": "Squeeze in one card" },
-    "status": { "label": "Today's status", "hint": "Todos and review progress" }
+    "search": { "label": "Search learning records", "hint": "Notes, textbooks, mistakes & chats" },
+    "review": { "label": "Review due flashcards", "hint": "Continue reviewing in main window" },
+    "status": { "label": "Today's todos & plan", "hint": "Open task inbox and schedule" },
+    "open_main": { "label": "Open main chat", "hint": "Return to full study workspace" }
+  },
+  "groups": {
+    "clipboard": "Clipboard",
+    "ai": "Ask AI",
+    "capture": "Quick Capture",
+    "records": "Records",
+    "workspace": "Quick Start"
+  },
+  "clipboard": {
+    "attach": "Attach clipboard text"
+  },
+  "quick_capture": {
+    "note": { "label": "Save quick note", "hint": "Store directly without calling AI" },
+    "todo": { "label": "Add to todo inbox", "hint": "Create a task directly without AI" }
   },
   "menu": {
     "aria_label": "Learning actions",
     "recommended": "Best"
   },
   "input": {
-    "placeholder": "Paste a problem, concept, text or screenshot to start…",
-    "placeholder_with_capture": "Add your question, or pick an action…",
-    "search_placeholder": "Search notes, textbooks, mistakes and chats…"
+    "placeholder": "Ask, paste text or screenshot, or search…",
+    "placeholder_with_capture": "Add a question, or press Enter…",
+    "search_placeholder": "Search notes, textbooks, mistakes and chats…",
+    "clear": "Clear input"
   },
   "capture": {
     "chars": "{{count}} chars",
@@ -50,7 +66,8 @@
     "searching": "Searching your learning content…",
     "conversation_fallback": "Past conversation",
     "found": "Found {{count}} items",
-    "none": "Nothing found"
+    "none": "Nothing found",
+    "view_all": "View all {{count}} matching records"
   },
   "review": {
     "title": "Review due cards",
@@ -73,6 +90,7 @@
     "today_due": "Due today",
     "overdue": "Overdue",
     "today_completed": "Done today",
+    "today_badge": "{{count}} due today",
     "open_plan": "Open study plan"
   },
   "messages": {
@@ -90,7 +108,12 @@
   "footer": {
     "home": "↑↓ select · Enter run · Esc hide",
     "answer_busy": "Esc to stop generating",
-    "back": "Esc to go back"
+    "back": "Esc to go back",
+    "select": "Select",
+    "run": "Run",
+    "hide": "Hide",
+    "stop": "Stop",
+    "back_short": "Back"
   },
   "errors": {
     "generation_failed": "Generation failed",

@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { Node } from '@xyflow/react';
 import {
+  ANIMATION_MOVED_HARD_LIMIT,
   ANIMATION_NODE_HARD_LIMIT,
   ANIMATION_NODE_SOFT_LIMIT,
   ANIMATION_SOFT_DURATION_SCALE,
@@ -317,6 +318,21 @@ describe('useAnimatedNodes', () => {
     const readded = [node('a', 100, 0), node('c', 80, 80)];
     rerender({ n: readded });
     expect(result.current.find((n) => n.id === 'c')?.className).toContain(NODE_SPAWN_CLASS);
+  });
+
+  it('单次位移节点超过 ANIMATION_MOVED_HARD_LIMIT 时直接就位不启动 rAF', () => {
+    const count = ANIMATION_MOVED_HARD_LIMIT + 1;
+    const initial = Array.from({ length: count }, (_, i) => node(`m${i}`, 0, i * 40));
+    const moved = Array.from({ length: count }, (_, i) => node(`m${i}`, 120, i * 40));
+
+    const { result, rerender } = renderHook(
+      ({ n }) => useAnimatedNodes(n, { duration: 200 }),
+      { initialProps: { n: initial } },
+    );
+
+    rerender({ n: moved });
+    expect(rafCbs.length).toBe(0);
+    expect(result.current).toBe(moved);
   });
 });
 

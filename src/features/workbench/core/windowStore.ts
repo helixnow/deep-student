@@ -524,9 +524,28 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
       let changed = false;
       const windows = { ...s.windows };
       for (const win of Object.values(s.windows)) {
-        if (win.displayMode !== 'floating') continue;
-        const f = win.frame;
         const minSize = appRegistry.get(win.typeId)?.minSize ?? ADAPT_FALLBACK_MIN_SIZE;
+        if (win.displayMode !== 'floating') {
+          if (!win.restoreFrame) continue;
+          const rf = win.restoreFrame;
+          const adaptedRestore = adaptFrameToDesktop(rf, null, size, minSize);
+          const restoreShrunk = adaptedRestore.w !== rf.w || adaptedRestore.h !== rf.h;
+          if (restoreShrunk && adaptedRestore.w <= size.w && adaptedRestore.h <= size.h) {
+            adaptedRestore.x = clampNumber(adaptedRestore.x, 0, size.w - adaptedRestore.w);
+            adaptedRestore.y = clampNumber(adaptedRestore.y, 0, size.h - adaptedRestore.h);
+          }
+          if (
+            adaptedRestore.x !== rf.x ||
+            adaptedRestore.y !== rf.y ||
+            adaptedRestore.w !== rf.w ||
+            adaptedRestore.h !== rf.h
+          ) {
+            windows[win.id] = { ...win, restoreFrame: adaptedRestore };
+            changed = true;
+          }
+          continue;
+        }
+        const f = win.frame;
         const adapted = adaptFrameToDesktop(f, null, size, minSize);
         const wasShrunk = adapted.w !== f.w || adapted.h !== f.h;
         // 因超出桌面被收缩的窗口：进一步完全钳入桌面（不只做边缘可见性钳制），
@@ -633,5 +652,13 @@ export function resetWindowStoreForTests(desktopSize: Size = { ...DEFAULT_DESKTO
     tilingRatios: {},
     desktopSize,
     transientPhases: {},
+  });
+}
+
+// 窗口状态机是工作台全局单例：HMR 热替换重建 store 会导致已挂载壳与新模块订阅两份
+// store 实例（顶栏/Dock 点击写入新 store 而桌面壳停留在旧 store），改动时触发整页干净重载。
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    window.location.reload();
   });
 }

@@ -18,6 +18,8 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { moveNoteToTrash } from '../moveNoteToTrash';
+import { estimateReadingMinutes } from '../notesUtils';
+import type { NotesSaveStatus } from './NotesEditorHeader';
 import { NotePageLayoutOptions } from './NotePageLayoutOptions';
 
 export interface NotesPageActionsMenuProps {
@@ -51,6 +53,12 @@ export interface NotesPageActionsMenuProps {
   acrWindowId?: string;
   /** Optional extra view-group entries (e.g. Source Mode toggle). */
   extraViewActions?: React.ReactNode;
+  /** Document word count shown in the menu footer (replaces always-on titlebar meta). */
+  charCount?: number;
+  /** Save status shown alongside lastSaved in the menu footer. */
+  saveStatus?: NotesSaveStatus;
+  /** Last saved timestamp shown in the menu footer. */
+  lastSaved?: Date | null;
 }
 
 export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
@@ -83,11 +91,32 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
   movingToTrash = false,
   acrWindowId,
   extraViewActions,
+  charCount,
+  saveStatus,
+  lastSaved,
 }) => {
   const { t, i18n } = useTranslation(['notes']);
   const menuItemRole = hasMobileResourceMenu ? 'menuitem' : undefined;
   const [internalMovingToTrash, setInternalMovingToTrash] = React.useState(false);
   const isMovingToTrash = Boolean(movingToTrash || internalMovingToTrash);
+  const readingMinutes = typeof charCount === 'number' && charCount > 0
+    ? estimateReadingMinutes(charCount)
+    : 0;
+  const saveSummary = (() => {
+    switch (saveStatus) {
+      case 'saving': return t('notes:editor.save_status.saving');
+      case 'unsaved': return t('notes:editor.save_status.unsaved');
+      case 'failed': return t('notes:editor.save_status.save_failed');
+      case 'conflict': return t('notes:editor.save_status.conflict');
+      case 'saved':
+        return lastSaved
+          ? t('notes:editor.save_status.saved_at', { time: lastSaved.toLocaleTimeString() })
+          : t('notes:editor.save_status.saved');
+      default:
+        return null;
+    }
+  })();
+  const showMetaFooter = (typeof charCount === 'number' && charCount > 0) || Boolean(saveSummary);
 
   return (
     <div className="notes-page-actions">
@@ -303,6 +332,19 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
             <span>{t('notes:actions.move_to_trash', { defaultValue: '移至回收站' })}</span>
           </DsButton>
         </>
+      )}
+      {showMetaFooter && (
+        <div
+          className="mt-1 border-t border-border/60 px-2.5 py-2 text-xs leading-relaxed text-muted-foreground tabular-nums"
+          data-testid="notes-page-actions-meta"
+        >
+          {typeof charCount === 'number' && charCount > 0 && (
+            <div>{t('notes:editor.stats.summary', { count: charCount, minutes: readingMinutes })}</div>
+          )}
+          {saveSummary && (
+            <div className="text-muted-foreground/80">{saveSummary}</div>
+          )}
+        </div>
       )}
     </div>
   );

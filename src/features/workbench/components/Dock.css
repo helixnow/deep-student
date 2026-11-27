@@ -18,18 +18,52 @@
   --wb-dock-conceal-duration: 200ms;
 }
 
-/* 同心圆几何托盘：内边距保证 4px 运行指示点稳居底缘内侧，圆角按 R_inner + pad_x 对齐 */
+/* 同心圆几何托盘：紧凑比例 + 低雾度清透真 backdrop-filter + 单层 1px 菲涅尔细折射边 */
 div.wb-dock {
   overflow: visible;
-  gap: calc(6px * var(--wb-dock-scale));
+  gap: calc(4px * var(--wb-dock-scale));
   padding:
+    calc(5px * var(--wb-dock-scale))
     calc(7px * var(--wb-dock-scale))
-    calc(10px * var(--wb-dock-scale))
-    calc(11px * var(--wb-dock-scale));
-  border-radius: calc(22px * var(--wb-dock-scale));
+    calc(8px * var(--wb-dock-scale));
+  border-radius: calc(17px * var(--wb-dock-scale));
+  border-color: transparent;
+  background-color: var(--wb-dock-liquid-bg, var(--wb-dock-bg));
+  background-image: var(--wb-dock-liquid-sheen, var(--wb-glass-sheen));
+  backdrop-filter: var(--wb-dock-liquid-blur, var(--wb-dock-blur));
+  box-shadow: var(--wb-dock-liquid-shadow, var(--wb-dock-shadow));
 }
 
-/* 随指针横向移动的极克制 Specular Shimmer 玻璃扫光（与 .wb-glass-rim::before 互补） */
+:root[data-wb-material='reduced'] div.wb-dock,
+:root[data-wb-material='minimal'] div.wb-dock {
+  border-color: var(--wb-dock-border);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  div.wb-dock {
+    border-color: var(--wb-dock-border);
+  }
+}
+
+/* 单层菲涅尔折射细边：普通屏 0.75px、Retina 屏收至 0.5px（1 物理像素），与原生 Tahoe 细边同宽 */
+div.wb-dock.wb-glass-rim::before {
+  inset: 0;
+  padding: 0.75px;
+  z-index: 0;
+  background: var(--wb-dock-liquid-rim);
+}
+
+@media (resolution >= 2dppx) {
+  div.wb-dock.wb-glass-rim::before {
+    padding: 0.5px;
+  }
+}
+
+:root[data-wb-material='reduced'] div.wb-dock.wb-glass-rim::before {
+  display: none;
+}
+
+/* 随指针横向移动的极克制液态 Specular Shimmer 玻璃扫光 */
 div.wb-dock::after {
   content: '';
   position: absolute;
@@ -40,16 +74,16 @@ div.wb-dock::after {
   opacity: 0;
   background-image:
     radial-gradient(
-      148px 54px at var(--wb-dock-cursor-x, 50%) 0%,
-      rgb(255 255 255 / 72%) 0%,
-      rgb(255 255 255 / 20%) 42%,
+      120px 36px at var(--wb-dock-cursor-x, 50%) 0%,
+      rgb(255 255 255 / 45%) 0%,
+      rgb(255 255 255 / 10%) 44%,
       transparent 76%
     ),
     linear-gradient(
       90deg,
-      transparent calc(var(--wb-dock-cursor-x, 50%) - 18%),
-      rgb(255 255 255 / 55%) var(--wb-dock-cursor-x, 50%),
-      transparent calc(var(--wb-dock-cursor-x, 50%) + 18%)
+      transparent calc(var(--wb-dock-cursor-x, 50%) - 14%),
+      rgb(255 255 255 / 72%) var(--wb-dock-cursor-x, 50%),
+      transparent calc(var(--wb-dock-cursor-x, 50%) + 14%)
     );
   background-size: 100% 100%, 100% 1px;
   background-repeat: no-repeat;
@@ -58,11 +92,11 @@ div.wb-dock::after {
 }
 
 div.wb-dock[data-wb-dock-shimmer='true']::after {
-  opacity: 0.16;
+  opacity: 0.24;
 }
 
 :root.dark div.wb-dock[data-wb-dock-shimmer='true']::after {
-  opacity: 0.14;
+  opacity: 0.2;
 }
 
 .wb-dock .wb-dock-item-wrap {
@@ -70,22 +104,22 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   z-index: var(--wb-dock-mag-z, 1);
 }
 
-/* 柔和底部接触投影：固定锚定在玻璃托盘表面，随图标放大抬升同步横向偏移与扩散 */
+/* 轻盈底部接触投影：静止态极克制不弄脏浅玻璃托盘，随图标放大抬升渐显景深 */
 .wb-dock .wb-dock-item-wrap::before {
   content: '';
   position: absolute;
   left: 50%;
   bottom: calc(-2px * var(--wb-dock-scale));
-  width: calc(32px * var(--wb-dock-scale));
-  height: calc(6px * var(--wb-dock-scale));
+  width: calc(30px * var(--wb-dock-scale));
+  height: calc(5px * var(--wb-dock-scale));
   border-radius: 50%;
   pointer-events: none;
   background: radial-gradient(
     ellipse at center,
-    hsl(var(--shadow-base, 0 0% 0%) / 28%) 0%,
+    hsl(var(--shadow-base, 0 0% 0%) / 16%) 0%,
     transparent 74%
   );
-  opacity: calc(0.5 + var(--wb-dock-mag-weight, 0) * 0.36);
+  opacity: calc(0.2 + var(--wb-dock-mag-weight, 0) * 0.45);
   transform:
     translateX(calc(-50% + var(--wb-dock-mag-x, 0px)))
     scaleX(calc(1 + var(--wb-dock-mag-weight, 0) * 0.44))
@@ -94,6 +128,15 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   transition:
     opacity 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
     transform 260ms var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.06, 0.36, 1));
+}
+
+:root.dark .wb-dock .wb-dock-item-wrap::before {
+  background: radial-gradient(
+    ellipse at center,
+    hsl(var(--shadow-base, 0 0% 0%) / 34%) 0%,
+    transparent 74%
+  );
+  opacity: calc(0.38 + var(--wb-dock-mag-weight, 0) * 0.4);
 }
 
 .wb-dock[data-wb-dock-magging='true'] .wb-dock-item-wrap::before {
@@ -164,51 +207,49 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   box-shadow: var(--wb-focus-ring);
 }
 
-/* ==========================================================================
- * 统一右侧系统工具入口玻璃底座（「全部应用」与「AI 操控中心」视觉重量齐平主应用）
- * ========================================================================== */
-
+/* 统一右侧系统工具入口底座：尺寸严格与 AppIconImage（2rem = h-8 w-8）齐平，视觉重量与主应用图标一致 */
 .wb-dock-utility-tile {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 2rem;
+  height: 2rem;
   border-radius: 22.5%;
-  color: hsl(var(--foreground) / 88%);
+  color: hsl(var(--foreground) / 84%);
   background: linear-gradient(
     180deg,
-    color-mix(in hsl, hsl(var(--card)) 88%, white 12%) 0%,
-    color-mix(in hsl, hsl(var(--card)) 74%, hsl(var(--foreground)) 7%) 100%
+    rgb(255 255 255 / 96%) 0%,
+    rgb(238 241 245 / 94%) 100%
   );
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 72%),
-    inset 0 0 0 0.5px hsl(var(--foreground) / 14%),
-    0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 20%);
+    inset 0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 14%),
+    0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 22%);
 }
 
 :root.dark .wb-dock-utility-tile {
   color: hsl(var(--foreground) / 92%);
   background: linear-gradient(
     180deg,
-    color-mix(in hsl, hsl(var(--card)) 78%, white 10%) 0%,
-    color-mix(in hsl, hsl(var(--card)) 56%, black 18%) 100%
+    rgb(255 255 255 / 18%) 0%,
+    rgb(255 255 255 / 9%) 100%
   );
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 26%),
-    inset 0 0 0 0.5px rgb(255 255 255 / 15%),
-    0 1.5px 3px rgb(0 0 0 / 34%);
+    inset 0 0.5px 0 rgb(255 255 255 / 28%),
+    inset 0 0 0 0.5px rgb(255 255 255 / 14%),
+    0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 36%);
 }
 
 .wb-dock-utility-tile-agent .wb-agent-control-app-icon {
-  width: 23px;
-  height: 23px;
+  width: 72%;
+  height: 72%;
+  border-radius: 18%;
 }
 
-/* 固定区 / 运行区 / 最小化槽位 / 全部应用 分隔线 */
+/* 固定区 / 运行区 / 最小化槽位 / 全部应用 蚀刻玻璃分隔线 */
 .wb-dock .wb-dock-separator {
-  background: var(--wb-dock-divider);
-  height: calc(32px * var(--wb-dock-scale));
+  background: var(--wb-dock-liquid-divider, var(--wb-dock-divider));
+  box-shadow: 0.5px 0 0 var(--wb-dock-liquid-divider-highlight, transparent);
+  height: calc(28px * var(--wb-dock-scale));
   margin-left: calc(0.25rem * var(--wb-dock-scale));
   margin-right: calc(0.25rem * var(--wb-dock-scale));
 }
@@ -425,12 +466,12 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--wb-titlebar-fg, inherit);
-  background-color: var(--wb-glass-bg-strong);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   background-image: var(--wb-glass-sheen);
-  backdrop-filter: var(--wb-glass-blur);
-  border: 1px solid var(--wb-glass-border);
+  backdrop-filter: var(--wb-glass-liquid-blur, var(--wb-glass-blur));
+  border: 1px solid transparent;
   box-shadow:
-    inset 0 1px 0 var(--wb-glass-highlight),
+    var(--wb-glass-edge),
     0 6px 18px hsl(var(--shadow-base, 0 0% 0%) / 16%);
   opacity: 0;
 
@@ -462,7 +503,7 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   height: 9px;
   transform: translateX(-50%) rotate(45deg);
   border-radius: 2px;
-  background-color: var(--wb-glass-bg-strong);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   border-right: 1px solid var(--wb-glass-border);
   border-bottom: 1px solid var(--wb-glass-border);
 }
@@ -508,12 +549,12 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   font-weight: 500;
   line-height: 1.4;
   color: var(--wb-titlebar-fg, inherit);
-  background-color: var(--wb-glass-bg-strong);
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   background-image: var(--wb-glass-sheen);
-  backdrop-filter: var(--wb-glass-blur);
-  border: 1px solid var(--wb-glass-border);
+  backdrop-filter: var(--wb-glass-liquid-blur, var(--wb-glass-blur));
+  border: 1px solid transparent;
   box-shadow:
-    inset 0 1px 0 var(--wb-glass-highlight),
+    var(--wb-glass-edge),
     0 6px 16px hsl(var(--shadow-base, 0 0% 0%) / 18%);
   transition:
     opacity 120ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
@@ -616,7 +657,7 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 }
 
 .wb-dock .wb-dock-indicator.wb-dock-ind {
-  bottom: calc(-7.5px * var(--wb-dock-scale));
+  bottom: calc(-5.5px * var(--wb-dock-scale));
   transform: translateX(-50%);
   box-shadow: 0 0 6px color-mix(in hsl, var(--wb-dock-indicator) 65%, transparent 35%);
   animation: wb-dock-ind-in 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
@@ -734,6 +775,7 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 }
 
 .wb-dock-mobile-handle-pill {
+  position: relative;
   height: 24px;
   padding: 0 12px;
   border-radius: 999px;
@@ -741,23 +783,40 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0.01em;
-  color: hsl(var(--foreground) / 84%);
-  background-color: var(--wb-dock-bg);
-  background-image: var(--wb-glass-sheen);
-  -webkit-backdrop-filter: var(--wb-dock-blur);
-  backdrop-filter: var(--wb-dock-blur);
-  border: 1px solid var(--wb-dock-border);
+  color: hsl(var(--foreground) / 86%);
+  background-color: var(--wb-dock-liquid-bg, var(--wb-dock-bg));
+  background-image: var(--wb-dock-liquid-sheen, var(--wb-glass-sheen));
+  backdrop-filter: var(--wb-dock-liquid-blur, var(--wb-dock-blur));
+  border: 1px solid transparent;
   box-shadow:
-    inset 0 1px 0 var(--wb-glass-highlight),
-    0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 14%);
+    var(--wb-glass-edge),
+    0 4px 14px hsl(var(--shadow-base, 0 0% 0%) / 14%);
   transition: transform 110ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
+.wb-dock-mobile-handle-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 0.75px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--wb-dock-liquid-rim);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@media (resolution >= 2dppx) {
+  .wb-dock-mobile-handle-pill::before {
+    padding: 0.5px;
+  }
+}
+
 :root.dark .wb-dock-mobile-handle-pill {
-  color: hsl(var(--foreground) / 90%);
+  color: hsl(var(--foreground) / 92%);
   box-shadow:
-    inset 0 1px 0 var(--wb-glass-highlight),
-    0 3px 10px rgb(0 0 0 / 36%);
+    var(--wb-glass-edge),
+    0 4px 16px hsl(var(--shadow-base, 0 0% 0%) / 38%);
 }
 
 .wb-dock-mobile-handle-chevron {

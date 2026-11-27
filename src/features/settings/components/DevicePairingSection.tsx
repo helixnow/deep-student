@@ -14,7 +14,6 @@ import {
   Download,
   EyeSlash,
   StopCircle,
-  Sparkle,
   Key,
   CloudArrowUp,
   CircleNotch,
@@ -1118,7 +1117,7 @@ export function DevicePairingSection({
                       defaultValue: '自动生成 6 位随机 PIN 并立即生成二维码',
                     })}
                   >
-                    <Sparkle size={14} className="mr-1.5" />
+                    <Shuffle size={14} className="mr-1.5" />
                     {t('sync:pairing.quickRandomBtn', {
                       defaultValue: '一键随机 PIN 生成二维码',
                     })}

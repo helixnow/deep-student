@@ -221,7 +221,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       orientation = "vertical",
       scrollHideDelay = 600,
       scrollAutoHide,
-      scrollAutoHideSuspend = true,
+      scrollAutoHideSuspend = false,
       trackOffset,
       nativeScrollbars,
       style,
@@ -287,11 +287,12 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       update: OVERLAY_UPDATE_OPTIONS,
       scrollbars: {
         theme,
-        // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
-        // 改为滚动时显影、停止后按 delay 隐藏；显式传入 scrollAutoHide 时以调用方为准
+        // 默认仅在滚动时显影，停止后按 delay 隐藏（对齐 macOS 原生覆盖滚动条）：
+        // 旧默认值 'leave' + autoHideSuspend=true 会让鼠标悬停列表行时滚动条常驻盖住右侧操作按钮。
+        // 显式传入 scrollAutoHide 时仍以调用方为准。
         autoHide:
           scrollHideDelay > 0
-            ? (scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave"))
+            ? (scrollAutoHide ?? "scroll")
             : "never",
         autoHideDelay: scrollHideDelay,
         autoHideSuspend: scrollAutoHideSuspend,

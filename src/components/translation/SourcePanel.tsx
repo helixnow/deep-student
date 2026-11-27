@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24, coarseHitClassFor28, coarseHitClassFor32 } from '@/components/ui/coarseHit';
 import { Textarea } from '../ui/shad/Textarea';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import { FileArrowUp, Lightning, TextAa, Trash, X } from '@phosphor-icons/react';
@@ -32,10 +33,6 @@ const isCoarsePointer = () =>
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(pointer: coarse)').matches;
-
-/** 触屏命中区扩展：小图标钮扩到 ≥44px，视觉不变（与 TranslationMain.COARSE_HIT 同款范式） */
-const COARSE_HIT =
-    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
 
 /**
  * 原文输入面板
@@ -175,7 +172,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="sm"
                 onClick={confirmClear}
-                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3"
+                className={cn(coarseHitClassFor24, 'h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:!min-h-0')}
             >
                 {t('translation:actions.clear')}
             </DsButton>
@@ -183,7 +180,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="icon"
                 onClick={dismissClearConfirm}
-                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                className={cn(coarseHitClassFor24, 'h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0')}
                 aria-label={t('common:cancel')}
             >
                 <X size={12} />
@@ -196,7 +193,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 size="icon"
                 onClick={requestClear}
                 disabled={!sourceText}
-                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9")}
+                className={cn(coarseHitClassFor28, 'h-7 w-7 [@media(pointer:coarse)]:!min-h-0 [@media(pointer:coarse)]:!min-w-0 text-muted-foreground/60 hover:text-destructive')}
                 aria-label={t('translation:actions.clear')}
             >
                 <Trash size={14} />
@@ -219,7 +216,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             variant="ghost"
                             size="sm"
                             onClick={onCancelTranslation}
-                            className={cn(COARSE_HIT, "h-8 px-2 text-muted-foreground")}
+                            className={cn(coarseHitClassFor32, 'h-8 [@media(pointer:coarse)]:!min-h-0 px-2 text-muted-foreground')}
                         >
                             <X size={14} className="mr-1" />
                             {t('common:cancel')}
@@ -230,7 +227,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             size="sm"
                             onClick={onTranslate}
                             disabled={!sourceText.trim()}
-                            className={cn(COARSE_HIT, "h-8 px-2 text-primary font-medium")}
+                            className={cn(coarseHitClassFor32, 'h-8 [@media(pointer:coarse)]:!min-h-0 px-2 text-primary font-medium')}
                         >
                             {t('translation:actions.translate')}
                         </DsButton>
@@ -273,10 +270,12 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                     key={sample}
                                     type="button"
                                     onClick={() => handleSampleClick(sample)}
-                                    // truncate 的 overflow-hidden 会裁掉 ::after 外扩，coarse 直接抬 min-h 到 44px
-                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/35 bg-foreground/[0.025] px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border/60 hover:bg-foreground/[0.05] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
+                                    className={cn(
+                                        coarseHitClassFor28,
+                                        'pointer-events-auto max-w-full rounded-full border border-border/35 bg-foreground/[0.025] px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border/60 hover:bg-foreground/[0.05] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none',
+                                    )}
                                 >
-                                    {sample}
+                                    <span className="block truncate">{sample}</span>
                                 </button>
                             ))}
                         </div>
@@ -289,14 +288,14 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
 
                 {/* 粘贴即翻提示 */}
                 {showPasteHint && !isTranslating && sourceText.trim() && (
-                    <div data-wb-blur-surface className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-border/35 bg-background/85 backdrop-blur-md px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap ui-fade-in">
+                    <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-border/35 bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap ui-fade-in">
                         {t('translation:panel_ux.paste_hint', { shortcut: TRANSLATE_SHORTCUT })}
                     </div>
                 )}
             </div>
 
             {/* 桌面底部单栏：合并字数统计、清空按钮与翻译主操作，消除上下双横栏夹击 */}
-            <div data-wb-blur-surface className="hidden md:flex px-4 py-2 border-t border-border/25 bg-background/60 backdrop-blur items-center justify-between gap-3 shrink-0">
+            <div className="hidden md:flex px-4 py-2 border-t border-border/25 bg-background items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                     {charCounter}
                     {clearControl}

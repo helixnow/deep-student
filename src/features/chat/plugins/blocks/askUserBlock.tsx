@@ -29,6 +29,7 @@ import {
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { cn } from '@/utils/cn';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { TextShimmer } from '../../components/ui/TextShimmer';
 import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { Input } from '@/components/ui/shad/Input';
@@ -898,7 +899,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                     setPendingSandboxCandidate(null);
                   }}
                   className={cn(
-                    'rounded px-2 py-0.5 text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
+                    'rounded px-2 py-0.5 text-xs transition-colors',
+                    coarseHitClassFor24,
                     active
                       ? 'bg-primary/10 font-medium text-primary'
                       : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -933,9 +935,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           className="border-b border-border/30 bg-muted/10 p-3"
         >
           {validPresentation.title && (
-            <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              <span>{validPresentation.title}</span>
+            <div className="mb-2 text-xs text-muted-foreground">
+              {validPresentation.title}
             </div>
           )}
           <InteractiveHtmlCanvas
@@ -1105,15 +1106,12 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           className="flex flex-wrap items-center justify-between gap-2 border-t border-border/30 bg-muted/20 px-3 py-2 text-xs"
         >
           <div className="min-w-0 flex-1 space-y-0.5">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-1.5 h-1.5 flex-shrink-0 rounded-full bg-primary" />
-              <span>
-                {t('chatV2:askUser.sandboxCandidateHint', '画板已填入候选回答，请核对后确认提交')}
-              </span>
+            <div className="text-muted-foreground">
+              {t('chatV2:askUser.sandboxCandidateHint', '画板已填入候选回答，请核对后确认提交')}
             </div>
             <div
               data-testid="ask-user-sandbox-candidate-summary"
-              className="truncate pl-3 font-medium text-foreground"
+              className="truncate font-medium text-foreground"
             >
               {pendingSandboxCandidate.displaySummary}
             </div>

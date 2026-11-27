@@ -244,7 +244,7 @@ describe('InputBarUI attachment preview chips', () => {
     expect(chipButton?.getAttribute('title')).toContain('app-icon.png');
   });
 
-  it('keeps the enabled send and streaming stop controls pure black', () => {
+  it('keeps the enabled send and streaming stop controls high-contrast with semantic tokens', () => {
     const { rerender } = render(
       <InputBarUI
         inputValue="开始学习"
@@ -266,11 +266,11 @@ describe('InputBarUI attachment preview chips', () => {
     );
 
     expect(screen.getByTestId('btn-send')).toHaveClass(
-      '!border-black',
-      '!bg-black',
-      'hover:!bg-black',
-      'active:!bg-black',
-      '!text-white'
+      '!border-foreground',
+      '!bg-foreground',
+      'hover:!bg-foreground/90',
+      'active:!bg-foreground/85',
+      '!text-background'
     );
 
     rerender(
@@ -294,11 +294,11 @@ describe('InputBarUI attachment preview chips', () => {
     );
 
     expect(screen.getByTestId('btn-stop')).toHaveClass(
-      '!border-black',
-      '!bg-black',
-      'hover:!bg-black',
-      'active:!bg-black',
-      '!text-white'
+      '!border-foreground',
+      '!bg-foreground',
+      'hover:!bg-foreground/90',
+      'active:!bg-foreground/85',
+      '!text-background'
     );
   });
 

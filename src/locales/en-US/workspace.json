@@ -115,7 +115,8 @@
     "profile": {
       "worker": "Worker",
       "explorer": "Explorer",
-      "default": "Default"
+      "default": "Default",
+      "browser": "Browser"
     }
   },
   "workspaceInjection": {

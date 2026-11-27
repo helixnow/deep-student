@@ -479,7 +479,10 @@
   "filters": {
     "showCompleted": "Show Completed",
     "priority": "Priority",
-    "allPriorities": "All priorities"
+    "allPriorities": "All priorities",
+    "viewOptions": "View",
+    "display": "Display",
+    "clearFilter": "Clear filter"
   },
   "sort": {
     "label": "Sort",

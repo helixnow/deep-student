@@ -668,7 +668,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
               )}
               {has && <PlanSteps steps={steps} />}
               {has && dagDrawerOpen && (
-                <div className="px-4 pb-2">
+                <div className="border-t border-[color:var(--border-soft)]">
                   <ProjectKnowledgeDagDrawer
                     store={knowledgeStore}
                     data={knowledgeStore ? undefined : dagPlanData}
@@ -676,7 +676,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
                     onClose={() => setDagDrawerOpen(false)}
                     onToggleTodo={handleToggleDagTodo}
                     onDispatchTodo={handleDispatchDagTodo}
-                    className="max-w-none"
+                    embedded
                   />
                 </div>
               )}

@@ -143,12 +143,11 @@ describe('my plugins as cards', () => {
 
     await user.click(more);
     await waitFor(() => expect(screen.getByRole('menuitem', { name: '回到上一版（v1.1.0）' })).toBeInTheDocument());
-    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['让 AI 改', '详情', '停用', '导出', '回到上一版（v1.1.0）', '卸载']);
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['让 AI 改', '详情', '停用', '回到上一版（v1.1.0）', '卸载']);
     await user.click(screen.getByRole('menuitem', { name: '让 AI 改' }));
     expect(onModify).toHaveBeenCalledWith('workshop.formula');
 
-    await user.click(more);
-    await user.click(screen.getByRole('menuitem', { name: '导出' }));
+    await user.click(screen.getByTestId('plugin-card-export'));
     await waitFor(() => expect(showGlobalNotification).toHaveBeenCalledWith('success', '已导出 公式速查：D:/exports/formula-1.2.0.dstuplugin'));
 
     await user.click(more);

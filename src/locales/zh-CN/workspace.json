@@ -115,7 +115,8 @@
     "profile": {
       "worker": "执行",
       "explorer": "调研",
-      "default": "默认"
+      "default": "默认",
+      "browser": "浏览器"
     }
   },
   "workspaceInjection": {

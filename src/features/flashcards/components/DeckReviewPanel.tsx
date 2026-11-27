@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { Books, CaretDown, CaretRight, FolderSimple, Play } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiLibraryDeckCount } from '@/types';
-import { cn } from '@/utils/cn';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import { buildDeckTree, type DeckTreeNode } from '../library/deckTree';
 import { toReviewContent } from '../library/libraryView';
@@ -138,39 +137,22 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   size="sm"
                   disabled={busyPath !== null}
                   onClick={() => void startDeck(node, node.due > 0 ? 'due' : 'new')}
-                  className="wb-fcx-deck-main !h-auto min-h-[36px] flex-col items-start justify-center rounded-md border-0 !px-1 !py-1 text-left font-normal"
+                  className="wb-fcx-deck-main !h-auto min-h-[36px] flex-col !items-start !justify-center rounded-md border-0 !px-1 !py-1 text-left font-normal"
                 >
                   <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        node.due > 0
-                          ? 'bg-emerald-500'
-                          : 'bg-primary',
-                      )}
-                    />
-                    <span className="wb-fcx-deck-counts font-mono tabular-nums">
-                      {[
-                        node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
-                        node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
-                      ].filter(Boolean).join(' · ')}
-                    </span>
-                  </div>
+                  <span className="wb-fcx-deck-counts font-mono tabular-nums">
+                    {[
+                      node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
+                      node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
+                    ].filter(Boolean).join(' · ')}
+                  </span>
                 </DsButton>
               ) : (
                 <div className="wb-fcx-deck-main">
                   <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/35"
-                    />
-                    <span className="wb-fcx-deck-counts font-mono tabular-nums">
-                      {t('today.decks.nothingDue')}
-                    </span>
-                  </div>
+                  <span className="wb-fcx-deck-counts font-mono tabular-nums">
+                    {t('today.decks.nothingDue')}
+                  </span>
                 </div>
               )}
               {node.due > 0 ? (

@@ -99,18 +99,11 @@ interface StatsCardProps {
   icon: React.ReactNode;
   label: string;
   value: number | string;
-  variant: 'total' | 'active' | 'streak';
 }
 
-const STAT_ICON_COLORS: Record<StatsCardProps['variant'], string> = {
-  total: 'text-primary',
-  active: 'text-success',
-  streak: 'text-warning',
-};
-
-const StatsCard: React.FC<StatsCardProps> = ({ icon, label, value, variant }) => (
-  <div className="flex items-center gap-2.5 rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80">
-    <span className={cn('flex-shrink-0', STAT_ICON_COLORS[variant])}>{icon}</span>
+const StatsCard: React.FC<StatsCardProps> = ({ icon, label, value }) => (
+  <div className="flex min-w-0 items-center gap-2 px-3 first:pl-0 last:pr-0">
+    <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">{icon}</span>
     <div className="min-w-0">
       <div className="truncate text-base font-semibold tabular-nums text-foreground">{value}</div>
       <div className="truncate text-xs text-muted-foreground">{label}</div>
@@ -350,25 +343,22 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
         </div>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="mb-4 grid grid-cols-3 gap-2">
+      {/* 统计摘要 */}
+      <div className="mb-4 grid grid-cols-3 divide-x divide-border/50 border-y border-border/40 py-2.5">
         <StatsCard
           icon={<Fire size={16} />}
           label={t('heatmapChart.totalQuestions')}
           value={stats.totalCount}
-          variant="total"
         />
         <StatsCard
           icon={<CalendarBlank size={16} />}
           label={t('heatmapChart.activeDays')}
           value={stats.activeDays}
-          variant="active"
         />
         <StatsCard
           icon={<Fire size={16} />}
           label={t('heatmapChart.streak')}
           value={t('heatmapChart.streakDays', { count: stats.currentStreak })}
-          variant="streak"
         />
       </div>
 
@@ -384,7 +374,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
       )}
       {stats.totalCount > 0 && stats.activeDays <= 3 && (
         <div className="ui-rise-in motion-reduce:animate-none mb-4 flex items-center gap-2 rounded-md border border-[color:hsl(var(--success))]/20 bg-[color:hsl(var(--success))]/[0.05] px-3 py-2 text-xs text-muted-foreground">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:hsl(var(--success))]" aria-hidden="true" />
+          <Info size={14} className="shrink-0 text-success" aria-hidden="true" />
           <span>{t('heatmapChart.earlyHint', { count: stats.activeDays })}</span>
         </div>
       )}

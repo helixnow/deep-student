@@ -10,6 +10,7 @@ import {
   Play, 
   CircleNotch, 
   Clock, 
+  Timer,
   CheckCircle, 
   XCircle, 
   Image as ImageIcon,
@@ -195,7 +196,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               alt={t('settings:ocr.test_image')}
               className="max-h-48 mx-auto rounded-lg shadow-sm"
             />
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-foreground/60 text-background hover:bg-[var(--overlay-control-hover-strong)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
               <X size={14} />
             </DsButton>
           </div>
@@ -264,16 +265,16 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                 key={`${result.engineType}-${index}`}
                 className={`
                   border rounded-lg p-3
-                  ${result.success ? 'border-border' : 'border-red-300 bg-red-50 dark:bg-red-900/10'}
+                  ${result.success ? 'border-border' : 'border-destructive/40 bg-destructive/5'}
                 `}
               >
                 {/* 引擎信息头 */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     {result.success ? (
-                      <CheckCircle size={16} className="text-green-500" />
+                      <CheckCircle size={16} className="text-success" />
                     ) : (
-                      <XCircle size={16} className="text-red-500" />
+                      <XCircle size={16} className="text-destructive" />
                     )}
                     <span className="font-medium text-sm">{result.engineName}</span>
                     {!engineModels[index]?.enabled && (
@@ -282,7 +283,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                       </span>
                     )}
                     {engineModels[index]?.isFree && (
-                      <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded">
+                      <span className="text-xs px-1.5 py-0.5 bg-success/10 text-success rounded">
                         {t('settings:ocr.free')}
                       </span>
                     )}
@@ -337,7 +338,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                     )}
                   </>
                 ) : (
-                  <div className="text-sm text-red-600 dark:text-red-400">
+                  <div className="text-sm text-destructive">
                     {t('settings:ocr.error')}: {result.error}
                   </div>
                 )}
@@ -352,19 +353,28 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                 {t('settings:ocr.comparison_summary')}
               </h5>
               <div className="text-xs text-primary/85 dark:text-primary/80 space-y-1">
-                <p>
-                  ⏱ {t('settings:ocr.fastest_engine')}: {results.reduce((a, b) => a.elapsedMs < b.elapsedMs ? a : b).engineName} 
-                  ({Math.min(...results.map(r => r.elapsedMs))} ms)
+                <p className="flex items-center gap-1.5">
+                  <Timer size={12} className="shrink-0" />
+                  <span>
+                    {t('settings:ocr.fastest_engine')}: {results.reduce((a, b) => a.elapsedMs < b.elapsedMs ? a : b).engineName}
+                    {' '}({Math.min(...results.map(r => r.elapsedMs))} ms)
+                  </span>
                 </p>
-                <p>
-                  📝 {t('settings:ocr.most_text')}: {results.reduce((a, b) => a.text.length > b.text.length ? a : b).engineName}
-                  ({Math.max(...results.map(r => r.text.length))} {t('settings:ocr.chars')})
+                <p className="flex items-center gap-1.5">
+                  <FileText size={12} className="shrink-0" />
+                  <span>
+                    {t('settings:ocr.most_text')}: {results.reduce((a, b) => a.text.length > b.text.length ? a : b).engineName}
+                    {' '}({Math.max(...results.map(r => r.text.length))} {t('settings:ocr.chars')})
+                  </span>
                 </p>
-                <p>
-                  📍 {t('settings:ocr.most_coords')}: {results.reduce((a, b) => 
-                    a.regions.filter(r => r.bbox).length > b.regions.filter(r => r.bbox).length ? a : b
-                  ).engineName}
-                  ({Math.max(...results.map(r => r.regions.filter(rr => rr.bbox).length))} {t('settings:ocr.regions')})
+                <p className="flex items-center gap-1.5">
+                  <MapPin size={12} className="shrink-0" />
+                  <span>
+                    {t('settings:ocr.most_coords')}: {results.reduce((a, b) => 
+                      a.regions.filter(r => r.bbox).length > b.regions.filter(r => r.bbox).length ? a : b
+                    ).engineName}
+                    {' '}({Math.max(...results.map(r => r.regions.filter(rr => rr.bbox).length))} {t('settings:ocr.regions')})
+                  </span>
                 </p>
               </div>
             </div>

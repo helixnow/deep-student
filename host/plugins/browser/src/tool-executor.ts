@@ -12,11 +12,18 @@ export const BROWSER_TOOLS: readonly string[] = [
   'browser_screenshot',
   'browser_click',
   'browser_type',
+  'browser_hover',
+  'browser_press_key',
+  'browser_select_option',
+  'browser_wait_for',
+  'browser_extract_content',
   'browser_file_upload',
   'browser_downloads',
   'browser_scroll',
   'browser_back',
   'browser_close',
+  'browser_tabs',
+  'browser_observe',
 ];
 
 export const BROWSER_MUTATING_TOOLS: readonly string[] = [
@@ -24,10 +31,14 @@ export const BROWSER_MUTATING_TOOLS: readonly string[] = [
   'browser_navigate',
   'browser_click',
   'browser_type',
+  'browser_hover',
+  'browser_press_key',
+  'browser_select_option',
   'browser_file_upload',
   'browser_scroll',
   'browser_back',
   'browser_close',
+  'browser_tabs',
 ];
 
 export const BROWSER_PASSWORD_BLOCKED = 'BROWSER_PASSWORD_BLOCKED';
@@ -59,6 +70,9 @@ export function browserToolSensitivity(toolName: string): ToolSensitivity {
     case 'browser_navigate':
     case 'browser_click':
     case 'browser_type':
+    case 'browser_press_key':
+    case 'browser_select_option':
+    case 'browser_tabs':
     case 'browser_close':
       return 'medium';
     default:

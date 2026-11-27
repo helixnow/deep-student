@@ -1,10 +1,10 @@
 # 插件能力清单（Capability Seams）
 
-> 自动生成，请勿手改：`node scripts/plugins/generate-catalog.mjs`。CI 用 `--check` 检测漂移。
+> 自动生成，请勿手改：`node scripts/plugins/generate-catalog.mjs`。本地可用 `--check` 检测漂移。
 > 与 DeepSeek Harness 的 `docs/capability-seams.md` 对齐：服务是插件之间唯一的跨 lane 编程接口，
 > 命令与事件是面向 UI/main 的线缆。插件编写指南见 `docs/plugins/SDK.md`。
 
-统计：26 个业务插件、9 个平台插件、126 个服务 seam、777 条命令、127 个契约事件。
+统计：共 45 个桌面模块（30 个业务插件、13 个平台插件、1 个内核插件、1 个外壳插件）、159 个服务 seam、1068 / 1072 条契约命令（已注册 / 总计）、128 个契约事件。
 
 ## 1. 服务 seam
 
@@ -14,135 +14,173 @@ lowerCamelCase，不带版本号、点号或 `@`；版本由 `api.ts` 导出的�
 
 | 服务 | 归属 | 提供方 | 消费方（inject） | 消费方（ctx.get） | 声明位置 | 提供方命令数 | lane 事件数 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `agentApproval` | 插件 | dstu.agent-workspace | — | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
-| `agentAutomation` | 插件 | dstu.agent-orchestration | — | — | host/plugins/agent-orchestration/api.ts | 17 | 8 |
+| `agentApproval` | 插件 | dstu.agent-workspace | — | dstu.chat<br>dstu.chat-pipeline | host/plugins/agent-workspace/api.ts | 12 | 9 |
+| `agentAutomation` | 插件 | dstu.agent-orchestration | — | — | host/plugins/agent-orchestration/api.ts | 18 | 8 |
+| `agentCardReadScope` | 插件 | dstu.agent-workspace | — | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
 | `agentCompletionOutbox` | 插件 | dstu.agent-workspace | — | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
+| `agentMesh` | 插件 | dstu.agent-mesh | — | — | host/plugins/agent-mesh/api.ts | 0 | 0 |
 | `agentSkills` | 插件 | dstu.agent-skills | — | — | host/plugins/agent-skills/api.ts | 22 | 4 |
-| `agentSubagent` | 插件 | dstu.agent-orchestration | — | — | host/plugins/agent-orchestration/api.ts | 17 | 8 |
-| `agentTodo` | 插件 | dstu.agent-orchestration | — | — | host/plugins/agent-orchestration/api.ts | 17 | 8 |
-| `agentTools` | 插件 | dstu.agent-skills | — | dstu.backup<br>dstu.notes | host/plugins/agent-skills/api.ts | 22 | 4 |
+| `agentSubagent` | 插件 | dstu.agent-orchestration | — | — | host/plugins/agent-orchestration/api.ts | 18 | 8 |
+| `agentTodo` | 插件 | dstu.agent-orchestration | — | dstu.chat-pipeline | host/plugins/agent-orchestration/api.ts | 18 | 8 |
+| `agentTools` | 插件 | dstu.agent-skills | dstu.agent-mesh<br>dstu.plugin-workshop | dstu.chat-pipeline | host/plugins/agent-skills/api.ts | 22 | 4 |
 | `agentTransformSandbox` | 插件 | dstu.agent-workspace | — | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
-| `agentVfsResolver` | 插件 | dstu.agent-workspace | dstu.chat-pipeline | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
-| `agentWorkspace` | 插件 | dstu.agent-workspace | — | dstu.agent-orchestration | host/plugins/agent-workspace/api.ts | 12 | 9 |
+| `agentVfsResolver` | 插件 | dstu.agent-workspace | dstu.chat-pipeline | dstu.chat | host/plugins/agent-workspace/api.ts | 12 | 9 |
+| `agentWorkspace` | 插件 | dstu.agent-workspace | — | dstu.agent-orchestration<br>dstu.chat-pipeline<br>dstu.media | host/plugins/agent-workspace/api.ts | 12 | 9 |
 | `agentWorkspaceTools` | 插件 | dstu.agent-workspace | — | — | host/plugins/agent-workspace/api.ts | 12 | 9 |
 | `anki` | 插件 | dstu.anki | dstu.chatanki | — | host/plugins/anki/api.ts | 61 | 2 |
-| `app` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
-| `appCommandState` | 插件 | dstu.integration | — | dstu.media<br>dstu.platform.storage | host/plugins/integration/api.ts | 0 | 0 |
-| `backendEvents` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
-| `backgroundTasks` | 插件 | dstu.platform.diagnostics | — | dstu.agent-orchestration<br>dstu.qbank | host/platform/diagnostics/api.ts | 9 | 1 |
+| `app` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
+| `appCommandState` | 插件 | dstu.integration | — | dstu.platform.storage<br>dstu.media | host/plugins/integration/api.ts | 0 | 0 |
+| `backendEvents` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
+| `backgroundTasks` | 插件 | dstu.platform.diagnostics | — | dstu.agent-orchestration<br>dstu.backup<br>dstu.chat-pipeline<br>dstu.qbank<br>dstu.review<br>dstu.vfs-index | host/platform/diagnostics/api.ts | 9 | 1 |
 | `backup` | 插件 | dstu.backup | dstu.sync<br>dstu.sync-providers | — | host/plugins/backup/api.ts | 33 | 2 |
 | `browser` | 插件 | dstu.browser | — | dstu.browser | host/plugins/browser/api.ts | 39 | 13 |
 | `browserSurface` | 插件 | **缺失** | — | dstu.browser | host/plugins/browser/api.ts | 0 | 0 |
 | `browserToolPolicy` | 插件 | dstu.browser | — | — | host/plugins/browser/api.ts | 39 | 13 |
+| `chat.send@1` | 插件 | dstu.chat-pipeline | — | — | host/plugins/chat-pipeline/api.ts | 0 | 0 |
 | `chatankiTools` | 插件 | dstu.chatanki | — | — | host/plugins/chatanki/api.ts | 0 | 1 |
 | `chatAttachmentErrors` | 插件 | dstu.chat | — | — | host/plugins/chat/api.ts | 107 | 6 |
-| `chatPipeline` | 插件 | dstu.chat-pipeline | — | dstu.agent-orchestration | host/plugins/chat-pipeline/api.ts | 0 | 0 |
+| `chatPipeline` | 插件 | dstu.chat-pipeline | dstu.plugin-workshop | dstu.agent-orchestration<br>dstu.memory | host/plugins/chat-pipeline/api.ts | 0 | 0 |
+| `chatPipelineHooks` | 插件 | dstu.chat-pipeline | — | dstu.chat-pipeline | host/plugins/chat-pipeline/api.ts | 0 | 0 |
 | `chatRetrievalScope` | 插件 | dstu.chat | — | — | host/plugins/chat/api.ts | 107 | 6 |
-| `chatSession` | 插件 | dstu.chat | dstu.chat-pipeline | dstu.agent-orchestration<br>dstu.agent-workspace<br>dstu.anki | host/plugins/chat/api.ts | 107 | 6 |
-| `chatState` | 插件 | dstu.chat | — | dstu.agent-orchestration | host/plugins/chat/api.ts | 107 | 6 |
-| `chatToolRuntime` | 插件 | **缺失** | — | dstu.chat-pipeline | — | 0 | 0 |
-| `cloudConfig` | 插件 | dstu.backup | dstu.platform.cloud-config | — | host/plugins/backup/api.ts | 33 | 2 |
-| `commands` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
+| `chatSession` | 插件 | dstu.chat | dstu.chat-pipeline<br>dstu.plugin-workshop | dstu.agent-orchestration<br>dstu.agent-workspace<br>dstu.anki | host/plugins/chat/api.ts | 107 | 6 |
+| `chatState` | 插件 | dstu.chat | — | dstu.agent-mesh<br>dstu.agent-orchestration<br>dstu.chat-pipeline | host/plugins/chat/api.ts | 107 | 6 |
+| `chatToolRuntime` | 插件 | **缺失** | — | dstu.chat-pipeline | host/plugins/chat-pipeline/api.ts | 0 | 0 |
+| `chatWorkerRuntime` | 插件 | dstu.chat | — | dstu.agent-orchestration | host/plugins/chat/api.ts | 107 | 6 |
+| `cloudConfig` | 插件 | dstu.backup | dstu.platform.cloud-config | — | host/platform/errors/cloud-config-api.ts<br>host/plugins/backup/api.ts | 33 | 2 |
+| `commands` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
+| `crypto` | 插件 | dstu.platform.crypto | — | dstu.agent-skills<br>dstu.anki<br>dstu.chat-pipeline<br>dstu.memory<br>dstu.qbank<br>dstu.sync-providers | host/platform/crypto/api.ts | 0 | 0 |
 | `dataSpace` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
+| `declarativeAssets` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
 | `diagnostics` | 插件 | dstu.platform.diagnostics | — | — | host/platform/diagnostics/api.ts | 9 | 1 |
-| `docs` | 插件 | dstu.media | dstu.vfs-handlers | dstu.agent-workspace<br>dstu.anki<br>dstu.chat-pipeline<br>dstu.qbank<br>dstu.vfs<br>dstu.vfs-repos | host/plugins/media/api.ts | 74 | 6 |
-| `dstu` | 插件 | dstu.vfs | — | — | host/plugins/vfs/api.ts | 6 | 6 |
-| `essayGrading` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `examSheetSession` | 插件 | dstu.media | — | dstu.qbank | host/plugins/media/api.ts | 74 | 6 |
-| `featureFlags` | 插件 | dstu.platform.storage | dstu.browser | dstu.notes | host/platform/storage/api.ts | 33 | 0 |
-| `fileManagerPaths` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
+| `docs` | 插件 | dstu.media | — | dstu.agent-workspace<br>dstu.chat-pipeline<br>dstu.qbank<br>dstu.vfs<br>dstu.vfs-repos | host/plugins/media/api.ts | 75 | 7 |
+| `dstu` | 插件 | dstu.vfs | — | — | host/plugins/vfs/portable.ts | 58 | 6 |
+| `dstuPluginInstaller` | kernel | kernel（根 context） | dstu.plugin-workshop | — | host/kernel/plugin-admin.ts | 0 | 0 |
+| `dstuUpload` | 插件 | dstu.vfs | — | — | — | 58 | 6 |
+| `embedding@1` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `essayGrading` | 插件 | dstu.llm | — | dstu.review | host/plugins/llm/api.ts | 24 | 24 |
+| `examSheetSession` | 插件 | dstu.media | — | dstu.qbank | host/plugins/media/api.ts | 75 | 7 |
+| `externalLlmConfigs` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
+| `featureFlags` | 插件 | dstu.platform.storage | dstu.browser | dstu.agent-skills<br>dstu.notes | host/platform/storage/api.ts | 33 | 0 |
+| `fileManagerPaths` | 插件 | dstu.platform.storage | — | dstu.platform.backup-config<br>dstu.media | host/platform/storage/api.ts | 33 | 0 |
+| `files` | 插件 | dstu.platform.files | — | dstu.agent-skills<br>dstu.backup<br>dstu.media<br>dstu.qbank<br>dstu.sync-providers<br>dstu.sync-support<br>dstu.vfs-handlers | host/platform/files/api.ts | 0 | 0 |
 | `governance` | 插件 | dstu.backup | — | dstu.agent-workspace<br>dstu.notes | host/plugins/backup/api.ts | 33 | 2 |
-| `hpiasResearch` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 0 | 3 |
+| `gradingRubrics` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `hpiasResearch` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 34 | 3 |
+| `http` | 插件 | dstu.platform.http | — | dstu.agent-skills<br>dstu.browser<br>dstu.media<br>dstu.plugin-workshop<br>dstu.sync-providers<br>dstu.vfs | host/platform/http/api.ts | 0 | 0 |
 | `imageQuality` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
-| `injectionBudget` | 插件 | dstu.platform.storage | dstu.llm | — | host/platform/storage/api.ts | 33 | 0 |
-| `insight` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 0 | 3 |
+| `injectionBudget` | 插件 | dstu.platform.storage | dstu.llm | dstu.chat-pipeline | host/platform/storage/api.ts | 33 | 0 |
+| `insight` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 34 | 3 |
+| `insightHints` | 插件 | dstu.memory | — | dstu.chat-pipeline | host/plugins/memory/api.ts | 34 | 3 |
 | `lanceEngine` | 插件 | dstu.vfs-index | — | — | host/plugins/vfs-index/api.ts | 3 | 7 |
-| `llm` | 插件 | dstu.llm | dstu.chatanki<br>dstu.mcp<br>dstu.translation | dstu.anki<br>dstu.chat<br>dstu.chat-pipeline<br>dstu.media<br>dstu.qbank | host/plugins/llm/api.ts | 20 | 24 |
-| `llmAdapterInfos` | 插件 | dstu.llm | — | dstu.anki | host/plugins/llm/api.ts | 20 | 24 |
+| `llm` | 插件 | dstu.llm | dstu.chatanki<br>dstu.translation | dstu.shell<br>dstu.anki<br>dstu.chat<br>dstu.chat-pipeline<br>dstu.media<br>dstu.memory<br>dstu.qbank | host/plugins/llm/api.ts | 24 | 24 |
+| `llmAdapterInfos` | 插件 | dstu.llm | — | dstu.anki | host/plugins/llm/api.ts | 24 | 24 |
 | `llmAdapters` | 插件 | dstu.llm-providers | dstu.llm | — | host/plugins/llm-providers/api.ts | 5 | 0 |
-| `llmAnkiRouting` | 插件 | dstu.llm | — | dstu.anki | host/plugins/llm/api.ts | 20 | 24 |
+| `llmAnkiRouting` | 插件 | dstu.llm | — | dstu.anki | host/plugins/llm/api.ts | 24 | 24 |
 | `llmCodexAuth` | 插件 | dstu.llm-providers | dstu.llm<br>dstu.translation | dstu.media | host/plugins/llm-providers/api.ts | 5 | 0 |
-| `llmEmbeddingModels` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmFileOcr` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmHttp` | 插件 | dstu.llm | dstu.translation | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmMcpTools` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmModel2Messages` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmModel2Streaming` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 20 | 24 |
+| `llmContextCompiler` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmEmbeddingModels` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmFileOcr` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmHttp` | 插件 | dstu.llm | dstu.translation | dstu.chat-pipeline<br>dstu.media | host/plugins/llm/api.ts | 24 | 24 |
+| `llmMcpTools` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmModel2Messages` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmModel2Streaming` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 24 | 24 |
 | `llmMultimodal` | 插件 | dstu.llm-providers | — | — | host/plugins/llm-providers/api.ts | 5 | 0 |
 | `llmOcr` | 插件 | dstu.llm-providers | — | — | host/plugins/llm-providers/api.ts | 5 | 0 |
-| `llmOcrHedge` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmOcrModels` | 插件 | dstu.llm | — | dstu.chat-pipeline<br>dstu.media<br>dstu.qbank | host/plugins/llm/api.ts | 20 | 24 |
-| `llmOcrPages` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 20 | 24 |
-| `llmOcrRegions` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmProviderRequests` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmQuestionAuthoring` | 插件 | dstu.llm | — | dstu.qbank | host/plugins/llm/api.ts | 20 | 24 |
-| `llmQuestionParsing` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmRag` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 20 | 24 |
-| `llmRawPrompt` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 20 | 24 |
-| `llmStreamEvents` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 20 | 24 |
-| `llmStreaming` | 插件 | dstu.llm | — | dstu.anki<br>dstu.qbank | host/plugins/llm/api.ts | 20 | 24 |
-| `llmUsage` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
-| `log` | 插件 | dstu.platform.log | dstu.browser<br>dstu.mcp<br>dstu.memory<br>dstu.platform.secrets<br>dstu.platform.storage | — | host/platform/log/api.ts | 14 | 1 |
-| `mastery` | 插件 | dstu.review | — | dstu.qbank | host/plugins/review/api.ts | 70 | 1 |
-| `masteryProfileSink` | 插件 | dstu.memory | — | dstu.review | host/plugins/memory/api.ts<br>host/plugins/review/api.ts | 0 | 3 |
-| `mcp` | 插件 | dstu.mcp | — | — | host/plugins/mcp/api.ts | 23 | 13 |
-| `media` | 插件 | dstu.media | — | — | host/plugins/media/api.ts | 74 | 6 |
-| `mediaTranscriber` | 插件 | dstu.media | — | — | host/plugins/media/api.ts<br>host/plugins/vfs-index/api.ts | 74 | 6 |
-| `memory` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 0 | 3 |
-| `memoryConfig` | 插件 | dstu.memory | — | dstu.vfs | host/plugins/memory/api.ts | 0 | 3 |
-| `memoryRetrieval` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 0 | 3 |
-| `memoryToolMetadata` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 0 | 3 |
+| `llmOcrHedge` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmOcrModels` | 插件 | dstu.llm | — | dstu.chat-pipeline<br>dstu.media<br>dstu.qbank | host/plugins/llm/api.ts | 24 | 24 |
+| `llmOcrPages` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 24 | 24 |
+| `llmOcrRegions` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmProviderRequests` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmQuestionAuthoring` | 插件 | dstu.llm | — | dstu.qbank | host/plugins/llm/api.ts | 24 | 24 |
+| `llmQuestionParsing` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmRag` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmRawPrompt` | 插件 | dstu.llm | — | dstu.anki<br>dstu.chat-pipeline<br>dstu.memory<br>dstu.review | host/plugins/llm/api.ts | 24 | 24 |
+| `llmReplay` | 插件 | **缺失** | — | — | host/plugins/llm-providers/api.ts | 0 | 0 |
+| `llmReranker` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `llmStreamEvents` | 插件 | dstu.llm | — | dstu.chat-pipeline | host/plugins/llm/api.ts | 24 | 24 |
+| `llmStreaming` | 插件 | dstu.llm | — | dstu.anki<br>dstu.qbank | host/plugins/llm/api.ts | 24 | 24 |
+| `llmUsage` | 插件 | dstu.platform.storage | — | dstu.chat-pipeline | host/platform/storage/api.ts | 33 | 0 |
+| `llmWebSearchFallback` | 插件 | dstu.browser | — | — | host/plugins/browser/api.ts | 39 | 13 |
+| `log` | 插件 | dstu.platform.log | dstu.platform.secrets<br>dstu.platform.storage<br>dstu.browser<br>dstu.mcp<br>dstu.memory | — | host/platform/log/api.ts | 14 | 1 |
+| `mastery` | 插件 | dstu.review | dstu.sync | dstu.memory<br>dstu.qbank<br>dstu.review | host/plugins/review/api.ts | 70 | 1 |
+| `masteryProfileSink` | 插件 | dstu.memory | — | dstu.review | host/plugins/memory/api.ts<br>host/plugins/review/api.ts | 34 | 3 |
+| `mcp` | 插件 | dstu.mcp | — | dstu.agent-skills<br>dstu.chat-pipeline | host/plugins/mcp/api.ts | 23 | 13 |
+| `media` | 插件 | dstu.media | — | dstu.memory | host/plugins/media/api.ts | 75 | 7 |
+| `mediaTranscriber` | 插件 | dstu.media | — | — | host/plugins/media/api.ts<br>host/plugins/vfs-index/api.ts | 75 | 7 |
+| `memory` | 插件 | dstu.memory | — | dstu.chat-pipeline | host/plugins/memory/api.ts | 34 | 3 |
+| `memoryConfig` | 插件 | dstu.memory | — | dstu.vfs | host/plugins/memory/api.ts | 34 | 3 |
+| `memoryProvider` | 插件 | dstu.memory | — | dstu.chat-pipeline<br>dstu.review | host/plugins/memory/api.ts | 34 | 3 |
+| `memoryRetrieval` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 34 | 3 |
+| `memoryToolMetadata` | 插件 | dstu.memory | — | — | host/plugins/memory/api.ts | 34 | 3 |
+| `mindmapXml` | 插件 | dstu.native | — | — | host/platform/native/xml/api.ts | 0 | 0 |
 | `nativeArgon2` | 插件 | dstu.native | — | — | host/platform/native/argon2/api.ts | 0 | 0 |
 | `nativeAudio` | 插件 | dstu.native | — | dstu.media | host/platform/native/audio/api.ts | 0 | 0 |
 | `nativeCompression` | 插件 | dstu.native | dstu.sync | dstu.anki | host/platform/native/compression/api.ts | 0 | 0 |
-| `nativeFsrs` | 插件 | dstu.native | — | — | host/platform/native/fsrs/api.ts | 0 | 0 |
+| `nativeFsrs` | 插件 | dstu.native | — | dstu.review | host/platform/native/fsrs/api.ts | 0 | 0 |
 | `nativeHeic` | 插件 | dstu.native | — | dstu.media | host/platform/native/heic/api.ts | 0 | 0 |
 | `nativeImage` | 插件 | dstu.native | dstu.llm | dstu.media<br>dstu.qbank<br>dstu.vfs-repos | host/platform/native/image/api.ts | 0 | 0 |
-| `nativeOffice` | 插件 | dstu.native | — | dstu.media | host/platform/native/office/api.ts | 0 | 0 |
+| `nativeOffice` | 插件 | dstu.native | — | dstu.agent-skills<br>dstu.media | host/platform/native/office/api.ts | 0 | 0 |
 | `nativeOfficeText` | 插件 | dstu.native | — | dstu.media<br>dstu.vfs-repos | host/platform/native/office/api.ts | 0 | 0 |
-| `nativeOfficeWriter` | 插件 | dstu.native | — | dstu.media | host/platform/native/office/api.ts | 0 | 0 |
+| `nativeOfficeWriter` | 插件 | dstu.native | — | dstu.media<br>dstu.qbank | host/platform/native/office/api.ts | 0 | 0 |
 | `nativePdfium` | 插件 | dstu.native | — | dstu.media<br>dstu.vfs-repos | host/platform/native/pdfium/api.ts | 0 | 0 |
 | `nativeProtobuf` | 插件 | dstu.native | — | — | host/platform/native/protobuf/api.ts | 0 | 0 |
 | `nativeRegex` | 插件 | dstu.native | — | dstu.agent-workspace<br>dstu.anki<br>dstu.notes | host/platform/native/regex/api.ts | 0 | 0 |
 | `nativeSandbox` | 插件 | dstu.native | — | dstu.agent-workspace | host/platform/native/sandbox/api.ts | 0 | 0 |
+| `nativeSqliteBusy` | 插件 | dstu.native | — | — | host/platform/native/sqlite-busy/api.ts | 0 | 0 |
 | `nativeStarlark` | 插件 | dstu.native | — | dstu.agent-skills | host/platform/native/starlark/api.ts | 0 | 0 |
 | `nativeTokenizer` | 插件 | dstu.native | dstu.chat-pipeline<br>dstu.llm | — | host/platform/native/tokenizer/api.ts | 0 | 0 |
-| `nativeWindowsFiles` | 插件 | dstu.native | — | dstu.agent-workspace | host/platform/native/windows/api.ts | 0 | 0 |
-| `nativeWindowsSandbox` | 插件 | dstu.native | — | — | — | 0 | 0 |
+| `nativeWindowsFiles` | 插件 | dstu.native | — | dstu.agent-skills<br>dstu.agent-workspace<br>dstu.chat-pipeline | host/platform/native/windows/api.ts | 0 | 0 |
+| `nativeWindowsSandbox` | 插件 | dstu.native | — | — | host/platform/native/windows/sandbox-api.ts | 0 | 0 |
 | `noteAssets` | 插件 | dstu.platform.storage | — | — | host/platform/storage/api.ts | 33 | 0 |
-| `notes` | 插件 | dstu.notes | dstu.memory<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-handlers | dstu.media<br>dstu.vfs-repos | host/plugins/notes/api.ts<br>host/plugins/vfs/api.ts | 81 | 9 |
-| `ocr` | 插件 | dstu.media | — | — | host/plugins/media/api.ts | 74 | 6 |
-| `pageRasterizer` | 插件 | dstu.media | — | dstu.qbank | host/plugins/media/api.ts | 74 | 6 |
-| `paths` | 插件 | dstu.platform.paths | dstu.agent-skills<br>dstu.anki<br>dstu.media<br>dstu.qbank<br>dstu.sync<br>dstu.sync-providers<br>dstu.vfs-repos<br>dstu.platform.log<br>dstu.platform.secrets<br>dstu.platform.storage | dstu.chat-pipeline | host/platform/paths/api.ts | 0 | 0 |
-| `protocols` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
-| `qbank` | 插件 | dstu.qbank | — | dstu.vfs<br>dstu.vfs-repos | host/plugins/qbank/api.ts | 88 | 10 |
-| `questionImportVision` | 插件 | dstu.media | — | — | host/plugins/media/api.ts | 74 | 6 |
-| `retrieval` | 插件 | dstu.vfs-index | dstu.vfs-handlers | — | host/plugins/vfs-index/api.ts | 3 | 7 |
-| `review` | 插件 | dstu.review | dstu.chatanki | dstu.anki | host/plugins/review/api.ts | 70 | 1 |
-| `reviewPlan` | 插件 | dstu.review | — | dstu.qbank<br>dstu.review | host/plugins/review/api.ts | 70 | 1 |
-| `runtimeRoots` | 插件 | dstu.agent-workspace | — | dstu.browser | host/plugins/agent-workspace/api.ts | 12 | 9 |
-| `secrets` | 插件 | dstu.platform.secrets | dstu.backup<br>dstu.llm<br>dstu.mcp<br>dstu.sync<br>dstu.sync-providers<br>dstu.platform.settings<br>dstu.platform.storage | dstu.media | host/platform/secrets/api.ts | 11 | 1 |
-| `settings` | 插件 | dstu.platform.settings | dstu.agent-orchestration<br>dstu.agent-skills<br>dstu.agent-workspace<br>dstu.backup<br>dstu.browser<br>dstu.chat-pipeline<br>dstu.chatanki<br>dstu.llm<br>dstu.llm-providers<br>dstu.mcp<br>dstu.media<br>dstu.memory<br>dstu.vfs-handlers | dstu.anki<br>dstu.chat<br>dstu.notes<br>dstu.vfs | host/platform/settings/api.ts | 0 | 0 |
-| `shell` | kernel | kernel（根 context） | — | — | — | 0 | 0 |
-| `startupGate` | 插件 | **缺失** | — | dstu.agent-orchestration<br>dstu.backup<br>dstu.platform.storage | — | 0 | 0 |
-| `storage` | 插件 | dstu.platform.storage | dstu.agent-orchestration<br>dstu.agent-skills<br>dstu.agent-workspace<br>dstu.anki<br>dstu.backup<br>dstu.browser<br>dstu.chat<br>dstu.chat-pipeline<br>dstu.integration<br>dstu.memory<br>dstu.notes<br>dstu.qbank<br>dstu.review<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-index<br>dstu.vfs-repos<br>dstu.platform.diagnostics<br>dstu.platform.settings | — | host/platform/storage/api.ts | 33 | 0 |
-| `storageStartupSync` | 插件 | dstu.sync | — | dstu.platform.storage | host/platform/storage/api.ts | 24 | 1 |
-| `sync` | 插件 | dstu.sync | — | dstu.backup | host/plugins/sync/api.ts | 24 | 1 |
+| `notes` | 插件 | dstu.notes | dstu.memory<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-handlers | dstu.media<br>dstu.qbank<br>dstu.vfs-repos | host/plugins/notes/api.ts<br>host/plugins/vfs/portable.ts | 81 | 9 |
+| `ocr` | 插件 | dstu.media | — | — | host/plugins/media/api.ts | 75 | 7 |
+| `pageRasterizer` | 插件 | dstu.media | — | dstu.qbank | host/plugins/media/api.ts | 75 | 7 |
+| `paperLibrary` | 插件 | dstu.vfs | — | — | host/plugins/vfs/portable.ts | 58 | 6 |
+| `paths` | 插件 | dstu.platform.paths | dstu.sync-startup<br>dstu.platform.files<br>dstu.platform.log<br>dstu.platform.secrets<br>dstu.platform.backup-config<br>dstu.platform.storage<br>dstu.agent-mesh<br>dstu.agent-skills<br>dstu.anki<br>dstu.media<br>dstu.plugin-workshop<br>dstu.qbank<br>dstu.sync<br>dstu.sync-providers<br>dstu.vfs-repos | dstu.backup<br>dstu.chat-pipeline | host/platform/paths/api.ts | 0 | 0 |
+| `pendingMemoryCandidates` | 插件 | dstu.anki | — | — | host/plugins/anki/api.ts | 61 | 2 |
+| `pluginAgentTools` | kernel | kernel（根 context） | — | dstu.agent-skills | host/kernel/plugin-agent-tools.ts | 0 | 0 |
+| `pluginCaller` | kernel | kernel（根 context） | — | dstu.plugin-services | host/kernel/plugin-caller.ts | 0 | 0 |
+| `pluginModel` | 插件 | dstu.llm | — | — | host/plugins/llm/api.ts | 24 | 24 |
+| `pluginNotify` | 插件 | dstu.plugin-services | — | — | host/plugins/plugin-services/api.ts | 0 | 0 |
+| `plugins` | 插件 | dstu.plugins | — | — | host/kernel/plugins.ts | 11 | 3 |
+| `pluginSchedule` | 插件 | dstu.plugin-services | — | — | host/plugins/plugin-services/api.ts | 0 | 0 |
+| `pluginSecrets` | 插件 | dstu.plugin-services | — | — | host/plugins/plugin-services/api.ts | 0 | 0 |
+| `pluginWorkshop` | 插件 | dstu.plugin-workshop | — | — | host/plugins/plugin-workshop/api.ts | 0 | 0 |
+| `protocols` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
+| `qbank` | 插件 | dstu.qbank | — | dstu.review<br>dstu.vfs<br>dstu.vfs-repos | host/plugins/qbank/api.ts | 88 | 10 |
+| `questionImportVision` | 插件 | dstu.media | — | — | host/plugins/media/api.ts | 75 | 7 |
+| `retrieval` | 插件 | dstu.vfs-index | dstu.vfs-handlers | dstu.memory | host/plugins/vfs-index/api.ts | 3 | 7 |
+| `retrievalCancellable` | 插件 | dstu.vfs-index | — | — | host/plugins/vfs-index/api.ts | 3 | 7 |
+| `review` | 插件 | dstu.review | dstu.chatanki | dstu.anki<br>dstu.memory | host/plugins/review/api.ts | 70 | 1 |
+| `reviewPlan` | 插件 | dstu.review | — | dstu.memory<br>dstu.qbank | host/plugins/review/api.ts | 70 | 1 |
+| `reviewSchedulers` | 插件 | dstu.review | — | — | host/plugins/review/api.ts | 70 | 1 |
+| `runtimeRoots` | 插件 | dstu.agent-workspace | — | dstu.browser<br>dstu.chat-pipeline<br>dstu.media | host/plugins/agent-workspace/api.ts | 12 | 9 |
+| `secrets` | 插件 | dstu.platform.secrets | dstu.platform.settings<br>dstu.platform.storage<br>dstu.backup<br>dstu.llm<br>dstu.mcp<br>dstu.sync<br>dstu.sync-providers | dstu.media | host/platform/secrets/api.ts | 11 | 1 |
+| `settings` | 插件 | dstu.platform.settings | dstu.plugins<br>dstu.platform.backup-config<br>dstu.agent-orchestration<br>dstu.agent-skills<br>dstu.agent-workspace<br>dstu.backup<br>dstu.browser<br>dstu.chat-pipeline<br>dstu.chatanki<br>dstu.llm<br>dstu.llm-providers<br>dstu.mcp<br>dstu.media<br>dstu.memory<br>dstu.plugin-services<br>dstu.vfs-handlers | dstu.shell<br>dstu.anki<br>dstu.chat<br>dstu.notes<br>dstu.plugin-workshop<br>dstu.vfs<br>dstu.vfs-index | host/platform/settings/api.ts | 0 | 0 |
+| `shell` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
+| `shellWindows` | 插件 | dstu.shell | — | — | electron/api.ts | 23 | 10 |
+| `startupGate` | 插件 | dstu.shell | — | dstu.platform.storage<br>dstu.backup | electron/api.ts | 23 | 10 |
+| `storage` | 插件 | dstu.platform.storage | dstu.platform.diagnostics<br>dstu.platform.settings<br>dstu.agent-orchestration<br>dstu.agent-skills<br>dstu.agent-workspace<br>dstu.anki<br>dstu.backup<br>dstu.browser<br>dstu.chat<br>dstu.chat-pipeline<br>dstu.integration<br>dstu.media<br>dstu.memory<br>dstu.notes<br>dstu.qbank<br>dstu.review<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-index<br>dstu.vfs-repos | dstu.plugins<br>dstu.shell<br>dstu.plugin-workshop | host/platform/storage/api.ts | 33 | 0 |
+| `storageStartupSync` | 插件 | dstu.sync-startup | — | dstu.platform.storage | host/platform/storage/api.ts | 0 | 1 |
+| `studyData` | 插件 | dstu.plugin-services | — | — | host/plugins/plugin-services/api.ts | 0 | 0 |
+| `sync` | 插件 | dstu.sync | — | dstu.backup | host/plugins/sync/api.ts | 28 | 1 |
 | `syncProvider` | 插件 | dstu.sync-providers | dstu.sync | — | host/plugins/sync-providers/api.ts | 14 | 1 |
 | `syncSupport` | 插件 | dstu.sync-support | dstu.sync | — | host/plugins/sync-support/api.ts | 0 | 1 |
-| `systemNotification` | 插件 | **缺失** | — | dstu.agent-orchestration<br>dstu.chat | — | 0 | 0 |
+| `systemNotification` | 插件 | dstu.shell | — | dstu.chat<br>dstu.plugin-services | electron/api.ts | 23 | 10 |
 | `translation` | 插件 | dstu.translation | — | — | host/plugins/translation/api.ts | 6 | 24 |
+| `uiEvents` | kernel | kernel（根 context） | — | — | host/kernel/core.ts | 0 | 0 |
 | `vector` | 插件 | dstu.vector | — | — | host/platform/vector/api.ts | 0 | 0 |
-| `vfs` | 插件 | dstu.vfs | dstu.chat | dstu.agent-workspace<br>dstu.chat-pipeline<br>dstu.media | host/plugins/vfs/api.ts | 6 | 6 |
-| `vfsDatabase` | 插件 | dstu.vfs | dstu.llm<br>dstu.sync<br>dstu.vfs-handlers | dstu.anki<br>dstu.browser<br>dstu.media<br>dstu.vfs<br>dstu.vfs-repos | host/plugins/vfs/api.ts | 6 | 6 |
-| `vfsHooks` | 插件 | dstu.vfs-handlers | — | — | host/plugins/vfs-handlers/api.ts | 1 | 6 |
+| `vfs` | 插件 | dstu.vfs | dstu.chat<br>dstu.vfs-handlers | dstu.agent-workspace<br>dstu.chat-pipeline<br>dstu.media<br>dstu.memory | host/plugins/vfs/portable.ts | 58 | 6 |
+| `vfsDatabase` | 插件 | dstu.vfs | dstu.llm<br>dstu.sync<br>dstu.vfs-handlers | dstu.shell<br>dstu.anki<br>dstu.browser<br>dstu.media<br>dstu.memory<br>dstu.vfs<br>dstu.vfs-repos | host/plugins/vfs/portable.ts | 58 | 6 |
+| `vfsHooks` | 插件 | dstu.vfs-handlers | — | — | host/plugins/vfs-handlers/api.ts | 157 | 6 |
 | `vfsIndex` | 插件 | dstu.vfs-index | dstu.vfs<br>dstu.vfs-handlers | dstu.browser<br>dstu.media<br>dstu.qbank | host/plugins/vfs-index/api.ts | 3 | 7 |
 | `vfsIndexMaintenance` | 插件 | dstu.vfs-index | dstu.vfs-handlers | — | host/plugins/vfs-index/api.ts | 3 | 7 |
-| `vfsMaintenance` | 插件 | **缺失** | dstu.vfs-handlers | dstu.backup | — | 0 | 0 |
-| `vfsRefText` | 插件 | dstu.vfs-handlers | — | dstu.qbank | host/plugins/vfs-handlers/api.ts | 1 | 6 |
-| `vfsRepo` | 插件 | **缺失** | dstu.chat-pipeline<br>dstu.llm<br>dstu.memory<br>dstu.notes<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-handlers | dstu.agent-orchestration<br>dstu.agent-workspace<br>dstu.anki<br>dstu.browser<br>dstu.media<br>dstu.qbank<br>dstu.review | host/plugins/vfs/api.ts | 0 | 0 |
+| `vfsMaintenance` | 插件 | dstu.vfs-repos | dstu.vfs-handlers | dstu.backup | — | 0 | 0 |
+| `vfsRefText` | 插件 | dstu.vfs-handlers | — | dstu.qbank | host/plugins/vfs-handlers/api.ts | 157 | 6 |
+| `vfsRepo` | 插件 | dstu.vfs-repos | dstu.chat-pipeline<br>dstu.llm<br>dstu.memory<br>dstu.notes<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-handlers | dstu.agent-orchestration<br>dstu.agent-workspace<br>dstu.anki<br>dstu.browser<br>dstu.chat<br>dstu.media<br>dstu.qbank<br>dstu.review<br>dstu.translation | host/plugins/vfs-repos/types/services.ts<br>host/plugins/vfs/portable.ts | 0 | 0 |
 | `vfsUnitBuilder` | 插件 | dstu.vfs-index | dstu.vfs-handlers | dstu.browser<br>dstu.vfs | — | 3 | 7 |
-| `virtualFilePolicy` | 插件 | **缺失** | — | dstu.vfs | — | 0 | 0 |
+| `vfsWorker` | 插件 | dstu.vfs-repos | — | — | host/plugins/vfs-repos/types/services.ts | 0 | 0 |
+| `virtualFilePolicy` | 插件 | dstu.platform.storage | — | dstu.vfs | host/platform/storage/api.ts | 33 | 0 |
 | `webpageToolPolicy` | 插件 | dstu.browser | — | — | host/plugins/browser/api.ts | 39 | 13 |
 | `webSearch` | 插件 | dstu.browser | dstu.mcp | — | host/plugins/mcp/api.ts | 39 | 13 |
 
@@ -160,6 +198,23 @@ graph LR
   classDef plugin fill:#eef4ff,stroke:#4263a8,color:#1a2b4a;
   classDef service fill:#fff8e6,stroke:#b7791f,color:#4a3200;
   classDef missing fill:#fff5f5,stroke:#c53030,stroke-dasharray:4 2,color:#742a2a;
+  p_dstu_plugins["dstu.plugins"]:::plugin
+  p_dstu_sync_startup["dstu.sync-startup"]:::plugin
+  p_dstu_platform_crypto["dstu.platform.crypto"]:::plugin
+  p_dstu_platform_diagnostics["dstu.platform.diagnostics"]:::plugin
+  p_dstu_platform_cloud_config["dstu.platform.cloud-config"]:::plugin
+  p_dstu_platform_files["dstu.platform.files"]:::plugin
+  p_dstu_platform_http["dstu.platform.http"]:::plugin
+  p_dstu_platform_log["dstu.platform.log"]:::plugin
+  p_dstu_native["dstu.native"]:::plugin
+  p_dstu_platform_paths["dstu.platform.paths"]:::plugin
+  p_dstu_platform_secrets["dstu.platform.secrets"]:::plugin
+  p_dstu_platform_backup_config["dstu.platform.backup-config"]:::plugin
+  p_dstu_platform_settings["dstu.platform.settings"]:::plugin
+  p_dstu_platform_storage["dstu.platform.storage"]:::plugin
+  p_dstu_vector["dstu.vector"]:::plugin
+  p_dstu_shell["dstu.shell"]:::plugin
+  p_dstu_agent_mesh["dstu.agent-mesh"]:::plugin
   p_dstu_agent_orchestration["dstu.agent-orchestration"]:::plugin
   p_dstu_agent_skills["dstu.agent-skills"]:::plugin
   p_dstu_agent_workspace["dstu.agent-workspace"]:::plugin
@@ -176,6 +231,8 @@ graph LR
   p_dstu_media["dstu.media"]:::plugin
   p_dstu_memory["dstu.memory"]:::plugin
   p_dstu_notes["dstu.notes"]:::plugin
+  p_dstu_plugin_services["dstu.plugin-services"]:::plugin
+  p_dstu_plugin_workshop["dstu.plugin-workshop"]:::plugin
   p_dstu_qbank["dstu.qbank"]:::plugin
   p_dstu_review["dstu.review"]:::plugin
   p_dstu_sync["dstu.sync"]:::plugin
@@ -186,39 +243,41 @@ graph LR
   p_dstu_vfs_handlers["dstu.vfs-handlers"]:::plugin
   p_dstu_vfs_index["dstu.vfs-index"]:::plugin
   p_dstu_vfs_repos["dstu.vfs-repos"]:::plugin
-  p_dstu_platform_diagnostics["dstu.platform.diagnostics"]:::plugin
-  p_dstu_platform_cloud_config["dstu.platform.cloud-config"]:::plugin
-  p_dstu_platform_log["dstu.platform.log"]:::plugin
-  p_dstu_native["dstu.native"]:::plugin
-  p_dstu_platform_paths["dstu.platform.paths"]:::plugin
-  p_dstu_platform_secrets["dstu.platform.secrets"]:::plugin
-  p_dstu_platform_settings["dstu.platform.settings"]:::plugin
-  p_dstu_platform_storage["dstu.platform.storage"]:::plugin
-  p_dstu_vector["dstu.vector"]:::plugin
   s_agentApproval(["agentApproval"]):::service
   p_dstu_agent_workspace -->|provides| s_agentApproval
+  s_agentApproval -.->|get| p_dstu_chat
+  s_agentApproval -.->|get| p_dstu_chat_pipeline
   s_agentAutomation(["agentAutomation"]):::service
   p_dstu_agent_orchestration -->|provides| s_agentAutomation
+  s_agentCardReadScope(["agentCardReadScope"]):::service
+  p_dstu_agent_workspace -->|provides| s_agentCardReadScope
   s_agentCompletionOutbox(["agentCompletionOutbox"]):::service
   p_dstu_agent_workspace -->|provides| s_agentCompletionOutbox
+  s_agentMesh(["agentMesh"]):::service
+  p_dstu_agent_mesh -->|provides| s_agentMesh
   s_agentSkills(["agentSkills"]):::service
   p_dstu_agent_skills -->|provides| s_agentSkills
   s_agentSubagent(["agentSubagent"]):::service
   p_dstu_agent_orchestration -->|provides| s_agentSubagent
   s_agentTodo(["agentTodo"]):::service
   p_dstu_agent_orchestration -->|provides| s_agentTodo
+  s_agentTodo -.->|get| p_dstu_chat_pipeline
   s_agentTools(["agentTools"]):::service
   p_dstu_agent_skills -->|provides| s_agentTools
-  s_agentTools -.->|get| p_dstu_backup
-  s_agentTools -.->|get| p_dstu_notes
+  s_agentTools -->|inject| p_dstu_agent_mesh
+  s_agentTools -->|inject| p_dstu_plugin_workshop
+  s_agentTools -.->|get| p_dstu_chat_pipeline
   s_agentTransformSandbox(["agentTransformSandbox"]):::service
   p_dstu_agent_workspace -->|provides| s_agentTransformSandbox
   s_agentVfsResolver(["agentVfsResolver"]):::service
   p_dstu_agent_workspace -->|provides| s_agentVfsResolver
   s_agentVfsResolver -->|inject| p_dstu_chat_pipeline
+  s_agentVfsResolver -.->|get| p_dstu_chat
   s_agentWorkspace(["agentWorkspace"]):::service
   p_dstu_agent_workspace -->|provides| s_agentWorkspace
   s_agentWorkspace -.->|get| p_dstu_agent_orchestration
+  s_agentWorkspace -.->|get| p_dstu_chat_pipeline
+  s_agentWorkspace -.->|get| p_dstu_media
   s_agentWorkspaceTools(["agentWorkspaceTools"]):::service
   p_dstu_agent_workspace -->|provides| s_agentWorkspaceTools
   s_anki(["anki"]):::service
@@ -226,12 +285,16 @@ graph LR
   s_anki -->|inject| p_dstu_chatanki
   s_appCommandState(["appCommandState"]):::service
   p_dstu_integration -->|provides| s_appCommandState
-  s_appCommandState -.->|get| p_dstu_media
   s_appCommandState -.->|get| p_dstu_platform_storage
+  s_appCommandState -.->|get| p_dstu_media
   s_backgroundTasks(["backgroundTasks"]):::service
   p_dstu_platform_diagnostics -->|provides| s_backgroundTasks
   s_backgroundTasks -.->|get| p_dstu_agent_orchestration
+  s_backgroundTasks -.->|get| p_dstu_backup
+  s_backgroundTasks -.->|get| p_dstu_chat_pipeline
   s_backgroundTasks -.->|get| p_dstu_qbank
+  s_backgroundTasks -.->|get| p_dstu_review
+  s_backgroundTasks -.->|get| p_dstu_vfs_index
   s_backup(["backup"]):::service
   p_dstu_backup -->|provides| s_backup
   s_backup -->|inject| p_dstu_sync
@@ -243,79 +306,132 @@ graph LR
   s_browserSurface -.->|get| p_dstu_browser
   s_browserToolPolicy(["browserToolPolicy"]):::service
   p_dstu_browser -->|provides| s_browserToolPolicy
+  s_chat_send_1(["chat.send@1"]):::service
+  p_dstu_chat_pipeline -->|provides| s_chat_send_1
   s_chatankiTools(["chatankiTools"]):::service
   p_dstu_chatanki -->|provides| s_chatankiTools
   s_chatAttachmentErrors(["chatAttachmentErrors"]):::service
   p_dstu_chat -->|provides| s_chatAttachmentErrors
   s_chatPipeline(["chatPipeline"]):::service
   p_dstu_chat_pipeline -->|provides| s_chatPipeline
+  s_chatPipeline -->|inject| p_dstu_plugin_workshop
   s_chatPipeline -.->|get| p_dstu_agent_orchestration
+  s_chatPipeline -.->|get| p_dstu_memory
+  s_chatPipelineHooks(["chatPipelineHooks"]):::service
+  p_dstu_chat_pipeline -->|provides| s_chatPipelineHooks
+  s_chatPipelineHooks -.->|get| p_dstu_chat_pipeline
   s_chatRetrievalScope(["chatRetrievalScope"]):::service
   p_dstu_chat -->|provides| s_chatRetrievalScope
   s_chatSession(["chatSession"]):::service
   p_dstu_chat -->|provides| s_chatSession
   s_chatSession -->|inject| p_dstu_chat_pipeline
+  s_chatSession -->|inject| p_dstu_plugin_workshop
   s_chatSession -.->|get| p_dstu_agent_orchestration
   s_chatSession -.->|get| p_dstu_agent_workspace
   s_chatSession -.->|get| p_dstu_anki
   s_chatState(["chatState"]):::service
   p_dstu_chat -->|provides| s_chatState
+  s_chatState -.->|get| p_dstu_agent_mesh
   s_chatState -.->|get| p_dstu_agent_orchestration
+  s_chatState -.->|get| p_dstu_chat_pipeline
   s_chatToolRuntime(["chatToolRuntime"]):::missing
   s_chatToolRuntime -.->|get| p_dstu_chat_pipeline
+  s_chatWorkerRuntime(["chatWorkerRuntime"]):::service
+  p_dstu_chat -->|provides| s_chatWorkerRuntime
+  s_chatWorkerRuntime -.->|get| p_dstu_agent_orchestration
   s_cloudConfig(["cloudConfig"]):::service
   p_dstu_backup -->|provides| s_cloudConfig
   s_cloudConfig -->|inject| p_dstu_platform_cloud_config
+  s_crypto(["crypto"]):::service
+  p_dstu_platform_crypto -->|provides| s_crypto
+  s_crypto -.->|get| p_dstu_agent_skills
+  s_crypto -.->|get| p_dstu_anki
+  s_crypto -.->|get| p_dstu_chat_pipeline
+  s_crypto -.->|get| p_dstu_memory
+  s_crypto -.->|get| p_dstu_qbank
+  s_crypto -.->|get| p_dstu_sync_providers
   s_dataSpace(["dataSpace"]):::service
   p_dstu_platform_storage -->|provides| s_dataSpace
   s_diagnostics(["diagnostics"]):::service
   p_dstu_platform_diagnostics -->|provides| s_diagnostics
   s_docs(["docs"]):::service
   p_dstu_media -->|provides| s_docs
-  s_docs -->|inject| p_dstu_vfs_handlers
   s_docs -.->|get| p_dstu_agent_workspace
-  s_docs -.->|get| p_dstu_anki
   s_docs -.->|get| p_dstu_chat_pipeline
   s_docs -.->|get| p_dstu_qbank
   s_docs -.->|get| p_dstu_vfs
   s_docs -.->|get| p_dstu_vfs_repos
   s_dstu(["dstu"]):::service
   p_dstu_vfs -->|provides| s_dstu
+  s_dstuUpload(["dstuUpload"]):::service
+  p_dstu_vfs -->|provides| s_dstuUpload
+  s_embedding_1(["embedding@1"]):::service
+  p_dstu_llm -->|provides| s_embedding_1
   s_essayGrading(["essayGrading"]):::service
   p_dstu_llm -->|provides| s_essayGrading
+  s_essayGrading -.->|get| p_dstu_review
   s_examSheetSession(["examSheetSession"]):::service
   p_dstu_media -->|provides| s_examSheetSession
   s_examSheetSession -.->|get| p_dstu_qbank
+  s_externalLlmConfigs(["externalLlmConfigs"]):::service
+  p_dstu_platform_storage -->|provides| s_externalLlmConfigs
   s_featureFlags(["featureFlags"]):::service
   p_dstu_platform_storage -->|provides| s_featureFlags
   s_featureFlags -->|inject| p_dstu_browser
+  s_featureFlags -.->|get| p_dstu_agent_skills
   s_featureFlags -.->|get| p_dstu_notes
   s_fileManagerPaths(["fileManagerPaths"]):::service
   p_dstu_platform_storage -->|provides| s_fileManagerPaths
+  s_fileManagerPaths -.->|get| p_dstu_platform_backup_config
+  s_fileManagerPaths -.->|get| p_dstu_media
+  s_files(["files"]):::service
+  p_dstu_platform_files -->|provides| s_files
+  s_files -.->|get| p_dstu_agent_skills
+  s_files -.->|get| p_dstu_backup
+  s_files -.->|get| p_dstu_media
+  s_files -.->|get| p_dstu_qbank
+  s_files -.->|get| p_dstu_sync_providers
+  s_files -.->|get| p_dstu_sync_support
+  s_files -.->|get| p_dstu_vfs_handlers
   s_governance(["governance"]):::service
   p_dstu_backup -->|provides| s_governance
   s_governance -.->|get| p_dstu_agent_workspace
   s_governance -.->|get| p_dstu_notes
+  s_gradingRubrics(["gradingRubrics"]):::service
+  p_dstu_llm -->|provides| s_gradingRubrics
   s_hpiasResearch(["hpiasResearch"]):::service
   p_dstu_memory -->|provides| s_hpiasResearch
+  s_http(["http"]):::service
+  p_dstu_platform_http -->|provides| s_http
+  s_http -.->|get| p_dstu_agent_skills
+  s_http -.->|get| p_dstu_browser
+  s_http -.->|get| p_dstu_media
+  s_http -.->|get| p_dstu_plugin_workshop
+  s_http -.->|get| p_dstu_sync_providers
+  s_http -.->|get| p_dstu_vfs
   s_imageQuality(["imageQuality"]):::service
   p_dstu_platform_storage -->|provides| s_imageQuality
   s_injectionBudget(["injectionBudget"]):::service
   p_dstu_platform_storage -->|provides| s_injectionBudget
   s_injectionBudget -->|inject| p_dstu_llm
+  s_injectionBudget -.->|get| p_dstu_chat_pipeline
   s_insight(["insight"]):::service
   p_dstu_memory -->|provides| s_insight
+  s_insightHints(["insightHints"]):::service
+  p_dstu_memory -->|provides| s_insightHints
+  s_insightHints -.->|get| p_dstu_chat_pipeline
   s_lanceEngine(["lanceEngine"]):::service
   p_dstu_vfs_index -->|provides| s_lanceEngine
   s_llm(["llm"]):::service
   p_dstu_llm -->|provides| s_llm
   s_llm -->|inject| p_dstu_chatanki
-  s_llm -->|inject| p_dstu_mcp
   s_llm -->|inject| p_dstu_translation
+  s_llm -.->|get| p_dstu_shell
   s_llm -.->|get| p_dstu_anki
   s_llm -.->|get| p_dstu_chat
   s_llm -.->|get| p_dstu_chat_pipeline
   s_llm -.->|get| p_dstu_media
+  s_llm -.->|get| p_dstu_memory
   s_llm -.->|get| p_dstu_qbank
   s_llmAdapterInfos(["llmAdapterInfos"]):::service
   p_dstu_llm -->|provides| s_llmAdapterInfos
@@ -331,6 +447,8 @@ graph LR
   s_llmCodexAuth -->|inject| p_dstu_llm
   s_llmCodexAuth -->|inject| p_dstu_translation
   s_llmCodexAuth -.->|get| p_dstu_media
+  s_llmContextCompiler(["llmContextCompiler"]):::service
+  p_dstu_llm -->|provides| s_llmContextCompiler
   s_llmEmbeddingModels(["llmEmbeddingModels"]):::service
   p_dstu_llm -->|provides| s_llmEmbeddingModels
   s_llmFileOcr(["llmFileOcr"]):::service
@@ -338,6 +456,8 @@ graph LR
   s_llmHttp(["llmHttp"]):::service
   p_dstu_llm -->|provides| s_llmHttp
   s_llmHttp -->|inject| p_dstu_translation
+  s_llmHttp -.->|get| p_dstu_chat_pipeline
+  s_llmHttp -.->|get| p_dstu_media
   s_llmMcpTools(["llmMcpTools"]):::service
   p_dstu_llm -->|provides| s_llmMcpTools
   s_llmModel2Messages(["llmModel2Messages"]):::service
@@ -372,7 +492,13 @@ graph LR
   p_dstu_llm -->|provides| s_llmRag
   s_llmRawPrompt(["llmRawPrompt"]):::service
   p_dstu_llm -->|provides| s_llmRawPrompt
+  s_llmRawPrompt -.->|get| p_dstu_anki
   s_llmRawPrompt -.->|get| p_dstu_chat_pipeline
+  s_llmRawPrompt -.->|get| p_dstu_memory
+  s_llmRawPrompt -.->|get| p_dstu_review
+  s_llmReplay(["llmReplay"]):::missing
+  s_llmReranker(["llmReranker"]):::service
+  p_dstu_llm -->|provides| s_llmReranker
   s_llmStreamEvents(["llmStreamEvents"]):::service
   p_dstu_llm -->|provides| s_llmStreamEvents
   s_llmStreamEvents -.->|get| p_dstu_chat_pipeline
@@ -382,34 +508,50 @@ graph LR
   s_llmStreaming -.->|get| p_dstu_qbank
   s_llmUsage(["llmUsage"]):::service
   p_dstu_platform_storage -->|provides| s_llmUsage
+  s_llmUsage -.->|get| p_dstu_chat_pipeline
+  s_llmWebSearchFallback(["llmWebSearchFallback"]):::service
+  p_dstu_browser -->|provides| s_llmWebSearchFallback
   s_log(["log"]):::service
   p_dstu_platform_log -->|provides| s_log
+  s_log -->|inject| p_dstu_platform_secrets
+  s_log -->|inject| p_dstu_platform_storage
   s_log -->|inject| p_dstu_browser
   s_log -->|inject| p_dstu_mcp
   s_log -->|inject| p_dstu_memory
-  s_log -->|inject| p_dstu_platform_secrets
-  s_log -->|inject| p_dstu_platform_storage
   s_mastery(["mastery"]):::service
   p_dstu_review -->|provides| s_mastery
+  s_mastery -->|inject| p_dstu_sync
+  s_mastery -.->|get| p_dstu_memory
   s_mastery -.->|get| p_dstu_qbank
+  s_mastery -.->|get| p_dstu_review
   s_masteryProfileSink(["masteryProfileSink"]):::service
   p_dstu_memory -->|provides| s_masteryProfileSink
   s_masteryProfileSink -.->|get| p_dstu_review
   s_mcp(["mcp"]):::service
   p_dstu_mcp -->|provides| s_mcp
+  s_mcp -.->|get| p_dstu_agent_skills
+  s_mcp -.->|get| p_dstu_chat_pipeline
   s_media(["media"]):::service
   p_dstu_media -->|provides| s_media
+  s_media -.->|get| p_dstu_memory
   s_mediaTranscriber(["mediaTranscriber"]):::service
   p_dstu_media -->|provides| s_mediaTranscriber
   s_memory(["memory"]):::service
   p_dstu_memory -->|provides| s_memory
+  s_memory -.->|get| p_dstu_chat_pipeline
   s_memoryConfig(["memoryConfig"]):::service
   p_dstu_memory -->|provides| s_memoryConfig
   s_memoryConfig -.->|get| p_dstu_vfs
+  s_memoryProvider(["memoryProvider"]):::service
+  p_dstu_memory -->|provides| s_memoryProvider
+  s_memoryProvider -.->|get| p_dstu_chat_pipeline
+  s_memoryProvider -.->|get| p_dstu_review
   s_memoryRetrieval(["memoryRetrieval"]):::service
   p_dstu_memory -->|provides| s_memoryRetrieval
   s_memoryToolMetadata(["memoryToolMetadata"]):::service
   p_dstu_memory -->|provides| s_memoryToolMetadata
+  s_mindmapXml(["mindmapXml"]):::service
+  p_dstu_native -->|provides| s_mindmapXml
   s_nativeArgon2(["nativeArgon2"]):::service
   p_dstu_native -->|provides| s_nativeArgon2
   s_nativeAudio(["nativeAudio"]):::service
@@ -421,6 +563,7 @@ graph LR
   s_nativeCompression -.->|get| p_dstu_anki
   s_nativeFsrs(["nativeFsrs"]):::service
   p_dstu_native -->|provides| s_nativeFsrs
+  s_nativeFsrs -.->|get| p_dstu_review
   s_nativeHeic(["nativeHeic"]):::service
   p_dstu_native -->|provides| s_nativeHeic
   s_nativeHeic -.->|get| p_dstu_media
@@ -432,6 +575,7 @@ graph LR
   s_nativeImage -.->|get| p_dstu_vfs_repos
   s_nativeOffice(["nativeOffice"]):::service
   p_dstu_native -->|provides| s_nativeOffice
+  s_nativeOffice -.->|get| p_dstu_agent_skills
   s_nativeOffice -.->|get| p_dstu_media
   s_nativeOfficeText(["nativeOfficeText"]):::service
   p_dstu_native -->|provides| s_nativeOfficeText
@@ -440,6 +584,7 @@ graph LR
   s_nativeOfficeWriter(["nativeOfficeWriter"]):::service
   p_dstu_native -->|provides| s_nativeOfficeWriter
   s_nativeOfficeWriter -.->|get| p_dstu_media
+  s_nativeOfficeWriter -.->|get| p_dstu_qbank
   s_nativePdfium(["nativePdfium"]):::service
   p_dstu_native -->|provides| s_nativePdfium
   s_nativePdfium -.->|get| p_dstu_media
@@ -454,6 +599,8 @@ graph LR
   s_nativeSandbox(["nativeSandbox"]):::service
   p_dstu_native -->|provides| s_nativeSandbox
   s_nativeSandbox -.->|get| p_dstu_agent_workspace
+  s_nativeSqliteBusy(["nativeSqliteBusy"]):::service
+  p_dstu_native -->|provides| s_nativeSqliteBusy
   s_nativeStarlark(["nativeStarlark"]):::service
   p_dstu_native -->|provides| s_nativeStarlark
   s_nativeStarlark -.->|get| p_dstu_agent_skills
@@ -463,7 +610,9 @@ graph LR
   s_nativeTokenizer -->|inject| p_dstu_llm
   s_nativeWindowsFiles(["nativeWindowsFiles"]):::service
   p_dstu_native -->|provides| s_nativeWindowsFiles
+  s_nativeWindowsFiles -.->|get| p_dstu_agent_skills
   s_nativeWindowsFiles -.->|get| p_dstu_agent_workspace
+  s_nativeWindowsFiles -.->|get| p_dstu_chat_pipeline
   s_nativeWindowsSandbox(["nativeWindowsSandbox"]):::service
   p_dstu_native -->|provides| s_nativeWindowsSandbox
   s_noteAssets(["noteAssets"]):::service
@@ -476,27 +625,51 @@ graph LR
   s_notes -->|inject| p_dstu_vfs
   s_notes -->|inject| p_dstu_vfs_handlers
   s_notes -.->|get| p_dstu_media
+  s_notes -.->|get| p_dstu_qbank
   s_notes -.->|get| p_dstu_vfs_repos
   s_ocr(["ocr"]):::service
   p_dstu_media -->|provides| s_ocr
   s_pageRasterizer(["pageRasterizer"]):::service
   p_dstu_media -->|provides| s_pageRasterizer
   s_pageRasterizer -.->|get| p_dstu_qbank
+  s_paperLibrary(["paperLibrary"]):::service
+  p_dstu_vfs -->|provides| s_paperLibrary
   s_paths(["paths"]):::service
   p_dstu_platform_paths -->|provides| s_paths
+  s_paths -->|inject| p_dstu_sync_startup
+  s_paths -->|inject| p_dstu_platform_files
+  s_paths -->|inject| p_dstu_platform_log
+  s_paths -->|inject| p_dstu_platform_secrets
+  s_paths -->|inject| p_dstu_platform_backup_config
+  s_paths -->|inject| p_dstu_platform_storage
+  s_paths -->|inject| p_dstu_agent_mesh
   s_paths -->|inject| p_dstu_agent_skills
   s_paths -->|inject| p_dstu_anki
   s_paths -->|inject| p_dstu_media
+  s_paths -->|inject| p_dstu_plugin_workshop
   s_paths -->|inject| p_dstu_qbank
   s_paths -->|inject| p_dstu_sync
   s_paths -->|inject| p_dstu_sync_providers
   s_paths -->|inject| p_dstu_vfs_repos
-  s_paths -->|inject| p_dstu_platform_log
-  s_paths -->|inject| p_dstu_platform_secrets
-  s_paths -->|inject| p_dstu_platform_storage
+  s_paths -.->|get| p_dstu_backup
   s_paths -.->|get| p_dstu_chat_pipeline
+  s_pendingMemoryCandidates(["pendingMemoryCandidates"]):::service
+  p_dstu_anki -->|provides| s_pendingMemoryCandidates
+  s_pluginModel(["pluginModel"]):::service
+  p_dstu_llm -->|provides| s_pluginModel
+  s_pluginNotify(["pluginNotify"]):::service
+  p_dstu_plugin_services -->|provides| s_pluginNotify
+  s_plugins(["plugins"]):::service
+  p_dstu_plugins -->|provides| s_plugins
+  s_pluginSchedule(["pluginSchedule"]):::service
+  p_dstu_plugin_services -->|provides| s_pluginSchedule
+  s_pluginSecrets(["pluginSecrets"]):::service
+  p_dstu_plugin_services -->|provides| s_pluginSecrets
+  s_pluginWorkshop(["pluginWorkshop"]):::service
+  p_dstu_plugin_workshop -->|provides| s_pluginWorkshop
   s_qbank(["qbank"]):::service
   p_dstu_qbank -->|provides| s_qbank
+  s_qbank -.->|get| p_dstu_review
   s_qbank -.->|get| p_dstu_vfs
   s_qbank -.->|get| p_dstu_vfs_repos
   s_questionImportVision(["questionImportVision"]):::service
@@ -504,29 +677,39 @@ graph LR
   s_retrieval(["retrieval"]):::service
   p_dstu_vfs_index -->|provides| s_retrieval
   s_retrieval -->|inject| p_dstu_vfs_handlers
+  s_retrieval -.->|get| p_dstu_memory
+  s_retrievalCancellable(["retrievalCancellable"]):::service
+  p_dstu_vfs_index -->|provides| s_retrievalCancellable
   s_review(["review"]):::service
   p_dstu_review -->|provides| s_review
   s_review -->|inject| p_dstu_chatanki
   s_review -.->|get| p_dstu_anki
+  s_review -.->|get| p_dstu_memory
   s_reviewPlan(["reviewPlan"]):::service
   p_dstu_review -->|provides| s_reviewPlan
+  s_reviewPlan -.->|get| p_dstu_memory
   s_reviewPlan -.->|get| p_dstu_qbank
-  s_reviewPlan -.->|get| p_dstu_review
+  s_reviewSchedulers(["reviewSchedulers"]):::service
+  p_dstu_review -->|provides| s_reviewSchedulers
   s_runtimeRoots(["runtimeRoots"]):::service
   p_dstu_agent_workspace -->|provides| s_runtimeRoots
   s_runtimeRoots -.->|get| p_dstu_browser
+  s_runtimeRoots -.->|get| p_dstu_chat_pipeline
+  s_runtimeRoots -.->|get| p_dstu_media
   s_secrets(["secrets"]):::service
   p_dstu_platform_secrets -->|provides| s_secrets
+  s_secrets -->|inject| p_dstu_platform_settings
+  s_secrets -->|inject| p_dstu_platform_storage
   s_secrets -->|inject| p_dstu_backup
   s_secrets -->|inject| p_dstu_llm
   s_secrets -->|inject| p_dstu_mcp
   s_secrets -->|inject| p_dstu_sync
   s_secrets -->|inject| p_dstu_sync_providers
-  s_secrets -->|inject| p_dstu_platform_settings
-  s_secrets -->|inject| p_dstu_platform_storage
   s_secrets -.->|get| p_dstu_media
   s_settings(["settings"]):::service
   p_dstu_platform_settings -->|provides| s_settings
+  s_settings -->|inject| p_dstu_plugins
+  s_settings -->|inject| p_dstu_platform_backup_config
   s_settings -->|inject| p_dstu_agent_orchestration
   s_settings -->|inject| p_dstu_agent_skills
   s_settings -->|inject| p_dstu_agent_workspace
@@ -539,17 +722,25 @@ graph LR
   s_settings -->|inject| p_dstu_mcp
   s_settings -->|inject| p_dstu_media
   s_settings -->|inject| p_dstu_memory
+  s_settings -->|inject| p_dstu_plugin_services
   s_settings -->|inject| p_dstu_vfs_handlers
+  s_settings -.->|get| p_dstu_shell
   s_settings -.->|get| p_dstu_anki
   s_settings -.->|get| p_dstu_chat
   s_settings -.->|get| p_dstu_notes
+  s_settings -.->|get| p_dstu_plugin_workshop
   s_settings -.->|get| p_dstu_vfs
-  s_startupGate(["startupGate"]):::missing
-  s_startupGate -.->|get| p_dstu_agent_orchestration
-  s_startupGate -.->|get| p_dstu_backup
+  s_settings -.->|get| p_dstu_vfs_index
+  s_shellWindows(["shellWindows"]):::service
+  p_dstu_shell -->|provides| s_shellWindows
+  s_startupGate(["startupGate"]):::service
+  p_dstu_shell -->|provides| s_startupGate
   s_startupGate -.->|get| p_dstu_platform_storage
+  s_startupGate -.->|get| p_dstu_backup
   s_storage(["storage"]):::service
   p_dstu_platform_storage -->|provides| s_storage
+  s_storage -->|inject| p_dstu_platform_diagnostics
+  s_storage -->|inject| p_dstu_platform_settings
   s_storage -->|inject| p_dstu_agent_orchestration
   s_storage -->|inject| p_dstu_agent_skills
   s_storage -->|inject| p_dstu_agent_workspace
@@ -559,6 +750,7 @@ graph LR
   s_storage -->|inject| p_dstu_chat
   s_storage -->|inject| p_dstu_chat_pipeline
   s_storage -->|inject| p_dstu_integration
+  s_storage -->|inject| p_dstu_media
   s_storage -->|inject| p_dstu_memory
   s_storage -->|inject| p_dstu_notes
   s_storage -->|inject| p_dstu_qbank
@@ -568,11 +760,14 @@ graph LR
   s_storage -->|inject| p_dstu_vfs
   s_storage -->|inject| p_dstu_vfs_index
   s_storage -->|inject| p_dstu_vfs_repos
-  s_storage -->|inject| p_dstu_platform_diagnostics
-  s_storage -->|inject| p_dstu_platform_settings
+  s_storage -.->|get| p_dstu_plugins
+  s_storage -.->|get| p_dstu_shell
+  s_storage -.->|get| p_dstu_plugin_workshop
   s_storageStartupSync(["storageStartupSync"]):::service
-  p_dstu_sync -->|provides| s_storageStartupSync
+  p_dstu_sync_startup -->|provides| s_storageStartupSync
   s_storageStartupSync -.->|get| p_dstu_platform_storage
+  s_studyData(["studyData"]):::service
+  p_dstu_plugin_services -->|provides| s_studyData
   s_sync(["sync"]):::service
   p_dstu_sync -->|provides| s_sync
   s_sync -.->|get| p_dstu_backup
@@ -582,9 +777,10 @@ graph LR
   s_syncSupport(["syncSupport"]):::service
   p_dstu_sync_support -->|provides| s_syncSupport
   s_syncSupport -->|inject| p_dstu_sync
-  s_systemNotification(["systemNotification"]):::missing
-  s_systemNotification -.->|get| p_dstu_agent_orchestration
+  s_systemNotification(["systemNotification"]):::service
+  p_dstu_shell -->|provides| s_systemNotification
   s_systemNotification -.->|get| p_dstu_chat
+  s_systemNotification -.->|get| p_dstu_plugin_services
   s_translation(["translation"]):::service
   p_dstu_translation -->|provides| s_translation
   s_vector(["vector"]):::service
@@ -592,17 +788,21 @@ graph LR
   s_vfs(["vfs"]):::service
   p_dstu_vfs -->|provides| s_vfs
   s_vfs -->|inject| p_dstu_chat
+  s_vfs -->|inject| p_dstu_vfs_handlers
   s_vfs -.->|get| p_dstu_agent_workspace
   s_vfs -.->|get| p_dstu_chat_pipeline
   s_vfs -.->|get| p_dstu_media
+  s_vfs -.->|get| p_dstu_memory
   s_vfsDatabase(["vfsDatabase"]):::service
   p_dstu_vfs -->|provides| s_vfsDatabase
   s_vfsDatabase -->|inject| p_dstu_llm
   s_vfsDatabase -->|inject| p_dstu_sync
   s_vfsDatabase -->|inject| p_dstu_vfs_handlers
+  s_vfsDatabase -.->|get| p_dstu_shell
   s_vfsDatabase -.->|get| p_dstu_anki
   s_vfsDatabase -.->|get| p_dstu_browser
   s_vfsDatabase -.->|get| p_dstu_media
+  s_vfsDatabase -.->|get| p_dstu_memory
   s_vfsDatabase -.->|get| p_dstu_vfs
   s_vfsDatabase -.->|get| p_dstu_vfs_repos
   s_vfsHooks(["vfsHooks"]):::service
@@ -617,13 +817,15 @@ graph LR
   s_vfsIndexMaintenance(["vfsIndexMaintenance"]):::service
   p_dstu_vfs_index -->|provides| s_vfsIndexMaintenance
   s_vfsIndexMaintenance -->|inject| p_dstu_vfs_handlers
-  s_vfsMaintenance(["vfsMaintenance"]):::missing
+  s_vfsMaintenance(["vfsMaintenance"]):::service
+  p_dstu_vfs_repos -->|provides| s_vfsMaintenance
   s_vfsMaintenance -->|inject| p_dstu_vfs_handlers
   s_vfsMaintenance -.->|get| p_dstu_backup
   s_vfsRefText(["vfsRefText"]):::service
   p_dstu_vfs_handlers -->|provides| s_vfsRefText
   s_vfsRefText -.->|get| p_dstu_qbank
-  s_vfsRepo(["vfsRepo"]):::missing
+  s_vfsRepo(["vfsRepo"]):::service
+  p_dstu_vfs_repos -->|provides| s_vfsRepo
   s_vfsRepo -->|inject| p_dstu_chat_pipeline
   s_vfsRepo -->|inject| p_dstu_llm
   s_vfsRepo -->|inject| p_dstu_memory
@@ -636,15 +838,20 @@ graph LR
   s_vfsRepo -.->|get| p_dstu_agent_workspace
   s_vfsRepo -.->|get| p_dstu_anki
   s_vfsRepo -.->|get| p_dstu_browser
+  s_vfsRepo -.->|get| p_dstu_chat
   s_vfsRepo -.->|get| p_dstu_media
   s_vfsRepo -.->|get| p_dstu_qbank
   s_vfsRepo -.->|get| p_dstu_review
+  s_vfsRepo -.->|get| p_dstu_translation
   s_vfsUnitBuilder(["vfsUnitBuilder"]):::service
   p_dstu_vfs_index -->|provides| s_vfsUnitBuilder
   s_vfsUnitBuilder -->|inject| p_dstu_vfs_handlers
   s_vfsUnitBuilder -.->|get| p_dstu_browser
   s_vfsUnitBuilder -.->|get| p_dstu_vfs
-  s_virtualFilePolicy(["virtualFilePolicy"]):::missing
+  s_vfsWorker(["vfsWorker"]):::service
+  p_dstu_vfs_repos -->|provides| s_vfsWorker
+  s_virtualFilePolicy(["virtualFilePolicy"]):::service
+  p_dstu_platform_storage -->|provides| s_virtualFilePolicy
   s_virtualFilePolicy -.->|get| p_dstu_vfs
   s_webpageToolPolicy(["webpageToolPolicy"]):::service
   p_dstu_browser -->|provides| s_webpageToolPolicy
@@ -657,47 +864,207 @@ graph LR
 
 | 插件 id | lane | 类型 | provides | inject | 命令数 | 入口 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `dstu.agent-orchestration` | L06-agent-orchestration | 业务 | `agentAutomation`<br>`agentSubagent`<br>`agentTodo` | `settings`<br>`storage` | 17 | host/plugins/agent-orchestration/index.ts |
+| `dstu.plugins` | F1-kernel | 内核 | `plugins` | `settings` | 11 | host/kernel/plugins.ts |
+| `dstu.sync-startup` | L20-sync | 业务 | `storageStartupSync` | `paths` | 0 | host/plugins/sync/startup.ts |
+| `dstu.platform.crypto` | W14-portable | 平台 | `crypto` | — | 0 | host/platform/crypto/index.ts |
+| `dstu.platform.diagnostics` | F4-security | 平台 | `diagnostics`<br>`backgroundTasks` | `storage` | 9 | host/platform/diagnostics/index.ts |
+| `dstu.platform.cloud-config` | F4-security | 平台 | — | `cloudConfig` | 4 | host/platform/errors/index.ts |
+| `dstu.platform.files` | W14-portable | 平台 | `files` | `paths` | 0 | host/platform/files/index.ts |
+| `dstu.platform.http` | W14-portable | 平台 | `http` | — | 0 | host/platform/http/index.ts |
+| `dstu.platform.log` | F4-security | 平台 | `log` | `paths` | 14 | host/platform/log/index.ts |
+| `dstu.native` | F7-native | 平台 | `nativeCompression`<br>`nativeHeic`<br>`nativeImage`<br>`nativeOffice`<br>`nativeOfficeText`<br>`nativeProtobuf`<br>`nativeTokenizer`<br>`nativePdfium`<br>`nativeFsrs`<br>`nativeRegex`<br>`nativeStarlark`<br>`nativeAudio`<br>`nativeOfficeWriter`<br>`nativeSandbox`<br>`nativeWindowsFiles`<br>`nativeWindowsSandbox`<br>`nativeArgon2`<br>`mindmapXml`<br>`nativeSqliteBusy` | — | 0 | host/platform/native/index.ts |
+| `dstu.platform.paths` | F4-platform | 平台 | `paths` | — | 0 | host/platform/paths/index.ts |
+| `dstu.platform.secrets` | F4-security | 平台 | `secrets` | `paths`<br>`log` | 11 | host/platform/secrets/index.ts |
+| `dstu.platform.backup-config` | F4-security | 平台 | — | `settings`<br>`paths` | 5 | host/platform/settings/backup-commands.ts |
+| `dstu.platform.settings` | F4-platform | 平台 | `settings` | `storage`<br>`secrets` | 0 | host/platform/settings/index.ts |
+| `dstu.platform.storage` | F3-storage | 平台 | `storage`<br>`dataSpace`<br>`featureFlags`<br>`injectionBudget`<br>`noteAssets`<br>`imageQuality`<br>`llmUsage`<br>`fileManagerPaths`<br>`virtualFilePolicy`<br>`externalLlmConfigs` | `secrets`<br>`paths`<br>`log` | 33 | host/platform/storage/index.ts |
+| `dstu.vector` | F7-native | 平台 | `vector` | — | 0 | host/platform/vector/index.ts |
+| `dstu.shell` | F2-shell | 外壳 | `startupGate`<br>`systemNotification`<br>`shellWindows` | — | 23 | electron/index.ts |
+| `dstu.agent-mesh` | — | 业务 | `agentMesh` | `paths`<br>`agentTools` | 0 | host/plugins/agent-mesh/index.ts |
+| `dstu.agent-orchestration` | L06-agent-orchestration | 业务 | `agentAutomation`<br>`agentSubagent`<br>`agentTodo` | `settings`<br>`storage` | 18 | host/plugins/agent-orchestration/index.ts |
 | `dstu.agent-skills` | L07-agent-skills-ptc | 业务 | `agentSkills`<br>`agentTools` | `paths`<br>`settings`<br>`storage` | 22 | host/plugins/agent-skills/index.ts |
-| `dstu.agent-workspace` | L05-agent-workspace | 业务 | `agentApproval`<br>`agentWorkspace`<br>`agentWorkspaceTools`<br>`agentVfsResolver`<br>`agentCompletionOutbox`<br>`runtimeRoots`<br>`agentTransformSandbox` | `settings`<br>`storage` | 12 | host/plugins/agent-workspace/index.ts |
-| `dstu.anki` | L16-anki | 业务 | `anki` | `paths`<br>`storage` | 61 | host/plugins/anki/index.ts |
+| `dstu.agent-workspace` | L05-agent-workspace | 业务 | `agentApproval`<br>`agentWorkspace`<br>`agentWorkspaceTools`<br>`agentVfsResolver`<br>`agentCompletionOutbox`<br>`runtimeRoots`<br>`agentTransformSandbox`<br>`agentCardReadScope` | `settings`<br>`storage` | 12 | host/plugins/agent-workspace/index.ts |
+| `dstu.anki` | L16-anki | 业务 | `anki`<br>`pendingMemoryCandidates` | `paths`<br>`storage` | 61 | host/plugins/anki/index.ts |
 | `dstu.backup` | L21-backup-governance | 业务 | `backup`<br>`governance`<br>`cloudConfig` | `storage`<br>`settings`<br>`secrets` | 33 | host/plugins/backup/index.ts |
-| `dstu.browser` | L19-mcp-browser | 业务 | `webSearch`<br>`browser`<br>`browserToolPolicy`<br>`webpageToolPolicy` | `settings`<br>`storage`<br>`log`<br>`featureFlags` | 39 | host/plugins/browser/index.ts |
-| `dstu.chat` | L04-chat-session | 业务 | `chatState`<br>`chatSession`<br>`chatAttachmentErrors`<br>`chatRetrievalScope` | `storage`<br>`vfs` | 107 | host/plugins/chat/index.ts |
-| `dstu.chat-pipeline` | L03-chat-pipeline | 业务 | `chatPipeline` | `nativeTokenizer`<br>`chatSession`<br>`settings`<br>`storage`<br>`vfsRepo`<br>`agentVfsResolver` | 0 | host/plugins/chat-pipeline/index.ts |
+| `dstu.browser` | L19-mcp-browser | 业务 | `webSearch`<br>`llmWebSearchFallback`<br>`browser`<br>`browserToolPolicy`<br>`webpageToolPolicy` | `settings`<br>`storage`<br>`log`<br>`featureFlags` | 39 | host/plugins/browser/index.ts |
+| `dstu.chat` | L04-chat-session | 业务 | `chatState`<br>`chatSession`<br>`chatAttachmentErrors`<br>`chatRetrievalScope`<br>`chatWorkerRuntime` | `storage`<br>`vfs` | 107 | host/plugins/chat/index.ts |
+| `dstu.chat-pipeline` | L03-chat-pipeline | 业务 | `chatPipeline`<br>`chatPipelineHooks`<br>`chat.send@1` | `nativeTokenizer`<br>`chatSession`<br>`settings`<br>`storage`<br>`vfsRepo`<br>`agentVfsResolver` | 0 | host/plugins/chat-pipeline/index.ts |
 | `dstu.chatanki` | L24-chatanki | 业务 | `chatankiTools` | `settings`<br>`review`<br>`llm`<br>`anki` | 0 | host/plugins/chatanki/index.ts |
 | `dstu.integration` | L22-app-commands | 业务 | `appCommandState` | `storage` | 0 | host/plugins/integration/index.ts |
-| `dstu.llm` | L02-llm-manager | 业务 | `llm`<br>`essayGrading`<br>`llmStreaming`<br>`llmAdapterInfos`<br>`llmEmbeddingModels`<br>`llmOcrModels`<br>`llmRag`<br>`llmOcrRegions`<br>`llmOcrHedge`<br>`llmQuestionParsing`<br>`llmModel2Messages`<br>`llmProviderRequests`<br>`llmStreamEvents`<br>`llmAnkiRouting`<br>`llmMcpTools`<br>`llmModel2Streaming`<br>`llmHttp`<br>`llmRawPrompt`<br>`llmQuestionAuthoring`<br>`llmOcrPages`<br>`llmFileOcr` | `settings`<br>`secrets`<br>`vfsDatabase`<br>`vfsRepo`<br>`llmAdapters`<br>`nativeTokenizer`<br>`nativeImage`<br>`injectionBudget`<br>`llmCodexAuth` | 20 | host/plugins/llm/index.ts |
+| `dstu.llm` | L02-llm-manager | 业务 | `llm`<br>`embedding@1`<br>`llmReranker`<br>`essayGrading`<br>`gradingRubrics`<br>`llmStreaming`<br>`llmAdapterInfos`<br>`llmEmbeddingModels`<br>`llmOcrModels`<br>`llmRag`<br>`llmOcrRegions`<br>`llmOcrHedge`<br>`llmQuestionParsing`<br>`llmModel2Messages`<br>`llmProviderRequests`<br>`llmStreamEvents`<br>`llmAnkiRouting`<br>`llmMcpTools`<br>`llmModel2Streaming`<br>`llmHttp`<br>`llmRawPrompt`<br>`pluginModel`<br>`llmQuestionAuthoring`<br>`llmOcrPages`<br>`llmFileOcr`<br>`llmContextCompiler` | `settings`<br>`secrets`<br>`vfsDatabase`<br>`vfsRepo`<br>`llmAdapters`<br>`nativeTokenizer`<br>`nativeImage`<br>`injectionBudget`<br>`llmCodexAuth` | 24 | host/plugins/llm/index.ts |
 | `dstu.llm-providers` | L01-llm-providers | 业务 | `llmAdapters`<br>`llmOcr`<br>`llmMultimodal`<br>`llmCodexAuth` | `settings` | 5 | host/plugins/llm-providers/index.ts |
-| `dstu.mcp` | L19-mcp-browser | 业务 | `mcp` | `settings`<br>`secrets`<br>`llm`<br>`webSearch`<br>`log` | 23 | host/plugins/mcp/index.ts |
-| `dstu.media` | L18-media-docs | 业务 | `media`<br>`docs`<br>`ocr`<br>`examSheetSession`<br>`mediaTranscriber`<br>`pageRasterizer`<br>`questionImportVision` | `settings`<br>`paths` | 74 | host/plugins/media/index.ts |
-| `dstu.memory` | L17-memory-research | 业务 | `memory`<br>`insight`<br>`masteryProfileSink`<br>`memoryRetrieval`<br>`hpiasResearch`<br>`memoryConfig`<br>`memoryToolMetadata` | `storage`<br>`settings`<br>`notes`<br>`vfsRepo`<br>`log` | 0 | host/plugins/memory/index.ts |
+| `dstu.mcp` | L19-mcp-browser | 业务 | `mcp` | `settings`<br>`secrets`<br>`webSearch`<br>`log` | 23 | host/plugins/mcp/index.ts |
+| `dstu.media` | L18-media-docs | 业务 | `media`<br>`docs`<br>`ocr`<br>`examSheetSession`<br>`mediaTranscriber`<br>`pageRasterizer`<br>`questionImportVision` | `settings`<br>`paths`<br>`storage` | 75 | host/plugins/media/index.ts |
+| `dstu.memory` | L17-memory-research | 业务 | `memory`<br>`memoryProvider`<br>`insight`<br>`masteryProfileSink`<br>`memoryRetrieval`<br>`hpiasResearch`<br>`memoryConfig`<br>`memoryToolMetadata`<br>`insightHints` | `storage`<br>`settings`<br>`notes`<br>`vfsRepo`<br>`log` | 34 | host/plugins/memory/index.ts |
 | `dstu.notes` | L10-notes | 业务 | `notes` | `storage`<br>`vfsRepo` | 81 | host/plugins/notes/index.ts |
+| `dstu.plugin-services` | — | 业务 | `pluginSecrets`<br>`pluginNotify`<br>`pluginSchedule`<br>`studyData` | `settings` | 0 | host/plugins/plugin-services/index.ts |
+| `dstu.plugin-workshop` | — | 业务 | `pluginWorkshop` | `paths`<br>`agentTools`<br>`chatSession`<br>`chatPipeline`<br>`dstuPluginInstaller` | 0 | host/plugins/plugin-workshop/index.ts |
 | `dstu.qbank` | L14-qbank | 业务 | `qbank` | `storage`<br>`paths` | 88 | host/plugins/qbank/index.ts |
-| `dstu.review` | L15-review-analytics | 业务 | `mastery`<br>`review`<br>`reviewPlan` | `storage` | 70 | host/plugins/review/index.ts |
-| `dstu.sync` | L20-sync | 业务 | `sync`<br>`storageStartupSync` | `storage`<br>`paths`<br>`notes`<br>`backup`<br>`syncProvider`<br>`secrets`<br>`vfsDatabase`<br>`syncSupport`<br>`nativeCompression`<br>`vfsRepo` | 24 | host/plugins/sync/index.ts |
+| `dstu.review` | L15-review-analytics | 业务 | `mastery`<br>`review`<br>`reviewPlan`<br>`reviewSchedulers` | `storage` | 70 | host/plugins/review/index.ts |
+| `dstu.sync` | L20-sync | 业务 | `sync` | `storage`<br>`paths`<br>`notes`<br>`backup`<br>`syncProvider`<br>`secrets`<br>`vfsDatabase`<br>`syncSupport`<br>`nativeCompression`<br>`vfsRepo`<br>`mastery` | 28 | host/plugins/sync/index.ts |
 | `dstu.sync-providers` | L23-sync-providers | 业务 | `syncProvider` | `secrets`<br>`backup`<br>`paths` | 14 | host/plugins/sync-providers/index.ts |
 | `dstu.sync-support` | L20-sync | 业务 | `syncSupport` | `storage`<br>`notes`<br>`vfsRepo` | 0 | host/plugins/sync-support/index.ts |
 | `dstu.translation` | L02-llm-manager | 业务 | `translation` | `llm`<br>`llmCodexAuth`<br>`llmHttp` | 6 | host/plugins/translation/index.ts |
-| `dstu.vfs` | L13-vfs-api | 业务 | `vfsDatabase`<br>`vfs`<br>`dstu` | `storage`<br>`notes`<br>`vfsRepo`<br>`vfsIndex` | 6 | host/plugins/vfs/index.ts |
-| `dstu.vfs-handlers` | L13-vfs-api | 业务 | `vfsHooks`<br>`vfsRefText` | `vfsDatabase`<br>`vfsRepo`<br>`vfsMaintenance`<br>`notes`<br>`vfsIndex`<br>`vfsIndexMaintenance`<br>`vfsUnitBuilder`<br>`retrieval`<br>`settings`<br>`docs` | 1 | host/plugins/vfs-handlers/index.ts |
-| `dstu.vfs-index` | L12-vfs-index | 业务 | `lanceEngine`<br>`retrieval`<br>`vfsIndex`<br>`vfsUnitBuilder`<br>`vfsIndexMaintenance` | `storage` | 3 | host/plugins/vfs-index/index.ts |
-| `dstu.vfs-repos` | L11-vfs-repos | 业务 | — | `storage`<br>`paths` | 0 | host/plugins/vfs-repos/index.ts |
-| `dstu.platform.diagnostics` | F4-security | 平台 | `diagnostics`<br>`backgroundTasks` | `storage` | 9 | host/platform/diagnostics/index.ts |
-| `dstu.platform.cloud-config` | F4-security | 平台 | — | `cloudConfig` | 4 | host/platform/errors/index.ts |
-| `dstu.platform.log` | F4-security | 平台 | `log` | `paths` | 14 | host/platform/log/index.ts |
-| `dstu.native` | F7-native | 平台 | `nativeCompression`<br>`nativeHeic`<br>`nativeImage`<br>`nativeOffice`<br>`nativeOfficeText`<br>`nativeProtobuf`<br>`nativeTokenizer`<br>`nativePdfium`<br>`nativeFsrs`<br>`nativeRegex`<br>`nativeStarlark`<br>`nativeAudio`<br>`nativeOfficeWriter`<br>`nativeSandbox`<br>`nativeWindowsFiles`<br>`nativeWindowsSandbox`<br>`nativeArgon2` | — | 0 | host/platform/native/index.ts |
-| `dstu.platform.paths` | F4-platform | 平台 | `paths` | — | 0 | host/platform/paths/index.ts |
-| `dstu.platform.secrets` | F4-security | 平台 | `secrets` | `paths`<br>`log` | 11 | host/platform/secrets/index.ts |
-| `dstu.platform.settings` | F4-platform | 平台 | `settings` | `storage`<br>`secrets` | 0 | host/platform/settings/index.ts |
-| `dstu.platform.storage` | F3-storage | 平台 | `storage`<br>`dataSpace`<br>`featureFlags`<br>`injectionBudget`<br>`noteAssets`<br>`imageQuality`<br>`llmUsage`<br>`fileManagerPaths` | `secrets`<br>`paths`<br>`log` | 33 | host/platform/storage/index.ts |
-| `dstu.vector` | F7-native | 平台 | `vector` | — | 0 | host/platform/vector/index.ts |
+| `dstu.vfs` | L13-vfs-api | 业务 | `vfsDatabase`<br>`vfs`<br>`dstu`<br>`dstuUpload`<br>`paperLibrary` | `storage`<br>`notes`<br>`vfsRepo`<br>`vfsIndex` | 58 | host/plugins/vfs/index.ts |
+| `dstu.vfs-handlers` | L13-vfs-api | 业务 | `vfsHooks`<br>`vfsRefText` | `vfsDatabase`<br>`vfs`<br>`vfsRepo`<br>`vfsMaintenance`<br>`notes`<br>`vfsIndex`<br>`vfsIndexMaintenance`<br>`vfsUnitBuilder`<br>`retrieval`<br>`settings` | 157 | host/plugins/vfs-handlers/index.ts |
+| `dstu.vfs-index` | L12-vfs-index | 业务 | `lanceEngine`<br>`retrieval`<br>`retrievalCancellable`<br>`vfsIndex`<br>`vfsUnitBuilder`<br>`vfsIndexMaintenance` | `storage` | 3 | host/plugins/vfs-index/index.ts |
+| `dstu.vfs-repos` | L11-vfs-repos | 业务 | `vfsRepo`<br>`vfsMaintenance`<br>`vfsWorker` | `storage`<br>`paths` | 0 | host/plugins/vfs-repos/index.ts |
 
 ### 3.1 命令
 
 命令名必须存在于 `contracts/ipc/*.json`；同一命令只能由一个插件注册。按插件分组：
 
-<details><summary><code>dstu.agent-orchestration</code>（17）</summary>
+<details><summary><code>dstu.plugins</code>（11）</summary>
+
+- `plugin_begin_login`
+- `plugin_cancel_login`
+- `plugin_get_config`
+- `plugin_get_status`
+- `plugin_list`
+- `plugin_logout`
+- `plugin_set_config`
+- `plugin_set_enabled`
+- `plugin_start`
+- `plugin_stop`
+- `plugin_unbind`
+
+</details>
+
+<details><summary><code>dstu.platform.diagnostics</code>（9）</summary>
+
+- `check_package_manager`
+- `check_all_package_managers`
+- `auto_install_package_manager`
+- `debug_get_database_stats`
+- `debug_vfs_textbook_pages`
+- `debug_vfs_migration_status`
+- `write_test_report`
+- `check_test_dependencies`
+- `toggle_devtools`
+
+</details>
+
+<details><summary><code>dstu.platform.cloud-config</code>（4）</summary>
+
+- `cloud_config_ssot_save`
+- `cloud_config_ssot_get`
+- `cloud_config_ssot_clear`
+- `cloud_config_publish`
+
+</details>
+
+<details><summary><code>dstu.platform.log</code>（14）</summary>
+
+- `get_debug_logs_info`
+- `clear_debug_logs`
+- `cleanup_old_debug_logs`
+- `read_debug_log_file`
+- `ensure_debug_log_dir`
+- `save_test_log`
+- `get_test_logs`
+- `open_log_file`
+- `open_logs_folder`
+- `write_debug_logs`
+- `report_frontend_log`
+- `log_debug_message`
+- `tauri_lab_frontend_log`
+- `export_diagnostics_bundle`
+
+</details>
+
+<details><summary><code>dstu.platform.secrets</code>（11）</summary>
+
+- `secure_save_cloud_credentials`
+- `secure_get_cloud_credentials`
+- `secure_delete_cloud_credentials`
+- `secure_clear_cloud_encryption_password`
+- `secure_store_is_available`
+- `secure_store_get_keystore_protection`
+- `secure_store_set_keystore_protection`
+- `secret_prompt_submit`
+- `secret_prompt_status`
+- `secret_prompt_discard`
+- `secret_prompt_capabilities`
+
+</details>
+
+<details><summary><code>dstu.platform.backup-config</code>（5）</summary>
+
+- `get_backup_config`
+- `set_backup_config`
+- `pick_backup_directory`
+- `clear_backup_directory`
+- `get_default_backup_directory`
+
+</details>
+
+<details><summary><code>dstu.platform.storage</code>（33）</summary>
+
+- `get_data_space_info`
+- `get_slot_directory`
+- `get_test_slot_info`
+- `clear_test_slots`
+- `mark_data_space_pending_switch_to_inactive`
+- `purge_all_database_files`
+- `purge_active_data_dir_now`
+- `get_startup_recovery_status`
+- `retry_startup_recovery_preflight`
+- `list_startup_recovery_incidents`
+- `resolve_startup_recovery`
+- `open_startup_recovery_incident_folder`
+- `restart_app`
+- `export_startup_recovery_incident`
+- `export_startup_recovery_report`
+- `get_database_info`
+- `set_test_run_id`
+- `switch_to_test_database`
+- `reset_test_database`
+- `switch_to_production_database`
+- `seed_test_database`
+- `staged_upload_begin`
+- `staged_upload_append`
+- `staged_upload_from_path`
+- `staged_upload_abort`
+- `llm_usage_get_trends`
+- `llm_usage_by_model`
+- `llm_usage_by_caller`
+- `llm_usage_summary`
+- `llm_usage_session_summary`
+- `llm_usage_recent`
+- `llm_usage_daily`
+- `llm_usage_cleanup`
+
+</details>
+
+<details><summary><code>dstu.shell</code>（23）</summary>
+
+- `get_app_version`
+- `get_app_data_dir`
+- `install_apk`
+- `open_file_externally`
+- `set_android_immersive_mode`
+- `updater_install_supported`
+- `open_system_permission_settings`
+- `get_prevent_sleep`
+- `set_prevent_sleep`
+- `set_sidebar_vibrancy`
+- `copy_file`
+- `get_file_size`
+- `hash_file`
+- `read_file_bytes`
+- `read_file_text`
+- `save_text_to_file`
+- `set_window_appearance`
+- `sync_titlebar_sidebar_material`
+- `save_webview_settings`
+- `load_webview_settings`
+- `pdfstream_check_access`
+- `export_unified_backup_data`
+- `set_backend_sentry_enabled`
+
+</details>
+
+<details><summary><code>dstu.agent-orchestration</code>（18）</summary>
 
 - `super_session_get_settings`
 - `super_session_set_settings`
@@ -716,6 +1083,7 @@ graph LR
 - `super_session_ensure`
 - `super_session_get_state`
 - `super_session_set_enabled`
+- `chat_v2_background_subagent`
 
 </details>
 
@@ -1023,7 +1391,7 @@ graph LR
 
 </details>
 
-<details><summary><code>dstu.llm</code>（20）</summary>
+<details><summary><code>dstu.llm</code>（24）</summary>
 
 - `cancel_stream`
 - `llm_get_failover_policy`
@@ -1045,6 +1413,10 @@ graph LR
 - `fetch_vendor_models`
 - `call_llm_for_boundary`
 - `test_api_connection`
+- `test_deepseek_capability`
+- `scan_external_llm_configs`
+- `probe_external_llm_candidate_models`
+- `import_external_llm_configs`
 
 </details>
 
@@ -1086,9 +1458,10 @@ graph LR
 
 </details>
 
-<details><summary><code>dstu.media</code>（74）</summary>
+<details><summary><code>dstu.media</code>（75）</summary>
 
 - `tts_check_available`
+- `tts_deepseek`
 - `tts_speak`
 - `tts_stop`
 - `get_ocr_engine_type`
@@ -1162,6 +1535,45 @@ graph LR
 - `process_pdf_ocr`
 - `start_pdf_ocr_backend`
 - `test_ocr_engine`
+
+</details>
+
+<details><summary><code>dstu.memory</code>（34）</summary>
+
+- `memory_get_config`
+- `memory_set_root_folder`
+- `memory_create_root_folder`
+- `memory_get_or_create_root_folder`
+- `memory_read`
+- `memory_write`
+- `memory_list`
+- `memory_get_tree`
+- `memory_add_relation`
+- `memory_remove_relation`
+- `memory_get_related`
+- `memory_update_tags`
+- `memory_get_tags`
+- `memory_restore_stale`
+- `memory_restore_archived`
+- `memory_batch_delete`
+- `memory_batch_move`
+- `memory_move_to_folder`
+- `memory_update_by_id`
+- `memory_delete`
+- `memory_export_all`
+- `memory_get_profile`
+- `memory_write_smart`
+- `memory_write_batch`
+- `memory_to_anki_document`
+- `memory_set_privacy_mode`
+- `memory_set_auto_create_subfolders`
+- `memory_set_default_category`
+- `memory_set_auto_extract_frequency`
+- `memory_get_audit_logs`
+- `memory_search`
+- `quick_assistant_show`
+- `quick_assistant_hide`
+- `quick_assistant_apply_enabled`
 
 </details>
 
@@ -1419,12 +1831,13 @@ graph LR
 
 </details>
 
-<details><summary><code>dstu.sync</code>（24）</summary>
+<details><summary><code>dstu.sync</code>（28）</summary>
 
 - `data_governance_count_record_conflicts`
 - `data_governance_discard_quarantine`
 - `data_governance_discard_all_quarantine`
 - `data_governance_get_sync_status`
+- `data_governance_get_pending_breakdown`
 - `data_governance_list_sync_snapshot_batches`
 - `data_governance_purge_resolved_conflicts`
 - `data_governance_list_quarantine`
@@ -1445,6 +1858,9 @@ graph LR
 - `data_governance_mark_blob_deleted`
 - `data_governance_mark_asset_deleted`
 - `data_governance_list_unsynced_items`
+- `data_governance_pairing_get_cloud_credentials`
+- `data_governance_pairing_save_cloud_credentials`
+- `data_governance_get_conflict_previews`
 
 </details>
 
@@ -1478,19 +1894,227 @@ graph LR
 
 </details>
 
-<details><summary><code>dstu.vfs</code>（6）</summary>
+<details><summary><code>dstu.vfs</code>（58）</summary>
 
 - `dstu_parse_path`
 - `dstu_watch`
 - `dstu_unwatch`
+- `dstu_folder_add_item`
+- `dstu_folder_create`
+- `dstu_folder_delete`
+- `dstu_folder_get`
+- `dstu_folder_get_all_resources`
+- `dstu_folder_get_breadcrumbs`
+- `dstu_folder_get_items`
+- `dstu_folder_get_tree`
+- `dstu_folder_list`
+- `dstu_folder_move`
+- `dstu_folder_move_item`
+- `dstu_folder_remove_item`
+- `dstu_folder_rename`
+- `dstu_folder_reorder`
+- `dstu_folder_reorder_items`
+- `dstu_folder_set_expanded`
+- `dstu_batch_move`
+- `dstu_build_path`
+- `dstu_get`
+- `dstu_get_path_by_id`
+- `dstu_get_resource_by_path`
+- `dstu_get_resource_location`
+- `dstu_move_to_folder`
+- `dstu_refresh_path_cache`
+- `dstu_list`
+- `dstu_list_deleted`
+- `dstu_get_content`
+- `dstu_get_exam_content`
+- `dstu_search`
+- `dstu_search_in_folder`
+- `dstu_create`
+- `dstu_update`
+- `dstu_delete`
+- `dstu_move`
+- `dstu_rename`
+- `dstu_set_metadata`
+- `dstu_set_favorite`
+- `dstu_copy`
+- `dstu_soft_delete`
+- `dstu_trash_restore`
+- `dstu_list_trash`
+- `dstu_permanently_delete`
+- `dstu_empty_trash`
+- `dstu_purge_all`
+- `dstu_restore`
+- `dstu_restore_many`
+- `dstu_purge`
+- `dstu_delete_many`
+- `dstu_move_many`
+- `dstu_export`
+- `dstu_export_formats`
 - `vfs_upload_attachment`
 - `vfs_upload_file`
+- `vfs_update_file_content`
 - `vfs_download_paper`
 
 </details>
 
-<details><summary><code>dstu.vfs-handlers</code>（1）</summary>
+<details><summary><code>dstu.vfs-handlers</code>（157）</summary>
 
+- `todo_ai_breakdown`
+- `todo_batch_complete`
+- `todo_batch_delete`
+- `todo_batch_move`
+- `todo_batch_purge`
+- `todo_batch_reschedule`
+- `todo_batch_restore`
+- `todo_batch_set_priority`
+- `todo_counts_snapshot`
+- `todo_create_item`
+- `todo_create_list`
+- `todo_delete_item`
+- `todo_delete_list`
+- `todo_ensure_inbox`
+- `todo_get_active_summary`
+- `todo_get_item`
+- `todo_get_list`
+- `todo_list_all_pending`
+- `todo_list_all_tags`
+- `todo_list_completed`
+- `todo_list_deleted_items`
+- `todo_list_deleted_lists`
+- `todo_list_items`
+- `todo_list_items_with_stats`
+- `todo_list_lists`
+- `todo_list_overdue`
+- `todo_list_reminders`
+- `todo_list_today`
+- `todo_list_upcoming`
+- `todo_move_item`
+- `todo_purge_deleted_items`
+- `todo_purge_deleted_lists`
+- `todo_purge_item`
+- `todo_purge_list`
+- `todo_reorder_items`
+- `todo_reorder_lists`
+- `todo_restore_item`
+- `todo_restore_list`
+- `todo_search`
+- `todo_stats_overview`
+- `todo_toggle_item`
+- `todo_toggle_list_favorite`
+- `todo_trash_counts`
+- `todo_update_item`
+- `todo_update_list`
+- `pomodoro_create_record`
+- `pomodoro_daily_stats`
+- `pomodoro_delete_record`
+- `pomodoro_get_record`
+- `pomodoro_hourly_stats`
+- `pomodoro_list_by_todo`
+- `pomodoro_list_range`
+- `pomodoro_list_today`
+- `pomodoro_stats_by_todo`
+- `pomodoro_stats_overview`
+- `pomodoro_streak`
+- `pomodoro_today_stats`
+- `pomodoro_todo_focus_summary`
+- `vfs_create_or_reuse`
+- `vfs_decrement_ref`
+- `vfs_get_resource`
+- `vfs_increment_ref`
+- `vfs_resource_exists`
+- `vfs_create_note`
+- `vfs_delete_note`
+- `vfs_get_note`
+- `vfs_get_note_content`
+- `vfs_list_notes`
+- `vfs_update_note`
+- `vfs_list_essays`
+- `vfs_list_exam_sheets`
+- `vfs_list_textbooks`
+- `vfs_list_translations`
+- `vfs_search_all`
+- `vfs_get_resource_path`
+- `vfs_update_path_cache`
+- `vfs_delete_file`
+- `vfs_get_blob_base64`
+- `vfs_get_file`
+- `vfs_get_file_content`
+- `vfs_list_files`
+- `vfs_cancel_pdf_processing`
+- `vfs_get_batch_pdf_processing_status`
+- `vfs_get_pdf_page_image`
+- `vfs_get_pdf_processing_status`
+- `vfs_list_pending_pdf_processing`
+- `vfs_retry_pdf_processing`
+- `vfs_start_pdf_processing`
+- `vfs_assign_dimension_model`
+- `vfs_batch_index_pending`
+- `vfs_clear_default_embedding_dimension`
+- `vfs_create_dimension`
+- `vfs_delete_dimension`
+- `vfs_get_default_embedding_dimension`
+- `vfs_get_dimension_range`
+- `vfs_get_embedding_readiness`
+- `vfs_get_embedding_stats`
+- `vfs_get_index_status`
+- `vfs_get_indexing_config`
+- `vfs_get_pending_resources`
+- `vfs_get_preset_dimensions`
+- `vfs_list_dimensions`
+- `vfs_reindex_resource`
+- `vfs_reset_all_index_state`
+- `vfs_reset_disabled_to_pending`
+- `vfs_reset_indexed_without_embeddings`
+- `vfs_set_default_embedding_dimension`
+- `vfs_set_indexing_config`
+- `vfs_toggle_index_disabled`
+- `vfs_diagnose_lance_schema`
+- `vfs_get_lance_stats`
+- `vfs_inspect_retrieval_capabilities`
+- `vfs_multimodal_delete`
+- `vfs_multimodal_index`
+- `vfs_multimodal_index_resource`
+- `vfs_multimodal_search`
+- `vfs_multimodal_search_detailed`
+- `vfs_multimodal_stats`
+- `vfs_optimize_lance`
+- `vfs_rag_search`
+- `vfs_search`
+- `vfs_get_resource_refs`
+- `vfs_resolve_resource_refs`
+- `vfs_get_resource_ref_count`
+- `vfs_unified_index_status`
+- `vfs_get_resource_units`
+- `vfs_list_embedding_dims`
+- `vfs_reindex_unit`
+- `vfs_sync_resource_units`
+- `vfs_unified_batch_index`
+- `vfs_delete_resource_index`
+- `vfs_get_all_index_status`
+- `vfs_debug_index_status`
+- `vfs_get_media_cache_stats`
+- `vfs_clear_media_cache`
+- `vfs_get_resource_ocr_info`
+- `vfs_clear_resource_ocr`
+- `vfs_get_resource_text_chunks`
+- `vfs_create_mindmap`
+- `vfs_get_mindmap`
+- `vfs_get_mindmap_content`
+- `vfs_get_mindmap_versions`
+- `vfs_restore_mindmap_version`
+- `vfs_get_mindmap_version_content`
+- `vfs_get_mindmap_version`
+- `vfs_update_mindmap`
+- `vfs_delete_mindmap`
+- `vfs_list_mindmaps`
+- `vfs_set_mindmap_favorite`
+- `vfs_get_attachment_config`
+- `vfs_set_attachment_root_folder`
+- `vfs_create_attachment_root_folder`
+- `vfs_get_or_create_attachment_root_folder`
+- `vfs_get_attachment`
+- `vfs_get_attachment_content`
+- `vfs_delete_attachment`
 - `filestream_check_access`
 
 </details>
@@ -1503,105 +2127,9 @@ graph LR
 
 </details>
 
-<details><summary><code>dstu.platform.diagnostics</code>（9）</summary>
-
-- `check_package_manager`
-- `check_all_package_managers`
-- `auto_install_package_manager`
-- `debug_get_database_stats`
-- `debug_vfs_textbook_pages`
-- `debug_vfs_migration_status`
-- `write_test_report`
-- `check_test_dependencies`
-- `toggle_devtools`
-
-</details>
-
-<details><summary><code>dstu.platform.cloud-config</code>（4）</summary>
-
-- `cloud_config_ssot_save`
-- `cloud_config_ssot_get`
-- `cloud_config_ssot_clear`
-- `cloud_config_publish`
-
-</details>
-
-<details><summary><code>dstu.platform.log</code>（14）</summary>
-
-- `get_debug_logs_info`
-- `clear_debug_logs`
-- `cleanup_old_debug_logs`
-- `read_debug_log_file`
-- `ensure_debug_log_dir`
-- `save_test_log`
-- `get_test_logs`
-- `open_log_file`
-- `open_logs_folder`
-- `write_debug_logs`
-- `report_frontend_log`
-- `log_debug_message`
-- `tauri_lab_frontend_log`
-- `export_diagnostics_bundle`
-
-</details>
-
-<details><summary><code>dstu.platform.secrets</code>（11）</summary>
-
-- `secure_save_cloud_credentials`
-- `secure_get_cloud_credentials`
-- `secure_delete_cloud_credentials`
-- `secure_clear_cloud_encryption_password`
-- `secure_store_is_available`
-- `secure_store_get_keystore_protection`
-- `secure_store_set_keystore_protection`
-- `secret_prompt_submit`
-- `secret_prompt_status`
-- `secret_prompt_discard`
-- `secret_prompt_capabilities`
-
-</details>
-
-<details><summary><code>dstu.platform.storage</code>（33）</summary>
-
-- `get_data_space_info`
-- `get_slot_directory`
-- `get_test_slot_info`
-- `clear_test_slots`
-- `mark_data_space_pending_switch_to_inactive`
-- `purge_all_database_files`
-- `purge_active_data_dir_now`
-- `get_startup_recovery_status`
-- `retry_startup_recovery_preflight`
-- `list_startup_recovery_incidents`
-- `resolve_startup_recovery`
-- `open_startup_recovery_incident_folder`
-- `restart_app`
-- `export_startup_recovery_incident`
-- `export_startup_recovery_report`
-- `get_database_info`
-- `set_test_run_id`
-- `switch_to_test_database`
-- `reset_test_database`
-- `switch_to_production_database`
-- `seed_test_database`
-- `staged_upload_begin`
-- `staged_upload_append`
-- `staged_upload_from_path`
-- `staged_upload_abort`
-- `llm_usage_get_trends`
-- `llm_usage_by_model`
-- `llm_usage_by_caller`
-- `llm_usage_summary`
-- `llm_usage_session_summary`
-- `llm_usage_recent`
-- `llm_usage_daily`
-- `llm_usage_cleanup`
-
-</details>
-
 ## 4. 事件
 
-契约事件 127 个（来自 contracts/ipc）。lane 对应插件见第 3 节。
+契约事件 128 个（来自 contracts/ipc）。lane 对应插件见第 3 节。
 
 | 事件 | lane | 名称 | 载荷 | 插件 |
 | --- | --- | --- | --- | --- |
@@ -1614,7 +2142,7 @@ graph LR
 | `{}_safety_blocked` | L02-llm-manager | 动态名 | — | dstu.llm<br>dstu.translation |
 | `{}_start` | L02-llm-manager | 动态名 | — | dstu.llm<br>dstu.translation |
 | `{}_truncated` | L02-llm-manager | 动态名 | — | dstu.llm<br>dstu.translation |
-| `{}_unified_sources` | F4-security | 动态名 | — | dstu.platform.diagnostics<br>dstu.platform.cloud-config<br>dstu.platform.log<br>dstu.platform.secrets |
+| `{}_unified_sources` | F4-security | 动态名 | — | dstu.platform.diagnostics<br>dstu.platform.cloud-config<br>dstu.platform.log<br>dstu.platform.secrets<br>dstu.platform.backup-config |
 | `{}_usage` | L02-llm-manager | 动态名 | — | dstu.llm<br>dstu.translation |
 | `{}_web_search` | L02-llm-manager | 动态名 | — | dstu.llm<br>dstu.translation |
 | `{}_web_search` | L19-mcp-browser | 动态名 | — | dstu.browser<br>dstu.mcp |
@@ -1626,7 +2154,7 @@ graph LR
 | `anki_generation_event` | L16-anki | 静态 | — | dstu.anki |
 | `backup-import-progress` | L21-backup-governance | 静态 | `dstu_storage__backup_common__ImportProgress` | dstu.backup |
 | `backup-job-progress` | L21-backup-governance | 静态 | — | dstu.backup |
-| `backup-jobs-resumable` | F2-shell | 静态 | — | — |
+| `backup-jobs-resumable` | F2-shell | 静态 | — | dstu.shell |
 | `browser:closed` | L19-mcp-browser | 静态 | `BrowserClosedPayload` | dstu.browser<br>dstu.mcp |
 | `browser:content-user-input` | L19-mcp-browser | 静态 | `BrowserContentUserInputPayload` | dstu.browser<br>dstu.mcp |
 | `browser:control-mode-changed` | L19-mcp-browser | 静态 | `BrowserControlModeChangedPayload` | dstu.browser<br>dstu.mcp |
@@ -1650,8 +2178,8 @@ graph LR
 | `chat_v2://settings_changed` | L07-agent-skills-ptc | 静态 | — | dstu.agent-skills |
 | `cloud-sync-progress` | L23-sync-providers | 静态 | `CloudSyncProgressEvent` | dstu.sync-providers |
 | `csv_import_progress` | L14-qbank | 静态 | `CsvImportProgress` | dstu.qbank |
-| `data-governance-migration-status` | F2-shell | 静态 | — | — |
-| `data-governance-sync-progress` | L20-sync | 静态 | `SyncProgress` | dstu.sync<br>dstu.sync-support |
+| `data-governance-migration-status` | F2-shell | 静态 | — | dstu.shell |
+| `data-governance-sync-progress` | L20-sync | 静态 | `SyncProgress` | dstu.sync-startup<br>dstu.sync<br>dstu.sync-support |
 | `deepseek_ocr_log` | L02-llm-manager | 静态 | — | dstu.llm<br>dstu.translation |
 | `dstu:change` | L13-vfs-api | 静态 | — | dstu.vfs<br>dstu.vfs-handlers |
 | `dstu:change` | L18-media-docs | 静态 | — | dstu.media |
@@ -1663,22 +2191,23 @@ graph LR
 | `fsrs://changed` | L24-chatanki | 静态 | — | dstu.chatanki |
 | `hpias_event` | L17-memory-research | 静态 | — | dstu.memory |
 | `llm-failover` | L02-llm-manager | 静态 | — | dstu.llm<br>dstu.translation |
-| `mcp_tools_changed` | F2-shell | 静态 | — | — |
+| `mcp_tools_changed` | F2-shell | 静态 | — | dstu.shell |
 | `mcp-bridge-request` | L19-mcp-browser | 静态 | — | dstu.browser<br>dstu.mcp |
 | `mcp-bridge-tools-request` | L02-llm-manager | 静态 | — | dstu.llm<br>dstu.translation |
 | `mcp-test-progress` | L19-mcp-browser | 静态 | — | dstu.browser<br>dstu.mcp |
 | `media_bilibili_playback_error` | L18-media-docs | 静态 | — | dstu.media |
+| `media_companion_ask_delta` | L18-media-docs | 静态 | `MediaCompanionAskDelta` | dstu.media |
 | `media-processing-completed` | L12-vfs-index | 静态 | — | dstu.vfs-index |
 | `media-processing-error` | L12-vfs-index | 静态 | `MediaProcessingErrorEvent` | dstu.vfs-index |
 | `media-processing-progress` | L12-vfs-index | 静态 | — | dstu.vfs-index |
 | `memory://changed` | L17-memory-research | 静态 | — | dstu.memory |
-| `menu://close-window` | F2-shell | 静态 | — | — |
-| `menu://command-palette` | F2-shell | 静态 | — | — |
-| `menu://documentation` | F2-shell | 静态 | — | — |
-| `menu://new-session` | F2-shell | 静态 | — | — |
-| `menu://preferences` | F2-shell | 静态 | — | — |
-| `menu://report-issue` | F2-shell | 静态 | — | — |
-| `menu://toggle-sidebar` | F2-shell | 静态 | — | — |
+| `menu://close-window` | F2-shell | 静态 | — | dstu.shell |
+| `menu://command-palette` | F2-shell | 静态 | — | dstu.shell |
+| `menu://documentation` | F2-shell | 静态 | — | dstu.shell |
+| `menu://new-session` | F2-shell | 静态 | — | dstu.shell |
+| `menu://preferences` | F2-shell | 静态 | — | dstu.shell |
+| `menu://report-issue` | F2-shell | 静态 | — | dstu.shell |
+| `menu://toggle-sidebar` | F2-shell | 静态 | — | dstu.shell |
 | `mistake_status_update` | L14-qbank | 静态 | — | dstu.qbank |
 | `mm_index_progress` | L13-vfs-api | 静态 | `IndexProgressEvent` | dstu.vfs<br>dstu.vfs-handlers |
 | `notes-import-progress` | L10-notes | 静态 | `dstu_notes__notes_exporter__ImportProgress` | dstu.notes |
@@ -1694,9 +2223,9 @@ graph LR
 | `pdf-processing-completed` | L12-vfs-index | 静态 | `MediaProcessingCompletedEvent` | dstu.vfs-index |
 | `pdf-processing-error` | L12-vfs-index | 静态 | `MediaProcessingErrorEvent` | dstu.vfs-index |
 | `pdf-processing-progress` | L12-vfs-index | 静态 | `MediaProcessingProgressEvent` | dstu.vfs-index |
-| `plugin-activity` | F1-kernel | 静态 | `ActivityPayload` | — |
-| `plugin-qrcode` | F1-kernel | 静态 | `QrcodePayload` | — |
-| `plugin-state-changed` | F1-kernel | 静态 | `StateChangedPayload` | — |
+| `plugin-activity` | F1-kernel | 静态 | `ActivityPayload` | dstu.plugins |
+| `plugin-qrcode` | F1-kernel | 静态 | `QrcodePayload` | dstu.plugins |
+| `plugin-state-changed` | F1-kernel | 静态 | `StateChangedPayload` | dstu.plugins |
 | `qbank_generation_task_event` | L14-qbank | 静态 | `GenerationTaskView` | dstu.qbank |
 | `qbank_grading_stream_{}` | L14-qbank | 动态名 | — | dstu.qbank |
 | `qbank_grading_stream_{stream_session_id}` | L14-qbank | 动态名 | `QbankGradingStreamError` | dstu.qbank |
@@ -1737,54 +2266,62 @@ graph LR
 
 本节由生成器静态检查，报告的是**需要提供方/消费方确认**的 seam 问题；不代替运行时 profile 校验。
 
-### 5.1 声明了但未 provide（2）
+### 5.1 声明了但未 provide（3）
 
 “可选声明”指 `api.ts` 中类型带 `?` 的服务（例如由 F2/main 在运行时注入的端口）。
 
 | 服务 | 可选声明 | 声明位置 | 消费方 |
 | --- | --- | --- | --- |
 | `browserSurface` | 是 | host/plugins/browser/api.ts | dstu.browser |
-| `vfsRepo` | 否 | host/plugins/vfs/api.ts | dstu.chat-pipeline<br>dstu.llm<br>dstu.memory<br>dstu.notes<br>dstu.sync<br>dstu.sync-support<br>dstu.vfs<br>dstu.vfs-handlers<br>dstu.agent-orchestration<br>dstu.agent-workspace<br>dstu.anki<br>dstu.browser<br>dstu.media<br>dstu.qbank<br>dstu.review |
+| `chatToolRuntime` | 否 | host/plugins/chat-pipeline/api.ts | dstu.chat-pipeline |
+| `llmReplay` | 否 | host/plugins/llm-providers/api.ts | — |
 
-### 5.2 提供了但未在 api.ts 声明（2）
+### 5.2 提供了但未在 api.ts 声明（3）
 
 | 服务 | 提供方 | 运行时 provide 位置 |
 | --- | --- | --- |
-| `nativeWindowsSandbox` | dstu.native | dstu.native |
+| `dstuUpload` | dstu.vfs | dstu.vfs |
+| `vfsMaintenance` | dstu.vfs-repos | — |
 | `vfsUnitBuilder` | dstu.vfs-index | dstu.vfs-index |
 
 ### 5.3 多个提供方（0）
 
 无。
 
-### 5.4 消费了但既未声明也未提供（5）
+### 5.4 消费了但既未声明也未提供（0）
 
-| 服务名 | 消费方 |
-| --- | --- |
-| `chatToolRuntime` | ctx.get：dstu.chat-pipeline |
-| `startupGate` | ctx.get：dstu.agent-orchestration<br>ctx.get：dstu.backup<br>ctx.get：dstu.platform.storage |
-| `systemNotification` | ctx.get：dstu.agent-orchestration<br>ctx.get：dstu.chat |
-| `vfsMaintenance` | inject：dstu.vfs-handlers<br>ctx.get：dstu.backup |
-| `virtualFilePolicy` | ctx.get：dstu.vfs |
+无。
 
-### 5.5 meta.provides 与运行时 provide 不一致（6）
+### 5.5 meta.provides 与运行时 provide 不一致（11）
 
 | 插件 | 服务 | 问题 |
 | --- | --- | --- |
 | `dstu.chat` | `chatState` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
 | `dstu.chat` | `chatSession` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
+| `dstu.chat` | `chatWorkerRuntime` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
+| `dstu.chat-pipeline` | `chat.send@1` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
 | `dstu.integration` | `appCommandState` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
 | `dstu.sync-providers` | `syncProvider` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
-| `dstu.platform.cloud-config` | `cloudConfig` | 运行时 provide 了，但 meta.provides 未声明（安装会失败） |
-| `dstu.platform.storage` | `storageStartupSync` | 运行时 provide 了，但 meta.provides 未声明（安装会失败） |
+| `dstu.vfs-repos` | `vfsRepo` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
+| `dstu.vfs-repos` | `vfsMaintenance` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
+| `dstu.vfs-repos` | `vfsWorker` | meta 声明了，源码中未找到 provide 调用（可能是动态注册） |
+| `dstu.chat` | `agentApproval` | 运行时 provide 了，但 meta.provides 未声明（安装会失败） |
+| `dstu.llm-providers` | `llmReplay` | 运行时 provide 了，但 meta.provides 未声明（安装会失败） |
 
-### 5.6 绕过 api.ts 的跨插件 import（0）
+### 5.6 绕过 api.ts / portable.ts 的跨插件 import（0）
 
 无。
 
-### 5.7 命令声明与契约（未知 0，重复 0）
+### 5.7 命令声明与契约（未知 0，重复 0，契约未注册 4）
 
-无。
+契约中已定义但桌面 profile 未注册（已注册 1068 / 总计 1072）：
+
+| 命令 | lane |
+| --- | --- |
+| `get_auto_backup_status` | F4-security |
+| `media_companion_ask` | L18-media-docs |
+| `media_companion_cancel` | L18-media-docs |
+| `media_study_cards` | L18-media-docs |
 
 ### 5.8 服务声明不在提供方 api.ts（2）
 
@@ -1792,44 +2329,52 @@ graph LR
 
 | 服务 | 提供方 | 声明位置 |
 | --- | --- | --- |
-| `storageStartupSync` | dstu.sync | host/platform/storage/api.ts |
+| `storageStartupSync` | dstu.sync-startup | host/platform/storage/api.ts |
 | `webSearch` | dstu.browser | host/plugins/mcp/api.ts |
 
-### 5.9 服务名不符合约定（0）
+### 5.9 服务名不符合约定（2）
 
 `ctx` 上的服务名应为 lowerCamelCase，不含版本号、点号或 `@`；版本通过 `api.ts` 描述对象声明，
 破坏性变更使用新名字（如 `ankiV2`），旧服务保留一个周期，见 `ARCHITECTURE.md` §3。
 
-无。
+| 服务 | 提供方 |
+| --- | --- |
+| `chat.send@1` | dstu.chat-pipeline |
+| `embedding@1` | dstu.llm |
 
-### 5.10 已提供但无运行时消费方（51）
+### 5.10 已提供但无运行时消费方（68）
 
 提供方已注册服务，但除提供方自身外没有 `inject` / `ctx.get` 使用；可能是生产路径未接线，需确认。
 
 | 服务 | 提供方 |
 | --- | --- |
-| `agentApproval` | dstu.agent-workspace |
 | `agentAutomation` | dstu.agent-orchestration |
+| `agentCardReadScope` | dstu.agent-workspace |
 | `agentCompletionOutbox` | dstu.agent-workspace |
+| `agentMesh` | dstu.agent-mesh |
 | `agentSkills` | dstu.agent-skills |
 | `agentSubagent` | dstu.agent-orchestration |
-| `agentTodo` | dstu.agent-orchestration |
 | `agentTransformSandbox` | dstu.agent-workspace |
 | `agentWorkspaceTools` | dstu.agent-workspace |
 | `browser` | dstu.browser |
 | `browserToolPolicy` | dstu.browser |
+| `chat.send@1` | dstu.chat-pipeline |
 | `chatankiTools` | dstu.chatanki |
 | `chatAttachmentErrors` | dstu.chat |
+| `chatPipelineHooks` | dstu.chat-pipeline |
 | `chatRetrievalScope` | dstu.chat |
 | `dataSpace` | dstu.platform.storage |
 | `diagnostics` | dstu.platform.diagnostics |
 | `dstu` | dstu.vfs |
-| `essayGrading` | dstu.llm |
-| `fileManagerPaths` | dstu.platform.storage |
+| `dstuUpload` | dstu.vfs |
+| `embedding@1` | dstu.llm |
+| `externalLlmConfigs` | dstu.platform.storage |
+| `gradingRubrics` | dstu.llm |
 | `hpiasResearch` | dstu.memory |
 | `imageQuality` | dstu.platform.storage |
 | `insight` | dstu.memory |
 | `lanceEngine` | dstu.vfs-index |
+| `llmContextCompiler` | dstu.llm |
 | `llmEmbeddingModels` | dstu.llm |
 | `llmFileOcr` | dstu.llm |
 | `llmMcpTools` | dstu.llm |
@@ -1841,27 +2386,39 @@ graph LR
 | `llmProviderRequests` | dstu.llm |
 | `llmQuestionParsing` | dstu.llm |
 | `llmRag` | dstu.llm |
-| `llmUsage` | dstu.platform.storage |
-| `mcp` | dstu.mcp |
-| `media` | dstu.media |
+| `llmReranker` | dstu.llm |
+| `llmWebSearchFallback` | dstu.browser |
 | `mediaTranscriber` | dstu.media |
-| `memory` | dstu.memory |
 | `memoryRetrieval` | dstu.memory |
 | `memoryToolMetadata` | dstu.memory |
+| `mindmapXml` | dstu.native |
 | `nativeArgon2` | dstu.native |
-| `nativeFsrs` | dstu.native |
 | `nativeProtobuf` | dstu.native |
+| `nativeSqliteBusy` | dstu.native |
 | `nativeWindowsSandbox` | dstu.native |
 | `noteAssets` | dstu.platform.storage |
 | `ocr` | dstu.media |
+| `paperLibrary` | dstu.vfs |
+| `pendingMemoryCandidates` | dstu.anki |
+| `pluginModel` | dstu.llm |
+| `pluginNotify` | dstu.plugin-services |
+| `plugins` | dstu.plugins |
+| `pluginSchedule` | dstu.plugin-services |
+| `pluginSecrets` | dstu.plugin-services |
+| `pluginWorkshop` | dstu.plugin-workshop |
 | `questionImportVision` | dstu.media |
+| `retrievalCancellable` | dstu.vfs-index |
+| `reviewSchedulers` | dstu.review |
+| `shellWindows` | dstu.shell |
+| `studyData` | dstu.plugin-services |
 | `translation` | dstu.translation |
 | `vector` | dstu.vector |
 | `vfsHooks` | dstu.vfs-handlers |
+| `vfsWorker` | dstu.vfs-repos |
 | `webpageToolPolicy` | dstu.browser |
 
 ## 6. 维护方式
 
 - 新增/删除服务、命令、事件后运行 `node scripts/plugins/generate-catalog.mjs`，把结果与源码一起提交。
-- CI 运行 `node scripts/plugins/generate-catalog.mjs --check`；文档与源码不一致时退出码 1。
-- 服务接口以 `contracts/services/` 的草稿为评审依据；发布后消费方只从提供方 `api.ts` 导入类型。
+- 本地运行 `node scripts/plugins/generate-catalog.mjs --check` 检测漂移；文档与源码不一致时退出码 1。
+- 服务接口由提供方的 `api.ts` 声明并导出；消费方只从提供方 `api.ts` 导入类型。

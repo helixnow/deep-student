@@ -6,7 +6,8 @@ import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIco
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NoteGlyph } from './NoteGlyph';
-import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
+import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, renderNoteIcon, useNoteAppearance } from '../noteAppearance';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -620,129 +621,21 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     return (
         <header
-            className={cn(
-                'notes-document-header group relative min-w-0 pb-2',
-                showBreadcrumbs ? 'pt-6' : 'pt-8',
-            )}
+            className="notes-document-header group relative min-w-0 pt-5 pb-2"
             data-notes-preset={appearance.value.preset}
             data-notes-small-text={appearance.value.smallText ? 'true' : undefined}
             data-notes-full-width={appearance.value.fullWidth ? 'true' : undefined}
             data-notes-font={appearance.value.font}
         >
-            {showBreadcrumbs && (
-                <div className="notes-document-breadcrumbs-row mb-2.5 flex min-h-5 flex-wrap items-center">
-                    <nav
-                        aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })}
-                        className="notes-document-breadcrumbs mr-auto"
-                    >
-                        {shouldCollapseBreadcrumbs ? (
-                            <>
-                                {renderBreadcrumbNode(breadcrumbs[0], false)}
-                                <CaretRight
-                                    className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                    aria-hidden="true"
-                                />
-                                {canNavigateBreadcrumbs ? (
-                                    <Popover open={collapsedBreadcrumbsOpen} onOpenChange={setCollapsedBreadcrumbsOpen}>
-                                        <PopoverTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="notes-breadcrumb-item notes-breadcrumb-ellipsis"
-                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
-                                                    defaultValue: isZh ? '展开中间路径' : 'Show intermediate path',
-                                                })}
-                                                aria-haspopup="menu"
-                                                title={collapsedPathLabel}
-                                            >
-                                                <span aria-hidden="true">…</span>
-                                            </button>
-                                        </PopoverTrigger>
-                                        <PopoverContent
-                                            align="start"
-                                            sideOffset={4}
-                                            className="notes-breadcrumb-popover w-auto min-w-[160px] max-w-[min(260px,calc(100vw-16px))] p-1"
-                                        >
-                                            <div
-                                                role="menu"
-                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
-                                                    defaultValue: isZh ? '中间路径' : 'Intermediate path',
-                                                })}
-                                                className="flex flex-col gap-0.5"
-                                            >
-                                                {collapsedBreadcrumbs.map((ancestor) => (
-                                                    <button
-                                                        key={`${ancestor.type}:${ancestor.id}`}
-                                                        type="button"
-                                                        role="menuitem"
-                                                        className="notes-breadcrumb-popover-item"
-                                                        title={ancestor.title}
-                                                        onClick={() => {
-                                                            setCollapsedBreadcrumbsOpen(false);
-                                                            handleBreadcrumbClick(ancestor);
-                                                        }}
-                                                    >
-                                                        {ancestor.type === 'folder' ? (
-                                                            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-                                                        ) : (
-                                                            <NoteGlyph
-                                                                noteId={ancestor.id}
-                                                                size={14}
-                                                                fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
-                                                            />
-                                                        )}
-                                                        <span className="min-w-0 truncate">{ancestor.title}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </PopoverContent>
-                                    </Popover>
-                                ) : (
-                                    <span
-                                        className="notes-breadcrumb-static notes-breadcrumb-ellipsis"
-                                        title={collapsedPathLabel}
-                                    >
-                                        …
-                                    </span>
-                                )}
-                                {breadcrumbs.slice(-2).map((item, tailIndex, tail) => {
-                                    const isCurrent = tailIndex === tail.length - 1 && item.type === 'note';
-                                    return (
-                                        <React.Fragment key={`${item.type}:${item.id}`}>
-                                            <CaretRight
-                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                                aria-hidden="true"
-                                            />
-                                            {renderBreadcrumbNode(item, isCurrent)}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </>
-                        ) : (
-                            breadcrumbs.map((item, index) => {
-                                const isCurrent = index === breadcrumbs.length - 1 && item.type === 'note';
-                                return (
-                                    <React.Fragment key={`${item.type}:${item.id}`}>
-                                        {index > 0 && (
-                                            <CaretRight
-                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
-                                                aria-hidden="true"
-                                            />
-                                        )}
-                                        {renderBreadcrumbNode(item, isCurrent)}
-                                    </React.Fragment>
-                                );
-                            })
-                        )}
-                    </nav>
-                </div>
-            )}
-
             {/* Notion：图标在操作行之上，点击图标即可更换 */}
-            {hasIcon && <button type="button" className="notes-document-icon"
+            {hasIcon && <button type="button" className="notes-document-icon text-foreground/85"
+                data-note-icon={appearance.value.icon}
                 aria-label={t('notes:appearance.change_icon', { defaultValue: isZh ? '更换图标' : 'Change icon' })}
                 disabled={appearance.loading || appearance.error === 'load'}
                 onClick={() => setAppearanceOpen(true)}>
-                <span aria-hidden="true">{appearance.value.icon}</span>
+                <span aria-hidden="true" className="inline-flex items-center justify-center">
+                    {renderNoteIcon ? renderNoteIcon(appearance.value.icon, '0.65em') : <FileText size={40} aria-hidden="true" />}
+                </span>
             </button>}
             {/* Notion 式页面操作行：平时隐身，悬停标题区或键盘聚焦时浮现；触屏常显 */}
             <div className="notes-document-affordances" data-has-icon={hasIcon || undefined}>
@@ -783,8 +676,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 <legend className="sr-only">{appearanceLabel}</legend>
                                 <div className="flex flex-wrap gap-1">
                                     {NOTE_APPEARANCE_ICONS.map((icon, index) => (
-                                        <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
-                                            {icon ? <span aria-hidden="true">{icon}</span> : <X size={14} aria-hidden="true" />}
+                                        <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option text-foreground/80" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                            {icon ? (renderNoteIcon ? renderNoteIcon(icon, 16) : <FileText size={16} aria-hidden="true" />) : <X size={14} aria-hidden="true" />}
                                         </DsButton>
                                     ))}
                                 </div>
@@ -792,8 +685,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     {NOTE_ICON_GROUPS.map((group) => (
                                         <div key={group.key} role="group" aria-label={t(`notes:appearance.icon_group_${group.key}`, { defaultValue: group.key })} className="grid grid-cols-8 gap-0.5 py-1">
                                             {group.icons.map((icon) => (
-                                                <button key={icon} type="button" className="notes-icon-option" aria-label={icon} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
-                                                    <span aria-hidden="true">{icon}</span>
+                                                <button key={icon} type="button" className="notes-icon-option text-foreground/80" aria-label={icon.replace(/-/g, ' ')} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                                    {renderNoteIcon ? renderNoteIcon(icon, 16) : <FileText size={16} aria-hidden="true" />}
                                                 </button>
                                             ))}
                                         </div>
@@ -864,13 +757,16 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.85 }}
                                 transition={motionSafe(springSnap)}
-                                className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground [@media(pointer:coarse)]:py-1.5"
+                                className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground"
                             >
                                 <span className="max-w-[140px] min-w-0 truncate" title={tag}>{tag}</span>
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.06))] hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                                        className={cn(
+                                            'inline-flex h-4 w-4 items-center justify-center rounded-[4px] text-muted-foreground/70 transition-colors duration-150 hover:bg-[var(--notes-surface-hover,hsl(var(--foreground)/0.06))] hover:text-foreground [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6',
+                                            coarseHitClassFor24,
+                                        )}
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}
@@ -996,6 +892,114 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {tagError}
                         </span>
                     )}
+                </div>
+            )}
+
+            {showBreadcrumbs && (
+                <div className="notes-document-breadcrumbs-row mt-2 flex min-h-5 flex-wrap items-center">
+                    <nav
+                        aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })}
+                        className="notes-document-breadcrumbs mr-auto"
+                    >
+                        {shouldCollapseBreadcrumbs ? (
+                            <>
+                                {renderBreadcrumbNode(breadcrumbs[0], false)}
+                                <CaretRight
+                                    className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                {canNavigateBreadcrumbs ? (
+                                    <Popover open={collapsedBreadcrumbsOpen} onOpenChange={setCollapsedBreadcrumbsOpen}>
+                                        <PopoverTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="notes-breadcrumb-item notes-breadcrumb-ellipsis"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '展开中间路径' : 'Show intermediate path',
+                                                })}
+                                                aria-haspopup="menu"
+                                                title={collapsedPathLabel}
+                                            >
+                                                <span aria-hidden="true">…</span>
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                            align="start"
+                                            sideOffset={4}
+                                            className="notes-breadcrumb-popover w-auto min-w-[160px] max-w-[min(260px,calc(100vw-16px))] p-1"
+                                        >
+                                            <div
+                                                role="menu"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '中间路径' : 'Intermediate path',
+                                                })}
+                                                className="flex flex-col gap-0.5"
+                                            >
+                                                {collapsedBreadcrumbs.map((ancestor) => (
+                                                    <button
+                                                        key={`${ancestor.type}:${ancestor.id}`}
+                                                        type="button"
+                                                        role="menuitem"
+                                                        className="notes-breadcrumb-popover-item"
+                                                        title={ancestor.title}
+                                                        onClick={() => {
+                                                            setCollapsedBreadcrumbsOpen(false);
+                                                            handleBreadcrumbClick(ancestor);
+                                                        }}
+                                                    >
+                                                        {ancestor.type === 'folder' ? (
+                                                            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                                                        ) : (
+                                                            <NoteGlyph
+                                                                noteId={ancestor.id}
+                                                                size={14}
+                                                                fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
+                                                            />
+                                                        )}
+                                                        <span className="min-w-0 truncate">{ancestor.title}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                ) : (
+                                    <span
+                                        className="notes-breadcrumb-static notes-breadcrumb-ellipsis"
+                                        title={collapsedPathLabel}
+                                    >
+                                        …
+                                    </span>
+                                )}
+                                {breadcrumbs.slice(-2).map((item, tailIndex, tail) => {
+                                    const isCurrent = tailIndex === tail.length - 1 && item.type === 'note';
+                                    return (
+                                        <React.Fragment key={`${item.type}:${item.id}`}>
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                            {renderBreadcrumbNode(item, isCurrent)}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            breadcrumbs.map((item, index) => {
+                                const isCurrent = index === breadcrumbs.length - 1 && item.type === 'note';
+                                return (
+                                    <React.Fragment key={`${item.type}:${item.id}`}>
+                                        {index > 0 && (
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                        {renderBreadcrumbNode(item, isCurrent)}
+                                    </React.Fragment>
+                                );
+                            })
+                        )}
+                    </nav>
                 </div>
             )}
 

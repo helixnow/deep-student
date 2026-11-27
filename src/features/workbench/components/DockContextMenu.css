@@ -23,12 +23,11 @@
   z-index: var(--wb-z-dock-flyout, 9200);
   padding: 5px;
   border-radius: var(--wb-menu-radius, 14px);
-  border: 1px solid var(--wb-glass-border);
-  background-color: var(--wb-glass-bg-strong);
+  border: 1px solid transparent;
+  background-color: var(--wb-glass-liquid-bg-strong, var(--wb-glass-bg-strong));
   background-image: var(--wb-glass-sheen);
-  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
-  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  backdrop-filter: var(--wb-glass-liquid-blur-strong, var(--wb-glass-blur-strong));
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover, var(--wb-dock-shadow));
   color: var(--text-primary, hsl(var(--foreground)));
   /* 升起入场：覆盖 app-menu 默认 scale 起点，改用 rise + overshoot */
   transform-origin: bottom center;
@@ -39,6 +38,44 @@
       var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1)),
     opacity var(--wb-motion-quick, 150ms)
       var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+
+.app-menu-content.wb-dockmenu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 0.75px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--wb-glass-liquid-rim, var(--wb-dock-liquid-rim));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@media (resolution >= 2dppx) {
+  .app-menu-content.wb-dockmenu::before {
+    padding: 0.5px;
+  }
+}
+
+:root[data-wb-material='reduced'] .app-menu-content.wb-dockmenu,
+:root[data-wb-material='minimal'] .app-menu-content.wb-dockmenu {
+  border-color: var(--wb-glass-border);
+}
+
+:root[data-wb-material='reduced'] .app-menu-content.wb-dockmenu::before,
+:root[data-wb-material='minimal'] .app-menu-content.wb-dockmenu::before {
+  display: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-menu-content.wb-dockmenu {
+    border-color: var(--wb-glass-border);
+  }
+
+  .app-menu-content.wb-dockmenu::before {
+    display: none;
+  }
 }
 
 .app-menu-content.wb-dockmenu.app-menu-open {

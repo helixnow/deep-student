@@ -45,6 +45,19 @@ export function useFrontendErrorCapture() {
         if (typeof src === 'string' && src.includes('/sse-proxy/')) {
           return;
         }
+        // 已由受管音视频预览器（VideoPlayer / AudioPlayer）内部接管降级与错误态的媒体解码异常，
+        // 仅记录 debug warn，不作为未捕获前端错误污染控制台
+        const isManagedMedia =
+          (target?.tagName === 'VIDEO' || target?.tagName === 'AUDIO') &&
+          target instanceof HTMLElement &&
+          target.dataset.dsManagedMedia === 'true';
+        if (isManagedMedia) {
+          debugLog.warn('[DSTU][MANAGED_MEDIA_ERROR]', {
+            tagName: target.tagName,
+            src,
+          });
+          return;
+        }
       }
       const message = errorEvent?.message || String((errorEvent as ErrorEvent)?.error || 'Unknown error');
       // W3C ResizeObserver 规范允许的良性帧延后告警，不中断渲染也不应污染控制台/错误上报

@@ -1261,9 +1261,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   if (!sessionId) {
     return (
       <div className="ui-rise-in flex flex-col items-center justify-center h-full gap-3 px-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
-          <WarningCircle size={26} className="text-muted-foreground" />
-        </div>
+        <WarningCircle size={24} className="text-muted-foreground" aria-hidden="true" />
         <span className="text-sm text-muted-foreground">
           {t('exam_sheet:errors.noSession')}
         </span>
@@ -1275,9 +1273,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const loadErrorMessage = sessionDetailError || error;
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 px-6 ui-rise-in">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-          <WarningCircle size={26} className="text-destructive" />
-        </div>
+        <WarningCircle size={24} className="text-destructive" aria-hidden="true" />
         <div className="flex flex-col items-center gap-1 text-center max-w-md" role="alert">
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>

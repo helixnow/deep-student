@@ -58,7 +58,7 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
       className="api-key-field__action"
     >
       {copied ? (
-        <Check className="api-key-field__icon text-green-600" />
+        <Check className="api-key-field__icon text-success" />
       ) : (
         <Copy className="api-key-field__icon" />
       )}
@@ -84,7 +84,7 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
 />
 
       {isSensitive && (
-        <div className={`mt-1 flex items-center text-xs ${value.trim() ? 'text-green-600' : 'text-muted-foreground'}`}>
+        <div className={`mt-1 flex items-center text-xs ${value.trim() ? 'text-success' : 'text-muted-foreground'}`}>
           <Shield size={12} className="mr-1" />
           <span>
             {value.trim()

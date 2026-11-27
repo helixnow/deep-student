@@ -131,10 +131,10 @@ export function createMcpServerOps({
             return candidateId === server.id || item?.id === server.id || item?.name === server.id;
           });
           const label = match?.item?.name || server.id;
-          summaries.push(`✅ ${t('settings:mcp_descriptions.health_check_item', { label, tools: tools.length, prompts: prompts.length, resources: resources.length })}`);
+          summaries.push(t('settings:mcp_descriptions.health_check_item', { label, tools: tools.length, prompts: prompts.length, resources: resources.length }));
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          failures.push(`❌ ${server.id}: ${message}`);
+          failures.push(`${server.id}: ${message}`);
         }
       }
       await refreshSnapshots();

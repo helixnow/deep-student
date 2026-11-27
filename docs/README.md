@@ -1,6 +1,6 @@
 # docs/ 文档导航
 
-> 在线使用指南：https://deepstudent.cn/docs/
+> 在线使用指南：https://deepstudent.cn/user-guide/
 
 ## 用户指南（面向最终用户）
 
@@ -19,7 +19,12 @@
 | [BUILD-CONFIG.md](./BUILD-CONFIG.md) | 跨平台构建环境配置（签名、证书、环境变量） |
 | [README-BUILD.md](./README-BUILD.md) | 构建与本地运行脚本速查 |
 | [frontend/README.md](./frontend/README.md) | 前端组件体系、设计令牌与界面模式 |
-| [plugins/ARCHITECTURE.md](./plugins/ARCHITECTURE.md) | Plugin v2 插件架构、SDK 与安全边界 |
+| [plugins/PLUGIN-V2.md](./plugins/PLUGIN-V2.md) | Plugin v2 三层扩展模型与 `.dspack` 学习包概览 |
+| [plugins/ARCHITECTURE.md](./plugins/ARCHITECTURE.md) | 后端 Cordis 插件架构（前端插件化见 [plugins/FRONTEND.md](./plugins/FRONTEND.md)） |
+| [plugins/SDK.md](./plugins/SDK.md) | 社区插件开发 SDK 指南（清单、Host 服务与 UI 插槽） |
+| [plugins/CAPABILITIES.md](./plugins/CAPABILITIES.md) | 官方服务、命令与事件能力清单（自动生成） |
+| [plugins/SECURITY.md](./plugins/SECURITY.md) | 社区插件安全边界、`ds-plugin://` 校验与权限约束 |
+| [plugins/UPGRADES.md](./plugins/UPGRADES.md) | 桌面应用升级兼容与用户插件保留机制 |
 | [community/good-first-issues.md](./community/good-first-issues.md) | 社区贡献入门参考 |
 
 ## 法务与合规

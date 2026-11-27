@@ -68,11 +68,26 @@ export function buildAiDashboardIntent(
 
   // 错题 / 笔记复习卡紧跟闪卡卡：三条复习线并排，与首页「今日学习」一致
   const firstStatIdx = blocks.findIndex((block) => block.type === 'stat-card');
+  if (firstStatIdx >= 0) {
+    blocks[firstStatIdx] = {
+      ...blocks[firstStatIdx],
+      id: blocks[firstStatIdx].id ?? 'dashboard-due-flashcards',
+    };
+  }
+  const extraReviewCards = [
+    ...(labels.dueMistakesTitle
+      ? [{ id: 'dashboard-due-mistakes', title: labels.dueMistakesTitle, count: dueMistakes }]
+      : []),
+    ...(labels.dueNotesTitle
+      ? [{ id: 'dashboard-due-notes', title: labels.dueNotesTitle, count: dueNotes }]
+      : []),
+  ];
   blocks.splice(
     firstStatIdx >= 0 ? firstStatIdx + 1 : 0,
     0,
-    ...reviewLines.slice(1).map((line) => ({
+    ...extraReviewCards.map((line) => ({
       type: 'stat-card' as const,
+      id: line.id,
       props: {
         title: line.title,
         value: line.count,
@@ -88,9 +103,16 @@ export function buildAiDashboardIntent(
     (block) => block.type === 'progress'
       || (block.type === 'stat-card' && (block.props as { title?: string }).title === todosTitle),
   );
+  if (todosIdx >= 0) {
+    blocks[todosIdx] = {
+      ...blocks[todosIdx],
+      id: blocks[todosIdx].id ?? 'dashboard-todos',
+    };
+  }
   const insertAt = todosIdx >= 0 ? todosIdx : blocks.length;
   blocks.splice(insertAt, 0, {
     type: 'stat-card',
+    id: 'dashboard-anki-tasks',
     props: {
       title: labels.ankiTasksTitle,
       value: activeAnkiTasks,
@@ -98,6 +120,15 @@ export function buildAiDashboardIntent(
       trendLabel: activeAnkiTasks > 0 ? labels.ankiTasksTrendActive : (labels.ankiTasksTrendIdle ?? labels.dueTrendNone),
     },
   });
+
+  const tableIdx = blocks.findIndex((block) => block.type === 'table');
+  if (tableIdx >= 0) {
+    blocks[tableIdx] = {
+      ...blocks[tableIdx],
+      id: blocks[tableIdx].id ?? 'dashboard-workload-table',
+      span: 3,
+    };
+  }
 
   const actionBarIdx = blocks.findIndex((block) => block.type === 'action-bar');
   const extraBlocks: typeof blocks = [];
@@ -109,6 +140,7 @@ export function buildAiDashboardIntent(
 
   extraBlocks.push(
     ...buildChartIntent({
+      id: 'dashboard-workload-chart',
       title: labels.workloadChartTitle ?? labels.progressTitle,
       kind: 'bar',
       categories: [
@@ -124,12 +156,14 @@ export function buildAiDashboardIntent(
         },
       ],
       labels: {},
-    }).blocks,
+    }).blocks.map((block) => ({ ...block, span: 2 as const })),
   );
 
   if (isIdle) {
     extraBlocks.push({
       type: 'alert',
+      id: 'dashboard-idle-alert',
+      span: 3,
       props: {
         variant: 'info',
         title: labels.idleAlertTitle ?? labels.dueTrendNone,
@@ -141,6 +175,8 @@ export function buildAiDashboardIntent(
   if (calendarDays.length > 0) {
     extraBlocks.push({
       type: 'review-calendar',
+      id: 'dashboard-review-calendar',
+      span: 1,
       props: {
         title: labels.reviewCalendarTitle,
         days: calendarDays,
@@ -149,6 +185,8 @@ export function buildAiDashboardIntent(
   } else {
     extraBlocks.push({
       type: 'list',
+      id: 'dashboard-review-list',
+      span: 1,
       props: {
         title: labels.reviewEmptyTitle ?? labels.dueFlashcardsTitle,
         items: reviewLines
@@ -199,10 +237,16 @@ export function buildAiDashboardIntent(
       }
       blocks[nextActionBarIdx] = {
         ...actionBar,
+        id: actionBar.id ?? 'dashboard-actions',
+        span: 3,
         props: { ...actionBar.props, actions },
       };
     }
   }
 
-  return { version: '1', blocks };
+  return {
+    version: '1',
+    layout: { mode: 'grid', columns: 3 },
+    blocks,
+  };
 }

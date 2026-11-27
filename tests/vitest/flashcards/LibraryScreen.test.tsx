@@ -354,7 +354,8 @@ describe('LibraryScreen', () => {
     render(<LibraryScreen />);
     expect(await screen.findByText('库中暂无卡片')).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'library.import.apkg' })[0]);
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'library.import.apkg' }));
     expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('fc-lib-apkg-choose-btn'));
 
@@ -384,7 +385,8 @@ describe('LibraryScreen', () => {
     render(<LibraryScreen />);
     await screen.findByText('front c1');
 
-    fireEvent.click(screen.getByTestId('fc-lib-export-csv'));
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
+    fireEvent.click(await screen.findByTestId('fc-lib-export-csv'));
     await waitFor(() => {
       expect(mocks.saveTextFile).toHaveBeenCalledWith(expect.objectContaining({
         defaultFileName: 'flashcards.csv',
@@ -398,7 +400,8 @@ describe('LibraryScreen', () => {
     mocks.saveAnkiCards.mockResolvedValueOnce({ savedIds: ['new-1'], taskId: 'task-csv' });
     mocks.invoke.mockResolvedValueOnce({ states: [{ id: 'st-1' }] });
 
-    fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
+    fireEvent.click(screen.getByTestId('fc-lib-more-actions'));
+    fireEvent.click(await screen.findByTestId('fc-lib-import-csv'));
     expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('fc-lib-csv-choose-btn'));
     expect(await screen.findByTestId('fc-lib-csv-confirm-banner')).toBeInTheDocument();

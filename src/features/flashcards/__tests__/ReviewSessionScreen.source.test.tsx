@@ -84,6 +84,7 @@ describe('ReviewSessionScreen — back to the source while reviewing', () => {
     render(<ReviewSessionScreen />);
     expect(invokeMock).not.toHaveBeenCalled();
 
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
     fireEvent.click(screen.getByTestId('fc-review-view-source'));
     await waitFor(() => expect(openTarget).toHaveBeenCalledWith(
       { kind: 'ref', ref: { kind: 'note', id: 'note_7', title: '高数笔记' } },
@@ -97,6 +98,7 @@ describe('ReviewSessionScreen — back to the source while reviewing', () => {
   it('says so when the card has no recorded source', async () => {
     seedCard({ id: 'state_2', ankiCardId: 'anki_2', front: 'Q', back: 'A' });
     render(<ReviewSessionScreen />);
+    fireEvent.click(screen.getByTestId('fc-review-more-actions'));
     fireEvent.click(screen.getByTestId('fc-review-view-source'));
     await waitFor(() => expect(notify).toHaveBeenCalledWith('info', '没有出处'));
     expect(openTarget).not.toHaveBeenCalled();

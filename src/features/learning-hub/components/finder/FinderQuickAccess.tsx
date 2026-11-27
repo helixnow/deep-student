@@ -227,19 +227,12 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     const renderedIcon = CustomIcon ? (
       <CustomIcon
         size={fillContainer ? 18 : 20}
-        className={cn(
-          'shrink-0 transition-transform duration-150',
-          isActive && 'scale-105',
-          !isActive && 'group-hover:scale-105'
-        )}
+        className="shrink-0"
       />
     ) : Icon ? (
       <Icon className={cn(
         'h-[18px] w-[18px] shrink-0',
-        !fillContainer && 'transition-transform duration-150',
         iconColor || 'text-[color:var(--shell-navigation-foreground)]',
-        !fillContainer && isActive && 'scale-105',
-        !fillContainer && !isActive && 'group-hover:scale-105'
       )} />
     ) : null;
 
@@ -507,7 +500,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           </div>
         )}
 
-        <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0">
+        <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0 pr-2" trackOffsetRight={1}>
           {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}
           <div className={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
             {renderSectionTitle(t('finder.quickAccess.materials'))}

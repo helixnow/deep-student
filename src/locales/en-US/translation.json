@@ -285,6 +285,9 @@
     "add_streaming_hint": "Add to chat is available once translation completes"
   },
   "prompt_panel": {
+    "preferences_title": "Translation Preferences",
+    "auto_save_hint": "Changes apply automatically",
+    "back_to_translate": "Back to translate",
     "style_title": "Translation Style",
     "style_hint": "Controls the tone and formality of the translation",
     "domain_hint": "Optimizes terminology and phrasing for the selected domain",

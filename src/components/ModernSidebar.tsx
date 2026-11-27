@@ -36,7 +36,6 @@ import {
   Sparkle,
   Star,
   Target,
-  Tray,
   Trophy,
   X,
 } from '@phosphor-icons/react';
@@ -101,8 +100,7 @@ import {
   WorkbenchSidebarScroll,
 } from '@/features/workbench/components/sidebar';
 import { INBOX_SPACE_ID } from '@/shared/study-space/types';
-import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeStrip';
-import { projectStudySpace, useStudySpaceStore } from '@/stores/studySpaceStore';
+import { useStudySpaceStore } from '@/stores/studySpaceStore';
 
 interface ModernSidebarProps {
   currentView: CurrentView;
@@ -357,9 +355,6 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const blockingSessionIdSet = useMemo(() => new Set(blockingSessionIds), [blockingSessionIds]);
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
   const activeSpaceId = useStudySpaceStore((s) => s.activeSpaceId);
-  const groupsById = useStudySpaceStore((s) => s.groupsById);
-  const profilesBySpaceId = useStudySpaceStore((s) => s.profilesBySpaceId);
-  const mountsBySpaceId = useStudySpaceStore((s) => s.mountsBySpaceId);
 
   const uiLabEnabled = useIsUILabEnabled();
   const navEntries = useSlot<ShellNavItem>('nav');
@@ -502,11 +497,20 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const handleRecentSessionOpen = useCallback((sessionId: string) => {
     markSessionSidebarIndicatorSeen(sessionId);
     setActiveSessionId(sessionId);
+    const targetSession = recentSessions.find((item) => item.id === sessionId);
+    if (targetSession) {
+      const nextSpaceId = targetSession.groupId && recentGroups.some((group) => group.id === targetSession.groupId)
+        ? targetSession.groupId
+        : INBOX_SPACE_ID;
+      if (useStudySpaceStore.getState().activeSpaceId !== nextSpaceId) {
+        useStudySpaceStore.getState().setActiveSpace(nextSpaceId);
+      }
+    }
     if (currentView !== 'chat-v2') {
       handleViewChange('chat-v2');
     }
     window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
-  }, [currentView, handleViewChange]);
+  }, [currentView, handleViewChange, recentGroups, recentSessions]);
 
   const handleRecentSessionPinToggle = useCallback(async (session: ChatSession) => {
     const nextMetadata = buildPinnedSessionMetadata(session.metadata, !isSessionPinned(session));
@@ -722,6 +726,13 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
   const handleTopicGroupClick = useCallback((sessionGroup: SessionGroup) => {
     const store = useStudySpaceStore.getState();
+    const isCurrentlyExpanded = !collapsedRecentGroupIds.has(sessionGroup.id);
+
+    if (store.activeSpaceId === sessionGroup.id && isCurrentlyExpanded) {
+      store.setActiveSpace(INBOX_SPACE_ID, { applyWorkbenchPreset: true });
+      toggleRecentGroup(sessionGroup.id);
+      return;
+    }
 
     if (
       !store.loading
@@ -734,11 +745,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
     store.setActiveSpace(sessionGroup.id, { applyWorkbenchPreset: true });
     toggleRecentGroup(sessionGroup.id);
-  }, [toggleRecentGroup]);
-
-  const handleInboxSpaceClick = useCallback(() => {
-    useStudySpaceStore.getState().setActiveSpace(INBOX_SPACE_ID, { applyWorkbenchPreset: true });
-  }, []);
+  }, [collapsedRecentGroupIds, toggleRecentGroup]);
 
   const handleEditRecentGroup = useCallback((group: SessionGroup) => {
     handleViewChange('chat-v2');
@@ -1282,26 +1289,6 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     );
   }, [activeSpaceId, clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleEditRecentGroup, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleTopicGroupClick, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroupSessions]);
 
-  const activeSpaceGroup = useMemo<SessionGroup | null>(() => {
-    if (activeSpaceId === INBOX_SPACE_ID) return null;
-    return recentGroups.find((group) => group.id === activeSpaceId) ?? groupsById?.[activeSpaceId] ?? null;
-  }, [activeSpaceId, groupsById, recentGroups]);
-
-  const activeSpace = useMemo(() => {
-    if (activeSpaceId === INBOX_SPACE_ID || !activeSpaceGroup) return null;
-    return projectStudySpace(
-      normalizeStudySpaceGroup(activeSpaceGroup),
-      profilesBySpaceId?.[activeSpaceId],
-      mountsBySpaceId?.[activeSpaceId],
-    );
-  }, [activeSpaceGroup, activeSpaceId, mountsBySpaceId, profilesBySpaceId]);
-
-  const rawInboxLabel = t('chatV2:studySpace.inbox', { defaultValue: '收件箱' });
-  const inboxLabel =
-    rawInboxLabel && rawInboxLabel !== 'chatV2:studySpace.inbox' && rawInboxLabel !== 'studySpace.inbox'
-      ? rawInboxLabel
-      : '收件箱';
-
   const hasPinnedContent = Boolean(superSession) || pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
   const isTopicsSectionCollapsed = collapsedSidebarSectionIds.has('topics');
@@ -1350,6 +1337,9 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
           className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           onClick={(event) => {
             event.stopPropagation();
+            if (useStudySpaceStore.getState().activeSpaceId !== INBOX_SPACE_ID) {
+              useStudySpaceStore.getState().setActiveSpace(INBOX_SPACE_ID);
+            }
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
               detail: { action: 'create-session', groupId: null },
             }));
@@ -1471,51 +1461,11 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 ),
               })}
               {!isTopicsSectionCollapsed ? (
-                <>
-                  {activeSpace ? (
-                    <div className="mb-1.5">
-                      <StudySpaceBadgeStrip
-                        space={activeSpace}
-                        onEditSpace={
-                          activeSpaceGroup
-                          && activeSpaceGroup.persistStatus !== 'archived'
-                          && activeSpaceGroup.persistStatus !== 'deleted'
-                            ? () => handleEditRecentGroup(activeSpaceGroup)
-                            : undefined
-                        }
-                      />
-                    </div>
-                  ) : null}
-                  <nav aria-label={t('sidebar:aria.topic_sessions')}>
-                    <div className="space-y-0.5" role="list">
-                      <div
-                        data-testid="sidebar-inbox-pinned"
-                        className="mb-1 border-b border-border/35 pb-1.5"
-                      >
-                        <SidebarRow
-                          rowType="nav"
-                          onClick={handleInboxSpaceClick}
-                          aria-label={inboxLabel}
-                          aria-current={activeSpaceId === INBOX_SPACE_ID ? 'true' : undefined}
-                          isActive={activeSpaceId === INBOX_SPACE_ID}
-                          className="!pl-3 !pr-2 select-none"
-                          leftSlot={<Tray className="size-[16px] !text-[color:var(--shell-navigation-foreground)]" />}
-                          rightSlot={
-                            <span
-                              data-testid="sidebar-inbox-count"
-                              className="font-mono text-xs tabular-nums text-[color:var(--shell-navigation-muted)]"
-                            >
-                              {conversationSessions.length}
-                            </span>
-                          }
-                        >
-                          <SidebarRowLabel>{inboxLabel}</SidebarRowLabel>
-                        </SidebarRow>
-                      </div>
-                      {topicSessionGroups.map((group) => renderRecentGroup(group))}
-                    </div>
-                  </nav>
-                </>
+                <nav aria-label={t('sidebar:aria.topic_sessions')}>
+                  <div className="space-y-0.5" role="list">
+                    {topicSessionGroups.map((group) => renderRecentGroup(group))}
+                  </div>
+                </nav>
               ) : null}
             </section>
 

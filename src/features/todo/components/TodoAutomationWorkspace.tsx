@@ -3,26 +3,28 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
+  BookOpen,
   CalendarBlank,
   CalendarCheck,
   CaretDown,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
+  ListPlus,
   MagicWand,
   Plus,
   Pulse,
   Robot,
-  Sparkle,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
-import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import { cn } from '@/utils/cn';
+import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/DesktopHeaderContext';
 import {
   TITLEBAR_CONTROL_CLASS,
   TITLEBAR_TITLE_CLASS,
-} from '@/app/shell/titlebarUiTokens';
+} from '@/components/layout/desktopTitlebarTokens';
+import { useTodoStore } from '../stores/useTodoStore';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -232,10 +234,13 @@ interface TodoAutomationWorkspaceProps {
 }
 
 export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = ({ hideHeader = false, titlebarPortalTarget }) => {
-  const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
+  const { t, i18n } = useTranslation(['todo', 'settings', 'common', 'sidebar']);
+  const setWorkspaceView = useTodoStore((state) => state.setWorkspaceView);
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
-  // 桌面端：标题栏迁入全局顶栏（hideHeader 的移动壳场景不参与）
-  const headerPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
+  // Workbench 窗口标题栏走 portal；经典壳桌面端走统一 useDesktopHeader（面包屑范式）
+  const hasDesktopHeaderHost = useHasDesktopHeaderHost();
+  const headerPortalTarget = titlebarPortalTarget ?? null;
+  const useClassicDesktopHeader = !hideHeader && !headerPortalTarget && hasDesktopHeaderHost;
   // 关闭窗口后驻留后台仅桌面端实现；移动端系统会冻结后台应用，开关无效，改为说明
   const backgroundKeepAliveUnsupported = isMobilePlatform();
 
@@ -573,47 +578,67 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
     ? localizeAutomationError(error)
     : null;
 
-  // 标题栏内容（页内内联 / portal 进全局顶栏两种承载共用）
+  const createButtonAction = (inTitlebar: boolean) => (
+    <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
+      <DsButton
+        ref={newTaskButtonRef}
+        variant={inTitlebar ? 'ghost' : 'primary'}
+        size="sm"
+        className={inTitlebar
+          ? cn(TITLEBAR_CONTROL_CLASS, 'bg-[color:var(--button-tonal-bg)] text-foreground')
+          : '[@media(pointer:coarse)]:!min-h-11'}
+        aria-expanded={createOpen}
+        aria-controls={CREATE_PANEL_ID}
+        disabled={capacityFull && !createOpen}
+        onClick={() => (createOpen ? closeCreate() : openCreate())}
+      >
+        <Plus size={14} />
+        {t('todo:automation.new')}
+      </DsButton>
+    </span>
+  );
+
+  useDesktopHeader(
+    'todo',
+    {
+      breadcrumbs: [
+        {
+          id: 'todo-root',
+          label: t('sidebar:navigation.todo', { defaultValue: t('todo:sidebar.title') }),
+          onClick: () => setWorkspaceView('todos'),
+        },
+        { id: 'todo-automation', label: t('todo:automation.title') },
+      ],
+      actions: createButtonAction(true),
+    },
+    [t, setWorkspaceView, capacityFull, max, createOpen, closeCreate, openCreate],
+    useClassicDesktopHeader,
+  );
+
+  // 标题栏内容（页内内联 / Workbench 窗口标题栏共用）
   const headerClusters = (
     <>
-      <div className={cn('flex min-w-0 items-center gap-2', headerPortalTarget && 'pointer-events-auto')}>
+      <div className="flex min-w-0 items-center gap-2">
         <Robot size={16} className="shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0">
-          <h1 className={headerPortalTarget
+          <span className={headerPortalTarget
             ? TITLEBAR_TITLE_CLASS
-            : 'truncate text-base font-semibold text-foreground'}>
+            : 'block truncate text-base font-semibold text-foreground'}>
             {t('todo:automation.title')}
-          </h1>
+          </span>
         </div>
       </div>
       <div className={cn('flex shrink-0 items-center gap-1.5', headerPortalTarget && 'pointer-events-auto')}>
         {/* 容量门禁：与 AutomationSettingsSection 的新建按钮同一判定与提示文案 */}
-        <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
-          <DsButton
-            ref={newTaskButtonRef}
-            variant={headerPortalTarget ? 'shell' : 'primary'}
-            size="sm"
-            className={headerPortalTarget ? TITLEBAR_CONTROL_CLASS : '[@media(pointer:coarse)]:!min-h-11'}
-            aria-expanded={createOpen}
-            aria-controls={CREATE_PANEL_ID}
-            disabled={capacityFull && !createOpen}
-            onClick={() => (createOpen ? closeCreate() : openCreate())}
-          >
-            <Plus size={15} />
-            {t('todo:automation.new')}
-          </DsButton>
-        </span>
+        {createButtonAction(Boolean(headerPortalTarget))}
       </div>
     </>
   );
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
-      {/* 页内标题栏：移动/桌面分界由 TodoContentView 按 isSmallScreen(<768)
-          经 hideHeader 决定，不再用 sm(640) 断点自行分界（640–767 曾与
-          统一顶栏叠出双标题，<640 残留纯动作条）。渲染时标题块恒显示。
-          桌面端有全局顶栏槽位时整体 portal 上移，页内不再重复渲染。 */}
-      {hideHeader ? null : headerPortalTarget ? (
+      {/* 页内标题栏：经典壳桌面端走 useDesktopHeader；Workbench 窗口走 portal；移动端由 hideHeader 收口 */}
+      {hideHeader || useClassicDesktopHeader ? null : headerPortalTarget ? (
         createPortal(
           <div className="pointer-events-none flex h-full min-w-0 items-center justify-between gap-3 px-2">
             {headerClusters}
@@ -809,7 +834,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* Step 1 — 描述：自然语言快速输入 / 模板起步 */}
                   <section aria-label={t('todo:automation.createPanel.steps.describe')} className="space-y-3">
                   <StepHeading index={1} title={t('todo:automation.createPanel.steps.describe')} hint={t('todo:automation.createPanel.steps.describeHint')} />
-                  <div className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface-muted,hsl(var(--muted)))]/40 p-3">
+                  <div className="space-y-2 pb-1">
                     <label
                       htmlFor="automation-create-nl"
                       className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground"
@@ -894,7 +919,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       onClick={() => setTemplatesOpen((value) => !value)}
                       className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
-                      <Sparkle size={13} />
+                      <BookOpen size={13} />
                       {t('todo:automation.createPanel.templatesToggle')}
                       <CaretDown
                         size={12}
@@ -995,7 +1020,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* agent_turn 专属字段 */}
                   <div className="automation-collapse" data-open={draft.actionType === 'agent_turn'} aria-hidden={draft.actionType !== 'agent_turn'}>
                     <div className="automation-collapse__inner">
-                      <div className="grid gap-4 rounded-xl border border-[color:var(--border-soft)] bg-muted/20 p-3 sm:grid-cols-2">
+                      <div className="grid gap-4 border-t border-[color:var(--border-soft)] pt-4 sm:grid-cols-2">
                         <div className="space-y-1.5 text-sm sm:col-span-2">
                           <label htmlFor="automation-create-agent-prompt" className="font-medium text-foreground">
                             {t('todo:automation.createPanel.agentPrompt')}
@@ -1058,7 +1083,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   </div>
 
                   {/* 高级折叠区 */}
-                  <div className="rounded-xl border border-[color:var(--border-soft)] p-3">
+                  <div className="border-t border-[color:var(--border-soft)] pt-3">
                     <button
                       type="button"
                       aria-expanded={advancedOpen}
@@ -1156,7 +1181,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   {/* Step 3 — 确认：草稿实时摘要 + 首次运行预览 + 提交 */}
                   <section aria-label={t('todo:automation.createPanel.steps.confirm')} className="space-y-3 border-t border-[color:var(--border-soft)] pt-4">
                     <StepHeading index={3} title={t('todo:automation.createPanel.steps.confirm')} />
-                    <div className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface-muted,hsl(var(--muted)))]/40 px-3.5 py-3">
+                    <div className="pt-1">
                       <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <dt className="font-medium uppercase tracking-wide text-muted-foreground">
@@ -1228,12 +1253,8 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                     openCreate();
                   }}
                 >
-                  <Sparkle size={15} />
+                  <ListPlus size={15} />
                   {t('todo:automation.emptyTemplate')}
-                </DsButton>
-                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
-                  <Plus size={15} />
-                  {t('todo:automation.new')}
                 </DsButton>
               </div>
             </div>

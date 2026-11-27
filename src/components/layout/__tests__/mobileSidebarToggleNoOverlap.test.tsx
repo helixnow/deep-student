@@ -133,8 +133,8 @@ describe('360px mobile sidebar toggle non-overlapping layout (S3-17)', () => {
 
     const toggle = container.querySelector('[data-mobile-floating-menu-button]') as HTMLButtonElement;
     expect(toggle).not.toBeNull();
-    expect(toggle.className).toContain('min-h-11');
-    expect(toggle.className).toContain('min-w-11');
+    expect(toggle.className).toContain('h-[var(--touch-target-size)]');
+    expect(toggle.className).toContain('w-[var(--touch-target-size)]');
 
     fireEvent.click(toggle);
     expect(onMenuClick).toHaveBeenCalledTimes(1);

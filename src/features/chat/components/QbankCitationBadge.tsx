@@ -111,10 +111,10 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
       className={cn(
         '!inline-flex !h-auto !px-1.5 !py-0.5 mx-0.5',
         'items-center gap-1 align-middle',
-        'bg-emerald-500/10 hover:bg-emerald-500/20',
-        'text-emerald-600 dark:text-emerald-400',
+        'bg-success/10 hover:bg-success/20',
+        'text-success',
         'text-sm font-medium',
-        'border border-emerald-500/20 hover:border-emerald-500/40',
+        'border border-success/20 hover:border-success/40',
         className
       )}
       title={t('qbankCitation.openQbank', {

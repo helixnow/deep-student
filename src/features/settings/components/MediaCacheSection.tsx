@@ -297,7 +297,7 @@ export const MediaCacheSection: React.FC = () => {
       <DsAlertDialog
         open={showConfirm}
         onOpenChange={setShowConfirm}
-        icon={<Trash size={20} className="text-red-500" />}
+        icon={<Trash size={20} className="text-destructive" />}
         title={t('data:governance.cache.confirm_title')}
         description={t('data:governance.cache.confirm_desc')}
         confirmText={t('data:governance.cache.confirm_clear')}
@@ -389,7 +389,7 @@ const ClearOption: React.FC<ClearOptionProps> = ({
     </div>
     <div className="flex items-center gap-2 shrink-0">
       {warning && (
-        <Warning size={14} className="text-amber-500" />
+        <Warning size={14} className="text-warning" />
       )}
       {size !== undefined && size > 0 && (
         <span className="text-xs font-mono text-muted-foreground">

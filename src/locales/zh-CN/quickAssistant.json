@@ -13,18 +13,34 @@
     "hint": { "label": "只给提示", "hint": "不给答案，给考点和思路" }
   },
   "features": {
-    "search": { "label": "找回学习记录", "hint": "笔记、教材、错题、历史会话" },
-    "review": { "label": "速刷到期卡片", "hint": "顺手复习一张" },
-    "status": { "label": "今日学习状态", "hint": "待办与复习进度" }
+    "search": { "label": "查找学习记录", "hint": "笔记、教材、错题与历史会话" },
+    "review": { "label": "去刷到期闪卡", "hint": "打开主窗口继续复习" },
+    "status": { "label": "今日待办与计划", "hint": "查看待办清单与截止安排" },
+    "open_main": { "label": "打开主窗口对话", "hint": "回到完整学习工作台" }
+  },
+  "groups": {
+    "clipboard": "剪贴板",
+    "ai": "问 AI",
+    "capture": "直接收集",
+    "records": "学习记录",
+    "workspace": "快速开始"
+  },
+  "clipboard": {
+    "attach": "附着剪贴板内容"
+  },
+  "quick_capture": {
+    "note": { "label": "存为速记笔记", "hint": "不经 AI，直接收录到知识库" },
+    "todo": { "label": "加入待办收件箱", "hint": "不经 AI，直接创建待办" }
   },
   "menu": {
     "aria_label": "学习动作",
     "recommended": "推荐"
   },
   "input": {
-    "placeholder": "粘贴题目、概念、外文或截图，开始学习…",
-    "placeholder_with_capture": "补充你的问题，或直接选择动作…",
-    "search_placeholder": "搜索笔记、教材、错题和历史会话…"
+    "placeholder": "提问、粘贴内容或截图，或直接搜索…",
+    "placeholder_with_capture": "补充问题，或直接按回车执行…",
+    "search_placeholder": "搜索笔记、教材、错题和历史会话…",
+    "clear": "清空输入"
   },
   "capture": {
     "chars": "{{count}} 字",
@@ -50,7 +66,8 @@
     "searching": "正在查找你的学习内容…",
     "conversation_fallback": "历史会话",
     "found": "找到 {{count}} 项",
-    "none": "没有找到相关内容"
+    "none": "没有找到相关内容",
+    "view_all": "查看全部 {{count}} 条学习记录"
   },
   "review": {
     "title": "速刷到期卡片",
@@ -73,6 +90,7 @@
     "today_due": "今日到期",
     "overdue": "已逾期",
     "today_completed": "今日完成",
+    "today_badge": "今日 {{count}} 项",
     "open_plan": "打开学习计划"
   },
   "messages": {
@@ -90,7 +108,12 @@
   "footer": {
     "home": "↑↓ 选择 · Enter 执行 · Esc 隐藏",
     "answer_busy": "Esc 停止生成",
-    "back": "Esc 返回"
+    "back": "Esc 返回",
+    "select": "选择",
+    "run": "执行",
+    "hide": "隐藏",
+    "stop": "停止",
+    "back_short": "返回"
   },
   "errors": {
     "generation_failed": "生成失败",

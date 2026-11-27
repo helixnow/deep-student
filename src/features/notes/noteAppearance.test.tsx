@@ -91,8 +91,10 @@ describe('document appearance entry', () => {
     const idea = screen.getByRole('button', { name: '灵感' });
     await waitFor(() => expect(idea).not.toBeDisabled());
     fireEvent.click(idea);
-    await waitFor(() => expect(view.container.querySelector('header')).toHaveTextContent('💡'));
-    expect(JSON.parse(vi.mocked(NotesAPI.setPref).mock.calls.at(-1)![1])).toMatchObject({ icon: '💡' });
+    await waitFor(() =>
+      expect(view.container.querySelector('header button[data-note-icon="lightbulb"] svg')).not.toBeNull(),
+    );
+    expect(JSON.parse(vi.mocked(NotesAPI.setPref).mock.calls.at(-1)![1])).toMatchObject({ icon: 'lightbulb' });
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.getByRole('button', { name: '页面图标' })).toHaveFocus();
   });

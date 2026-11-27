@@ -30,6 +30,7 @@ import {
 import { useOptionalUiKernel } from '@/ui-kernel/react';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useMindMapStore } from '../../store';
 import type { ExcerptIntakeMode, MindMapStagingExcerpt } from '../../types';
@@ -162,27 +163,37 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
         </div>
         <div className="flex items-center gap-1">
           {items.length > 0 && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              className="h-6 px-1.5 text-2xs text-[var(--mm-text-muted)] transition-colors motion-reduce:transition-none"
-              onClick={clearStagingExcerpts}
-              title={t('mn5.stagingTrayClearAll')}
-              data-testid="mm-staging-clear-btn"
-            >
-              <Trash size={12} />
-            </DsButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-2xs text-[var(--mm-text-muted)] transition-colors motion-reduce:transition-none"
+                  onClick={clearStagingExcerpts}
+                  aria-label={t('mn5.stagingTrayClearAll')}
+                  data-testid="mm-staging-clear-btn"
+                >
+                  <Trash size={12} />
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('mn5.stagingTrayClearAll')}</TooltipContent>
+            </Tooltip>
           )}
-          <DsButton
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 transition-colors motion-reduce:transition-none"
-            onClick={() => setStagingTrayOpen(false)}
-            aria-label={t('mn5.stagingTrayToggleHint')}
-            data-testid="mm-staging-close-btn"
-          >
-            <X size={13} />
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 transition-colors motion-reduce:transition-none"
+                onClick={() => setStagingTrayOpen(false)}
+                aria-label={t('mn5.stagingTrayToggleHint')}
+                data-testid="mm-staging-close-btn"
+              >
+                <X size={13} />
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('mn5.stagingTrayToggleHint')}</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -196,38 +207,46 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
           role="group"
           aria-label={t('mn5.intakeModeLabel')}
         >
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
-              excerptIntakeMode === 'direct'
-                ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
-                : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
-            )}
-            aria-pressed={excerptIntakeMode === 'direct'}
-            title={t('mn5.intakeModeDirectHint')}
-            onClick={() => handleModeSwitch('direct')}
-            data-testid="mm-intake-mode-direct"
-          >
-            {t('mn5.intakeModeDirect')}
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
-              excerptIntakeMode === 'staging'
-                ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
-                : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
-            )}
-            aria-pressed={excerptIntakeMode === 'staging'}
-            title={t('mn5.intakeModeStagingHint')}
-            onClick={() => handleModeSwitch('staging')}
-            data-testid="mm-intake-mode-staging"
-          >
-            {t('mn5.intakeModeStaging')}
-          </DsButton>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
+                  excerptIntakeMode === 'direct'
+                    ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
+                    : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
+                )}
+                aria-pressed={excerptIntakeMode === 'direct'}
+                onClick={() => handleModeSwitch('direct')}
+                data-testid="mm-intake-mode-direct"
+              >
+                {t('mn5.intakeModeDirect')}
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('mn5.intakeModeDirectHint')}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
+                  excerptIntakeMode === 'staging'
+                    ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
+                    : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
+                )}
+                aria-pressed={excerptIntakeMode === 'staging'}
+                onClick={() => handleModeSwitch('staging')}
+                data-testid="mm-intake-mode-staging"
+              >
+                {t('mn5.intakeModeStaging')}
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('mn5.intakeModeStagingHint')}</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -261,31 +280,41 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
                   data-staging-id={item.id}
                 >
                   <div className="flex items-center justify-between gap-1.5">
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      className="mm-mn5-source-pill h-auto py-0"
-                      onClick={() =>
-                        void revealMindMapSourceAnchor(item.anchor, kernel?.anchors ?? null)
-                      }
-                      title={t('mn5.revealSourceHint', { locator })}
-                    >
-                      <StagingSourceIcon kind={item.anchor.kind} />
-                      <span className="mm-mn5-source-pill-label font-mono tabular-nums text-2xs font-medium">
-                        {locator}
-                      </span>
-                    </DsButton>
-                    <DsButton
-                      variant="ghost"
-                      size="icon"
-                      className="w-5 h-5 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)] transition-colors motion-reduce:transition-none relative"
-                      onClick={() => removeStagingExcerpt(item.id)}
-                      aria-label={t('mn5.removeStagingItem')}
-                      title={t('mn5.removeStagingItem')}
-                      data-testid="mm-staging-remove-btn"
-                    >
-                      <X size={11} />
-                    </DsButton>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          className="mm-mn5-source-pill h-auto py-0"
+                          onClick={() =>
+                            void revealMindMapSourceAnchor(item.anchor, kernel?.anchors ?? null)
+                          }
+                        >
+                          <StagingSourceIcon kind={item.anchor.kind} />
+                          <span className="mm-mn5-source-pill-label font-mono tabular-nums text-2xs font-medium">
+                            {locator}
+                          </span>
+                        </DsButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {t('mn5.revealSourceHint', { locator })}
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DsButton
+                          variant="ghost"
+                          size="icon"
+                          className="w-5 h-5 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)] transition-colors motion-reduce:transition-none relative"
+                          onClick={() => removeStagingExcerpt(item.id)}
+                          aria-label={t('mn5.removeStagingItem')}
+                          data-testid="mm-staging-remove-btn"
+                        >
+                          <X size={11} />
+                        </DsButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{t('mn5.removeStagingItem')}</TooltipContent>
+                    </Tooltip>
                   </div>
 
                   {showThumb && (

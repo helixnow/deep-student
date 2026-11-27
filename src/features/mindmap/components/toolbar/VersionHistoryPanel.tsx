@@ -68,7 +68,7 @@ const SourceBadge: React.FC<{ source: string | undefined; t: TFunction }> = ({ s
         'inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[11px] leading-4 whitespace-nowrap',
         kind === 'manual' && 'bg-[var(--mm-primary-soft)] text-[var(--mm-primary)]',
         kind === 'auto' && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text-muted)]',
-        kind === 'ai' && 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+        kind === 'ai' && 'bg-info/10 text-info',
         kind === 'unknown' && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text-muted)]',
       )}
     >

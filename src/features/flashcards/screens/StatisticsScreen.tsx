@@ -9,10 +9,14 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
   CalendarBlank,
+  CaretDown,
+  CaretUp,
   ChartBar,
   ChartDonut,
+  ChartLineUp,
   ChartPieSlice,
   Fire,
+  SlidersHorizontal,
   WarningCircle,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -28,11 +32,9 @@ import {
   useReviewActivity,
 } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
-import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
 import { MemoryCurvePanel } from '../components/MemoryCurvePanel';
 import { RetentionInsightsPanel } from '../components/RetentionInsightsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
-import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import { useFsrsReviewStore, type FsrsRating } from '../store/fsrsReviewStore';
 import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
@@ -121,11 +123,19 @@ const StateDonut: React.FC<{ segments: DonutSegment[]; centerValue: number; cent
   );
 };
 
-export const StatisticsScreen: React.FC = () => {
+export interface StatisticsScreenProps {
+  /** 打开闪卡调度设置弹窗 */
+  onOpenSchedulerSettings?: () => void;
+}
+
+export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({
+  onOpenSchedulerSettings,
+}) => {
   const { t, i18n } = useTranslation('flashcards');
   const [stats, setStats] = useState<FsrsStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
   const translationRef = useRef(t);
@@ -269,30 +279,32 @@ export const StatisticsScreen: React.FC = () => {
 
   const setScreen = useFsrsReviewStore((state) => state.setScreen);
   const backToToday = useCallback(() => setScreen('today'), [setScreen]);
-  const mobileChrome = useFlashcardsMobileChrome({
+  const mobileRightActions = useMemo(
+    () => (onOpenSchedulerSettings ? (
+      <DsButton
+        type="button"
+        variant="ghost"
+        size="icon"
+        iconOnly
+        onClick={onOpenSchedulerSettings}
+        aria-label={t('settings.scheduler.title')}
+      >
+        <SlidersHorizontal size={18} />
+      </DsButton>
+    ) : undefined),
+    [onOpenSchedulerSettings, t],
+  );
+  useFlashcardsMobileChrome({
     title: t('statistics.title'),
     onBack: backToToday,
-  }, [t, backToToday]);
+    rightActions: mobileRightActions,
+  }, [t, backToToday, mobileRightActions]);
 
   return (
     <div className="wb-fc-screen">
-      {!mobileChrome && <header className="wb-fc-header">
-        <div className="min-w-0">
-          <h2 className="wb-fc-title">{t('statistics.title')}</h2>
-          <p className="wb-fc-subtitle">
-            {loading
-              ? t('statistics.loading')
-              : t('statistics.subtitle')}
-          </p>
-        </div>
-      </header>}
-
       {error ? (
-        // 统计加载失败时调度设置必须保持可用：它读写独立的 scheduler_config
-        // 后端命令，与统计数据无依赖（此前整体包在 stats 分支里被一起拖垮）。
         <CustomScrollArea className="min-h-0 flex-1">
           <div className="wb-fcx-scroll">
-            <SchedulerSettingsSection />
             <div role="alert" className="wb-fc-empty gap-3 rounded-md border border-border/60 px-5 text-center">
               <WarningCircle size={28} className="text-destructive/70" weight="duotone" />
               <div className="space-y-1">
@@ -301,16 +313,30 @@ export const StatisticsScreen: React.FC = () => {
                 </p>
                 <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
               </div>
-              <DsButton
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={() => void load()}
-                className="[@media(pointer:coarse)]:!min-h-11"
-              >
-                <ArrowClockwise size={15} />
-                {t('statistics.retry')}
-              </DsButton>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void load()}
+                  className="border border-border/70 px-3"
+                >
+                  <ArrowClockwise size={15} />
+                  {t('statistics.retry')}
+                </DsButton>
+                {onOpenSchedulerSettings ? (
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onOpenSchedulerSettings}
+                    data-testid="fsrs-error-open-scheduler"
+                  >
+                    <SlidersHorizontal size={15} />
+                    {t('settings.scheduler.title')}
+                  </DsButton>
+                ) : null}
+              </div>
             </div>
           </div>
         </CustomScrollArea>
@@ -500,29 +526,52 @@ export const StatisticsScreen: React.FC = () => {
               </div>
             </section>
 
-            <section className="wb-fcx-panel wb-fcx-span-2">
-              <div className="wb-fcx-panel-head">
-                <h3 className="wb-fcx-panel-title">
-                  <ChartDonut size={14} weight="duotone" />
-                  {t('stats.composition.title')}
-                </h3>
-              </div>
-              <div className="wb-fcx-panel-body">
-                <StateDonut
-                  segments={donutSegments}
-                  centerValue={stats.total}
-                  centerLabel={t('stats.composition.center')}
-                />
-              </div>
-            </section>
-
-            <RetentionInsightsPanel />
-            <FsrsParamsPanel />
           </div>
 
-          {/* Statistics are the primary content; keep scheduler controls as the
-              secondary action after the data panels. */}
-          <SchedulerSettingsSection />
+          <section className="wb-fcx-panel" data-testid="fsrs-advanced-analytics-section">
+            <div className="wb-fcx-panel-head">
+              <div className="min-w-0">
+                <h3 className="wb-fcx-panel-title">
+                  <ChartLineUp size={14} weight="duotone" />
+                  {t('stats.advanced.title')}
+                </h3>
+                <p className="wb-fcx-panel-sub mt-0.5">{t('stats.advanced.subtitle')}</p>
+              </div>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((prev) => !prev)}
+                data-testid="fsrs-advanced-analytics-toggle"
+                className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {advancedOpen ? <CaretUp size={13} aria-hidden="true" /> : <CaretDown size={13} aria-hidden="true" />}
+                <span>{advancedOpen ? t('stats.advanced.collapse') : t('stats.advanced.expand')}</span>
+              </DsButton>
+            </div>
+
+            {advancedOpen ? (
+              <div className="mt-3 flex flex-col gap-4" data-testid="fsrs-advanced-analytics">
+                <RetentionInsightsPanel onOpenSchedulerSettings={onOpenSchedulerSettings} />
+                <section className="wb-fcx-panel">
+                  <div className="wb-fcx-panel-head">
+                    <h3 className="wb-fcx-panel-title">
+                      <ChartDonut size={14} weight="duotone" />
+                      {t('stats.composition.title')}
+                    </h3>
+                  </div>
+                  <div className="wb-fcx-panel-body">
+                    <StateDonut
+                      segments={donutSegments}
+                      centerValue={stats.total}
+                      centerLabel={t('stats.composition.center')}
+                    />
+                  </div>
+                </section>
+              </div>
+            ) : null}
+          </section>
           </div>
         </CustomScrollArea>
       ) : null}

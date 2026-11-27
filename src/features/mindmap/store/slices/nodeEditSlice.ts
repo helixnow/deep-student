@@ -26,7 +26,7 @@ import {
   deepCloneNode,
 } from '../mindmapStoreHelpers';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
-import { normalizeNodeExcerptFields } from '../../utils/nodeAnchors';
+import { getNodeExcerptMetaMap, normalizeNodeExcerptFields } from '../../utils/nodeAnchors';
 import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
 import { reconcileSummariesWithTree } from '../../utils/summaryBraces';
 import { reconcileMindMapProjectedFlashcards } from '../../interop/mindmapCardProjection';
@@ -128,14 +128,13 @@ export const createNodeEditSlice: MindMapSliceCreator<
       }, { ...options, coalesceKey });
 
       const after = get();
+      const touchesAnchors =
+        patchKeys.includes('anchors') || patchKeys.includes('excerpts');
+      const touchesLabelOrStyle =
+        patchKeys.includes('style') || patchKeys.includes('text');
       if (
-        patchKeys.some(
-          (key) =>
-            key === 'style' ||
-            key === 'text' ||
-            key === 'anchors' ||
-            key === 'excerpts',
-        )
+        touchesAnchors ||
+        (touchesLabelOrStyle && getNodeExcerptMetaMap(after.document.root).size > 0)
       ) {
         syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
       }

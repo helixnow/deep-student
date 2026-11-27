@@ -49,7 +49,16 @@ import { VfsErrorCode } from '@/shared/result';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { getMemoryConfig } from '@/api/memoryApi';
 import type { ResourceListItem, ResourceType } from './types';
-import { DotsThree, Gear, ChatCircle } from '@phosphor-icons/react';
+import { DotsThree, Gear, ChatCircle, MagnifyingGlass, Plus } from '@phosphor-icons/react';
+import {
+  FolderIcon,
+  NoteIcon,
+  ExamIcon,
+  TextbookIcon,
+  TranslationIcon,
+  EssayIcon,
+  MindmapIcon,
+} from './icons';
 import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
@@ -665,6 +674,7 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   const [tabReloadKeys, setTabReloadKeys] = useState<Record<string, number>>({});
   const [isFinderRefreshing, setIsFinderRefreshing] = useState(false);
   const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
+  const [mobileCreateMenuOpen, setMobileCreateMenuOpen] = useState(false);
   const [resourceMenuHost, setResourceMenuHost] = useState<HTMLDivElement | null>(null);
   const resourceMenuContext = useMemo(() => ({
     element: resourceMenuHost,
@@ -709,6 +719,7 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   const handleInjectToChatRef = useRef<() => void>(() => {});
   const handleCloseAppRef = useRef<() => void>(() => {});
   const canInjectCurrentResourceRef = useRef<() => boolean>(() => false);
+  const handleCreateAndOpenRef = useRef<(type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => Promise<void>>(async () => {});
 
   /**
    * 自带手势的内容（PDF/思维导图/富文本编辑器）内不启动三屏布局手势。
@@ -780,15 +791,23 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
 
   useEffect(() => {
     setMobileHeaderMenuOpen(false);
+    setMobileCreateMenuOpen(false);
   }, [screenPosition, activeTabId]);
 
   useEffect(() => {
-    if (!isSmallScreen || !mobileHeaderMenuOpen) return;
+    if (!isSmallScreen || (!mobileHeaderMenuOpen && !mobileCreateMenuOpen)) return;
     return registerBackHandler(() => {
-      setMobileHeaderMenuOpen(false);
-      return true;
+      if (mobileCreateMenuOpen) {
+        setMobileCreateMenuOpen(false);
+        return true;
+      }
+      if (mobileHeaderMenuOpen) {
+        setMobileHeaderMenuOpen(false);
+        return true;
+      }
+      return false;
     }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, mobileHeaderMenuOpen]);
+  }, [isSmallScreen, mobileHeaderMenuOpen, mobileCreateMenuOpen]);
 
   useEffect(() => {
     const handleMobileReset = () => {
@@ -800,6 +819,117 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   }, [refreshFinder]);
 
   const mobileHeaderRightActions = useMemo(() => {
+    if (screenPosition === 'center') {
+      const canSearch = finderViewCapabilities.canSearch;
+      const canCreate = finderViewCapabilities.canCreate;
+      if (!canSearch && !canCreate) {
+        return undefined;
+      }
+
+      return (
+        <>
+          {canSearch && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => dispatchTypedEvent('learningHub:focus-search')}
+              aria-label={t('learningHub:finder.search.title')}
+              title={t('learningHub:finder.search.title')}
+            >
+              <MagnifyingGlass size={20} />
+            </DsButton>
+          )}
+          {canCreate && (
+            <AppMenu open={mobileCreateMenuOpen} onOpenChange={setMobileCreateMenuOpen}>
+              <AppMenuTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  aria-label={t('learningHub:finder.toolbar.new')}
+                  title={t('learningHub:finder.toolbar.new')}
+                >
+                  <Plus size={20} />
+                </DsButton>
+              </AppMenuTrigger>
+              <AppMenuContent align="end" width={196}>
+                <AppMenuItem
+                  icon={<FolderIcon size={16} />}
+                  onClick={() => dispatchTypedEvent('learningHub:create-folder')}
+                >
+                  {t('learningHub:finder.toolbar.newFolder')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<NoteIcon size={16} />}
+                  onClick={() => {
+                    void handleCreateAndOpenRef.current('note');
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newNote')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<NoteIcon size={16} />}
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('learningHub:new-learning-note'));
+                  }}
+                >
+                  {t('notes:learning.create.menu', { defaultValue: '新建学习笔记…' })}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<NoteIcon size={16} />}
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('learningHub:import-markdown'));
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.importMarkdown')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<ExamIcon size={16} />}
+                  onClick={() => {
+                    void handleCreateAndOpenRef.current('exam');
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newExam')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<TextbookIcon size={16} />}
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('learningHub:new-textbook'));
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newTextbook')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<TranslationIcon size={16} />}
+                  onClick={() => {
+                    void handleCreateAndOpenRef.current('translation');
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newTranslation')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<EssayIcon size={16} />}
+                  onClick={() => {
+                    void handleCreateAndOpenRef.current('essay');
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newEssay')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<MindmapIcon size={16} />}
+                  onClick={() => {
+                    void handleCreateAndOpenRef.current('mindmap');
+                  }}
+                >
+                  {t('learningHub:finder.toolbar.newMindMap')}
+                </AppMenuItem>
+              </AppMenuContent>
+            </AppMenu>
+          )}
+        </>
+      );
+    }
 
     if (screenPosition !== 'right' || !activeTab) {
       return undefined;
@@ -854,8 +984,9 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   }, [
     screenPosition,
     activeTab,
-    isFinderRefreshing,
-    refreshFinder,
+    finderViewCapabilities.canSearch,
+    finderViewCapabilities.canCreate,
+    mobileCreateMenuOpen,
     openActiveTabSettings,
     canInject,
     isInjecting,
@@ -1295,6 +1426,7 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   handleInjectToChatRef.current = handleInjectToChat;
   handleCloseAppRef.current = handleCloseApp;
   canInjectCurrentResourceRef.current = canInjectCurrentResource;
+  handleCreateAndOpenRef.current = handleCreateAndOpen;
 
   // 应用面板引用，用于控制展开/折叠
   const appPanelRef = useRef<ImperativePanelHandle>(null);

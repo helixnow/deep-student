@@ -62,7 +62,7 @@ export const CountdownRing: React.FC<CountdownRingProps> = ({
           className={cn(
             'transition-[stroke-dashoffset,color] duration-500 ease-linear',
             colorClass,
-            isFinalMinute && !isPaused && 'animate-pulse',
+            isFinalMinute && !isPaused && 'animate-pulse motion-reduce:animate-none',
           )}
         />
       </svg>
@@ -71,7 +71,7 @@ export const CountdownRing: React.FC<CountdownRingProps> = ({
           className={cn(
             'font-mono text-2xl font-semibold tabular-nums transition-colors sm:text-[1.7rem]',
             colorClass,
-            isFinalMinute && !isPaused && 'animate-pulse',
+            isFinalMinute && !isPaused && 'animate-pulse motion-reduce:animate-none',
           )}
         >
           {timeText}

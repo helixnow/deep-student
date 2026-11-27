@@ -203,8 +203,6 @@ export interface StatusBarClockProps {
   open?: boolean;
   /** 受控模式：点击时钟切换 */
   onToggle?: () => void;
-  /** 受控模式：指针划入时钟触发器（已有顶栏菜单打开时 0ms 切换） */
-  onHoverTrigger?: () => void;
   /** 受控模式：请求关闭 */
   onClose?: () => void;
   /** 由顶栏统一渲染共享外部点击层时关闭本地 backdrop */
@@ -217,7 +215,6 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({
   onOpenChange,
   open: controlledOpen,
   onToggle,
-  onHoverTrigger,
   onClose,
   hideBackdrop = false,
   instantExit = false,
@@ -409,7 +406,6 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({
         aria-expanded={open}
         title={t('menubar.agendaTitle')}
         onClick={toggle}
-        onPointerEnter={onHoverTrigger}
       >
         <span className="wb-menubar-item-value">{label}</span>
       </button>

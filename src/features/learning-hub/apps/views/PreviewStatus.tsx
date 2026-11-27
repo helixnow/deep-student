@@ -5,7 +5,7 @@
  *
  * - 加载态支持 delayMs 延迟显示（与 UnifiedAppPanel 的 150ms 策略一致）：
  *   短加载不闪烁 spinner，超时后淡入。
- * - 非加载态带轻微 rise-in 入场动画；图标置于柔和的圆形底座上。
+ * - 非加载态带轻微 rise-in 入场动画，直接呈现语义图标。
  */
 
 import React from 'react';
@@ -70,7 +70,7 @@ function StatusIcon({
   if (tone === 'loading') {
     return (
       <CircleNotch
-        className="h-7 w-7 animate-spin text-primary"
+        className="h-7 w-7 animate-spin motion-reduce:animate-none text-primary"
         aria-hidden="true"
       />
     );
@@ -78,39 +78,16 @@ function StatusIcon({
 
   if (icon === 'none') return null;
 
-  let glyph: React.ReactNode;
-  let glyphClass: string;
-  let plateClass: string;
-
   if (icon === 'brokenImage') {
-    glyph = <ImageBroken size={26} aria-hidden="true" />;
-    glyphClass = 'text-muted-foreground';
-    plateClass = 'bg-muted/70';
-  } else if (icon === 'file') {
-    glyph = <FileText size={26} aria-hidden="true" />;
-    glyphClass = 'text-muted-foreground';
-    plateClass = 'bg-muted/70';
-  } else if (tone === 'warning') {
-    glyph = <WarningCircle size={26} aria-hidden="true" />;
-    glyphClass = 'text-warning';
-    plateClass = 'bg-warning/10';
-  } else {
-    glyph = <WarningCircle size={26} aria-hidden="true" />;
-    glyphClass = 'text-destructive';
-    plateClass = 'bg-destructive/10';
+    return <ImageBroken size={26} className="text-muted-foreground" aria-hidden="true" />;
   }
-
-  return (
-    <div
-      className={cn(
-        'flex h-14 w-14 items-center justify-center rounded-full',
-        plateClass,
-        glyphClass,
-      )}
-    >
-      {glyph}
-    </div>
-  );
+  if (icon === 'file') {
+    return <FileText size={26} className="text-muted-foreground" aria-hidden="true" />;
+  }
+  if (tone === 'warning') {
+    return <WarningCircle size={26} className="text-warning" aria-hidden="true" />;
+  }
+  return <WarningCircle size={26} className="text-destructive" aria-hidden="true" />;
 }
 
 export const PreviewStatus: React.FC<PreviewStatusProps> = ({
@@ -192,7 +169,7 @@ export const PreviewStatus: React.FC<PreviewStatusProps> = ({
               size="sm"
               onClick={action.onClick}
               disabled={action.disabled || action.loading}
-              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+              className="gap-1.5"
             >
               {action.loading && (
                 <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

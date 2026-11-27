@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { addTypedEventListener } from '@/events';
+import { APP_EVENTS, addTypedEventListener, dispatchAppEvent } from '@/events';
 import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -56,7 +56,6 @@ import {
   requestVoiceRecordingPermission,
   type VoiceRecordingSupport,
 } from '@/voice-input/support';
-import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 type SettingsTabId = 'apis' | 'models' | 'statistics';
 
@@ -170,23 +169,16 @@ function StatusBar({
     };
   }, [support, t]);
 
-  const dotClass =
-    tone === 'ok'
-      ? 'bg-emerald-500'
-      : tone === 'warn'
-        ? 'bg-amber-500'
-        : 'bg-muted-foreground/40';
   const labelClass =
     tone === 'ok'
-      ? 'text-foreground/80'
+      ? 'text-success'
       : tone === 'warn'
-        ? 'text-amber-700 dark:text-amber-300'
+        ? 'text-warning'
         : 'text-muted-foreground/70';
 
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 px-1 rounded">
       <div className="flex items-center gap-2 min-w-0">
-        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', dotClass)} />
         <span className={cn('text-sm truncate', labelClass)}>{label}</span>
       </div>
       <DsButton
@@ -235,7 +227,7 @@ function ModelStatusHint({
   };
 
   return (
-    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+    <div className="mx-1 my-1 rounded-md border border-warning/25 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
       <div className="flex items-start gap-2">
         <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
         <span>{map[assignedModel.status]}</span>

@@ -1,35 +1,147 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { BracketsCurly, TextAa, ArrowsInLineHorizontal, Prohibit, FlipHorizontal } from '@phosphor-icons/react';
+import {
+  BracketsCurly,
+  TextAa,
+  ArrowsInLineHorizontal,
+  Prohibit,
+  FlipHorizontal,
+  CaretDown,
+  WarningCircle,
+} from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuTrigger,
+  AppMenuContent,
+  AppMenuItem,
+} from '@/components/ui/app-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/shad/Tooltip';
 import { TemplateLintIssue } from './TemplateEditorLint';
-import './TemplateEditorEnhancements.css';
 
-interface TemplateEditorInsertBarProps {
-  /** 模板声明的全部字段 */
+interface TemplateEditorSnippetMenuProps {
   fields: string[];
-  /** 当前是否为背面模板（显示 {{FrontSide}} 快捷插入） */
   isBackTemplate?: boolean;
-  /** 在光标处插入文本；cursorOffset 为插入后光标相对插入起点的偏移 */
   onInsertText: (text: string, cursorOffset?: number) => void;
-  /** 用一对标签包裹当前选区（无选区时插入并把光标放中间） */
   onWrapSelection: (open: string, close: string) => void;
-  /** 当前模板的静态检查结果（内联警告） */
-  lintIssues: TemplateLintIssue[];
 }
 
 /**
- * 字段占位符插入按钮条 + 语法快捷插入 + 内联 lint 警告。
- * 参考 Anki Desktop 模板编辑器的字段下拉，但改为一键 chips，全部内联无弹层。
+ * 语法快捷插入下拉菜单（放在代码区顶栏右侧，消除双行芯片叠罗汉）。
  */
-export const TemplateEditorInsertBar: React.FC<TemplateEditorInsertBarProps> = ({
+export const TemplateEditorSnippetMenu: React.FC<TemplateEditorSnippetMenuProps> = ({
   fields,
   isBackTemplate = false,
   onInsertText,
   onWrapSelection,
-  lintIssues,
 }) => {
   const { t } = useTranslation('anki');
+  const { t: tTemplate } = useTranslation('template');
   const firstField = fields[0] ?? 'Front';
+
+  return (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton variant="ghost" size="sm">
+          <BracketsCurly size={14} aria-hidden="true" />
+          <span>{tTemplate('editor.insert_snippet_menu')}</span>
+          <CaretDown size={12} aria-hidden="true" />
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" width={230}>
+        <AppMenuItem
+          icon={<TextAa size={15} />}
+          onClick={() => onInsertText(`{{cloze:${firstField}}}`, 8)}
+        >
+          {t('templateEditor.snippetCloze')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<BracketsCurly size={15} />}
+          onClick={() => onWrapSelection(`{{#${firstField}}}`, `{{/${firstField}}}`)}
+        >
+          {t('templateEditor.snippetCondition')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<Prohibit size={15} />}
+          onClick={() => onWrapSelection(`{{^${firstField}}}`, `{{/${firstField}}}`)}
+        >
+          {t('templateEditor.snippetConditionNegative')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<ArrowsInLineHorizontal size={15} />}
+          onClick={() => onInsertText(`{{text:${firstField}}}`, 7)}
+        >
+          {t('templateEditor.snippetTextFilter')}
+        </AppMenuItem>
+        {isBackTemplate && (
+          <AppMenuItem
+            icon={<FlipHorizontal size={15} />}
+            onClick={() => onInsertText('{{FrontSide}}')}
+          >
+            {t('templateEditor.snippetFrontSide')}
+          </AppMenuItem>
+        )}
+      </AppMenuContent>
+    </AppMenu>
+  );
+};
+
+interface TemplateEditorInsertBarProps {
+  /** 模板声明的全部字段 */
+  fields: string[];
+  /** 在光标处插入文本；cursorOffset 为插入后光标相对插入起点的偏移 */
+  onInsertText: (text: string, cursorOffset?: number) => void;
+}
+
+/**
+ * 紧凑单行字段占位符插入条。
+ */
+export const TemplateEditorInsertBar: React.FC<TemplateEditorInsertBarProps> = ({
+  fields,
+  onInsertText,
+}) => {
+  const { t } = useTranslation('anki');
+
+  if (fields.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+      <span className="shrink-0 text-xs font-medium text-muted-foreground/70">
+        {t('templateEditor.insertField')}
+      </span>
+      {fields.map((field) => (
+        <Tooltip key={field}>
+          <TooltipTrigger asChild>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 rounded-pill border-border/50 bg-muted/40 font-mono text-xs text-foreground/85 hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+              onClick={() => onInsertText(`{{${field}}}`)}
+            >
+              {`{{${field}}}`}
+            </DsButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t('templateEditor.insertFieldTitle', { field })}
+          </TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  );
+};
+
+interface TemplateEditorLintBarProps {
+  lintIssues: TemplateLintIssue[];
+}
+
+/**
+ * 模板静态检查结果条（放在代码编辑器底部，有告警才出现，不挤压顶部工具栏）。
+ */
+export const TemplateEditorLintBar: React.FC<TemplateEditorLintBarProps> = ({ lintIssues }) => {
+  const { t } = useTranslation('anki');
+
+  if (lintIssues.length === 0) return null;
 
   const describeIssue = (issue: TemplateLintIssue): string => {
     switch (issue.type) {
@@ -47,84 +159,16 @@ export const TemplateEditorInsertBar: React.FC<TemplateEditorInsertBarProps> = (
   };
 
   return (
-    <div className="template-editor-insert-bar">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] max-md:text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
-          {t('templateEditor.insertField')}
-        </span>
-        {fields.map(field => (
-          <button
-            key={field}
-            type="button"
-            className="template-editor-chip"
-            title={t('templateEditor.insertFieldTitle', { field }) as string}
-            onClick={() => onInsertText(`{{${field}}}`)}
-          >
-            {`{{${field}}}`}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-        <span className="text-[10px] max-md:text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
-          {t('templateEditor.snippets')}
-        </span>
-        <button
-          type="button"
-          className="template-editor-chip template-editor-chip-snippet"
-          title={t('templateEditor.snippetClozeTitle') as string}
-          onClick={() => onInsertText(`{{cloze:${firstField}}}`, 8)}
-        >
-          <TextAa size={11} weight="bold" />
-          {t('templateEditor.snippetCloze')}
-        </button>
-        <button
-          type="button"
-          className="template-editor-chip template-editor-chip-snippet"
-          title={t('templateEditor.snippetConditionTitle') as string}
-          onClick={() => onWrapSelection(`{{#${firstField}}}`, `{{/${firstField}}}`)}
-        >
-          <BracketsCurly size={11} weight="bold" />
-          {t('templateEditor.snippetCondition')}
-        </button>
-        <button
-          type="button"
-          className="template-editor-chip template-editor-chip-snippet"
-          title={t('templateEditor.snippetConditionNegativeTitle') as string}
-          onClick={() => onWrapSelection(`{{^${firstField}}}`, `{{/${firstField}}}`)}
-        >
-          <Prohibit size={11} weight="bold" />
-          {t('templateEditor.snippetConditionNegative')}
-        </button>
-        <button
-          type="button"
-          className="template-editor-chip template-editor-chip-snippet"
-          title={t('templateEditor.snippetTextFilterTitle') as string}
-          onClick={() => onInsertText(`{{text:${firstField}}}`, 7)}
-        >
-          <ArrowsInLineHorizontal size={11} weight="bold" />
-          {t('templateEditor.snippetTextFilter')}
-        </button>
-        {isBackTemplate && (
-          <button
-            type="button"
-            className="template-editor-chip template-editor-chip-snippet"
-            title={t('templateEditor.snippetFrontSideTitle') as string}
-            onClick={() => onInsertText('{{FrontSide}}')}
-          >
-            <FlipHorizontal size={11} weight="bold" />
-            {t('templateEditor.snippetFrontSide')}
-          </button>
-        )}
-      </div>
-      {lintIssues.length > 0 && (
-        <div className="template-editor-lint-list" role="alert">
-          {lintIssues.map((issue, index) => (
-            <div key={`${issue.type}-${index}`} className="template-editor-lint-item">
-              {describeIssue(issue)}
-            </div>
-          ))}
+    <div
+      className="flex-none space-y-1 border-t border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
+      role="alert"
+    >
+      {lintIssues.map((issue, index) => (
+        <div key={`${issue.type}-${index}`} className="flex items-start gap-1.5 leading-snug">
+          <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words text-foreground/90">{describeIssue(issue)}</span>
         </div>
-      )}
+      ))}
     </div>
   );
 };

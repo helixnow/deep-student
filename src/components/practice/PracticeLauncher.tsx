@@ -30,9 +30,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
-import type { QuestionBankStats } from '@/api/questionBankApi';
+import type { QuestionBankStats, PracticeMode } from '@/api/questionBankApi';
 import { ratioToPercent } from '@/components/stats';
-import type { PracticeMode } from '@/api/questionBankApi';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import PracticeRecords from './PracticeRecords';
 
@@ -258,8 +257,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
 
     if (activeTimedSession && !activeTimedSession.is_submitted && !activeTimedSession.is_timeout) {
       summaries.timed = (
-        <span className="flex items-center gap-1 text-primary">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+        <span className="font-medium text-primary">
           {t('practice:modeSummary.inProgress')}
         </span>
       );
@@ -275,8 +273,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
 
     if (activeMockExamSession && !activeMockExamSession.is_submitted) {
       summaries.mock_exam = (
-        <span className="flex items-center gap-1 text-primary">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+        <span className="font-medium text-primary">
           {t('practice:modeSummary.inProgress')}
         </span>
       );
@@ -444,13 +441,14 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-12">
-                <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+                <CircleNotch size={24} className="animate-spin text-muted-foreground motion-reduce:animate-none" />
               </div>
             }
           >
             {activeAdvanced === 'timed' && (
               <TimedPracticeMode
                 examId={examId}
+                embedded
                 onStart={() => onStartPractice('timed')}
                 onTimeout={() => {
                   showGlobalNotification('info', t('timed.timeoutMessage'), t('timed.timeoutTitle'));
@@ -466,6 +464,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
             {activeAdvanced === 'mock_exam' && (
               <MockExamMode
                 examId={examId}
+                embedded
                 onStart={() => onStartPractice('mock_exam')}
                 currentQuestionId={currentQuestionId}
                 markedQuestionIds={markedQuestionIds}
@@ -475,12 +474,14 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
             {activeAdvanced === 'daily' && (
               <DailyPracticeMode
                 examId={examId}
+                embedded
                 onStart={() => onStartPractice('daily')}
 />
             )}
             {activeAdvanced === 'paper' && (
               <PaperGenerator
                 examId={examId}
+                embedded
                 availableTags={allTags}
                 onGenerate={() => onStartPractice('paper')}
                 isActive={isActive}
@@ -498,13 +499,11 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 {stats && (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
                       <span className="text-muted-foreground">{t('practice:questionBank.stats.mastered')}</span>
                       <span className="font-mono font-medium tabular-nums text-foreground">{stats.mastered}/{stats.total}</span>
                     </span>
                     {stats.review > 0 && (
                       <span className="inline-flex items-center gap-1.5 text-warning">
-                        <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
                         <span className="font-mono tabular-nums">{stats.review} {t('practice:questionBank.stats.toReview')}</span>
                       </span>
                     )}
@@ -585,8 +584,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
                       {key === 'review_first' && stats && stats.review > 0 && (
-                        <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 text-xs font-medium tabular-nums text-muted-foreground">
-                          <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                        <span className="absolute right-2.5 top-2.5 font-mono text-xs font-medium tabular-nums text-warning">
                           {stats.review}
                         </span>
                       )}

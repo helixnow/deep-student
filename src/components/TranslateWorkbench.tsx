@@ -2006,9 +2006,59 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
   // 恢复默认 Prompt：跟随当前领域的默认/模板文案（命中已知默认集合，
   // 因此恢复后 isPromptCustomized=false，不会发送 prompt_override 覆盖领域预设）
+  const promptPersistTimerRef = useRef<number | null>(null);
+  const pendingPromptPersistRef = useRef<string | null>(null);
+
+  const persistPromptSetting = useCallback(
+    (promptValue: string) => {
+      const customized = isPromptCustomizedBy(promptValue, knownDefaultPrompts);
+      void TauriAPI.saveSetting('translation.prompt', customized ? promptValue : '').catch((err: unknown) => {
+        console.warn('[Translation] Failed to persist translation prompt:', err);
+      });
+    },
+    [knownDefaultPrompts],
+  );
+
+  useEffect(() => () => {
+    if (promptPersistTimerRef.current !== null) {
+      window.clearTimeout(promptPersistTimerRef.current);
+      promptPersistTimerRef.current = null;
+      if (pendingPromptPersistRef.current !== null) {
+        persistPromptSetting(pendingPromptPersistRef.current);
+        pendingPromptPersistRef.current = null;
+      }
+    }
+  }, [persistPromptSetting]);
+
+  const handleSetCustomPrompt = useCallback(
+    (nextPrompt: string) => {
+      setCustomPrompt(nextPrompt);
+      pendingPromptPersistRef.current = nextPrompt;
+      if (promptPersistTimerRef.current !== null) {
+        window.clearTimeout(promptPersistTimerRef.current);
+      }
+      promptPersistTimerRef.current = window.setTimeout(() => {
+        promptPersistTimerRef.current = null;
+        if (pendingPromptPersistRef.current !== null) {
+          persistPromptSetting(pendingPromptPersistRef.current);
+          pendingPromptPersistRef.current = null;
+        }
+      }, 350);
+      scheduleSessionPersist();
+    },
+    [persistPromptSetting, scheduleSessionPersist],
+  );
+
   const handleRestoreDefaultPrompt = useCallback(() => {
     setCustomPrompt(defaultPromptForDomain(domain));
-  }, [defaultPromptForDomain, domain]);
+    if (promptPersistTimerRef.current !== null) {
+      window.clearTimeout(promptPersistTimerRef.current);
+      promptPersistTimerRef.current = null;
+    }
+    pendingPromptPersistRef.current = null;
+    persistPromptSetting(defaultPromptForDomain(domain));
+    scheduleSessionPersist();
+  }, [defaultPromptForDomain, domain, persistPromptSetting, scheduleSessionPersist]);
 
   // 复制翻译结果
   const handleCopyResult = useCallback(async () => {
@@ -2531,278 +2581,288 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     { combo: 'Esc', label: t('translation:workbench_ui.shortcut_cancel'), visible: isTranslating },
   ];
 
+  // 单一优先级顶部通知槽（每次最多展示 1 条高优提示，避免 7-8 条横幅叠加挤占视口）
+  const activeTopNotice: React.ReactNode = (() => {
+    if (isExternalSettingsPageOpen) return null;
+
+    if (!isOnline) {
+      return (
+        <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning ui-drop-in">
+          <WifiSlash size={16} className="shrink-0" />
+          <span className="text-sm">{t('translation:errors.offline')}</span>
+        </div>
+      );
+    }
+
+    if (translationError && !isTranslating) {
+      return (
+        <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20 ui-drop-in">
+          <div className="flex items-center gap-2 text-destructive min-w-0">
+            <WarningCircle size={16} className="shrink-0" />
+            <span className="text-sm truncate">{translationError}</span>
+          </div>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleRetryTranslation}
+            disabled={isRetrying || !isOnline}
+            className="shrink-0 text-destructive hover:bg-destructive/10"
+          >
+            <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin motion-reduce:animate-none' : ''}`} />
+            {t('common:retry')}
+          </DsButton>
+        </div>
+      );
+    }
+
+    if (pendingOverwriteConfirm && !isTranslating) {
+      return (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+        >
+          <div className="flex items-center gap-2 text-warning min-w-0">
+            <WarningCircle size={16} className="shrink-0" />
+            <span className="text-sm truncate">{t('translation:workbench_ui.overwrite_manual_confirm')}</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setPendingOverwriteConfirm(false)}
+              className="text-muted-foreground"
+            >
+              {t('common:cancel')}
+            </DsButton>
+            <DsButton
+              variant="default"
+              size="sm"
+              onClick={handleConfirmOverwriteTranslate}
+            >
+              {t('translation:workbench_ui.confirm_retranslate')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (verbatimOutputWarning && !isTranslating) {
+      return (
+        <div
+          data-testid="translation-verbatim-warning-banner"
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+        >
+          <div className="flex items-center gap-2 text-warning min-w-0">
+            <WarningCircle size={16} className="shrink-0" />
+            <span className="text-sm">
+              {t('translation:workbench_ui.verbatim_output_warning', {
+                defaultValue: '译文与原文相同，请确认源语言设置',
+              })}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {srcLang !== 'auto' && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => handleSetSrcLang('auto')}
+                className="text-warning hover:bg-warning/15 font-medium"
+              >
+                {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
+              </DsButton>
+            )}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setVerbatimOutputWarning(false)}
+              className="text-muted-foreground"
+            >
+              {t('translation:workbench_ui.dismiss')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (preSwapSnapshot !== null && !swapUndoBannerDismissed && !isTranslating) {
+      return (
+        <div
+          data-testid="translation-swap-undo-banner"
+          className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in"
+        >
+          <div className="flex items-center gap-2 text-info min-w-0">
+            <Info size={16} className="shrink-0" />
+            <span className="text-sm truncate">
+              {preSwapSnapshot.langOnly
+                ? t('translation:workbench_ui.swapped_lang_only_hint')
+                : t('translation:workbench_ui.swapped_undo_hint')}
+            </span>
+            <span aria-hidden="true" className="text-info/60">·</span>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-testid="translation-swap-undo-button"
+              onClick={handleUndoSwap}
+              className="text-info hover:bg-info/10 font-medium"
+            >
+              {t('translation:workbench_ui.undo_swap')}
+            </DsButton>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setSwapUndoBannerDismissed(true)}
+              className="text-muted-foreground"
+            >
+              {t('translation:workbench_ui.dismiss')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (previousTranslation !== null && !undoBannerDismissed && !isTranslating) {
+      return (
+        <div
+          data-testid="translation-previous-version-banner"
+          className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in"
+        >
+          <div className="flex items-center gap-2 text-info min-w-0">
+            <Info size={16} className="shrink-0" />
+            <span className="text-sm truncate">{t('translation:workbench_ui.retranslated_undo_hint')}</span>
+            {previousVersionMetaLabel && (
+              <span
+                data-testid="translation-previous-version-meta"
+                className="shrink-0 rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium"
+              >
+                {previousVersionMetaLabel}
+              </span>
+            )}
+            {versionHistory.length > 1 && (
+              <span
+                data-testid="translation-version-history-count"
+                className="shrink-0 rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium tabular-nums"
+              >
+                {t('translation:workbench_ui.version_history_count', { count: versionHistory.length })}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-testid="translation-restore-previous-banner-button"
+              onClick={() => void handleRestorePreviousTranslation()}
+              className="text-info hover:bg-info/10"
+            >
+              {t('translation:workbench_ui.restore_previous')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleDismissUndoBanner}
+              className="text-muted-foreground"
+            >
+              {t('translation:workbench_ui.dismiss')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (isPartialResult && !isTranslating) {
+      return (
+        <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in">
+          <div className="flex items-center gap-2 text-info min-w-0">
+            <Info size={16} className="shrink-0" />
+            <span className="text-sm truncate">{t('translation:workbench_ui.cancelled_partial')}</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleDiscardPartial}
+              className="text-info hover:bg-info/10"
+            >
+              {t('translation:workbench_ui.discard_partial')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={translationStream.acknowledgePartialResult}
+              className="text-muted-foreground"
+            >
+              {t('translation:workbench_ui.dismiss')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (sourceLanguageMismatch.mismatch && !mismatchBannerDismissed) {
+      return (
+        <div
+          data-testid="translation-mismatch-warning-banner"
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+        >
+          <div className="flex items-center gap-2 text-warning min-w-0">
+            <WarningCircle size={16} className="shrink-0" />
+            <span className="text-sm">
+              {t('translation:workbench_ui.source_lang_mismatch_banner', {
+                detected: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang ?? '',
+                selected: selectedSrcLangName,
+                defaultValue: '检测到原文语言与所选源语言不一致',
+              })}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {sourceLanguageMismatch.detectedLang && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                data-testid="translation-mismatch-switch-detected"
+                onClick={() => handleSetSrcLang(sourceLanguageMismatch.detectedLang!)}
+                className="text-warning hover:bg-warning/15 font-medium"
+              >
+                {t('translation:workbench_ui.switch_to_detected', {
+                  language: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang,
+                  defaultValue: `切换为 ${mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang}`,
+                })}
+              </DsButton>
+            )}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-testid="translation-mismatch-switch-auto"
+              onClick={() => handleSetSrcLang('auto')}
+              className="text-warning hover:bg-warning/15"
+            >
+              {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setMismatchBannerDismissed(true)}
+              className="text-muted-foreground"
+            >
+              {t('translation:workbench_ui.dismiss')}
+            </DsButton>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  })();
+
   return (
       <div className="w-full h-full flex-1 min-h-0 bg-background flex flex-col overflow-hidden">
         <MacTopSafeDragZone className="translate-top-safe-drag-zone" />
 
-        {/* 离线状态提示 */}
-        {!isExternalSettingsPageOpen && !isOnline && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning ui-drop-in">
-            <WifiSlash size={16} className="shrink-0" />
-            <span className="text-sm">{t('translation:errors.offline')}</span>
-          </div>
-        )}
-
-        {/* 翻译错误提示（内联错误条 + 重试） */}
-        {!isExternalSettingsPageOpen && translationError && !isTranslating && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20 ui-drop-in">
-            <div className="flex items-center gap-2 text-destructive min-w-0">
-              <WarningCircle size={16} className="shrink-0" />
-              <span className="text-sm truncate">{translationError}</span>
-            </div>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={handleRetryTranslation}
-              disabled={isRetrying || !isOnline}
-              className="shrink-0 text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11"
-            >
-              <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
-              {t('common:retry')}
-            </DsButton>
-          </div>
-        )}
-
-        {/* 源语言与原文不匹配提示条（S3-11） */}
-        {!isExternalSettingsPageOpen &&
-          sourceLanguageMismatch.mismatch &&
-          !mismatchBannerDismissed &&
-          !translationError && (
-            <div
-              data-testid="translation-mismatch-warning-banner"
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
-            >
-              <div className="flex items-center gap-2 text-warning min-w-0">
-                <WarningCircle size={16} className="shrink-0" />
-                <span className="text-sm">
-                  {t('translation:workbench_ui.source_lang_mismatch_banner', {
-                    detected: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang ?? '',
-                    selected: selectedSrcLangName,
-                    defaultValue: '检测到原文语言与所选源语言不一致',
-                  })}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                {sourceLanguageMismatch.detectedLang && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    data-testid="translation-mismatch-switch-detected"
-                    onClick={() => handleSetSrcLang(sourceLanguageMismatch.detectedLang!)}
-                    className="text-warning hover:bg-warning/15 font-medium [@media(pointer:coarse)]:!min-h-11"
-                  >
-                    {t('translation:workbench_ui.switch_to_detected', {
-                      language: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang,
-                      defaultValue: `切换为 ${mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang}`,
-                    })}
-                  </DsButton>
-                )}
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  data-testid="translation-mismatch-switch-auto"
-                  onClick={() => handleSetSrcLang('auto')}
-                  className="text-warning hover:bg-warning/15 [@media(pointer:coarse)]:!min-h-11"
-                >
-                  {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
-                </DsButton>
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setMismatchBannerDismissed(true)}
-                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-                >
-                  {t('translation:workbench_ui.dismiss')}
-                </DsButton>
-              </div>
-            </div>
-          )}
-
-        {/* 译文与原文完全相同警示条（S3-11） */}
-        {!isExternalSettingsPageOpen &&
-          verbatimOutputWarning &&
-          !isTranslating &&
-          !translationError && (
-            <div
-              data-testid="translation-verbatim-warning-banner"
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
-            >
-              <div className="flex items-center gap-2 text-warning min-w-0">
-                <WarningCircle size={16} className="shrink-0" />
-                <span className="text-sm">
-                  {t('translation:workbench_ui.verbatim_output_warning', {
-                    defaultValue: '译文与原文相同，请确认源语言设置',
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {srcLang !== 'auto' && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSetSrcLang('auto')}
-                    className="text-warning hover:bg-warning/15 font-medium [@media(pointer:coarse)]:!min-h-11"
-                  >
-                    {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
-                  </DsButton>
-                )}
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setVerbatimOutputWarning(false)}
-                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-                >
-                  {t('translation:workbench_ui.dismiss')}
-                </DsButton>
-              </div>
-            </div>
-          )}
-
-        {/* 重译覆盖手工编辑确认条 */}
-        {!isExternalSettingsPageOpen && pendingOverwriteConfirm && !isTranslating && (
-          <div
-            role="alert"
-            className="flex items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
-          >
-            <div className="flex items-center gap-2 text-warning min-w-0">
-              <WarningCircle size={16} className="shrink-0" />
-              <span className="text-sm truncate">{t('translation:workbench_ui.overwrite_manual_confirm')}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setPendingOverwriteConfirm(false)}
-                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton
-                variant="default"
-                size="sm"
-                onClick={handleConfirmOverwriteTranslate}
-                className="[@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.confirm_retranslate')}
-              </DsButton>
-            </div>
-          </div>
-        )}
-
-        {/* 交换语言/文本后一键撤销提示条 */}
-        {!isExternalSettingsPageOpen && preSwapSnapshot !== null && !swapUndoBannerDismissed && !isTranslating && (
-          <div
-            data-testid="translation-swap-undo-banner"
-            className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in"
-          >
-            <div className="flex items-center gap-2 text-info min-w-0">
-              <Info size={16} className="shrink-0" />
-              <span className="text-sm truncate">
-                {preSwapSnapshot.langOnly
-                  ? t('translation:workbench_ui.swapped_lang_only_hint')
-                  : t('translation:workbench_ui.swapped_undo_hint')}
-              </span>
-              <span aria-hidden="true" className="text-info/60">·</span>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                data-testid="translation-swap-undo-button"
-                onClick={handleUndoSwap}
-                className="text-info hover:bg-info/10 font-medium [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.undo_swap')}
-              </DsButton>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setSwapUndoBannerDismissed(true)}
-                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.dismiss')}
-              </DsButton>
-            </div>
-          </div>
-        )}
-
-        {/* 重译后一键撤销/恢复上一版译文提示条 */}
-        {!isExternalSettingsPageOpen && previousTranslation !== null && !undoBannerDismissed && !isTranslating && !pendingOverwriteConfirm && !translationError && (
-          <div
-            data-testid="translation-previous-version-banner"
-            className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in"
-          >
-            <div className="flex items-center gap-2 text-info min-w-0">
-              <Info size={16} className="shrink-0" />
-              <span className="text-sm truncate">{t('translation:workbench_ui.retranslated_undo_hint')}</span>
-              {previousVersionMetaLabel && (
-                <span
-                  data-testid="translation-previous-version-meta"
-                  className="shrink-0 rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium"
-                >
-                  {previousVersionMetaLabel}
-                </span>
-              )}
-              {versionHistory.length > 1 && (
-                <span
-                  data-testid="translation-version-history-count"
-                  className="shrink-0 rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium tabular-nums"
-                >
-                  {t('translation:workbench_ui.version_history_count', { count: versionHistory.length })}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <DsButton
-                variant="ghost"
-                size="sm"
-                data-testid="translation-restore-previous-banner-button"
-                onClick={() => void handleRestorePreviousTranslation()}
-                className="text-info hover:bg-info/10 [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.restore_previous')}
-              </DsButton>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={handleDismissUndoBanner}
-                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.dismiss')}
-              </DsButton>
-            </div>
-          </div>
-        )}
-
-        {/* 取消翻译后的部分结果提示（内联信息条） */}
-        {!isExternalSettingsPageOpen && isPartialResult && !isTranslating && !translationError && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in">
-            <div className="flex items-center gap-2 text-info min-w-0">
-              <Info size={16} className="shrink-0" />
-              <span className="text-sm truncate">{t('translation:workbench_ui.cancelled_partial')}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={handleDiscardPartial}
-                className="text-info hover:bg-info/10 [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.discard_partial')}
-              </DsButton>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={translationStream.acknowledgePartialResult}
-                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('translation:workbench_ui.dismiss')}
-              </DsButton>
-            </div>
-          </div>
-        )}
+        {activeTopNotice}
 
         {/* Main Content */}
         <div className="flex-1 min-h-0 flex flex-col relative">
@@ -2818,7 +2878,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               translatedText={translatedText || syncedInitialTranslatedRef.current}
               isTranslating={isTranslating}
               customPrompt={customPrompt}
-              setCustomPrompt={setCustomPrompt}
+              setCustomPrompt={handleSetCustomPrompt}
               showPromptEditor={showPromptEditor}
               setShowPromptEditor={setShowPromptEditor}
               formality={formality}
@@ -2854,8 +2914,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               onCopyResult={handleCopyResult}
               onExportTranslation={handleExportTranslation}
               onRateTranslation={handleRateTranslation}
-              canRestorePrevious={previousTranslation !== null}
-              onRestorePrevious={() => void handleRestorePreviousTranslation()}
               isOutdated={isOutdated}
               onSaveAsNewVersion={handleSaveAsNewVersionAndTranslate}
               onKeepCurrentTranslation={handleKeepCurrentTranslation}
@@ -2876,7 +2934,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
             <div className="flex items-center gap-3 shrink-0">
               {shortcutHints.filter((hint) => hint.visible).map((hint) => (
                 <span key={hint.combo} className="flex items-center gap-1">
-                  <kbd className="rounded border border-border/35 bg-foreground/[0.03] px-1.5 py-0.5 text-[11px] leading-tight font-mono">
+                  <kbd className="rounded border border-border/35 bg-foreground/[0.03] px-1.5 py-0.5 text-2xs leading-tight font-mono">
                     {hint.combo}
                   </kbd>
                   {hint.label}

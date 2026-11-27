@@ -19,20 +19,24 @@ describe('citationRemarkPlugin media timestamp refs', () => {
     expect(children[1].value).toContain('data-media-ref="true"');
     expect(children[1].value).toContain('data-media-source="file_abc123"');
     expect(children[1].value).toContain('data-media-seconds="754"');
-    expect(children[1].value).toContain('▶ 12:34');
+    expect(children[1].value).toContain('<svg ');
+    expect(children[1].value).toContain('</svg>12:34');
+    expect(children[1].value).not.toContain('▶');
     expect(children[2]).toMatchObject({ type: 'text', value: ' 的讲解' });
   });
 
   it('parses h:mm:ss for media longer than an hour', () => {
     const [node] = runPlugin('[媒体@file_x:1:02:03]');
     expect(node.value).toContain('data-media-seconds="3723"');
-    expect(node.value).toContain('▶ 1:02:03');
+    expect(node.value).toContain('<svg ');
+    expect(node.value).toContain('</svg>1:02:03');
   });
 
   it('accepts the English alias and normalises the label', () => {
     const [node] = runPlugin('[Media@file_y:5:07]');
     expect(node.value).toContain('data-media-seconds="307"');
-    expect(node.value).toContain('▶ 05:07');
+    expect(node.value).toContain('<svg ');
+    expect(node.value).toContain('</svg>05:07');
   });
 
   it('leaves malformed timestamps as plain text', () => {

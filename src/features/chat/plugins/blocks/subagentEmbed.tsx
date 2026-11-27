@@ -21,6 +21,8 @@ import {
   CaretDown,
   CaretRight,
   Robot,
+  Globe,
+  ShieldCheck,
   Check,
   CheckCircle,
   CircleNotch,
@@ -127,8 +129,67 @@ function formatElapsed(elapsedMs: number): string {
     : `${pad(minutes)}:${pad(seconds)}`;
 }
 
-/** 内建 profile 三型（与后端 agent_profile.rs 的常量一致），命中则走 i18n 显示名 */
-const BUILTIN_PROFILE_IDS: ReadonlySet<string> = new Set(['worker', 'explorer', 'default']);
+/** 内建 profile 四型（与后端 agent_profile 的常量一致），命中则走 i18n 显示名 */
+const BUILTIN_PROFILE_IDS: ReadonlySet<string> = new Set(['worker', 'explorer', 'default', 'browser']);
+
+interface ParsedBrowserHostFacts {
+  visitedOrigins: string[];
+  visitedDomains: string[];
+  blockedNavigationsCount: number;
+  downloadsCount: number;
+  actionCount: number;
+  userTakeoverCount: number;
+  finalUrl?: string;
+}
+
+function originToDisplayDomain(origin: string): string {
+  try {
+    const parsed = new URL(origin);
+    return parsed.host || origin;
+  } catch {
+    return origin.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || origin;
+  }
+}
+
+function parseBrowserHostFacts(raw: unknown): ParsedBrowserHostFacts | undefined {
+  const record = asRecord(raw);
+  if (!record || record.verified_by !== 'host') return undefined;
+
+  const rawOrigins = Array.isArray(record.visitedOrigins)
+    ? record.visitedOrigins
+    : Array.isArray(record.visited_origins)
+      ? record.visited_origins
+      : [];
+  const visitedOrigins: string[] = [];
+  const visitedDomains: string[] = [];
+  const seenDomains = new Set<string>();
+  for (const item of rawOrigins) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    visitedOrigins.push(trimmed);
+    const domain = originToDisplayDomain(trimmed);
+    if (!seenDomains.has(domain)) {
+      seenDomains.add(domain);
+      visitedDomains.push(domain);
+    }
+  }
+
+  const blockedField = record.blockedNavigations ?? record.blocked_navigations;
+  const blockedNavigationsCount = Array.isArray(blockedField)
+    ? blockedField.length
+    : readNumber(record, 'blockedNavigations', 'blocked_navigations', 'blockedNavigationsCount', 'blocked_navigations_count') ?? 0;
+
+  return {
+    visitedOrigins,
+    visitedDomains,
+    blockedNavigationsCount: Math.max(0, Math.trunc(blockedNavigationsCount)),
+    downloadsCount: Math.max(0, Math.trunc(readNumber(record, 'downloadsCount', 'downloads_count') ?? 0)),
+    actionCount: Math.max(0, Math.trunc(readNumber(record, 'actionCount', 'action_count') ?? 0)),
+    userTakeoverCount: Math.max(0, Math.trunc(readNumber(record, 'userTakeoverCount', 'user_takeover_count') ?? 0)),
+    finalUrl: readString(record, 'finalUrl', 'final_url'),
+  };
+}
 
 const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set([
   'completed', 'failed', 'cancelled', 'interrupted', 'closed',
@@ -496,13 +557,32 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     setIsFullViewOpen(true);
   }, [sessionId]);
 
-  // 🆕 profile 徽标显示名：内建三型走 i18n，自定义 id 原样显示
+  // profile 徽标显示名：内建 profile 走 i18n，自定义 id 原样显示
   const profileLabel = useMemo(() => {
     if (!profileId) return undefined;
-    return BUILTIN_PROFILE_IDS.has(profileId)
-      ? t(`workspace:subagentEmbed.profile.${profileId}`)
-      : profileId;
+    if (!BUILTIN_PROFILE_IDS.has(profileId)) return profileId;
+    if (profileId === 'browser') {
+      const workspaceKey = `workspace:subagentEmbed.profile.${profileId}`;
+      const fromWorkspace = t(workspaceKey, { defaultValue: '' });
+      if (fromWorkspace && !fromWorkspace.startsWith(workspaceKey)) {
+        return fromWorkspace;
+      }
+      return t('subagent.profile.browser');
+    }
+    return t(`workspace:subagentEmbed.profile.${profileId}`);
   }, [profileId, t]);
+
+  const AgentIcon = profileId === 'browser' ? Globe : Robot;
+
+  const hostFacts = useMemo(() => {
+    const completionRecord = asRecord(storeCompletion);
+    return parseBrowserHostFacts(
+      output?.host_facts
+      ?? rawOutput?.host_facts
+      ?? completionRecord?.host_facts
+      ?? completionRecord?.hostFacts
+    );
+  }, [output, rawOutput, storeCompletion]);
 
   // 🆕 失败错误详情：顶层 error → store completion envelope 的 error → 通用失败文案
   const failureDetail =
@@ -618,7 +698,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 active={false}
                 className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
               >
-                <Robot size={16} className="text-muted-foreground" />
+                <AgentIcon size={16} className="text-muted-foreground" />
               </ToolActivitySweep>
               <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
                 <ToolActivitySweep active={false} className="max-w-full leading-4">
@@ -649,7 +729,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 active={true}
                 className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
               >
-                <Robot size={16} className="text-muted-foreground" />
+                <AgentIcon size={16} className="text-muted-foreground" />
               </ToolActivitySweep>
               <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
                 <ToolActivitySweep active={true} className="max-w-full leading-4">
@@ -679,7 +759,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               active={false}
               className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
             >
-              <Robot size={16} className="text-muted-foreground" />
+              <AgentIcon size={16} className="text-muted-foreground" />
             </ToolActivitySweep>
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
               <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
@@ -710,7 +790,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         onClick={() => setIsCollapsed(!isCollapsed)}
         className={cn(
           'flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/20 [@media(pointer:coarse)]:min-h-11',
-          (!isCollapsed || status === 'failed') && 'border-b border-border/30'
+          (!isCollapsed || status === 'failed' || Boolean(hostFacts)) && 'border-b border-border/30'
         )}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -719,7 +799,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             active={isInProgress}
             className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
           >
-            <Robot size={16} className="text-muted-foreground" />
+            <AgentIcon size={16} className="text-muted-foreground" />
           </ToolActivitySweep>
 
           {/* 标题与状态双行堆叠 */}
@@ -907,6 +987,75 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         </div>
       </div>
 
+      {/* 宿主核验浏览器摘要条（仅存在 verified_by='host' 的 host_facts 时展示） */}
+      {hostFacts && (
+        <div
+          data-testid="subagent-host-facts"
+          className={cn(
+            'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 bg-muted/20 text-2xs text-muted-foreground',
+            (!isCollapsed || (isCollapsed && status === 'failed')) && 'border-b border-border/30'
+          )}
+        >
+          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground/80">
+            <ShieldCheck size={13} className="text-success shrink-0" />
+            <span>{t('subagent.hostFacts.verifiedLabel')}</span>
+          </span>
+
+          {hostFacts.visitedDomains.length > 0 ? (
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-1"
+              title={hostFacts.visitedOrigins.join('\n')}
+            >
+              {hostFacts.visitedDomains.slice(0, 3).map((domain) => (
+                <span
+                  key={domain}
+                  className="max-w-[160px] min-w-0 truncate rounded bg-muted/60 px-1.5 py-0.5 font-mono text-2xs leading-none text-foreground/80"
+                >
+                  {domain}
+                </span>
+              ))}
+              {hostFacts.visitedDomains.length > 3 && (
+                <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
+                  {`+${hostFacts.visitedDomains.length - 3}`}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-2xs text-muted-foreground">
+              {t('subagent.hostFacts.noOrigins')}
+            </span>
+          )}
+
+          {(hostFacts.actionCount > 0
+            || hostFacts.downloadsCount > 0
+            || hostFacts.userTakeoverCount > 0
+            || hostFacts.blockedNavigationsCount > 0) && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums">
+              {hostFacts.actionCount > 0 && (
+                <span>
+                  {t('subagent.hostFacts.actions', { count: String(hostFacts.actionCount) })}
+                </span>
+              )}
+              {hostFacts.downloadsCount > 0 && (
+                <span>
+                  {t('subagent.hostFacts.downloads', { count: String(hostFacts.downloadsCount) })}
+                </span>
+              )}
+              {hostFacts.userTakeoverCount > 0 && (
+                <span>
+                  {t('subagent.hostFacts.takeovers', { count: String(hostFacts.userTakeoverCount) })}
+                </span>
+              )}
+              {hostFacts.blockedNavigationsCount > 0 && (
+                <span className="text-warning">
+                  {t('subagent.hostFacts.blocked', { count: String(hostFacts.blockedNavigationsCount) })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 折叠且失败时仅显示紧凑错误条，与 mcpTool 一致 */}
       {isCollapsed && status === 'failed' && (
         <div className="px-3 py-2">
@@ -1040,7 +1189,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       >
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2 pr-8">
-            <Robot size={16} className="text-muted-foreground flex-shrink-0" />
+            <AgentIcon size={16} className="text-muted-foreground flex-shrink-0" />
             <span className="truncate" title={taskSummary || skillId || sessionId}>
               {cardTitle}
             </span>

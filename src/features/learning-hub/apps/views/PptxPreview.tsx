@@ -24,6 +24,7 @@ import {
   decodeBase64ToArrayBuffer,
   waitForNextFrame,
 } from './previewUtils';
+import { inspectOfficeZipContainer } from './officeZipContainer';
 import { sanitizeRenderedDom } from './sanitizeRenderedDom';
 import type { SlideNavInfo } from './UnifiedPreviewToolbar';
 
@@ -42,74 +43,167 @@ const PROGRAMMATIC_SCROLL_SETTLE_MS = 160;
 /** 用户偏好减少动画时退化为瞬时跳转 */
 const prefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' &&
-  !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 
-const ZIP_EOCD_MIN_BYTES = 22;
-const ZIP_MAX_COMMENT_BYTES = 65_535;
 const CORRUPT_ARCHIVE_ERROR_RE =
   /end of central directory|corrupted zip|invalid zip|unexpected end|bad archive|invalid signature|not a valid|malformed|truncated|xml|invalid (?:block|stored|distance|code|bit|literal)|incorrect (?:header|data) check|unknown compression|uncompressed data size mismatch|data size mismatch|crc|deflate|inflate/i;
 
-/**
- * 校验 ZIP 容器是否存在完整的 End-of-Central-Directory（EOCD，0x06054b50）
- * 及合法的中央目录范围，在调用第三方解析器前提前拦截截断/损坏文件。
- */
-function hasCompleteZipContainer(bytes: Uint8Array): boolean {
-  if (bytes.length < ZIP_EOCD_MIN_BYTES) return false;
-  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
-    return false;
-  }
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const minOffset = Math.max(0, bytes.length - (ZIP_EOCD_MIN_BYTES + ZIP_MAX_COMMENT_BYTES));
-
-  for (let offset = bytes.length - ZIP_EOCD_MIN_BYTES; offset >= minOffset; offset -= 1) {
-    if (
-      bytes[offset] === 0x50 &&
-      bytes[offset + 1] === 0x4b &&
-      bytes[offset + 2] === 0x05 &&
-      bytes[offset + 3] === 0x06
-    ) {
-      const commentLength = view.getUint16(offset + 20, true);
-      if (offset + ZIP_EOCD_MIN_BYTES + commentLength !== bytes.length) {
-        continue;
-      }
-      const cdSize = view.getUint32(offset + 12, true);
-      const cdOffset = view.getUint32(offset + 16, true);
-      if (cdSize === 0xffffffff || cdOffset === 0xffffffff) {
-        return true;
-      }
-      if (cdOffset + cdSize > offset) {
-        return false;
-      }
-      if (
-        cdSize > 0 &&
-        (bytes[cdOffset] !== 0x50 ||
-          bytes[cdOffset + 1] !== 0x4b ||
-          bytes[cdOffset + 2] !== 0x01 ||
-          bytes[cdOffset + 3] !== 0x02)
-      ) {
-        return false;
-      }
-      return true;
-    }
+/** 判断 pptx-preview 渲染后的幻灯片是否存在任何可见内容（文字/图片/矢量/表格）。 */
+function hasVisiblePptxContent(slides: NodeListOf<Element>): boolean {
+  for (let i = 0; i < slides.length; i += 1) {
+    const slide = slides[i];
+    if ((slide.textContent ?? '').trim().length > 0) return true;
+    if (slide.querySelector('img, svg, canvas, table, video, audio')) return true;
   }
   return false;
 }
 
+interface FallbackPptxSlide {
+  index: number;
+  paragraphs: string[];
+}
+
+function resolveSlideXmlPaths(
+  zipEntries: string[],
+  presentationXml: string | null,
+  relsXml: string | null,
+): string[] {
+  if (presentationXml && relsXml && typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser();
+    const relDoc = parser.parseFromString(relsXml, 'application/xml');
+    const relMap = new Map<string, string>();
+    const relNodes = relDoc.getElementsByTagName('*');
+    for (let i = 0; i < relNodes.length; i += 1) {
+      const node = relNodes[i];
+      if (node.localName !== 'Relationship') continue;
+      const id = node.getAttribute('Id');
+      const target = node.getAttribute('Target');
+      if (id && target) {
+        const normalized = target.replace(/^\/+/, '');
+        relMap.set(id, normalized.startsWith('ppt/') ? normalized : `ppt/${normalized}`);
+      }
+    }
+
+    const presDoc = parser.parseFromString(presentationXml, 'application/xml');
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    const presNodes = presDoc.getElementsByTagName('*');
+    for (let i = 0; i < presNodes.length; i += 1) {
+      const node = presNodes[i];
+      if (node.localName !== 'sldId') continue;
+      const rId =
+        node.getAttribute('r:id') ??
+        node.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      const resolved = rId ? relMap.get(rId) : undefined;
+      if (resolved && !seen.has(resolved)) {
+        seen.add(resolved);
+        ordered.push(resolved);
+      }
+    }
+    if (ordered.length > 0) return ordered;
+  }
+
+  return zipEntries
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => {
+      const numA = Number(/slide(\d+)\.xml$/i.exec(a)?.[1] ?? 0);
+      const numB = Number(/slide(\d+)\.xml$/i.exec(b)?.[1] ?? 0);
+      return numA - numB;
+    });
+}
+
 /**
- * 检查解码后的二进制是否为合法且完整的 OOXML（ZIP）容器。
- * OLE 复合文档头（D0 CF 11 E0）意味着文件被密码保护（加密 OOXML 的外层包装）
- * 或是旧版二进制格式（.ppt），两者都无法用当前渲染器预览。
+ * 极简/非标准 PPTX 回退渲染器：
+ * 部分无母版/无坐标框（<a:xfrm>）的合法 OOXML 演示文稿会被 pptx-preview 渲染成空画布。
+ * 此处直接按 ppt/presentation.xml 顺序解析每页 slide XML 文本段落，生成兼容缩放与导航的幻灯片节点。
  */
-function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'truncated' | 'invalid' | null {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
-    return 'encrypted-or-legacy';
+async function renderMinimalPptxFallback(
+  container: HTMLElement,
+  buffer: ArrayBuffer,
+  renderWidth: number,
+): Promise<number> {
+  if (typeof DOMParser === 'undefined') return 0;
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+  const entryNames = Object.keys(zip.files);
+  const presXml = await zip.file('ppt/presentation.xml')?.async('string') ?? null;
+  const relsXml = await zip.file('ppt/_rels/presentation.xml.rels')?.async('string') ?? null;
+  const slidePaths = resolveSlideXmlPaths(entryNames, presXml, relsXml);
+  if (slidePaths.length === 0) return 0;
+
+  const parser = new DOMParser();
+  const slides: FallbackPptxSlide[] = [];
+  for (let i = 0; i < slidePaths.length; i += 1) {
+    const xml = await zip.file(slidePaths[i])?.async('string');
+    if (!xml) continue;
+    const doc = parser.parseFromString(xml, 'application/xml');
+    const paragraphs: string[] = [];
+    const allNodes = doc.getElementsByTagName('*');
+    for (let j = 0; j < allNodes.length; j += 1) {
+      const el = allNodes[j];
+      if (el.localName !== 'p') continue;
+      let line = '';
+      const subNodes = el.getElementsByTagName('*');
+      for (let k = 0; k < subNodes.length; k += 1) {
+        if (subNodes[k].localName === 't') {
+          line += subNodes[k].textContent ?? '';
+        }
+      }
+      const trimmed = line.trim();
+      if (trimmed) paragraphs.push(trimmed);
+    }
+    slides.push({ index: i + 1, paragraphs });
   }
-  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) {
-    return hasCompleteZipContainer(bytes) ? null : 'truncated';
+
+  const hasAnyText = slides.some((s) => s.paragraphs.length > 0);
+  if (!hasAnyText) return 0;
+
+  const width = Math.max(320, Math.min(960, Math.round(renderWidth || 960)));
+  const height = Math.round((width * 9) / 16);
+
+  container.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pptx-preview-wrapper';
+
+  for (const slide of slides) {
+    const card = document.createElement('div');
+    card.className = `pptx-preview-slide-wrapper pptx-preview-slide-wrapper-${slide.index - 1}`;
+    card.style.width = `${width}px`;
+    card.style.minHeight = `${height}px`;
+    card.style.position = 'relative';
+    card.style.boxSizing = 'border-box';
+    card.style.padding = '40px 48px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.justifyContent = 'center';
+    card.style.gap = '14px';
+    card.style.color = 'hsl(var(--card-foreground))';
+    card.style.background = 'hsl(var(--card))';
+
+    const inner = document.createElement('div');
+    inner.className = 'slide-wrapper';
+    inner.style.display = 'flex';
+    inner.style.flexDirection = 'column';
+    inner.style.gap = '12px';
+
+    slide.paragraphs.forEach((text, pIdx) => {
+      const p = document.createElement(pIdx === 0 ? 'h2' : 'p');
+      p.textContent = text;
+      p.style.margin = '0';
+      p.style.lineHeight = pIdx === 0 ? '1.35' : '1.6';
+      p.style.fontSize = pIdx === 0 ? '24px' : '16px';
+      p.style.fontWeight = pIdx === 0 ? '600' : '400';
+      p.style.color = pIdx === 0 ? 'hsl(var(--card-foreground))' : 'hsl(var(--muted-foreground))';
+      p.style.wordBreak = 'break-word';
+      inner.appendChild(p);
+    });
+
+    card.appendChild(inner);
+    wrapper.appendChild(card);
   }
-  return 'invalid';
+
+  container.appendChild(wrapper);
+  return slides.length;
 }
 
 /** 缩略图元数据：原始幻灯片尺寸（未缩放的 CSS 像素）。克隆节点惰性生成 */
@@ -260,6 +354,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   const previewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
   const thumbMetasRef = useRef<SlideThumbMeta[]>([]);
   const [thumbsVersion, setThumbsVersion] = useState(0);
+  const [thumbnailsOpen, setThumbnailsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -343,8 +438,8 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         // 解码 Base64 为 ArrayBuffer
         const arrayBuffer = decodeBase64ToArrayBuffer(normalizedBase64);
 
-        // 提前识别加密/旧版二进制/截断或非 Office 文件，给出可操作的提示
-        const containerIssue = detectContainerIssue(arrayBuffer);
+        // 提前识别加密/旧版二进制/截断或非 Office 文件，并裁剪合法 EOCD 后的尾部冗余字节
+        const { issue: containerIssue, normalizedBuffer } = inspectOfficeZipContainer(arrayBuffer);
         if (containerIssue) {
           if (isMounted && renderToken === renderTokenRef.current) {
             setError(t(
@@ -376,7 +471,12 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         // ★ 持有实例引用：cleanup 时必须调用 destroy() 释放库内部
         //   注册的图表（echarts）实例，否则跨挂载周期泄漏
         previewerRef.current = previewer;
-        await previewer.preview(arrayBuffer);
+        let primaryFailedError: unknown = null;
+        try {
+          await previewer.preview(normalizedBuffer);
+        } catch (previewErr: unknown) {
+          primaryFailedError = previewErr;
+        }
 
         // ★ pptx-preview 用 setTimeout(0) 延迟初始化幻灯片内的图表
         //   （echarts SVG 渲染）。消毒会重写 innerHTML 替换全部节点，
@@ -387,10 +487,24 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         await waitForNextFrame();
 
         if (isMounted && renderToken === renderTokenRef.current) {
-          // ★ 渲染后使用 DOMPurify 进行完整安全消毒（移除危险标签+属性+协议）
-          sanitizeRenderedDom(container);
-          // 统计幻灯片数量（使用精确选择器）
-          const slides = container.querySelectorAll(PPTX_SLIDE_SELECTOR);
+          if (!primaryFailedError) {
+            // ★ 渲染后使用 DOMPurify 进行完整安全消毒（移除危险标签+属性+协议）
+            sanitizeRenderedDom(container);
+          }
+          let slides = container.querySelectorAll(PPTX_SLIDE_SELECTOR);
+
+          // 若 pptx-preview 抛出非损坏异常或渲染出空白画布（如缺少母版/xfrm 的极简 PPTX），
+          // 回退到 OOXML slide XML 文本卡片渲染，避免呈现无提示的黑屏。
+          if (primaryFailedError || slides.length === 0 || !hasVisiblePptxContent(slides)) {
+            const fallbackCount = await renderMinimalPptxFallback(container, normalizedBuffer, renderWidth)
+              .catch(() => 0);
+            if (!isMounted || renderToken !== renderTokenRef.current) return;
+            if (fallbackCount > 0) {
+              slides = container.querySelectorAll(PPTX_SLIDE_SELECTOR);
+            } else if (primaryFailedError) {
+              throw primaryFailedError;
+            }
+          }
 
           // 记录缩略图元数据（仅尺寸数字，克隆惰性进行——见 SlideThumbnail）。
           // 高度用 rect 宽高比换算，与祖先 zoom 缩放无关（比例不变量）
@@ -588,18 +702,33 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     return clone;
   }, []);
 
-  // 向父组件报告幻灯片导航信息（用于底部工具栏页码控制）
+  // 向父组件报告幻灯片导航信息（用于底部工具栏页码控制与缩略图抽屉开关）
   const onSlideInfoChangeRef = useRef(onSlideInfoChange);
   onSlideInfoChangeRef.current = onSlideInfoChange;
+  const toggleThumbnails = useCallback(() => {
+    setThumbnailsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        window.getSelection()?.removeAllRanges();
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!onSlideInfoChange) return;
     if (totalSlides > 0) {
-      onSlideInfoChange({ current: currentSlide, total: totalSlides, navigateTo: navigateToSlide });
+      onSlideInfoChange({
+        current: currentSlide,
+        total: totalSlides,
+        navigateTo: navigateToSlide,
+        thumbnailsOpen,
+        onToggleThumbnails: toggleThumbnails,
+      });
     } else {
       onSlideInfoChange(null);
     }
-  }, [currentSlide, totalSlides, navigateToSlide, onSlideInfoChange]);
+  }, [currentSlide, totalSlides, navigateToSlide, thumbnailsOpen, toggleThumbnails, onSlideInfoChange]);
 
   // 卸载时清除导航信息，避免父组件残留过期的页码状态
   useEffect(() => {
@@ -672,26 +801,38 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-row">
-        {/* 幻灯片缩略图导航栏：文档流内的内联侧栏（非覆盖式），md 及以上显示 */}
+      <div className="relative flex min-h-0 flex-1 flex-row">
+        {/* 幻灯片缩略图导航抽屉：纯 GPU transform 覆层滑出，不挤压主画布、不触发 ResizeObserver 重排 */}
         {showThumbRail && (
           <nav
-            className="pptx-thumb-rail ui-rise-in hidden min-h-0 w-[8.5rem] shrink-0 flex-col overflow-hidden border-r border-border/60 bg-muted/20 md:flex"
+            data-open={thumbnailsOpen}
+            aria-hidden={!thumbnailsOpen}
+            className={`pptx-thumb-rail absolute inset-y-0 left-0 z-20 flex min-h-0 w-[8.5rem] flex-col overflow-hidden border-r border-border/60 bg-background/95 shadow-md transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none ${
+              thumbnailsOpen
+                ? 'translate-x-0 opacity-100'
+                : 'pointer-events-none -translate-x-full opacity-0'
+            }`}
             aria-label={t('learningHub:docPreview.pptxThumbnails')}
           >
             <CustomScrollArea className="min-h-0 flex-1" orientation="vertical">
               <div className="flex flex-col items-center gap-2.5 px-3 py-3">
-                {Array.from({ length: totalSlides }, (_, index) => (
-                  <SlideThumbnail
-                    key={`${thumbsVersion}-${index}`}
-                    index={index}
-                    isActive={index === currentSlide}
-                    meta={thumbMetasRef.current[index]}
-                    cloneSlide={cloneSlide}
-                    onSelect={navigateToSlide}
-                    label={t('learningHub:docPreview.pptxThumbnailItem', { index: index + 1 })}
-                  />
-                ))}
+                {thumbnailsOpen &&
+                  Array.from({ length: totalSlides }, (_, index) => (
+                    <SlideThumbnail
+                      key={`${thumbsVersion}-${index}`}
+                      index={index}
+                      isActive={index === currentSlide}
+                      meta={thumbMetasRef.current[index]}
+                      cloneSlide={cloneSlide}
+                      onSelect={(idx) => {
+                        navigateToSlide(idx);
+                        if ((viewportRef.current?.clientWidth ?? 0) < 840) {
+                          setThumbnailsOpen(false);
+                        }
+                      }}
+                      label={t('learningHub:docPreview.pptxThumbnailItem', { index: index + 1 })}
+                    />
+                  ))}
               </div>
             </CustomScrollArea>
           </nav>

@@ -229,10 +229,6 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
         aria-live="polite"
       >
         <div className="flex flex-wrap items-center gap-2 px-3.5 py-1.5">
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-primary)] animate-pulse motion-reduce:animate-none"
-            aria-hidden="true"
-          />
           <span className="text-xs font-medium shrink-0">
             {t('mindmap:agent.suggestion_bar.title')}
           </span>
@@ -301,14 +297,12 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
               >
                 <span
                   className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    'shrink-0 text-2xs font-medium',
                     branch.kind === 'remove_subtree'
-                      ? 'bg-[var(--mm-ghost-remove-fg)]'
-                      : 'bg-[var(--mm-ghost-accent)]',
+                      ? 'text-[var(--mm-ghost-remove-fg)]'
+                      : 'text-[var(--mm-ghost-accent)]',
                   )}
-                  aria-hidden="true"
-                />
-                <span className="shrink-0 text-2xs text-[var(--mm-text-secondary)]">
+                >
                   {formatBranchKind(branch.kind)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[var(--mm-text)]">
@@ -361,10 +355,7 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
         aria-live="polite"
         data-testid="mindmap-ghost-checkpoint-bar"
       >
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-primary)]"
-          aria-hidden="true"
-        />
+        <Check size={13} className="shrink-0 text-[var(--mm-primary)]" aria-hidden="true" />
         <span className="font-mono tabular-nums text-xs">
           {t('graph_conflict:mindmapGhost.checkpointBanner', {
             count: activeCheckpoint.appliedCount,
