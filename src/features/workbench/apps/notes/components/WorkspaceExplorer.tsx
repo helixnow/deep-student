@@ -81,6 +81,7 @@ export interface WorkspaceExplorerProps {
   favorites: UseNoteFavoritesResult;
   resourceDialog: ResourceDialog | null;
   dialogError: string | null;
+  dialogBusy?: boolean;
   onResourceDialogChange: (dialog: ResourceDialog | null) => void;
   onDialogErrorChange: (error: string | null) => void;
   onCreateResource: (type: ResourceType, folderId?: string | null) => void;
@@ -129,6 +130,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   favorites,
   resourceDialog,
   dialogError,
+  dialogBusy = false,
   onResourceDialogChange,
   onDialogErrorChange,
   onCreateResource,
@@ -161,7 +163,14 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [insightCreateNonce, setInsightCreateNonce] = useState(0);
   const hasTreeItems = treeItems.length > 0;
-  const showTagFilter = tagFilterOpen || selectedTags.length > 0;
+  const prevSelectedTagsCountRef = useRef(selectedTags.length);
+  useEffect(() => {
+    if (prevSelectedTagsCountRef.current === 0 && selectedTags.length > 0) {
+      setTagFilterOpen(true);
+    }
+    prevSelectedTagsCountRef.current = selectedTags.length;
+  }, [selectedTags.length]);
+  const showTagFilter = tagFilterOpen;
 
   // 行内输入行 / 确认条（非模态）：打开时把焦点送进面板，关闭后归还给触发
   // 元素；触发行已被删除时回落到树内相邻可聚焦行。
@@ -419,9 +428,8 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           selectedTags={selectedTags}
           onChange={onSelectedTagsChange}
           open={showTagFilter}
-          onOpenChange={(next) => {
-            if (!next && selectedTags.length === 0) setTagFilterOpen(false);
-          }}
+          onOpenChange={setTagFilterOpen}
+          hideHeaderToggle
           className="notes-explorer-tag-filter"
         />
       )}
@@ -446,10 +454,12 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
             <FolderPlus size={14} aria-hidden />
             <input
               autoFocus
+              disabled={dialogBusy}
               value={resourceDialog.value}
               placeholder={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
               aria-label={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
               onChange={(event) => {
+                if (dialogBusy) return;
                 onDialogErrorChange(null);
                 onResourceDialogChange({
                   mode: 'create-folder',
@@ -460,6 +470,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
                 });
               }}
               onKeyDown={(event) => {
+                if (dialogBusy) return;
                 if (event.key === 'Escape') {
                   event.preventDefault();
                   event.stopPropagation();
@@ -477,6 +488,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
                 // 失焦只在「还没输入任何内容」时视为取消。已有输入或 IME 合成中
                 //（点候选词可能触发 blur）、以及焦点仍落在行内面板内部（计数器/
                 // 错误提示）时保留输入行，避免误取消丢输入。
+                if (dialogBusy) return;
                 if (createFolderComposingRef.current) return;
                 if (
                   event.relatedTarget instanceof Node
@@ -511,6 +523,7 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           role="group"
           aria-label={t('notesWorkspace.dialog.deleteTitle', 'Move to trash')}
           onKeyDown={(event) => {
+            if (dialogBusy) return;
             if (event.key !== 'Escape') return;
             event.preventDefault();
             event.stopPropagation();
@@ -533,7 +546,9 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           <div className="notes-inline-confirm-actions">
             <button
               type="button"
+              disabled={dialogBusy}
               onClick={() => {
+                if (dialogBusy) return;
                 onDialogErrorChange(null);
                 onResourceDialogChange(null);
               }}
@@ -543,7 +558,9 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
             <button
               type="button"
               className="is-danger"
+              disabled={dialogBusy}
               onClick={() => {
+                if (dialogBusy) return;
                 if (resourceDialog.mode === 'delete') onDeleteConfirm();
                 else onDeleteManyConfirm();
               }}

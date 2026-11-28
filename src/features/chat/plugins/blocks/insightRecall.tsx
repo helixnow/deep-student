@@ -24,6 +24,8 @@ import {
   type BackendSourceInfo,
   type RetrievalSource,
 } from './components/types';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { insightGet, insightCorrect } from '@/features/insights/api';
 import type { InsightCard, InsightDraftInput } from '@/features/insights/types';
 import { InsightConfirmDialog } from '@/features/insights/components/InsightConfirmDialog';
@@ -65,12 +67,20 @@ const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, i
     if (!insightId) return;
     void insightGet(insightId)
       .then((card) => {
-        if (card) setEditing(card);
+        if (card) {
+          setEditing(card);
+        } else {
+          showGlobalNotification(
+            'warning',
+            t('blocks.insightRecall.noResults', { defaultValue: '没有找到相关的灵感卡' }),
+          );
+        }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('[InsightRecallBlock] load insight failed:', err);
+        showGlobalNotification('error', getErrorMessage(err));
       });
-  }, []);
+  }, [t]);
 
   const handleSubmit = useCallback(
     async (draft: InsightDraftInput) => {

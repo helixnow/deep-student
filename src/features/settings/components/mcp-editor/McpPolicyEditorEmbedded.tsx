@@ -1,4 +1,4 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -24,53 +24,94 @@ export interface McpPolicyEditorEmbeddedContext {
   setMcpPolicyModal: Dispatch<SetStateAction<McpPolicyModalState>>;
 }
 
-export function renderMcpPolicyEditorEmbedded({
-  setConfig, isSmallScreen, t, closeRightPanel, mcpPolicySaveRef, mcpPolicyModal, setMcpPolicyModal,
-}: McpPolicyEditorEmbeddedContext) {
-  if (!mcpPolicyModal.open) {
+const parseClampedInt = (raw: string, min: number, fallback: number): number => {
+  const parsed = parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, parsed);
+};
+
+export function renderMcpPolicyEditorEmbedded(ctx: McpPolicyEditorEmbeddedContext) {
+  if (!ctx.mcpPolicyModal.open) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        <p className="text-sm">{t('settings:sections.select_policy_to_edit')}</p>
+        <p className="text-sm">{ctx.t('settings:sections.select_policy_to_edit')}</p>
       </div>
     );
   }
+  return <McpPolicyEditorEmbeddedView {...ctx} />;
+}
+
+function McpPolicyEditorEmbeddedView({
+  setConfig, isSmallScreen, t, closeRightPanel, mcpPolicySaveRef, mcpPolicyModal, setMcpPolicyModal,
+}: McpPolicyEditorEmbeddedContext) {
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [timeoutMsDraft, setTimeoutMsDraft] = useState(() => String(mcpPolicyModal.timeoutMs));
+  const [rateLimitDraft, setRateLimitDraft] = useState(() => String(mcpPolicyModal.rateLimit));
+  const [cacheMaxDraft, setCacheMaxDraft] = useState(() => String(mcpPolicyModal.cacheMax));
+  const [cacheTtlMsDraft, setCacheTtlMsDraft] = useState(() => String(mcpPolicyModal.cacheTtlMs));
+
+  useEffect(() => {
+    setTimeoutMsDraft(String(mcpPolicyModal.timeoutMs));
+    setRateLimitDraft(String(mcpPolicyModal.rateLimit));
+    setCacheMaxDraft(String(mcpPolicyModal.cacheMax));
+    setCacheTtlMsDraft(String(mcpPolicyModal.cacheTtlMs));
+  }, [mcpPolicyModal.timeoutMs, mcpPolicyModal.rateLimit, mcpPolicyModal.cacheMax, mcpPolicyModal.cacheTtlMs]);
 
   const handleClose = () => {
+    if (savingRef.current) return;
     setMcpPolicyModal(prev => ({ ...prev, open: false }));
     closeRightPanel();
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    const timeoutMs = parseClampedInt(timeoutMsDraft, 1000, 15000);
+    const rateLimit = parseClampedInt(rateLimitDraft, 1, 10);
+    const cacheMax = parseClampedInt(cacheMaxDraft, 0, 100);
+    const cacheTtlMs = parseClampedInt(cacheTtlMsDraft, 0, 300000);
+    setTimeoutMsDraft(String(timeoutMs));
+    setRateLimitDraft(String(rateLimit));
+    setCacheMaxDraft(String(cacheMax));
+    setCacheTtlMsDraft(String(cacheTtlMs));
+    setMcpPolicyModal(prev => ({ ...prev, timeoutMs, rateLimit, cacheMax, cacheTtlMs }));
+
     const nextPolicy = {
       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
       mcpWhitelist: mcpPolicyModal.whitelist,
       mcpBlacklist: mcpPolicyModal.blacklist,
-      mcpTimeoutMs: mcpPolicyModal.timeoutMs,
-      mcpRateLimit: mcpPolicyModal.rateLimit,
-      mcpCacheMax: mcpPolicyModal.cacheMax,
-      mcpCacheTtlMs: mcpPolicyModal.cacheTtlMs,
+      mcpTimeoutMs: timeoutMs,
+      mcpRateLimit: rateLimit,
+      mcpCacheMax: cacheMax,
+      mcpCacheTtlMs: cacheTtlMs,
     };
+
+    savingRef.current = true;
+    setSaving(true);
     try {
       if (invoke) {
         await Promise.all([
           saveSetting('mcp.tools.advertise_all_tools', mcpPolicyModal.advertiseAll.toString()),
           saveSetting('mcp.tools.whitelist', mcpPolicyModal.whitelist),
           saveSetting('mcp.tools.blacklist', mcpPolicyModal.blacklist),
-          saveSetting('mcp.performance.timeout_ms', String(mcpPolicyModal.timeoutMs)),
-          saveSetting('mcp.performance.rate_limit_per_second', String(mcpPolicyModal.rateLimit)),
-          saveSetting('mcp.performance.cache_max_size', String(mcpPolicyModal.cacheMax)),
-          saveSetting('mcp.performance.cache_ttl_ms', String(mcpPolicyModal.cacheTtlMs)),
+          saveSetting('mcp.performance.timeout_ms', String(timeoutMs)),
+          saveSetting('mcp.performance.rate_limit_per_second', String(rateLimit)),
+          saveSetting('mcp.performance.cache_max_size', String(cacheMax)),
+          saveSetting('mcp.performance.cache_ttl_ms', String(cacheTtlMs)),
         ]);
       }
+      setConfig(prev => ({ ...prev, ...nextPolicy }));
+      showGlobalNotification('success', t('settings:mcp_descriptions.policy_saved'));
+      setMcpPolicyModal(prev => ({ ...prev, open: false }));
+      closeRightPanel();
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       console.error('保存MCP安全策略失败:', err);
       showGlobalNotification('error', t('settings:mcp_descriptions.policy_save_failed', { error: errorMessage }));
-      return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-    setConfig(prev => ({ ...prev, ...nextPolicy }));
-    showGlobalNotification('success', t('settings:mcp_descriptions.policy_saved'));
-    handleClose();
   };
 
   // 移动端保存出口上收统一顶栏（P1-7 同模型编辑器）：顶栏 Check 经此 ref 触发提交
@@ -130,8 +171,13 @@ export function renderMcpPolicyEditorEmbedded({
               <Input
                 type="number"
                 min={1000}
-                value={mcpPolicyModal.timeoutMs}
-                onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, timeoutMs: parseInt(e.target.value || '0', 10) || 15000 }))}
+                value={timeoutMsDraft}
+                onChange={(e) => setTimeoutMsDraft(e.target.value)}
+                onBlur={() => {
+                  const clamped = parseClampedInt(timeoutMsDraft, 1000, 15000);
+                  setTimeoutMsDraft(String(clamped));
+                  setMcpPolicyModal(prev => ({ ...prev, timeoutMs: clamped }));
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -139,8 +185,13 @@ export function renderMcpPolicyEditorEmbedded({
               <Input
                 type="number"
                 min={1}
-                value={mcpPolicyModal.rateLimit}
-                onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, rateLimit: parseInt(e.target.value || '0', 10) || 10 }))}
+                value={rateLimitDraft}
+                onChange={(e) => setRateLimitDraft(e.target.value)}
+                onBlur={() => {
+                  const clamped = parseClampedInt(rateLimitDraft, 1, 10);
+                  setRateLimitDraft(String(clamped));
+                  setMcpPolicyModal(prev => ({ ...prev, rateLimit: clamped }));
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -148,13 +199,12 @@ export function renderMcpPolicyEditorEmbedded({
               <Input
                 type="number"
                 min={0}
-                value={mcpPolicyModal.cacheMax}
-                onChange={(e) => {
-                  const parsed = parseInt(e.target.value, 10);
-                  setMcpPolicyModal(prev => ({
-                    ...prev,
-                    cacheMax: Number.isFinite(parsed) ? Math.max(0, parsed) : 100,
-                  }));
+                value={cacheMaxDraft}
+                onChange={(e) => setCacheMaxDraft(e.target.value)}
+                onBlur={() => {
+                  const clamped = parseClampedInt(cacheMaxDraft, 0, 100);
+                  setCacheMaxDraft(String(clamped));
+                  setMcpPolicyModal(prev => ({ ...prev, cacheMax: clamped }));
                 }}
               />
             </div>
@@ -163,13 +213,12 @@ export function renderMcpPolicyEditorEmbedded({
               <Input
                 type="number"
                 min={0}
-                value={mcpPolicyModal.cacheTtlMs}
-                onChange={(e) => {
-                  const parsed = parseInt(e.target.value, 10);
-                  setMcpPolicyModal(prev => ({
-                    ...prev,
-                    cacheTtlMs: Number.isFinite(parsed) ? Math.max(0, parsed) : 300000,
-                  }));
+                value={cacheTtlMsDraft}
+                onChange={(e) => setCacheTtlMsDraft(e.target.value)}
+                onBlur={() => {
+                  const clamped = parseClampedInt(cacheTtlMsDraft, 0, 300000);
+                  setCacheTtlMsDraft(String(clamped));
+                  setMcpPolicyModal(prev => ({ ...prev, cacheTtlMs: clamped }));
                 }}
               />
             </div>
@@ -180,8 +229,8 @@ export function renderMcpPolicyEditorEmbedded({
       {/* 移动端：保存唯一出口在统一顶栏 Check（P1-7），底栏不再重复；桌面右侧面板保留 */}
       {!isSmallScreen && (
       <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
-        <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
-        <DsButton variant="primary" onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
+        <DsButton variant="ghost" disabled={saving} onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+        <DsButton variant="primary" disabled={saving} onClick={() => void handleSave()} className="min-h-11 flex-1">{saving ? t('common:actions.saving') : t('common:actions.save')}</DsButton>
       </div>
       )}
     </div>

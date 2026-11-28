@@ -88,6 +88,20 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
   deepseekProviderConfigured,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const [snippetMaxDraft, setSnippetMaxDraft] = React.useState(
+    () => String(config.webSearchInjectSnippetMax ?? 180),
+  );
+  const [totalMaxDraft, setTotalMaxDraft] = React.useState(
+    () => String(config.webSearchInjectTotalMax ?? 1900),
+  );
+
+  React.useEffect(() => {
+    setSnippetMaxDraft(String(config.webSearchInjectSnippetMax ?? 180));
+  }, [config.webSearchInjectSnippetMax]);
+
+  React.useEffect(() => {
+    setTotalMaxDraft(String(config.webSearchInjectTotalMax ?? 1900));
+  }, [config.webSearchInjectTotalMax]);
 
   return (
     <div className="space-y-8 pb-10 text-left ui-fade-in-slow">
@@ -127,10 +141,18 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   type="number"
                   min={50}
                   max={2000}
-                  value={config.webSearchInjectSnippetMax}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value || '180', 10) || 180;
-                    setConfig(prev => ({ ...prev, webSearchInjectSnippetMax: Math.min(2000, Math.max(50, v)) }));
+                  value={snippetMaxDraft}
+                  onChange={(e) => setSnippetMaxDraft(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(snippetMaxDraft.trim(), 10);
+                    const fallback = config.webSearchInjectSnippetMax ?? 180;
+                    const clamped = Number.isFinite(parsed)
+                      ? Math.min(2000, Math.max(50, parsed))
+                      : fallback;
+                    setSnippetMaxDraft(String(clamped));
+                    if (clamped !== config.webSearchInjectSnippetMax) {
+                      setConfig(prev => ({ ...prev, webSearchInjectSnippetMax: clamped }));
+                    }
                   }}
                   className="!w-28 md:!w-24 [@media(pointer:coarse)]:min-h-11"
                 />
@@ -146,10 +168,18 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   type="number"
                   min={200}
                   max={20000}
-                  value={config.webSearchInjectTotalMax}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value || '1900', 10) || 1900;
-                    setConfig(prev => ({ ...prev, webSearchInjectTotalMax: Math.min(20000, Math.max(200, v)) }));
+                  value={totalMaxDraft}
+                  onChange={(e) => setTotalMaxDraft(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(totalMaxDraft.trim(), 10);
+                    const fallback = config.webSearchInjectTotalMax ?? 1900;
+                    const clamped = Number.isFinite(parsed)
+                      ? Math.min(20000, Math.max(200, parsed))
+                      : fallback;
+                    setTotalMaxDraft(String(clamped));
+                    if (clamped !== config.webSearchInjectTotalMax) {
+                      setConfig(prev => ({ ...prev, webSearchInjectTotalMax: clamped }));
+                    }
                   }}
                   className="!w-28 md:!w-24 [@media(pointer:coarse)]:min-h-11"
                 />

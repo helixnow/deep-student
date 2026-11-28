@@ -780,12 +780,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     data-short-preview={isShortFocusPreview ? 'true' : undefined}
                     onClick={() => {
                       if (isShortFocusPreview) {
-                        cancelStopConfirm();
-                        stop(true);
-                        showGlobalNotification(
-                          'info',
-                          t('pomodoro.controls.stopped', { defaultValue: '已停止当前番茄钟' }),
-                        );
+                        handleStop();
                         return;
                       }
                       if (isCountUpWork) completeCurrentSession();

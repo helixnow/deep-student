@@ -34,6 +34,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import {
   getMemoryConfig,
   inspectMemoryKernel,
@@ -108,6 +109,14 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
   const [btwAnswer, setBtwAnswer] = useState('');
   const [btwError, setBtwError] = useState<string | null>(null);
   const [btwCopied, setBtwCopied] = useState(false);
+  const btwCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (btwCopiedTimerRef.current) {
+      clearTimeout(btwCopiedTimerRef.current);
+      btwCopiedTimerRef.current = null;
+    }
+  }, []);
 
   // `/learn` state
   const [learnLoading, setLearnLoading] = useState(false);
@@ -133,6 +142,10 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
     const reqId = ++reqIdRef.current;
 
     if (card.kind === 'btw') {
+      if (btwCopiedTimerRef.current) {
+        clearTimeout(btwCopiedTimerRef.current);
+        btwCopiedTimerRef.current = null;
+      }
       setBtwLoading(true);
       setBtwAnswer('');
       setBtwError(null);
@@ -149,7 +162,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
         })
         .catch((err) => {
           if (reqIdRef.current !== reqId) return;
-          setBtwError(err instanceof Error ? err.message : String(err));
+          setBtwError(getErrorMessage(err));
           setBtwLoading(false);
         });
       return;
@@ -288,11 +301,27 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
       showGlobalNotification('success', t('chatV2:slashCommands.remember.savedToast'));
       onClose();
     } catch (err) {
-      showGlobalNotification('error', err instanceof Error ? err.message : String(err));
+      showGlobalNotification('error', getErrorMessage(err));
     } finally {
       setLearnSaving(false);
     }
   }, [learnRuleDraft, learnScope, learnSaving, onClose, t]);
+
+  const handleCopyBtw = useCallback(async () => {
+    if (!btwAnswer) return;
+    try {
+      const ok = await copyTextToClipboard(btwAnswer);
+      if (ok === false) return;
+      setBtwCopied(true);
+      if (btwCopiedTimerRef.current) clearTimeout(btwCopiedTimerRef.current);
+      btwCopiedTimerRef.current = setTimeout(() => {
+        btwCopiedTimerRef.current = null;
+        setBtwCopied(false);
+      }, 1500);
+    } catch (err) {
+      showGlobalNotification('error', getErrorMessage(err));
+    }
+  }, [btwAnswer]);
 
   if (!card) return null;
 
@@ -351,10 +380,7 @@ export const SlashOverlayCard: React.FC<SlashOverlayCardProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  void copyTextToClipboard(btwAnswer);
-                  setBtwCopied(true);
-                }}
+                onClick={() => void handleCopyBtw()}
               >
                 {btwCopied ? <Check size={13} /> : <Copy size={13} />}
                 <span>{t('common:copy')}</span>

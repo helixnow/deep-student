@@ -432,6 +432,7 @@ class CommandRegistry implements ICommandRegistry {
   async execute(id: string, deps: DependencyResolver): Promise<void> {
     const command = this.commands.get(id);
     if (!command) {
+      deps.showNotification('error', i18next.t('command_palette:error.command_not_found'));
       throw new Error(`[CommandRegistry] 命令 "${id}" 不存在`);
     }
 
@@ -462,9 +463,11 @@ class CommandRegistry implements ICommandRegistry {
       }
     } catch (error: unknown) {
       console.error(`[CommandRegistry] 命令 "${id}" 执行失败:`, error);
+      const detail = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+      const baseMessage = i18next.t('command_palette:error.execute_failed');
       deps.showNotification(
         'error',
-        `${i18next.t('command_palette:error.execute_failed')}: ${error instanceof Error ? error.message : ''}`,
+        detail ? `${baseMessage}: ${detail}` : baseMessage,
       );
       throw error;
     }

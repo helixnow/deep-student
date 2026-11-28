@@ -569,8 +569,6 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 退出改行内二次确认（无模态框）：首次点击进入待确认态，超时自动回退
   const [exitArmed, setExitArmed] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 窄屏计时器默认折叠为图标，点按展开
-  const [timerExpanded, setTimerExpanded] = useState(false);
   const ratingInFlightRef = useRef(false);
 
   useEffect(() => () => {
@@ -939,17 +937,15 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           </div>
         </div>
 
-        {/* 计时器：紧凑常显时间，点击可切换 */}
-        <button
-          type="button"
-          onClick={() => setTimerExpanded((v) => !v)}
+        {/* 计时器：纯状态展示，避免无功能的伪按钮 */}
+        <div
+          role="timer"
           aria-label={`${t('review:complete.time')}: ${formatTime(elapsedTime)}`}
-          aria-expanded={timerExpanded}
-          className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-xs text-muted-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-events-none sm:min-h-0"
+          className="flex shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-xs text-muted-foreground tabular-nums"
         >
-          <Clock size={15} />
+          <Clock size={15} aria-hidden="true" />
           <span>{formatTime(elapsedTime)}</span>
-        </button>
+        </div>
       </div>
 
       {/* 卡片内容区：短题居中偏上留白自然，长题可平滑滚动 */}

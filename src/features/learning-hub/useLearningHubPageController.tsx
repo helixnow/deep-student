@@ -148,6 +148,9 @@ const inferResourceTypeFromFileName = (fileName: string): ResourceType => {
 // 白名单解析（v1 数据缺字段/带脏字段时按下方策略修复或丢弃）。
 const TABS_STORAGE_KEY = 'learning-hub-tabs-v1';
 const TABS_STORAGE_VERSION = 2;
+const DEFAULT_APP_PANEL_SIZE = 75;
+const MIN_APP_PANEL_SIZE = 40;
+const MAX_APP_PANEL_SIZE = 85;
 
 interface PersistedTabsState {
   tabs: OpenTab[];
@@ -281,6 +284,61 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   const activeTab = tabs.find(t => t.tabId === activeTabId) ?? null;
   const hasOpenApp = tabs.length > 0;
 
+  // 右侧应用面板折叠/展开状态与宽度记忆（与左侧访达收起联动）
+  const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
+  const [appPanelCollapsed, setAppPanelCollapsed] = useState<boolean>(() => !hasOpenApp);
+  const appPanelRef = useRef<ImperativePanelHandle>(null);
+  const lastExpandedAppPanelSizeRef = useRef<number>(DEFAULT_APP_PANEL_SIZE);
+  const isDraggingAppPanelRef = useRef(false);
+  const isAppPanelVisible = hasOpenApp && !appPanelCollapsed;
+
+  const handleAppPanelCollapse = useCallback(() => {
+    setAppPanelCollapsed(true);
+    // 右侧栏被拖压或程序折叠后，左侧资源访达恢复完整视图
+    setLocalSidebarCollapsed(false);
+  }, []);
+
+  const handleAppPanelExpand = useCallback(() => {
+    setAppPanelCollapsed(false);
+  }, []);
+
+  const handleAppPanelResize = useCallback((size: number) => {
+    // 拖拽途中会一路经过 minSize 再触发折叠，仅在非拖拽态记录稳定宽度；
+    // 拖拽结束后的稳定宽度在 handleAppPanelDragging(false) 中记录。
+    if (!isDraggingAppPanelRef.current && size >= MIN_APP_PANEL_SIZE) {
+      lastExpandedAppPanelSizeRef.current = Math.min(MAX_APP_PANEL_SIZE, size);
+    }
+  }, []);
+
+  const handleAppPanelDragging = useCallback((isDragging: boolean) => {
+    isDraggingAppPanelRef.current = isDragging;
+    if (!isDragging) {
+      const appPanel = appPanelRef.current;
+      if (appPanel && !appPanel.isCollapsed()) {
+        const currentSize = appPanel.getSize();
+        if (currentSize >= MIN_APP_PANEL_SIZE) {
+          lastExpandedAppPanelSizeRef.current = Math.min(MAX_APP_PANEL_SIZE, currentSize);
+        }
+      }
+    }
+  }, []);
+
+  const expandAppPanel = useCallback(() => {
+    const appPanel = appPanelRef.current;
+    if (!appPanel) return;
+    if (appPanel.isCollapsed()) {
+      const targetSize = Math.max(
+        MIN_APP_PANEL_SIZE,
+        Math.min(MAX_APP_PANEL_SIZE, lastExpandedAppPanelSizeRef.current || DEFAULT_APP_PANEL_SIZE),
+      );
+      appPanel.expand(targetSize);
+      requestAnimationFrame(() => {
+        setLocalSidebarCollapsed(true);
+      });
+    }
+    setAppPanelCollapsed(false);
+  }, []);
+
   // ========== 标签页操作函数 ==========
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
@@ -382,7 +440,9 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
       setActiveTabId(newTab.tabId);
       return [...next, newTab];
     });
-  }, []);
+    // 右侧面板若此前被用户拖压折叠，再次打开/激活任意文件时必须重新弹开
+    expandAppPanel();
+  }, [expandAppPanel]);
 
   // ★ 2026-07-08（分屏死角修复）：选择新的活跃 tab 时避开右侧分屏 tab。
   // TabPanelContainer 左侧面板会过滤掉分屏 tab，若活跃 tab 恰好是分屏 tab，
@@ -513,7 +573,8 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
     });
     setActiveTabId(tabId);
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, openedAt: Date.now() } : t));
-  }, []);
+    expandAppPanel();
+  }, [expandAppPanel]);
 
   // ★ 分屏操作
   const openSplitView = useCallback((tabId: string) => {
@@ -1057,7 +1118,6 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
 
   // ========== 侧边栏收缩状态 ==========
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
   const sidebarCollapsed = globalLeftPanelCollapsed || localSidebarCollapsed;
 
   // ★ 当 Topbar 按钮将 globalLeftPanelCollapsed 切换为 false（展开）时，
@@ -1428,15 +1488,23 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
   canInjectCurrentResourceRef.current = canInjectCurrentResource;
   handleCreateAndOpenRef.current = handleCreateAndOpen;
 
-  // 应用面板引用，用于控制展开/折叠
-  const appPanelRef = useRef<ImperativePanelHandle>(null);
-  
-  // ★ 当标签页打开/全部关闭时控制面板展开/折叠
+  // ★ 当标签页打开/全部关闭或从窄屏切回桌面端时同步面板展开/折叠
   // ★ 2026-07-08：只在「无 tab ↔ 有 tab」状态切换时执行。
   // 之前依赖 tabs.length，关闭多个 tab 中的一个也会重新折叠用户手动展开的侧栏。
   const prevHadTabsRef = useRef<boolean | null>(null);
   useEffect(() => {
     const hasTabs = tabs.length > 0;
+
+    if (isSmallScreen) {
+      // 移动端未挂载桌面 PanelGroup，重置桌面同步标记，确保切回桌面时重新对齐面板状态
+      prevHadTabsRef.current = null;
+      if (!hasTabs) {
+        setLocalSidebarCollapsed(false);
+        setScreenPosition('center');
+      }
+      return;
+    }
+
     if (prevHadTabsRef.current === hasTabs) return;
     prevHadTabsRef.current = hasTabs;
 
@@ -1444,7 +1512,7 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
 
     if (hasTabs) {
       if (appPanel) {
-        appPanel.expand();
+        expandAppPanel();
         requestAnimationFrame(() => {
           setLocalSidebarCollapsed(true);
         });
@@ -1453,17 +1521,14 @@ export function useLearningHubPageController(deps: LearningHubPageControllerDeps
       if (appPanel) {
         appPanel.collapse();
       }
+      setAppPanelCollapsed(true);
       setLocalSidebarCollapsed(false);
-      // 移动端：所有 tab 关闭后返回中间屏
-      if (isSmallScreen) {
-        setScreenPosition('center');
-      }
     }
-  }, [tabs.length, isSmallScreen]);
+  }, [tabs.length, isSmallScreen, expandAppPanel]);
 
   // ========== 移动端：三屏滑动布局 ==========
   // A-8 归一：复用 MobileSlidingLayout，统一获得轴向锁定、横向滚动/选区让行（C-9）、
   // Android 返回键收回（A-5）与抽屉底部应用导航
 
-  return { activeAppType, activeSubviewChrome, activeTab, activeTabId, activeTabIdRef, appPanelRef, backNavStateRef, canInject, canInjectCurrentResource, canInjectCurrentResourceRef, centerViewTitle, closeOtherTabs, closeSplitView, closeTab, closeTabWithSplit, closeTabsToRight, commitCloseTabs, desktopShellHeaderTarget, desktopShellSidebarTarget, finderBreadcrumbs, finderCurrentPath, finderEnterFolder, finderGoUp, finderJumpToBreadcrumb, finderQuickAccessNavigate, finderQuickAccessType, finderRefresh, finderSearchQuery, finderSetSearchQuery, finderViewCapabilities, globalLeftPanelCollapsed, handleBreadcrumbNavigate, handleCloseApp, handleCloseAppRef, handleCreateAndOpen, handleInjectToChat, handleInjectToChatRef, handleNavigateToKnowledgeEvent, handleOpenApp, handleOpenEssayEvent, handleOpenExamEvent, handleOpenNoteEvent, handleOpenResourceEvent, handleOpenTranslationEvent, handleSidebarCollapsedChange, hasOpenApp, injectToChat, isFinderRefreshing, isInSubfolder, isInjecting, isLearningHubViewActive, isSmallScreen, localSidebarCollapsed, mobileGestureIgnoreSelector, mobileHeaderMenuOpen, mobileHeaderRightActions, navigateToMemory, notesChromeSlot, openActiveTabSettings, openSplitView, openTab, pendingCloseGateRef, pickNextActiveTab, prevHadTabsRef, refreshFinder, requestCloseTab, requestCloseTabsBatch, resourceMenuContext, resourceMenuHost, restoredValidationDone, rootTitle, screenPosition, setActiveAppType, setActiveTabId, setIsFinderRefreshing, setLocalSidebarCollapsed, setMobileHeaderMenuOpen, setNotesChromeSlot, setResourceMenuHost, setScreenPosition, setSplitView, setTabReloadKeys, setTabs, sidebarCollapsed, sidebarPanelRef, splitView, splitViewRef, subviewChrome, subviewChromeHost, switchTab, t, tabReloadKeys, tabs, tabsRef, togglePinTab, updateTabTitle, useHostFinderStore };
+  return { activeAppType, activeSubviewChrome, activeTab, activeTabId, activeTabIdRef, appPanelCollapsed, appPanelRef, backNavStateRef, canInject, canInjectCurrentResource, canInjectCurrentResourceRef, centerViewTitle, closeOtherTabs, closeSplitView, closeTab, closeTabWithSplit, closeTabsToRight, commitCloseTabs, desktopShellHeaderTarget, desktopShellSidebarTarget, expandAppPanel, finderBreadcrumbs, finderCurrentPath, finderEnterFolder, finderGoUp, finderJumpToBreadcrumb, finderQuickAccessNavigate, finderQuickAccessType, finderRefresh, finderSearchQuery, finderSetSearchQuery, finderViewCapabilities, globalLeftPanelCollapsed, handleAppPanelCollapse, handleAppPanelDragging, handleAppPanelExpand, handleAppPanelResize, handleBreadcrumbNavigate, handleCloseApp, handleCloseAppRef, handleCreateAndOpen, handleInjectToChat, handleInjectToChatRef, handleNavigateToKnowledgeEvent, handleOpenApp, handleOpenEssayEvent, handleOpenExamEvent, handleOpenNoteEvent, handleOpenResourceEvent, handleOpenTranslationEvent, handleSidebarCollapsedChange, hasOpenApp, injectToChat, isAppPanelVisible, isFinderRefreshing, isInSubfolder, isInjecting, isLearningHubViewActive, isSmallScreen, localSidebarCollapsed, mobileGestureIgnoreSelector, mobileHeaderMenuOpen, mobileHeaderRightActions, navigateToMemory, notesChromeSlot, openActiveTabSettings, openSplitView, openTab, pendingCloseGateRef, pickNextActiveTab, prevHadTabsRef, refreshFinder, requestCloseTab, requestCloseTabsBatch, resourceMenuContext, resourceMenuHost, restoredValidationDone, rootTitle, screenPosition, setActiveAppType, setActiveTabId, setIsFinderRefreshing, setLocalSidebarCollapsed, setMobileHeaderMenuOpen, setNotesChromeSlot, setResourceMenuHost, setScreenPosition, setSplitView, setTabReloadKeys, setTabs, sidebarCollapsed, sidebarPanelRef, splitView, splitViewRef, subviewChrome, subviewChromeHost, switchTab, t, tabReloadKeys, tabs, tabsRef, togglePinTab, updateTabTitle, useHostFinderStore };
 }

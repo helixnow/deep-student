@@ -400,7 +400,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             size="sm"
             data-testid="memory-kernel-reflect-btn"
             disabled={busy}
-            onClick={() => void handleToggleReflection()}
+            onClick={() => {
+              if (!reflectionReport) setExpanded(true);
+              void handleToggleReflection();
+            }}
             className="h-6 px-2 text-xs"
             title={t('settings:memory.kernel.reflectionTitle')}
           >
@@ -410,7 +413,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={() => setShowPreview(prev => !prev)}
+            onClick={() => {
+              setShowPreview((prev) => {
+                const next = !prev;
+                if (next) setExpanded(true);
+                return next;
+              });
+            }}
             className="h-6 px-2 text-xs"
           >
             <Eye size={12} className="mr-1" />
@@ -422,7 +431,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             disabled={historyCount === 0}
             onClick={() => {
               if (historyCount === 0) return;
-              setShowHistory(prev => !prev);
+              setShowHistory((prev) => {
+                const next = !prev;
+                if (next) setExpanded(true);
+                return next;
+              });
             }}
             className={cn(
               'h-6 px-2 text-xs',
@@ -449,13 +462,6 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-foreground">{reflectionReport.summary}</span>
-                <button
-                  type="button"
-                  onClick={() => setReflectionReport(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {t('common:actions.close')}
-                </button>
               </div>
               {reflectionReport.proposals.length > 0 && (
                 <div className="divide-y divide-border/35">
@@ -619,7 +625,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
               <Input
                 value={newRuleText}
                 onChange={e => setNewRuleText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddRule(); } }}
+                onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { e.preventDefault(); void handleAddRule(); } }}
                 placeholder={t('settings:memory.kernel.addRulePlaceholder')}
                 className="h-8 text-xs flex-1 min-w-[200px]"
                 disabled={busy}
@@ -735,7 +741,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
                   <Input
                     value={newGoalText}
                     onChange={e => setNewGoalText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
+                    onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
                     placeholder={t('settings:memory.kernel.addGoalPlaceholder')}
                     className="h-7 text-xs flex-1"
                     disabled={busy}

@@ -999,7 +999,9 @@
     },
     "appPanel": {
       "hint": "已打开应用面板",
-      "close": "关闭"
+      "close": "关闭",
+      "restore": "展开右侧面板 ({{count}})",
+      "restoreTitle": "恢复已收起的右侧应用面板"
     },
     "sort": {
       "title": "排序方式",

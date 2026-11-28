@@ -1,9 +1,9 @@
 import type React from 'react';
 import { useCallback, useRef } from 'react';
 import type { CurrentView } from '@/types/navigation';
-import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getNavigationShortcutText } from '@/hooks/useNavigationShortcuts';
 import type { useWindowDrag } from '@/hooks/useWindowDrag';
+import { requestChatNewSession } from '@/features/chat/navigation/pendingChatNavigation';
 import {
   HEADER_HOTZONE_DRAG_THRESHOLD,
   clearHeaderHotzoneActivationTimer,
@@ -102,13 +102,9 @@ export function useDesktopTitlebarInteractions(
   const handleCreateChatSession = useCallback(() => {
     if (currentView !== 'chat-v2') {
       setCurrentView('chat-v2');
-      requestAnimationFrame(() => {
-        dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
-      });
-      return;
     }
 
-    dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
+    requestChatNewSession();
   }, [currentView, setCurrentView]);
   const openCommandPalette = useCallback(() => {
     commandPaletteTriggerRef.current?.();

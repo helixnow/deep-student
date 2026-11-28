@@ -83,6 +83,8 @@ import {
   AppMenuItem,
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { showArchiveSessionToast } from '@/features/chat/utils/archiveSessionToast';
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import {
@@ -338,6 +340,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const [sessionListLoadError, setSessionListLoadError] = useState<string | null>(null);
   const [isRetryingSessionList, setIsRetryingSessionList] = useState(false);
   const [workbenchModeEnabled, setWorkbenchModeEnabled] = useState(true);
+  const [isTogglingWorkbenchMode, setIsTogglingWorkbenchMode] = useState(false);
+  const workbenchModePendingRef = useRef(false);
   const draggedRecentGroupIdRef = useRef<string | null>(null);
   const draggedSessionIdRef = useRef<string | null>(null);
   const deleteConfirmResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -415,12 +419,26 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     };
   }, []);
 
-  const handleWorkbenchModeAction = useCallback(() => {
-    const nextEnabled = !workbenchModeEnabled;
-    setWorkbenchModeEnabled(nextEnabled);
-    void persistWorkbenchModeEnabled(nextEnabled).then((saved) => {
-      if (!saved) setWorkbenchModeEnabled(!nextEnabled);
-    });
+  const handleWorkbenchModeAction = useCallback(async () => {
+    if (workbenchModePendingRef.current) return;
+    const previousEnabled = workbenchModeEnabled;
+    const nextEnabled = !previousEnabled;
+    workbenchModePendingRef.current = true;
+    setIsTogglingWorkbenchMode(true);
+    try {
+      const saved = await persistWorkbenchModeEnabled(nextEnabled);
+      if (saved) {
+        setWorkbenchModeEnabled(nextEnabled);
+      } else {
+        setWorkbenchModeEnabled(previousEnabled);
+      }
+    } catch (error) {
+      setWorkbenchModeEnabled(previousEnabled);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      workbenchModePendingRef.current = false;
+      setIsTogglingWorkbenchMode(false);
+    }
   }, [workbenchModeEnabled]);
 
   useEffect(() => {
@@ -531,6 +549,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to toggle recent session pin:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, []);
 
@@ -643,6 +662,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       showArchiveSessionToast(t, 'chatV2');
     } catch (error) {
       console.warn('[ModernSidebar] Failed to archive recent session:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [activeSessionId, handleRecentSessionOpen, refreshSidebarData, recentSessions, t]);
@@ -683,6 +703,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to delete recent session:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [activeSessionId, handleRecentSessionOpen, recentSessions, refreshSidebarData, resetDeleteConfirmation, setRecentSessions, superSessionId]);
@@ -708,6 +729,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to move session to group:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [recentSessions, refreshSidebarData, setRecentSessions]);
@@ -810,6 +832,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to toggle recent group pin:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [refreshSidebarData, recentGroups]);
@@ -913,6 +936,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to reorder recent groups:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [clearRecentGroupDragState, moveRecentSessionToGroup, refreshSidebarData, setRecentGroups]);
@@ -958,10 +982,6 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       if (isNewSessionAction) {
         if (currentView !== view) {
           handleViewChange(view);
-          requestAnimationFrame(() => {
-            window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
-          });
-          return;
         }
 
         window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
@@ -1429,22 +1449,24 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 label: topicsSectionLabel,
                 action: (
                   <div className="flex items-center gap-1">
-                    <CommonTooltip content={toggleAllTopicsLabel} position="right">
-                      <DsButton
-                        variant="ghost"
-                        size="icon"
-                        iconOnly
-                        aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                        onClick={handleToggleAllTopicGroups}
-                      >
-                        {areAllTopicGroupsExpanded ? (
-                          <CaretDoubleUp className="size-3.5" strokeWidth={2} />
-                        ) : (
-                          <CaretDoubleDown className="size-3.5" strokeWidth={2} />
-                        )}
-                      </DsButton>
-                    </CommonTooltip>
+                    {topicSessionGroups.length > 0 ? (
+                      <CommonTooltip content={toggleAllTopicsLabel} position="right">
+                        <DsButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          aria-label={toggleAllTopicsLabel}
+                          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                          onClick={handleToggleAllTopicGroups}
+                        >
+                          {areAllTopicGroupsExpanded ? (
+                            <CaretDoubleUp className="size-3.5" strokeWidth={2} />
+                          ) : (
+                            <CaretDoubleDown className="size-3.5" strokeWidth={2} />
+                          )}
+                        </DsButton>
+                      </CommonTooltip>
+                    ) : null}
                     <CommonTooltip content={createTopicLabel} position="right">
                       <DsButton
                         variant="ghost"
@@ -1558,8 +1580,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
       {navigationScope === 'full' && settingsNavItem ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
-        <div className="relative flex items-center gap-1">
-          <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1">
+          <div className="relative min-w-0 flex-1">
             <SidebarRow
               rowType="nav"
               aria-label={t(settingsNavItem.labelKey)}
@@ -1571,6 +1593,36 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
             >
               <SidebarRowLabel>{t(settingsNavItem.labelKey)}</SidebarRowLabel>
             </SidebarRow>
+            {shouldShowUpdateBadge ? (
+              <button
+                type="button"
+                data-slot="sidebar-update-badge"
+                className="desktop-shell-update-badge absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void updater.performUpdateAction();
+                }}
+                aria-label={
+                  updater?.downloading
+                    ? updateProgressPercent === null
+                      ? t('sidebar:update.downloading')
+                      : `${t('sidebar:update.downloading')} ${updateProgressPercent}%`
+                    : updater?.readyToRelaunch
+                      ? t('sidebar:update.restart')
+                      : t('sidebar:update.available')
+                }
+                disabled={updater?.downloading}
+              >
+                {updater?.downloading ? (
+                  <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                    <CircleNotch size={10} className="animate-spin" />
+                    {updateProgressPercent === null ? null : <span>{updateProgressPercent}%</span>}
+                  </span>
+                ) : updater?.readyToRelaunch ? (
+                  t('sidebar:update.restart')
+                ) : t('sidebar:update.short')}
+              </button>
+            ) : null}
           </div>
           {!sidebarCollapsed && !isMobilePlatform() ? (
             <CommonTooltip
@@ -1590,42 +1642,12 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                     ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Study Desktop' })
                     : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })
                 }
-                onClick={handleWorkbenchModeAction}
+                disabled={isTogglingWorkbenchMode}
+                onClick={() => void handleWorkbenchModeAction()}
               >
                 <Desktop size={17} />
               </DsButton>
             </CommonTooltip>
-          ) : null}
-
-          {shouldShowUpdateBadge ? (
-            <button
-              type="button"
-              data-slot="sidebar-update-badge"
-              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
-              onClick={(event) => {
-                event.stopPropagation();
-                void updater.performUpdateAction();
-              }}
-              aria-label={
-                updater?.downloading
-                  ? updateProgressPercent === null
-                    ? t('sidebar:update.downloading')
-                    : `${t('sidebar:update.downloading')} ${updateProgressPercent}%`
-                  : updater?.readyToRelaunch
-                    ? t('sidebar:update.restart')
-                    : t('sidebar:update.available')
-              }
-              disabled={updater?.downloading}
-            >
-              {updater?.downloading ? (
-                <span className="inline-flex items-center gap-0.5" aria-hidden="true">
-                  <CircleNotch size={10} className="animate-spin" />
-                  {updateProgressPercent === null ? null : <span>{updateProgressPercent}%</span>}
-                </span>
-              ) : updater?.readyToRelaunch ? (
-                t('sidebar:update.restart')
-              ) : t('sidebar:update.short')}
-            </button>
           ) : null}
         </div>
       </div>

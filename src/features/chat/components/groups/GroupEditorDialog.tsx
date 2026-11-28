@@ -267,6 +267,9 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [dailyBudgetMinutes, setDailyBudgetMinutes] = useState<number>(
     STUDY_SPACE_DEFAULTS.dailyBudgetMinutes,
   );
+  const [dailyBudgetDraft, setDailyBudgetDraft] = useState<string>(
+    String(STUDY_SPACE_DEFAULTS.dailyBudgetMinutes),
+  );
   const [targetRetention, setTargetRetention] = useState<number>(
     STUDY_SPACE_DEFAULTS.targetRetention,
   );
@@ -315,9 +318,21 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     setExamDate(val);
   }, []);
 
+  const parseDailyBudgetMinutes = useCallback((raw: string, fallback: number): number => {
+    const trimmed = raw.trim();
+    if (!trimmed) return fallback;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(
+      STUDY_SPACE_DEFAULTS.maxDailyBudgetMinutes,
+      Math.max(STUDY_SPACE_DEFAULTS.minDailyBudgetMinutes, Math.round(parsed)),
+    );
+  }, []);
+
   const updateDailyBudgetMinutes = useCallback((val: number) => {
     touchedProfileFieldsRef.current.add('dailyBudgetMinutes');
     setDailyBudgetMinutes(val);
+    setDailyBudgetDraft(String(val));
   }, []);
 
   const updateTargetRetention = useCallback((val: number) => {
@@ -394,6 +409,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       };
       setExamDate(nextBaseline.examDate);
       setDailyBudgetMinutes(nextBaseline.dailyBudgetMinutes);
+      setDailyBudgetDraft(String(nextBaseline.dailyBudgetMinutes));
       setTargetRetention(nextBaseline.targetRetention);
       setDefaultDeckId(nextBaseline.defaultDeckId);
       setMemoryScope(nextBaseline.memoryScope);
@@ -417,6 +433,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             if (!touched.has('examDate')) setExamDate(synced.examDate);
             if (!touched.has('dailyBudgetMinutes')) {
               setDailyBudgetMinutes(synced.dailyBudgetMinutes);
+              setDailyBudgetDraft(String(synced.dailyBudgetMinutes));
             }
             if (!touched.has('targetRetention')) {
               setTargetRetention(synced.targetRetention);
@@ -456,6 +473,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     };
     setExamDate(defaultBaseline.examDate);
     setDailyBudgetMinutes(defaultBaseline.dailyBudgetMinutes);
+    setDailyBudgetDraft(String(defaultBaseline.dailyBudgetMinutes));
     setTargetRetention(defaultBaseline.targetRetention);
     setDefaultDeckId(defaultBaseline.defaultDeckId);
     setMemoryScope(defaultBaseline.memoryScope);
@@ -587,23 +605,24 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   }, [registryVersion]);
 
   const pinnedHighlightSet = useMemo(() => new Set(pinnedResourceIds), [pinnedResourceIds]);
+  const pinnedResourceIdsRef = useRef<string[]>(pinnedResourceIds);
+  pinnedResourceIdsRef.current = pinnedResourceIds;
 
   const togglePinnedResource = useCallback(
     (sourceId: string): 'added' | 'removed' | false => {
       const trimmed = sourceId.trim();
       if (!trimmed) return false;
-      const box = { result: 'added' as 'added' | 'removed' };
-      setPinnedResourceIds((prev) => {
-        if (prev.includes(trimmed)) {
-          box.result = 'removed';
-          return prev.filter((id) => id !== trimmed);
-        }
-        return [...prev, trimmed];
-      });
-      if (box.result === 'removed') {
+      const exists = pinnedResourceIdsRef.current.includes(trimmed);
+      const nextIds = exists
+        ? pinnedResourceIdsRef.current.filter((id) => id !== trimmed)
+        : [...pinnedResourceIdsRef.current, trimmed];
+      pinnedResourceIdsRef.current = nextIds;
+      setPinnedResourceIds(nextIds);
+      if (exists) {
         setResolvedPinnedRefs((prev) => prev.filter((r) => r.sourceId !== trimmed));
+        return 'removed';
       }
-      return box.result;
+      return 'added';
     },
     [],
   );
@@ -713,9 +732,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       return sortedLeft.every((value, index) => value === sortedRight[index]);
     };
 
+    const effectiveDailyBudget = parseDailyBudgetMinutes(dailyBudgetDraft, dailyBudgetMinutes);
     const profileDirty =
       examDate !== loadedProfileBaseline.examDate ||
-      dailyBudgetMinutes !== loadedProfileBaseline.dailyBudgetMinutes ||
+      effectiveDailyBudget !== loadedProfileBaseline.dailyBudgetMinutes ||
       Math.abs(targetRetention - loadedProfileBaseline.targetRetention) > 0.001 ||
       defaultDeckId !== loadedProfileBaseline.defaultDeckId ||
       memoryScope !== loadedProfileBaseline.memoryScope ||
@@ -735,6 +755,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     );
   }, [
     color,
+    dailyBudgetDraft,
     dailyBudgetMinutes,
     defaultDeckId,
     defaultRuntimeRootId,
@@ -747,6 +768,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     memoryScope,
     mode,
     name,
+    parseDailyBudgetMinutes,
     pinnedResourceIds,
     preferredProjectRootPath,
     systemPrompt,
@@ -769,9 +791,15 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     const cleanName = stripEmojiText(name) || name.trim();
     if (!cleanName) return;
     setIsSaving(true);
+    const resolvedDailyBudgetMinutes = parseDailyBudgetMinutes(
+      dailyBudgetDraft,
+      dailyBudgetMinutes,
+    );
+    setDailyBudgetMinutes(resolvedDailyBudgetMinutes);
+    setDailyBudgetDraft(String(resolvedDailyBudgetMinutes));
     const spaceDraft = {
       examDate: examDate && examDate.trim() ? examDate.trim() : null,
-      dailyBudgetMinutes,
+      dailyBudgetMinutes: resolvedDailyBudgetMinutes,
       targetRetention,
       workbenchLayoutPreset,
       defaultDeckId: defaultDeckId && defaultDeckId.trim() ? defaultDeckId.trim() : null,
@@ -836,6 +864,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           });
         }
       }
+      onClose();
     } catch (error: unknown) {
       useStudySpaceStore.getState().stageCreateProfileDraft(null);
       console.error('[GroupEditorPanel] Failed to save group:', getErrorMessage(error));
@@ -845,6 +874,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     }
   }, [
     color,
+    dailyBudgetDraft,
     dailyBudgetMinutes,
     defaultDeckId,
     defaultRuntimeRootId,
@@ -856,7 +886,9 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     memoryScope,
     mode,
     name,
+    onClose,
     onSubmit,
+    parseDailyBudgetMinutes,
     pinnedResourceIds,
     preferredProjectRootPath,
     resolvedRootFolderId,
@@ -870,8 +902,11 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     groupEditorSubmitRef.current = () => {
       if (isSaving) return;
       if (!name.trim()) {
+        setNameTouched(true);
         setActiveTab('general');
-        nameInputRef.current?.focus();
+        window.requestAnimationFrame(() => {
+          nameInputRef.current?.focus();
+        });
         return;
       }
       void handleSubmit();
@@ -1393,7 +1428,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                             hostId={FINDER_HOST_IDS.groupPicker}
                             sessionActive={pickerOpen}
                             commandsEnabled={false}
-                            onClose={() => setPickerOpen(false)}
                             onOpenApp={(item: ResourceListItem) => {
                               togglePinnedResource(item.id);
                             }}
@@ -1501,20 +1535,17 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     type="number"
                     min={STUDY_SPACE_DEFAULTS.minDailyBudgetMinutes}
                     max={STUDY_SPACE_DEFAULTS.maxDailyBudgetMinutes}
-                    value={dailyBudgetMinutes}
+                    value={dailyBudgetDraft}
                     onChange={(e) => {
-                      const parsed = Number(e.target.value);
-                      if (Number.isFinite(parsed)) {
-                        updateDailyBudgetMinutes(
-                          Math.min(
-                            STUDY_SPACE_DEFAULTS.maxDailyBudgetMinutes,
-                            Math.max(
-                              STUDY_SPACE_DEFAULTS.minDailyBudgetMinutes,
-                              Math.round(parsed),
-                            ),
-                          ),
-                        );
-                      }
+                      touchedProfileFieldsRef.current.add('dailyBudgetMinutes');
+                      setDailyBudgetDraft(e.target.value);
+                    }}
+                    onBlur={() => {
+                      const clamped = parseDailyBudgetMinutes(
+                        dailyBudgetDraft,
+                        dailyBudgetMinutes,
+                      );
+                      updateDailyBudgetMinutes(clamped);
                     }}
                     className="h-8 w-24 font-mono text-xs tabular-nums"
                   />

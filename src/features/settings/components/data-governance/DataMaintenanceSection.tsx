@@ -249,7 +249,10 @@ export const DataMaintenanceSection: React.FC = () => {
 
       <DsDialog
         open={showClearDataDialog}
-        onOpenChange={setShowClearDataDialog}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && isClearing) return;
+          setShowClearDataDialog(nextOpen);
+        }}
         maxWidth="max-w-md"
         closeOnOverlay={false}
         showClose={false}
@@ -333,7 +336,14 @@ export const DataMaintenanceSection: React.FC = () => {
               />
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                disabled={isClearing}
+                onClick={() => {
+                  if (!isClearing) setShowClearDataDialog(false);
+                }}
+              >
                 {t('data:clear_dialog.step2_cancel')}
               </DsButton>
               <DsButton

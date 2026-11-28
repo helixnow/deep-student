@@ -2,21 +2,37 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderPickerDialog } from '@/features/learning-hub/components/finder/FolderPickerDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { KB_SCOPE_PICKER_EVENT, setKbScope } from './kbScope';
 
-/** 挂在聊天页：「＋」菜单的「检索范围」打开文件夹选择器；选根目录 = 不限范围 */
-export const KbScopePickerHost: React.FC = () => {
+const mountedKbScopeHosts = new Set<symbol>();
+
+export interface KbScopePickerHostProps {
+  /** 懒挂载首次触发时直接打开该会话的选择器 */
+  initialSessionId?: string | null;
+}
+
+/** 挂在聊天页或桌面事件桥：「＋」菜单的「检索范围」打开文件夹选择器；选根目录 = 不限范围 */
+export const KbScopePickerHost: React.FC<KbScopePickerHostProps> = ({ initialSessionId = null }) => {
   const { t } = useTranslation('chatV2');
   const { isSmallScreen } = useBreakpoint();
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    mountedKbScopeHosts.size === 0 ? initialSessionId : null,
+  );
   useEffect(() => {
+    const token = Symbol('kb-scope-host');
+    mountedKbScopeHosts.add(token);
     const onOpen = (event: Event) => {
+      if (mountedKbScopeHosts.values().next().value !== token) return;
       const id = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
       if (id) setSessionId(id);
     };
     window.addEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
-    return () => window.removeEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
+    return () => {
+      mountedKbScopeHosts.delete(token);
+      window.removeEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
+    };
   }, []);
   return (
     <FolderPickerDialog
@@ -32,7 +48,7 @@ export const KbScopePickerHost: React.FC = () => {
           .then(() => showGlobalNotification('success', folderId
             ? t('inputBar.plusMenu.kbScopeSet', { defaultValue: '知识库只检索所选文件夹' })
             : t('inputBar.plusMenu.kbScopeCleared', { defaultValue: '知识库检索全部资料' })))
-          .catch((error) => showGlobalNotification('error', String(error)));
+          .catch((error) => showGlobalNotification('error', getErrorMessage(error)));
       }}
     />
   );

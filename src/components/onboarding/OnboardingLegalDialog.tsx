@@ -109,7 +109,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
         }
       }}
     >
-      <div className="absolute inset-0 bg-black/30" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-0 bg-black/30" aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"

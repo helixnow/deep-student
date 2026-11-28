@@ -333,10 +333,10 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
       }}
       onClick={handleOverlayClick}
     >
-      {/* 遮罩层 —— 极简，无 blur */}
+      {/* 遮罩层 —— 极简，无 blur；pointer-events-none 让点击穿透到外层处理 preview 关闭 */}
       <div
         className={cn(
-          'absolute inset-0 bg-foreground/25',
+          'pointer-events-none absolute inset-0 bg-foreground/25',
           'transition-opacity duration-200',
           mounted ? 'opacity-100' : 'opacity-0',
         )}

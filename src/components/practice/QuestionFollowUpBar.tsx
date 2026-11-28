@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { Cards, ChatCircleText, CopySimple, FileText, Play, Tag } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { Question } from '@/api/questionBankApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { requestFlashcardsDueRefresh } from '@/events/flashcards';
 import { ankiApiAdapter } from '@/services/ankiApiAdapter';
@@ -97,7 +98,9 @@ export const QuestionFollowUpBar: React.FC<{
   examId: string;
   userAnswer?: string;
   isCorrect?: boolean | null;
-}> = ({ question, examId, userAnswer, isCorrect }) => {
+  readOnly?: boolean;
+  sourceAvailable?: boolean;
+}> = ({ question, examId, userAnswer, isCorrect, readOnly = false, sourceAvailable = true }) => {
   const { t } = useTranslation('exam_sheet');
   const labels = {
     stem: t('followUp.stem', { defaultValue: '题目：' }),
@@ -133,12 +136,17 @@ export const QuestionFollowUpBar: React.FC<{
   };
 
   const [creatingCard, setCreatingCard] = useState(false);
-  const [selectedErrorReason, setSelectedErrorReason] = useState<string | null>(() => {
+  const [savingErrorReason, setSavingErrorReason] = useState(false);
+  const derivedErrorReason = useMemo(() => {
     const found = (question.tags ?? []).find((tag) =>
       tag.startsWith('错因:') || (ERROR_ATTRIBUTION_REASONS as readonly string[]).includes(tag),
     );
     return found ? found.replace(/^错因:/, '') : null;
-  });
+  }, [question.tags]);
+  const [selectedErrorReason, setSelectedErrorReason] = useState<string | null>(derivedErrorReason);
+  useEffect(() => {
+    setSelectedErrorReason(derivedErrorReason);
+  }, [question.id, derivedErrorReason]);
 
   const openSource = () => {
     if (!sourceId) return;
@@ -186,15 +194,18 @@ export const QuestionFollowUpBar: React.FC<{
         showGlobalNotification('error', t('followUp.flashcardFailed', { defaultValue: '转闪卡失败，请稍后重试' }));
       }
     } catch (err) {
-      showGlobalNotification('error', String(err));
+      showGlobalNotification('error', getErrorMessage(err));
     } finally {
       setCreatingCard(false);
     }
   };
 
   const handleToggleErrorReason = async (reason: string) => {
+    if (readOnly || !sourceAvailable || savingErrorReason) return;
+    const prevReason = selectedErrorReason;
     const nextReason = selectedErrorReason === reason ? null : reason;
     setSelectedErrorReason(nextReason);
+    setSavingErrorReason(true);
     try {
       const baseTags = (question.tags ?? []).filter(
         (tag) => !tag.startsWith('错因:') && !(ERROR_ATTRIBUTION_REASONS as readonly string[]).includes(tag),
@@ -207,6 +218,9 @@ export const QuestionFollowUpBar: React.FC<{
           record_history: false,
         },
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('qbank:refresh', { detail: { examId } }));
+      }
       showGlobalNotification(
         'success',
         nextReason
@@ -214,7 +228,10 @@ export const QuestionFollowUpBar: React.FC<{
           : t('followUp.errorTagCleared', { defaultValue: '已清除错因标记' }),
       );
     } catch (err) {
-      showGlobalNotification('error', String(err));
+      setSelectedErrorReason(prevReason);
+      showGlobalNotification('error', getErrorMessage(err));
+    } finally {
+      setSavingErrorReason(false);
     }
   };
 
@@ -227,16 +244,18 @@ export const QuestionFollowUpBar: React.FC<{
         <DsButton variant="ghost" size="sm" onClick={similar} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
           <CopySimple size={14} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
         </DsButton>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          disabled={creatingCard}
-          onClick={() => void handleCreateFlashcard()}
-          className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
-        >
-          <Cards size={14} aria-hidden="true" />
-          {t('followUp.toFlashcardAction', { defaultValue: '转闪卡' })}
-        </DsButton>
+        {!readOnly && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            disabled={creatingCard}
+            onClick={() => void handleCreateFlashcard()}
+            className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
+          >
+            <Cards size={14} aria-hidden="true" />
+            {t('followUp.toFlashcardAction', { defaultValue: '转闪卡' })}
+          </DsButton>
+        )}
         {mediaSource ? (
           <DsButton
             variant="ghost"
@@ -254,7 +273,7 @@ export const QuestionFollowUpBar: React.FC<{
           </DsButton>
         ) : null}
       </div>
-      {isCorrect === false && (
+      {isCorrect === false && !readOnly && sourceAvailable && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label={t('followUp.errorTagGroup', { defaultValue: '错因归因' })}>
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Tag size={12} aria-hidden="true" />
@@ -266,6 +285,7 @@ export const QuestionFollowUpBar: React.FC<{
               <button
                 key={reason}
                 type="button"
+                disabled={savingErrorReason}
                 aria-pressed={active}
                 onClick={() => void handleToggleErrorReason(reason)}
                 className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors [@media(pointer:coarse)]:min-h-9 ${

@@ -88,7 +88,7 @@ import {
 import { useLearningHubPageController } from './useLearningHubPageController';
 
 export const LearningHubPage: React.FC = () => {
-  const { activeAppType, activeSubviewChrome, activeTab, activeTabId, activeTabIdRef, appPanelRef, backNavStateRef, canInject, canInjectCurrentResource, canInjectCurrentResourceRef, centerViewTitle, closeOtherTabs, closeSplitView, closeTab, closeTabWithSplit, closeTabsToRight, commitCloseTabs, desktopShellHeaderTarget, desktopShellSidebarTarget, finderBreadcrumbs, finderCurrentPath, finderEnterFolder, finderGoUp, finderJumpToBreadcrumb, finderQuickAccessNavigate, finderQuickAccessType, finderRefresh, finderSearchQuery, finderSetSearchQuery, finderViewCapabilities, globalLeftPanelCollapsed, handleBreadcrumbNavigate, handleCloseApp, handleCloseAppRef, handleCreateAndOpen, handleInjectToChat, handleInjectToChatRef, handleNavigateToKnowledgeEvent, handleOpenApp, handleOpenEssayEvent, handleOpenExamEvent, handleOpenNoteEvent, handleOpenResourceEvent, handleOpenTranslationEvent, handleSidebarCollapsedChange, hasOpenApp, injectToChat, isInSubfolder, isInjecting, isLearningHubViewActive, isSmallScreen, localSidebarCollapsed, mobileGestureIgnoreSelector, mobileHeaderMenuOpen, mobileHeaderRightActions, navigateToMemory, notesChromeSlot, openActiveTabSettings, openSplitView, openTab, pendingCloseGateRef, pickNextActiveTab, prevHadTabsRef, requestCloseTab, requestCloseTabsBatch, resourceMenuContext, resourceMenuHost, restoredValidationDone, rootTitle, screenPosition, setActiveAppType, setActiveTabId, setIsFinderRefreshing, setLocalSidebarCollapsed, setMobileHeaderMenuOpen, setNotesChromeSlot, setResourceMenuHost, setScreenPosition, setSplitView, setTabReloadKeys, setTabs, sidebarCollapsed, sidebarPanelRef, splitView, splitViewRef, subviewChrome, subviewChromeHost, switchTab, t, tabReloadKeys, tabs, tabsRef, togglePinTab, updateTabTitle, useHostFinderStore } = useLearningHubPageController({ hasContentSaveHandler, saveContentNow });
+  const { activeAppType, activeSubviewChrome, activeTab, activeTabId, activeTabIdRef, appPanelCollapsed, appPanelRef, backNavStateRef, canInject, canInjectCurrentResource, canInjectCurrentResourceRef, centerViewTitle, closeOtherTabs, closeSplitView, closeTab, closeTabWithSplit, closeTabsToRight, commitCloseTabs, desktopShellHeaderTarget, desktopShellSidebarTarget, expandAppPanel, finderBreadcrumbs, finderCurrentPath, finderEnterFolder, finderGoUp, finderJumpToBreadcrumb, finderQuickAccessNavigate, finderQuickAccessType, finderRefresh, finderSearchQuery, finderSetSearchQuery, finderViewCapabilities, globalLeftPanelCollapsed, handleAppPanelCollapse, handleAppPanelDragging, handleAppPanelExpand, handleAppPanelResize, handleBreadcrumbNavigate, handleCloseAppRef, handleCreateAndOpen, handleInjectToChat, handleInjectToChatRef, handleNavigateToKnowledgeEvent, handleOpenApp, handleOpenEssayEvent, handleOpenExamEvent, handleOpenNoteEvent, handleOpenResourceEvent, handleOpenTranslationEvent, handleSidebarCollapsedChange, hasOpenApp, injectToChat, isAppPanelVisible, isInSubfolder, isInjecting, isLearningHubViewActive, isSmallScreen, localSidebarCollapsed, mobileGestureIgnoreSelector, mobileHeaderMenuOpen, mobileHeaderRightActions, navigateToMemory, notesChromeSlot, openActiveTabSettings, openSplitView, openTab, pendingCloseGateRef, pickNextActiveTab, prevHadTabsRef, requestCloseTab, requestCloseTabsBatch, resourceMenuContext, resourceMenuHost, restoredValidationDone, rootTitle, screenPosition, setActiveAppType, setActiveTabId, setIsFinderRefreshing, setLocalSidebarCollapsed, setMobileHeaderMenuOpen, setNotesChromeSlot, setResourceMenuHost, setScreenPosition, setSplitView, setTabReloadKeys, setTabs, sidebarCollapsed, sidebarPanelRef, splitView, splitViewRef, subviewChrome, subviewChromeHost, switchTab, t, tabReloadKeys, tabs, tabsRef, togglePinTab, updateTabTitle, useHostFinderStore } = useLearningHubPageController({ hasContentSaveHandler, saveContentNow });
 
   if (isSmallScreen) {
     return (
@@ -210,7 +210,7 @@ export const LearningHubPage: React.FC = () => {
           order={1}
           className="h-full min-h-0 overflow-hidden"
         >
-          <div className={cn("study-shell-pane study-shell-pane--flush-top h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
+          <div className={cn("study-shell-pane study-shell-pane--flush-top h-full min-h-0 overflow-hidden", isAppPanelVisible && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
               hostId={FINDER_HOST_IDS.page}
@@ -221,9 +221,9 @@ export const LearningHubPage: React.FC = () => {
               className="w-full h-full"
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={() => handleSidebarCollapsedChange(!sidebarCollapsed)}
-              activeFileId={activeTab?.resourceId}
-              hasOpenApp={hasOpenApp}
-              onCloseApp={handleCloseApp}
+              activeFileId={isAppPanelVisible ? activeTab?.resourceId : null}
+              collapsedAppTabCount={appPanelCollapsed && hasOpenApp ? tabs.length : 0}
+              onRestoreAppPanel={expandAppPanel}
               quickAccessPortalTarget={desktopShellSidebarTarget}
               toolbarPortalTarget={desktopShellHeaderTarget}
               toolbarPortalMode="shell"
@@ -236,6 +236,7 @@ export const LearningHubPage: React.FC = () => {
             ::after 范式对 react-resizable-panels 的 rect 命中检测不生效 */}
         {hasOpenApp && (
           <PanelResizeHandle
+            onDragging={handleAppPanelDragging}
             hitAreaMargins={{ coarse: 19, fine: 5 }}
             className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50"
           >
@@ -250,6 +251,9 @@ export const LearningHubPage: React.FC = () => {
           minSize={40}
           collapsible={true}
           collapsedSize={0}
+          onCollapse={handleAppPanelCollapse}
+          onExpand={handleAppPanelExpand}
+          onResize={handleAppPanelResize}
           id="learning-hub-app"
           order={2}
           className="h-full min-h-0 overflow-hidden"

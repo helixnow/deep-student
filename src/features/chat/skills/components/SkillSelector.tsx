@@ -171,11 +171,13 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   const handleToggleActivate = useCallback(
     (skillId: string) => {
       if (disabled) return;
-      // 停用的技能不可被激活；仍允许取消先前的激活状态
-      if (isSkillDisabledNow(skillId) && !activeSkillIds.includes(skillId)) return;
+      const skill = allSkills.find((item) => item.id === skillId);
+      const isUntrusted = Boolean(skill && !skill.isBuiltin && resolveEffectiveTrustStatus(skill) === 'untrusted');
+      // 停用或未受信任的技能不可被激活；仍允许取消先前的激活状态
+      if ((isSkillDisabledNow(skillId) || isUntrusted) && !activeSkillIds.includes(skillId)) return;
       onToggleSkill(skillId);
     },
-    [disabled, onToggleSkill, activeSkillIds, isSkillDisabledNow]
+    [disabled, allSkills, onToggleSkill, activeSkillIds, isSkillDisabledNow]
   );
 
   const isSkillActive = useCallback(
@@ -295,6 +297,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     return (
       <ComposerPanel.Row
         key={skill.id}
+        interactiveSlots={!isMenuVariant}
         selected={isMenuVariant ? isActiveSkill : isSelected}
         selectedAccent="tinted"
         onClick={() => {
@@ -732,17 +735,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 {isSkillDisabledNow(selectedSkill.id) ? (
                   <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-2xs text-muted-foreground">
                     <span>{t('skills:selector.disabled_hint')}</span>
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEnableSkill(selectedSkill.id)}
-                      className={cn(
-                        '!h-auto !min-h-0 !min-w-0 !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline',
-                        coarseHitClassFor24,
-                      )}
-                    >
-                      {t('skills:selector.enable')}
-                    </DsButton>
                   </div>
                 ) : null}
 
@@ -904,11 +896,18 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   variant={isSkillActive(selectedSkill.id) ? 'primary' : 'default'}
                   size="md"
                   onClick={() => handleToggleActivate(selectedSkill.id)}
-                  disabled={disabled || (isSkillDisabledNow(selectedSkill.id) && !isSkillActive(selectedSkill.id))}
+                  disabled={
+                    disabled
+                    || ((isSkillDisabledNow(selectedSkill.id)
+                      || (!selectedSkill.isBuiltin && resolveEffectiveTrustStatus(selectedSkill) === 'untrusted'))
+                      && !isSkillActive(selectedSkill.id))
+                  }
                   title={
                     isSkillDisabledNow(selectedSkill.id) && !isSkillActive(selectedSkill.id)
                       ? t('skills:selector.disabled_hint')
-                      : undefined
+                      : (!selectedSkill.isBuiltin && resolveEffectiveTrustStatus(selectedSkill) === 'untrusted' && !isSkillActive(selectedSkill.id))
+                        ? t('skills:trust.untrusted_hint', { defaultValue: '请先信任该技能后再激活' })
+                        : undefined
                   }
                   className="w-full [@media(pointer:coarse)]:!min-h-11"
                 >

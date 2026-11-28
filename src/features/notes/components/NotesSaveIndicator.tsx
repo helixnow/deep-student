@@ -117,7 +117,7 @@ export const NotesSaveIndicator: React.FC<NotesSaveIndicatorProps> = ({
                     variant="ghost"
                     size="sm"
                     className="h-5 px-1.5 text-xs text-destructive underline underline-offset-2 hover:text-destructive/90"
-                    onClick={() => { void onRetrySave(); }}
+                    onClick={() => { void Promise.resolve(onRetrySave()).catch(() => {}); }}
                 >
                     {t('notes:editor.save_status.retry')}
                 </DsButton>

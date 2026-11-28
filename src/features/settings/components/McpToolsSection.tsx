@@ -11,11 +11,12 @@
  */
 
 import '../styles/mcp-preset-oauth.css';
-import { useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, WifiSlash, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
@@ -102,6 +103,25 @@ export function McpToolsSection({
   const [testingServerId, setTestingServerId] = useState<string | null>(null);
   // 权限区默认折叠：仅用户展开后挂载（IO 预取会被短列表 + rootMargin 立刻触发，无效）
   const [permissionsExpanded, setPermissionsExpanded] = useState(false);
+  const pendingSectionTarget = useSettingsShellStore((state) => state.pendingSectionTarget);
+  const consumeSettingsSection = useSettingsShellStore((state) => state.consumeSettingsSection);
+
+  useEffect(() => {
+    if (isLoading || pendingSectionTarget?.section !== 'tool-permissions') return;
+    if (!permissionsExpanded) {
+      setPermissionsExpanded(true);
+      return;
+    }
+    const { requestId } = pendingSectionTarget;
+    const rafId = window.requestAnimationFrame(() => {
+      document.getElementById('settings-tool-permissions')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+      consumeSettingsSection(requestId);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isLoading, pendingSectionTarget, permissionsExpanded, consumeSettingsSection]);
 
   // stdio 测试步骤 → 可读标签映射
   const testStepLabel = useMemo(() => {

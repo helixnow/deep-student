@@ -30,6 +30,7 @@ export const FailedTasksPanel: React.FC<{
   const { t } = useTranslation('anki');
   const [tasks, setTasks] = useState<DocumentTaskSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -41,12 +42,18 @@ export const FailedTasksPanel: React.FC<{
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const failed = await listFailedDocumentTasks(documentId);
-      if (aliveRef.current) setTasks(failed);
+      if (aliveRef.current) {
+        setTasks(failed);
+        setLoadError(null);
+      }
     } catch (err: unknown) {
       debugLog.error('[AnkiTasks] loadFailedTasks failed:', err);
-      if (aliveRef.current) setTasks([]);
+      if (aliveRef.current) {
+        setLoadError(getErrorMessage(err));
+      }
     } finally {
       if (aliveRef.current) setLoading(false);
     }
@@ -100,12 +107,37 @@ export const FailedTasksPanel: React.FC<{
     return t('taskDashboard.statusFailed');
   };
 
-  if (loading && tasks === null) {
+  if (loading && tasks === null && !loadError) {
     return (
       <div className="wb-at-failed-panel">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <CircleNotch size={13} className="animate-spin" />
           {t('tasks.loadingFailures')}
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && (!tasks || tasks.length === 0)) {
+    return (
+      <div className="wb-at-failed-panel" role="alert">
+        <div className="flex items-center gap-2">
+          <WarningCircle size={15} weight="fill" className="text-destructive flex-shrink-0" />
+          <span className="text-xs text-destructive flex-1 min-w-0 break-words">
+            {loadError}
+          </span>
+          <DsButton
+            size="sm"
+            variant="ghost"
+            onClick={() => { void loadTasks(); }}
+            disabled={loading}
+            className="h-6 text-xs flex-shrink-0"
+          >
+            {loading
+              ? <CircleNotch size={12} className="animate-spin" />
+              : <ArrowCounterClockwise size={12} />}
+            {t('taskDashboard.retry')}
+          </DsButton>
         </div>
       </div>
     );
@@ -118,6 +150,26 @@ export const FailedTasksPanel: React.FC<{
 
   return (
     <div className="wb-at-failed-panel" role="alert">
+      {loadError && (
+        <div className="mb-1.5 flex items-center gap-2">
+          <WarningCircle size={14} weight="fill" className="text-destructive flex-shrink-0" />
+          <span className="text-xs text-destructive flex-1 min-w-0 break-words">
+            {loadError}
+          </span>
+          <DsButton
+            size="sm"
+            variant="ghost"
+            onClick={() => { void loadTasks(); }}
+            disabled={loading}
+            className="h-6 text-xs flex-shrink-0"
+          >
+            {loading
+              ? <CircleNotch size={12} className="animate-spin" />
+              : <ArrowCounterClockwise size={12} />}
+            {t('taskDashboard.retry')}
+          </DsButton>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <WarningCircle size={15} weight="fill" className="text-warning flex-shrink-0" />
         <span className="text-xs font-medium text-warning flex-1 min-w-0">

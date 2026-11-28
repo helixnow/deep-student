@@ -496,8 +496,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       if (keymap === 'classic') {
         commitText();
         const newId = addNode(node.id, 0);
-        if (node.collapsed) toggleCollapse(node.id);
-        setTimeout(() => setFocusedNodeId(newId), 0);
+        if (newId) setTimeout(() => setFocusedNodeId(newId), 0);
       } else {
         setIsEditingNote(true);
       }
@@ -524,8 +523,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       }
       commitText();
       const newId = addNode(node.id, 0);
-      if (node.collapsed) toggleCollapse(node.id);
-      setTimeout(() => setFocusedNodeId(newId), 0);
+      if (newId) setTimeout(() => setFocusedNodeId(newId), 0);
       return;
     }
 

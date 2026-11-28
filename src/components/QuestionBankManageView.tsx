@@ -319,9 +319,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
     
     setBatchPanel(null);
     if (action === 'delete') {
+      setResetConfirmOpen(false);
+      setSingleResetId(null);
       setSingleDeleteId(null);
       setDeleteConfirmOpen(true);
     } else if (action === 'reset') {
+      setDeleteConfirmOpen(false);
+      setSingleDeleteId(null);
       setSingleResetId(null);
       setResetConfirmOpen(true);
     }
@@ -395,13 +399,17 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
     }
   }, [onBatchUpdateTags, batchTagInput, selectedIds, t]);
   
-  // 单个操作点击（显示确认对话框）
+  // 单个操作点击（显示确认对话框，互斥关闭另一确认条避免双态重叠）
   const handleSingleDeleteClick = useCallback((id: string) => {
+    setResetConfirmOpen(false);
+    setSingleResetId(null);
     setSingleDeleteId(id);
     setDeleteConfirmOpen(true);
   }, []);
   
   const handleSingleResetClick = useCallback((id: string) => {
+    setDeleteConfirmOpen(false);
+    setSingleDeleteId(null);
     setSingleResetId(id);
     setResetConfirmOpen(true);
   }, []);
@@ -600,7 +608,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           </div>
         ) : questions.length === 0 ? (
           <div className="ui-rise-in flex flex-col items-center justify-center h-full text-muted-foreground">
-            {(filters.search || filters.status || filters.difficulty) ? (
+            {(filters.search || filters.status || filters.difficulty || Boolean(filters.questionType?.length)) ? (
               <>
                 <MagnifyingGlass size={28} className="mb-3 opacity-40" />
                 <p className="text-sm">

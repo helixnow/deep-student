@@ -34,6 +34,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onClick();

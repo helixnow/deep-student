@@ -51,6 +51,7 @@ import {
 // 🆕 缺口 4: 完整视图打开的调试埋点
 import { logViewFullSession } from '../../debug/subagentTestPlugin';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   preheatSubagentSession,
@@ -599,22 +600,21 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       }
     };
   }, []);
-  const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true);
-        if (copyResetTimerRef.current !== undefined) {
-          window.clearTimeout(copyResetTimerRef.current);
-        }
-        copyResetTimerRef.current = window.setTimeout(() => {
-          setCopied(false);
-          copyResetTimerRef.current = undefined;
-        }, 2000);
-      },
-      (error: unknown) => {
-        console.warn('[SubagentEmbed] Failed to copy final result:', error);
+  const handleCopy = useCallback(async (text: string) => {
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      if (copyResetTimerRef.current !== undefined) {
+        window.clearTimeout(copyResetTimerRef.current);
       }
-    );
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copyResetTimerRef.current = undefined;
+      }, 2000);
+    } catch (error: unknown) {
+      console.warn('[SubagentEmbed] Failed to copy final result:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, []);
 
   // 终态状态图标（进行中由 ToolActivitySweep + TextShimmer 表达，不做旋转图标）

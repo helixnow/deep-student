@@ -14,7 +14,7 @@
  * shared/notes → FolderPickerDialog 链路不进 PDF 主 chunk。
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Export, Highlighter, NotePencil, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -60,6 +60,16 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
   const [activeColors, setActiveColors] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftComment, setDraftComment] = useState('');
+
+  const prevResourcePathRef = useRef(resourcePath);
+  useEffect(() => {
+    if (prevResourcePathRef.current === resourcePath) return;
+    prevResourcePathRef.current = resourcePath;
+    setQuery('');
+    setActiveColors([]);
+    setEditingId(null);
+    setDraftComment('');
+  }, [resourcePath]);
 
   const sorted = useMemo(() => sortHighlightsForList(highlights), [highlights]);
   const colors = useMemo(() => collectHighlightColors(sorted), [sorted]);

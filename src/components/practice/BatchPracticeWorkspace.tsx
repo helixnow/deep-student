@@ -1697,10 +1697,13 @@ export default function BatchPracticeWorkspace({
                   </div>
                 )}
                 <QuestionFollowUpBar
+                  key={question.id}
                   question={question}
                   examId={current.exam_id || attempt.scope_id}
                   userAnswer={answers[question.id]}
                   isCorrect={result?.is_correct}
+                  readOnly={readOnly}
+                  sourceAvailable={result?.source_available !== false}
                 />
               </div>
             )}
@@ -1725,17 +1728,9 @@ export default function BatchPracticeWorkspace({
             {t('editor.prevQuestion')}
           </DsButton>
           <div className="flex flex-col items-center gap-0.5">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              aria-expanded={sheetOpen}
-              aria-label={t('batch.answerSheet')}
-              onClick={() => setSheetOpen(!sheetOpen)}
-              className="!px-2.5 font-mono text-xs tabular-nums text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
-            >
-              <ListNumbers size={14} aria-hidden="true" />
+            <span className="px-2.5 font-mono text-xs tabular-nums text-muted-foreground">
               {index + 1} / {questions.length}
-            </DsButton>
+            </span>
             {!isSmallScreen && (
               <span className="hidden lg:inline text-2xs text-muted-foreground/60">
                 {attempt ? t('batch.inlineReviewNavHint') : t('batch.inlineNavHint')}

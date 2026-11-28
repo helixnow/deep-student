@@ -9,6 +9,8 @@ import {
 import type { SettingsSectionRegistration, SettingsSectionRenderProps } from '@/ui-kernel/contracts/settings';
 import type { SurfaceIcon } from '@/ui-kernel/contracts/surfaces';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import {
   connectMeshWorkbenchPlugin,
   useAgentMeshWorkbenchStore,
@@ -76,7 +78,12 @@ export function mountAgentMeshPlugin(ctx: Context): void {
         const store = useAgentMeshWorkbenchStore.getState();
         const sessionId = composer.sessionId || store.activeSessionId || 'default-session';
         const goal = composer.input.trim();
-        await store.initializeSwarm({ chatSessionId: sessionId, goal });
+        try {
+          await store.initializeSwarm({ chatSessionId: sessionId, goal });
+        } catch (error) {
+          showGlobalNotification('error', getErrorMessage(error));
+          return;
+        }
         if (goal) {
           composer.send(`[蜂群协作目标] ${goal}`);
         } else {
@@ -104,13 +111,18 @@ export function mountAgentMeshPlugin(ctx: Context): void {
             store.workbench.selectedRosterName ??
             members.find((m) => m.rosterName !== target && m.rosterName !== 'deepstudent')?.rosterName ??
             'claude';
-          await store.handoffMemberToCli({
-            chatSessionId: sessionId,
-            fromRosterName: fromRoster,
-            targetAgentId: target,
-            summary: rest || undefined,
-            nextTask: rest || undefined,
-          });
+          try {
+            await store.handoffMemberToCli({
+              chatSessionId: sessionId,
+              fromRosterName: fromRoster,
+              targetAgentId: target,
+              summary: rest || undefined,
+              nextTask: rest || undefined,
+            });
+          } catch (error) {
+            showGlobalNotification('error', getErrorMessage(error));
+            return;
+          }
           composer.setInput('');
           return;
         }

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
@@ -39,9 +39,22 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const exportingBusyRef = useRef(false);
+  const [renamingBusy, setRenamingBusy] = useState(false);
+  const renamingBusyRef = useRef(false);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const deletingBusyRef = useRef(false);
   const [format, setFormat] = useState<'pdf' | 'word' | 'markdown'>('pdf');
   const [answers, setAnswers] = useState(true);
   const [explanations, setExplanations] = useState(true);
+  useEffect(() => {
+    setSelected(null);
+    setCreating(false);
+    setRenaming(null);
+    setTitle('');
+    setDeleting(null);
+    setError(null);
+  }, [examId]);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([practiceApi.papers(examId), practiceApi.list(examId, false), practiceApi.list(examId, true)])
@@ -60,6 +73,8 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
     };
   }, [examId, revision]);
   const exportPaper = async (paper: GeneratedPaper) => {
+    if (exportingBusyRef.current) return;
+    exportingBusyRef.current = true;
     setBusy(true);
     try {
       const { exportPaperToFile } = await import('./paperExport');
@@ -71,6 +86,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
     } catch (error) {
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
+      exportingBusyRef.current = false;
       setBusy(false);
     }
   };
@@ -209,12 +225,19 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                       className="flex flex-wrap gap-2"
                       onSubmit={async (e) => {
                         e.preventDefault();
+                        const trimmedTitle = title.trim();
+                        if (!trimmedTitle || renamingBusyRef.current) return;
+                        renamingBusyRef.current = true;
+                        setRenamingBusy(true);
                         try {
-                          await practiceApi.updatePaper(paper.id, title, false);
+                          await practiceApi.updatePaper(paper.id, trimmedTitle, false);
                           setRenaming(null);
                           setRevision((r) => r + 1);
                         } catch (error) {
                           setError(getErrorMessage(error));
+                        } finally {
+                          renamingBusyRef.current = false;
+                          setRenamingBusy(false);
                         }
                       }}
                     >
@@ -223,12 +246,13 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                         className="min-w-0 flex-1 rounded-lg border border-border/50 bg-background px-2.5 py-1 text-sm"
                         value={title}
                         maxLength={200}
+                        disabled={renamingBusy}
                         onChange={(e) => setTitle(e.target.value)}
                       />
-                      <DsButton type="submit" size="sm">
+                      <DsButton type="submit" size="sm" disabled={renamingBusy || !title.trim()}>
                         {t('common:save')}
                       </DsButton>
-                      <DsButton variant="ghost" size="sm" onClick={() => setRenaming(null)}>
+                      <DsButton variant="ghost" size="sm" disabled={renamingBusy} onClick={() => setRenaming(null)}>
                         {t('common:cancel')}
                       </DsButton>
                     </form>
@@ -263,6 +287,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                       variant="ghost"
                       size="icon"
                       iconOnly
+                      disabled={renamingBusy || deletingBusy}
                       aria-label={t('batch.rename')}
                       title={t('batch.rename')}
                       onClick={() => {
@@ -276,6 +301,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                       variant="ghost"
                       size="icon"
                       iconOnly
+                      disabled={renamingBusy || deletingBusy}
                       aria-label={t('common:delete')}
                       title={t('common:delete')}
                       onClick={() => setDeleting(paper.id)}
@@ -289,19 +315,26 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                     <span className="mr-auto text-xs text-muted-foreground">
                       {t('batch.deletePaper')}
                     </span>
-                    <DsButton variant="ghost" size="sm" onClick={() => setDeleting(null)}>
+                    <DsButton variant="ghost" size="sm" disabled={deletingBusy} onClick={() => setDeleting(null)}>
                       {t('common:cancel')}
                     </DsButton>
                     <DsButton
                       variant="danger"
                       size="sm"
+                      disabled={deletingBusy}
                       onClick={async () => {
+                        if (deletingBusyRef.current) return;
+                        deletingBusyRef.current = true;
+                        setDeletingBusy(true);
                         try {
                           await practiceApi.updatePaper(paper.id, null, true);
                           setDeleting(null);
                           setRevision((r) => r + 1);
                         } catch (error) {
                           setError(getErrorMessage(error));
+                        } finally {
+                          deletingBusyRef.current = false;
+                          setDeletingBusy(false);
                         }
                       }}
                     >

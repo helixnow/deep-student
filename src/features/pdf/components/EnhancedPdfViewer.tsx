@@ -156,6 +156,7 @@ const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
 
 // 框选提问覆盖层：点了「框选提问」才加载
 const PdfRegionCapture = React.lazy(() => import('./PdfRegionCapture'));
+const ImageOcclusionBuilderModal = React.lazy(() => import('@/components/anki/occlusion/ImageOcclusionBuilderModal'));
 const PdfPageMarginBacklinks = React.lazy(() => import('./PdfPageMarginBacklinks'));
 const PdfPinnedRegionsOverlay = React.lazy(() => import('./PdfPinnedRegionsOverlay'));
 
@@ -1065,6 +1066,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setShowPaperGuideMenu(false);
     setShowHighlightMenu(false);
     setPendingHighlight(null);
+    setActiveHighlightId(null);
+    setActiveHighlightAnchor(null);
     locateRefTokenRef.current++;
     setIsLocatingRef(false);
     jumpHistoryRef.current = EMPTY_JUMP_HISTORY;
@@ -2215,10 +2218,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 将划词翻译 / AI 学术精读结果一键钉入当前选区对应的高亮批注：
   // 若该页已有同文高亮则追加/更新其批注；若尚未高亮则利用选区坐标快照自动补建黄色高亮并写入批注。
   const handlePinToAnnotation = useCallback(
-    (payload: { sourceText: string; noteText: string; page?: number }) => {
-      if (!canPersistAnnotations) return;
+    (payload: { sourceText: string; noteText: string; page?: number }): boolean => {
+      if (!canPersistAnnotations) return false;
       const cleanNote = payload.noteText.trim();
-      if (!cleanNote) return;
+      if (!cleanNote) return false;
       const snapshot = lastSelectionSnapshotRef.current;
       const targetPage = payload.page ?? snapshot?.pageIndex ?? currentPageRef.current;
       const cleanSource = normalizePdfAcademicText(payload.sourceText) || payload.sourceText.trim();
@@ -2242,7 +2245,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           }),
         );
         showGlobalNotification('success', t('pdf:annotations.pinned_to_annotation'));
-        return;
+        return true;
       }
 
       const snapshotMatches =
@@ -2267,7 +2270,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         };
         setHighlights((prev) => [...prev, created]);
         showGlobalNotification('success', t('pdf:annotations.pinned_to_annotation'));
+        return true;
       }
+      showGlobalNotification(
+        'warning',
+        t('pdf:annotations.pin_selection_unavailable', {
+          defaultValue: '请先在未旋转的页面重新选中对应文本后再钉入批注',
+        }),
+      );
+      return false;
     },
     [canPersistAnnotations, highlights, rotation, setHighlights, t],
   );
@@ -5150,6 +5161,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const renderHighlightList = (onNavigate?: () => void) => (
     <React.Suspense fallback={null}>
       <PdfAnnotationsPanel
+        key={resourcePath ?? 'pdf'}
         highlights={highlights}
         fileName={fileName}
         resourcePath={resourcePath}
@@ -5676,6 +5688,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID。 */}
       <React.Suspense fallback={null}>
         <PdfSelectionActions
+          key={resourcePath ?? fileName ?? 'pdf'}
           containerRef={containerRef}
           enabled={resolvedEnableTextSelection}
           isMobileLike={isMobileLike}
@@ -6000,9 +6013,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </DsButton>
             </>
           )}
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
-            <Copy size={16} />
-          </DsButton>
           <DsButton
             variant="ghost"
             size="icon"
@@ -6345,9 +6355,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       <LinkSimple size={15} />
                     </DsButton>
                   )}
-                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm ds-pdf__sidebar-close" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
-                    <X size={14} />
-                  </DsButton>
+                  {!chromeVisible && (
+                    <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm ds-pdf__sidebar-close" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
+                      <X size={14} />
+                    </DsButton>
+                  )}
                 </div>
 
                 {/* 目录 */}
@@ -6795,6 +6807,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
+      {/* 区域截选遮挡制卡弹窗（模块级单例栈，确保 PDF 内点击「遮挡制卡」总有活跃监听） */}
+      <React.Suspense fallback={null}>
+        <ImageOcclusionBuilderModal defaultDeckName={fileName.replace(/\.pdf$/i, '') || undefined} />
+      </React.Suspense>
     </div>
   );
 };

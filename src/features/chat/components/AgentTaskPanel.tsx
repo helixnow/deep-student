@@ -230,6 +230,9 @@ export const AgentTaskPanel: React.FC<Props> = ({
   const [workspacePage, setWorkspacePage] = useState<RuntimeDirectoryPage | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [browserDownloads, setBrowserDownloads] = useState<BrowserDownloadObservation[]>([]);
+  const workspaceRequestSeqRef = useRef(0);
+  const downloadsRequestSeqRef = useRef(0);
+  const prevSessionIdRef = useRef(sessionId);
 
   const loadWorkspacePage = useCallback(async (
     relativePath = '',
@@ -237,6 +240,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
     append = false,
   ) => {
     if (!sessionId) return;
+    const reqSeq = ++workspaceRequestSeqRef.current;
     setWorkspaceLoading(true);
     try {
       const page = await listRuntimeDirectory({
@@ -246,13 +250,17 @@ export const AgentTaskPanel: React.FC<Props> = ({
         cursor,
         limit: 40,
       });
+      if (workspaceRequestSeqRef.current !== reqSeq) return;
       setWorkspacePage((previous) => append && previous
         ? { ...page, entries: [...previous.entries, ...page.entries] }
         : page);
     } catch {
+      if (workspaceRequestSeqRef.current !== reqSeq) return;
       setWorkspacePage(null);
     } finally {
-      setWorkspaceLoading(false);
+      if (workspaceRequestSeqRef.current === reqSeq) {
+        setWorkspaceLoading(false);
+      }
     }
   }, [sessionId]);
 
@@ -377,10 +385,23 @@ export const AgentTaskPanel: React.FC<Props> = ({
 
   useEffect(() => {
     if (!expanded || !sessionId || (has && isAllDone !== true)) return;
+    let cancelled = false;
+    const reqSeq = ++downloadsRequestSeqRef.current;
     void loadWorkspacePage();
     void listTaskBrowserDownloads(sessionId)
-      .then(setBrowserDownloads)
-      .catch(() => setBrowserDownloads([]));
+      .then((downloads) => {
+        if (cancelled || downloadsRequestSeqRef.current !== reqSeq) return;
+        setBrowserDownloads(downloads);
+      })
+      .catch(() => {
+        if (cancelled || downloadsRequestSeqRef.current !== reqSeq) return;
+        setBrowserDownloads([]);
+      });
+    return () => {
+      cancelled = true;
+      workspaceRequestSeqRef.current += 1;
+      downloadsRequestSeqRef.current += 1;
+    };
   }, [expanded, has, isAllDone, loadWorkspacePage, sessionId]);
 
   /**
@@ -491,6 +512,20 @@ export const AgentTaskPanel: React.FC<Props> = ({
   // 只在「进入 running 的步骤发生变化」时展开一次：原实现把 expanded 放进条件里，
   // 用户在步骤仍在 running 时手动折叠会被立刻重新展开，面板收不起来。
   const lastAutoExpandStepRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevSessionIdRef.current === sessionId) return;
+    prevSessionIdRef.current = sessionId;
+    workspaceRequestSeqRef.current += 1;
+    downloadsRequestSeqRef.current += 1;
+    setExpanded(false);
+    setOpenArtifactId(null);
+    setDagDrawerOpen(false);
+    setWorkspaceExpanded(false);
+    setWorkspacePage(null);
+    setWorkspaceLoading(false);
+    setBrowserDownloads([]);
+    lastAutoExpandStepRef.current = null;
+  }, [sessionId]);
   useEffect(() => {
     if (!has || !streaming) return;
     // ★ 高-2 修复：小屏不自动展开（展开态面板会把输入栏挤出视口），

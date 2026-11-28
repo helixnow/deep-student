@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { isWebUiShell } from '@/utils/platform';
 
@@ -86,10 +87,7 @@ export const resolveChatReadiness = async (
 };
 
 export const triggerOpenSettingsModels = (): void => {
+  setPendingSettingsTab('models');
   dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
-
-  // 等待 Settings 页面挂载后切换到模型分配 tab。
-  window.setTimeout(() => {
-    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
-  }, 120);
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
 };

@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
+import { readTextFromClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -179,6 +180,7 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
   const [expandedVendors, setExpandedVendors] = useState<Record<string, boolean>>({});
   const [autoAssignEmptySlots, setAutoAssignEmptySlots] = useState(true);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanSeqRef = useRef(0);
 
   const clearDebounceTimer = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -187,7 +189,10 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
     }
   }, []);
 
-  useEffect(() => clearDebounceTimer, [clearDebounceTimer]);
+  useEffect(() => () => {
+    clearDebounceTimer();
+    scanSeqRef.current += 1;
+  }, [clearDebounceTimer]);
 
   const hydrateSelectionsFromReport = useCallback((nextReport: ExternalLlmScanReport) => {
     const nextVendorChecked: Record<string, boolean> = {};
@@ -223,10 +228,12 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
   const runScan = useCallback(
     async (params?: { textInput?: string | null; filePath?: string | null }) => {
       clearDebounceTimer();
+      const seq = ++scanSeqRef.current;
       setScanning(true);
       setScanError(null);
       try {
         const result = await scanExternalLlmConfigs(params);
+        if (seq !== scanSeqRef.current) return null;
         setReport(result);
         hydrateSelectionsFromReport(result);
         if (params?.textInput !== undefined && params.textInput !== null) {
@@ -242,10 +249,13 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
         }
         return result;
       } catch (err) {
+        if (seq !== scanSeqRef.current) return null;
         setScanError(getErrorMessage(err));
         return null;
       } finally {
-        setScanning(false);
+        if (seq === scanSeqRef.current) {
+          setScanning(false);
+        }
       }
     },
     [clearDebounceTimer, hydrateSelectionsFromReport],
@@ -271,6 +281,8 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
       clearDebounceTimer();
       const trimmed = nextVal.trim();
       if (!trimmed) {
+        scanSeqRef.current += 1;
+        setScanning(false);
         setLastParsedPasteText('');
         setReport(null);
         return;
@@ -286,17 +298,19 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
   );
 
   const handleReadClipboard = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) return;
     try {
-      const clip = (await navigator.clipboard.readText()).trim();
-      if (!clip) return;
+      const clip = (await readTextFromClipboard())?.trim() ?? '';
+      if (!clip) {
+        showGlobalNotification('info', t('settings:external_import.paste_empty_title'));
+        return;
+      }
       setActiveTab('paste');
       setPasteText(clip);
       await runScan({ textInput: clip });
     } catch (err) {
       setScanError(getErrorMessage(err));
     }
-  }, [runScan]);
+  }, [runScan, t]);
 
   const handlePickFile = useCallback(async () => {
     try {
@@ -568,6 +582,8 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
             } else if (pasteText.trim()) {
               void runScan({ textInput: pasteText });
             } else {
+              scanSeqRef.current += 1;
+              setScanning(false);
               setReport(null);
             }
           }}
@@ -626,17 +642,15 @@ export const ExternalToolImportPanel: React.FC<ExternalToolImportPanelProps> = (
               {t('settings:external_import.paste_hint')}
             </span>
             <div className="flex items-center gap-1">
-              {typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText) && (
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  disabled={scanning || importing}
-                  onClick={() => void handleReadClipboard()}
-                >
-                  <ClipboardText size={13} />
-                  <span>{t('settings:external_import.actions.paste_clipboard')}</span>
-                </DsButton>
-              )}
+              <DsButton
+                variant="ghost"
+                size="sm"
+                disabled={scanning || importing}
+                onClick={() => void handleReadClipboard()}
+              >
+                <ClipboardText size={13} />
+                <span>{t('settings:external_import.actions.paste_clipboard')}</span>
+              </DsButton>
               <DsButton
                 variant="ghost"
                 size="sm"

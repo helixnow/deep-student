@@ -3,9 +3,11 @@
  */
 
 import i18next from 'i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { workbenchBus } from '@/features/workbench';
 import { getTodayLearningSnapshot } from '@/features/learning-today/todayLearningStore';
 import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
+import { fileManager } from '@/utils/fileManager';
 import type { GenerativeActionDefinition } from '../types';
 
 /** Fallback labels resolve on read so module-level handler maps follow language switches. */
@@ -35,8 +37,14 @@ export interface WorkbenchLearningHandlerLabels {
   reviewMistakes?: string;
 }
 
+export interface WorkbenchLearningHandlerOptions {
+  getPlanMarkdown?: () => string | null | undefined;
+  planTitle?: string;
+}
+
 export function createWorkbenchLearningHandlers(
   labels: WorkbenchLearningHandlerLabels = {},
+  options?: WorkbenchLearningHandlerOptions,
 ): Record<string, GenerativeActionDefinition> {
   return {
     'start-review': {
@@ -72,6 +80,23 @@ export function createWorkbenchLearningHandlers(
       get label() { return labels.exportPlan ?? fallbackLabel('research.actions.export_plan', '导出计划'); },
       riskLevel: 'medium',
       handler: async () => {
+        const markdown = options?.getPlanMarkdown?.()?.trim();
+        if (markdown) {
+          const base = (options?.planTitle?.trim() || 'study-plan').replace(/[\\/:*?"<>|]+/g, '_');
+          const fileName = `${base}.md`;
+          const result = await fileManager.saveTextFile({
+            title: fileName,
+            defaultFileName: fileName,
+            content: markdown,
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+          });
+          if (result?.canceled) return;
+          showGlobalNotification(
+            'success',
+            i18next.t('chatV2:codeBlock.saved', { defaultValue: '已保存' }),
+          );
+          return;
+        }
         workbenchBus.launch({ typeId: 'files', reason: 'api' });
       },
     },

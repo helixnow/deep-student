@@ -8,6 +8,7 @@ import { newPracticeId, type CreatePracticeRequest } from '@/api/practiceApi';
 import { Z_INDEX } from '@/config/zIndex';
 import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { refreshTodayLearning } from '@/features/learning-today/todayLearningStore';
 import { MISTAKE_REDO_SESSION_KEY } from './useMistakeRedoSession';
 
@@ -43,13 +44,18 @@ export default function MistakeRedoOverlay({
   const installFlush = useCallback((flush: (() => Promise<void>) | null) => {
     flushRef.current = flush;
   }, []);
+  const closingRef = useRef(false);
   const close = useCallback(async () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     try {
       await flushRef.current?.();
       onClose();
       void refreshTodayLearning();
     } catch {
       // The workspace displays the save failure and retains the answers.
+    } finally {
+      closingRef.current = false;
     }
   }, [onClose]);
 
@@ -62,11 +68,33 @@ export default function MistakeRedoOverlay({
     [close],
   );
 
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'keydown',
+        listener: (event) => {
+          if (!(event instanceof KeyboardEvent)) return;
+          if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+          if (document.querySelectorAll('[role="dialog"]').length > 1) return;
+          event.preventDefault();
+          void close();
+        },
+      },
+    ],
+    [close],
+  );
+
   return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/40 p-0 sm:p-6"
       style={{ zIndex: Z_INDEX.modal }}
       data-testid="mistake-redo"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          void close();
+        }
+      }}
     >
       <div
         ref={dialogRef}

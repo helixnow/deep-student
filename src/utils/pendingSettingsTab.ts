@@ -21,9 +21,12 @@ declare global {
 
 let pendingTabTimer: ReturnType<typeof setTimeout> | null = null;
 
+export type PendingSettingsSection = 'tool-permissions';
+
 export interface PendingSettingsRoute {
   tab: SettingsTabId;
   dataGovernanceTab?: string;
+  section?: PendingSettingsSection;
 }
 
 const armPendingRouteExpiry = (): void => {
@@ -52,11 +55,14 @@ export function setPendingSettingsRoute(route: PendingSettingsRoute): void {
   const dataGovernanceTab = typeof route.dataGovernanceTab === 'string'
     ? route.dataGovernanceTab.trim()
     : '';
+  const section = route.section === 'tool-permissions' ? route.section : undefined;
 
   window.__dsPendingSettingsTab = tab;
-  window.__dsPendingSettingsRoute = dataGovernanceTab
-    ? { tab, dataGovernanceTab }
-    : { tab };
+  window.__dsPendingSettingsRoute = {
+    tab,
+    ...(dataGovernanceTab ? { dataGovernanceTab } : {}),
+    ...(section ? { section } : {}),
+  };
 
   armPendingRouteExpiry();
 }
@@ -78,10 +84,13 @@ export function consumePendingSettingsRoute(): PendingSettingsRoute | null {
   const dataGovernanceTab = typeof route?.dataGovernanceTab === 'string'
     ? route.dataGovernanceTab.trim()
     : '';
+  const section = route?.section === 'tool-permissions' ? route.section : undefined;
 
-  return dataGovernanceTab
-    ? { tab, dataGovernanceTab }
-    : { tab };
+  return {
+    tab,
+    ...(dataGovernanceTab ? { dataGovernanceTab } : {}),
+    ...(section ? { section } : {}),
+  };
 }
 
 export function consumePendingSettingsTab(): SettingsTabId | null {

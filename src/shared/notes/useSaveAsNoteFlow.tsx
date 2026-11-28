@@ -26,7 +26,8 @@
  *   窄屏同样走 fixed 承载 + 统一顶栏隔离；返回键/返回箭头回到目录选择步骤
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { NotePencil } from '@phosphor-icons/react';
 import { MobileSubviewChromeProvider } from '@/components/layout';
@@ -60,6 +61,8 @@ export interface SaveAsNoteFolderPickerProps {
   onConfirmAppend?: (note: AppendTargetNote) => void;
   /** 追加步骤的标题 */
   appendTitle?: string;
+  /** 正在保存/追加时防止重复提交 */
+  isSaving?: boolean;
 }
 
 export interface SaveAsNoteFlow {
@@ -85,6 +88,7 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
   const { isSmallScreen } = useBreakpoint();
   const [pending, setPending] = useState<SaveAsNoteRequest | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   const openSource = options?.openSource;
   const onSaved = options?.onSaved;
@@ -96,47 +100,64 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
   }, []);
 
   const handleOpenChange = useCallback((open: boolean) => {
-    if (!open) setPending(null);
+    if (!open && !isSavingRef.current) {
+      setPending(null);
+    }
   }, []);
 
-  const handleConfirm = useCallback((folderId: string | null) => {
+  const handleConfirm = useCallback(async (folderId: string | null) => {
+    if (isSavingRef.current) return;
     const request = pending;
-    setPending(null);
     if (!request) return;
+    isSavingRef.current = true;
     setIsSaving(true);
-    void saveTextAsNoteAndNotify(
-      { content: request.content, title: request.title, tags: request.tags, folderId, origin: request.origin },
-      { openSource },
-    ).then((result) => {
-      setIsSaving(false);
+    try {
+      const result = await saveTextAsNoteAndNotify(
+        { content: request.content, title: request.title, tags: request.tags, folderId, origin: request.origin },
+        { openSource },
+      );
+      if (result.ok) {
+        setPending(null);
+      }
       onSaved?.(result);
-    });
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
   }, [pending, openSource, onSaved]);
 
   // 追加：只写正文（来源行随正文），origin 仅用于补聊天来源行，不改目标笔记 _origin
-  const handleConfirmAppend = useCallback((note: AppendTargetNote) => {
+  const handleConfirmAppend = useCallback(async (note: AppendTargetNote) => {
+    if (isSavingRef.current) return;
     const request = pending;
-    setPending(null);
     if (!request) return;
+    isSavingRef.current = true;
     setIsSaving(true);
-    void appendTextToNoteAndNotify(
-      { noteId: note.id, content: request.content, origin: request.origin, title: request.title },
-      { openSource },
-    ).then((result) => {
-      setIsSaving(false);
+    try {
+      const result = await appendTextToNoteAndNotify(
+        { noteId: note.id, content: request.content, origin: request.origin, title: request.title },
+        { openSource },
+      );
+      if (result.ok) {
+        setPending(null);
+      }
       onAppended?.(result);
-    });
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
   }, [pending, openSource, onAppended]);
 
   const pickerProps = useMemo<SaveAsNoteFolderPickerProps>(() => ({
     open: pending !== null,
     onOpenChange: handleOpenChange,
-    onConfirm: handleConfirm,
-    onConfirmAppend: handleConfirmAppend,
+    onConfirm: (folderId) => { void handleConfirm(folderId); },
+    onConfirmAppend: (note) => { void handleConfirmAppend(note); },
     title: t('chatV2:selectionToolbar.saveAsNotePickFolder', '选择保存目录'),
     appendTitle: t('chatV2:selectionToolbar.appendToNote', '追加到已有笔记'),
     inline: isSmallScreen,
-  }), [pending, handleOpenChange, handleConfirm, handleConfirmAppend, t, isSmallScreen]);
+    isSaving,
+  }), [pending, handleOpenChange, handleConfirm, handleConfirmAppend, t, isSmallScreen, isSaving]);
 
   return { start, isSaving, pickerProps };
 }
@@ -159,6 +180,7 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
   inline,
   onConfirmAppend,
   appendTitle,
+  isSaving = false,
 }) => {
   const { t } = useTranslation('chatV2');
   // 每次打开都从「新建笔记」开始：默认行为不变，追加是显式选择
@@ -175,6 +197,7 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
     <DsButton
       variant="ghost"
       size="sm"
+      disabled={isSaving}
       onClick={() => setMode('append')}
       className="gap-1.5 px-2 max-w-full"
     >
@@ -191,6 +214,7 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
       onBack={backToCreate}
       onCancel={cancelAll}
       onConfirm={onConfirmAppend}
+      isSaving={isSaving}
     />
   ) : (
     <FolderPickerDialog
@@ -205,13 +229,19 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
   );
 
   if (inline) {
-    return (
+    const overlay = (
       <MobileSubviewChromeProvider value={null}>
-        <div className="fixed inset-0 z-[var(--z-modal,1200)]">
+        <div
+          className="fixed inset-0 z-[var(--z-modal,1200)] bg-background"
+          style={{
+            paddingTop: 'var(--mobile-safe-area-top, var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
+          }}
+        >
           {body}
         </div>
       </MobileSubviewChromeProvider>
     );
+    return typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay;
   }
 
   return body;

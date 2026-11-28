@@ -4,6 +4,10 @@ import { fileManager } from '@/utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { getErrorMessage } from '@/utils/errorUtils';
+import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { getCollapsedMaxHeight, HTML_PREVIEW_STREAM_INTERVAL_MS } from './ChatHtmlPreview';
 import { repairPartialHtml, wrapSandboxRunHtmlWithRuntimeGuard } from './chatHtmlPreviewDocument';
 import { WidgetStreamFrame } from './WidgetStreamFrame';
@@ -831,6 +835,8 @@ export interface InteractiveHtmlCanvasProps {
   onPinToCanvas?: (payload: { html: string; title: string; widgetId: string }) => void;
   /** 存入当前学习空间动作回调 */
   onSaveToSpace?: (payload: { html: string; title: string; widgetId: string }) => void;
+  /** 存入学习空间进行中时禁用按钮 */
+  saveToSpaceDisabled?: boolean;
   /** 外部容器尺寸/视口变化信号：触发 iframe 重新测量高度并重置滚动 */
   remeasureKey?: string | number;
   className?: string;
@@ -937,6 +943,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   externalVersion,
   onPinToCanvas,
   onSaveToSpace,
+  saveToSpaceDisabled = false,
   remeasureKey,
   className,
 }) => {
@@ -1330,6 +1337,56 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   const [patchReplace, setPatchReplace] = useState('');
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
+  const [isDownloadingHtml, setIsDownloadingHtml] = useState(false);
+  const downloadingHtmlRef = useRef(false);
+
+  // 当 widgetId / messageId 切换时重置局部编辑与反馈状态，避免跨画板残留脏态
+  const prevIdentityRef = useRef<{ widgetId?: string; messageId?: string }>({
+    widgetId,
+    messageId,
+  });
+  useEffect(() => {
+    if (
+      prevIdentityRef.current.widgetId === widgetId &&
+      prevIdentityRef.current.messageId === messageId
+    ) {
+      return;
+    }
+    prevIdentityRef.current = { widgetId, messageId };
+    setUndoStack([]);
+    setRevision(1);
+    setFeedbackEnvelope(null);
+    setEditInstruction('');
+    setPatchSearch('');
+    setPatchReplace('');
+    setEditError('');
+  }, [widgetId, messageId]);
+
+  // 展开态支持 Escape 与 Android 系统返回键关闭
+  useEventRegistry(
+    isExpandedView
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            listener: (event) => {
+              if ((event as KeyboardEvent).key === 'Escape') {
+                event.preventDefault();
+                setIsExpandedView(false);
+              }
+            },
+          },
+        ]
+      : [],
+    [isExpandedView],
+  );
+  useEffect(() => {
+    if (!isExpandedView) return;
+    return registerBackHandler(() => {
+      setIsExpandedView(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isExpandedView]);
 
   const effectiveExpanded = expanded || isExpandedView;
   const collapsedMax = getCollapsedMaxHeight();
@@ -1507,6 +1564,29 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
     workTitle?.trim() ||
     (!onSubmit && title && !DEFAULT_INTERNAL_TITLES.has(title) ? title.trim() : '');
 
+  const handleDownloadHtml = useCallback(async () => {
+    if (downloadingHtmlRef.current) return;
+    downloadingHtmlRef.current = true;
+    setIsDownloadingHtml(true);
+    try {
+      const fileBase = (displayTitle || workTitle?.trim() || title || 'canvas').replace(/[\\/:*?"<>|]+/g, '_');
+      const fileName = `${fileBase}.html`;
+      const result = await fileManager.saveTextFile({
+        title: fileName,
+        defaultFileName: fileName,
+        content: localHtml,
+        filters: [{ name: 'HTML', extensions: ['html', 'htm'] }],
+      });
+      if (result?.canceled) return;
+      showGlobalNotification('success', t('chatV2:codeBlock.saved', { defaultValue: '已保存' }));
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err));
+    } finally {
+      downloadingHtmlRef.current = false;
+      setIsDownloadingHtml(false);
+    }
+  }, [displayTitle, localHtml, t, title, workTitle]);
+
   const showStreamFirstFrame = streaming || !executableReady;
 
   return (
@@ -1631,6 +1711,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              disabled={saveToSpaceDisabled}
               onClick={() =>
                 onSaveToSpace({
                   html: localHtml,
@@ -1638,7 +1719,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                   widgetId: ownerKey,
                 })
               }
-              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
               data-testid="canvas-save-space-button"
             >
               <FolderSimplePlus size={13} className="shrink-0" />
@@ -1849,17 +1930,9 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      const fileBase = (displayTitle || workTitle?.trim() || title || 'canvas').replace(/[\\/:*?"<>|]+/g, '_');
-                      const fileName = `${fileBase}.html`;
-                      void fileManager.saveTextFile({
-                        title: fileName,
-                        defaultFileName: fileName,
-                        content: localHtml,
-                        filters: [{ name: 'HTML', extensions: ['html', 'htm'] }],
-                      });
-                    }}
-                    className="!h-auto inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 !px-2 !py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
+                    disabled={isDownloadingHtml}
+                    onClick={() => void handleDownloadHtml()}
+                    className="!h-auto inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 !px-2 !py-0.5 text-xs text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                     data-testid="canvas-download-html-button"
                   >
                     <DownloadSimple size={12} className="shrink-0" />

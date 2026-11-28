@@ -999,7 +999,9 @@
     },
     "appPanel": {
       "hint": "App panel is open",
-      "close": "Close"
+      "close": "Close",
+      "restore": "Show panel ({{count}})",
+      "restoreTitle": "Restore collapsed right panel"
     },
     "sort": {
       "title": "Sort by",

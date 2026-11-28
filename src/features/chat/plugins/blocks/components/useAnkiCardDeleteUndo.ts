@@ -164,6 +164,10 @@ export function useAnkiCardDeleteUndo({
             );
           },
           onResult: ({ failed }) => {
+            if (pendingDeleteRef.current === pending) {
+              pendingDeleteRef.current = null;
+              setPendingDelete(null);
+            }
             if (failed.length > 0) {
               showGlobalNotification('warning', tAnki('chatBlock.deleteCommitFailed'));
             }

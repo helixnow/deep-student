@@ -616,8 +616,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       selectedIndices: number[],
       customText: string | null,
       source: string
-    ) => {
-      if (hasResponded || isResponding || isResolved) return;
+    ): Promise<boolean> => {
+      if (hasResponded || isResponding || isResolved) return false;
 
       setIsResponding(true);
       setSubmitError(null);
@@ -635,6 +635,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           source,
         });
         setHasResponded(true);
+        return true;
       } catch (error: unknown) {
         console.error('[AskUserBlock] Failed to send response:', error);
         // P0 修复：提交失败时不再伪装成功；回滚乐观状态并展示可重试的错误
@@ -648,6 +649,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               ? error.message
               : '';
         setSubmitError(detail);
+        return false;
       } finally {
         setIsResponding(false);
       }
@@ -817,9 +819,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               html={htmlCanvas}
               title={panelTitle || question || 'interactive-decision-canvas'}
               answer={parsedAnswerData}
-              onSubmit={(data, summary) =>
-                handleSubmit([summary], [], JSON.stringify(data), 'mixed')
-              }
+              onSubmit={(data, summary) => {
+                void handleSubmit([summary], [], JSON.stringify(data), 'mixed');
+              }}
             />
           ) : uiSource ? (
             <OpenUILangRenderer

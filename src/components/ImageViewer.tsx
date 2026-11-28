@@ -273,7 +273,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [isOpen, images.length]);
 
   // Touch gesture support (pinch-to-zoom & single-finger drag)
   useEffect(() => {
@@ -355,7 +355,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       container.removeEventListener('touchend', onTouchEnd);
       container.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [isCropMode]);
+  }, [isCropMode, isOpen, images.length]);
 
   // FIX BUG-5: Crop drag — use document-level listeners for robust tracking
   const cropCleanupRef = useRef<(() => void) | null>(null);
@@ -553,8 +553,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     }}
 />
                 )}
-                {/* 裁剪模式提示 & 操作 */}
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-xs backdrop-blur-sm z-30">
+                {/* 裁剪模式提示 & 操作：阻断 pointerdown 冒泡，防止触发外层 handleCropPointerDown 吞掉确认/取消点击 */}
+                <div
+                  className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-xs backdrop-blur-sm z-30"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
                   <span>{t('common:imageViewer.crop_hint')}</span>
                   {cropRect && !isCropping && Math.abs(cropRect.endX - cropRect.startX) > 5 && (
                     <DsButton
@@ -690,48 +693,52 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {internalIndex + 1} / {images.length}
           </span>
           <div className="modern-viewer-divider" />
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label={t('common:imageViewer.zoom_out')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={isCropMode} onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label={t('common:imageViewer.zoom_out')}>
             <MagnifyingGlassMinus size={16} />
           </DsButton>
           <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label={t('common:imageViewer.zoom_in')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={isCropMode} onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label={t('common:imageViewer.zoom_in')}>
             <MagnifyingGlassPlus size={16} />
           </DsButton>
           <div className="modern-viewer-divider" />
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label={t('common:imageViewer.rotate_ccw')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={isCropMode} onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label={t('common:imageViewer.rotate_ccw')}>
             <ArrowCounterClockwise size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label={t('common:imageViewer.rotate_title')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={isCropMode} onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label={t('common:imageViewer.rotate_title')}>
             <ArrowClockwise size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label={t('common:imageViewer.reset_title')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={isCropMode} onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label={t('common:imageViewer.reset_title')}>
             <House size={16} />
           </DsButton>
-          <div className="modern-viewer-divider" />
-          {/* 裁剪 */}
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={() => {
-              if (isCropMode) {
-                setIsCropMode(false);
-                setCropRect(null);
-              } else {
-                setIsCropMode(true);
-                setScale(1);
-                setRotation(0);
-                setPosition({ x: 0, y: 0 });
-              }
-            }}
-            className={`modern-viewer-icon-button ${isCropMode ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
-            title={t('common:imageViewer.crop')}
-            aria-label={t('common:imageViewer.crop')}
-          >
-            <Crop size={16} />
-          </DsButton>
+          {onCrop && (
+            <>
+              <div className="modern-viewer-divider" />
+              {/* 裁剪 */}
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => {
+                  if (isCropMode) {
+                    setIsCropMode(false);
+                    setCropRect(null);
+                  } else {
+                    setIsCropMode(true);
+                    setScale(1);
+                    setRotation(0);
+                    setPosition({ x: 0, y: 0 });
+                  }
+                }}
+                className={`modern-viewer-icon-button ${isCropMode ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
+                title={t('common:imageViewer.crop')}
+                aria-label={t('common:imageViewer.crop')}
+              >
+                <Crop size={16} />
+              </DsButton>
+            </>
+          )}
           {/* OCR 文字面板切换 */}
           {ocrTexts && (
             <DsButton

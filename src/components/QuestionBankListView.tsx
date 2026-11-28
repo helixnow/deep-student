@@ -2144,6 +2144,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               <DsButton
                 variant="primary"
                 size="sm"
+                disabled={paginatedQuestions.length === 0}
                 onClick={() => handleQuestionClick(0)}
                 className="!h-7 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 rounded-lg border-primary/40 bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 gap-1 flex-shrink-0"
               >

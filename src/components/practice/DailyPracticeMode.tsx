@@ -122,13 +122,28 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   const setDailyTarget = useCallback((value: number) => {
     setTargetConfig({ examId, value });
   }, [examId]);
+  const [targetDraftConfig, setTargetDraftConfig] = useState(() => ({
+    examId,
+    raw: String(readStoredDailyTarget(examId)),
+  }));
+  const dailyTargetDraft = targetDraftConfig.examId === examId
+    ? targetDraftConfig.raw
+    : String(dailyTarget);
+  const setDailyTargetDraft = useCallback((raw: string) => {
+    setTargetDraftConfig({ examId, raw });
+  }, [examId]);
+  const parseDraftNumber = useCallback((raw: string): number => (
+    raw.trim() === '' ? Number.NaN : Number(raw)
+  ), []);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const calendarRequestSeqRef = useRef(0);
 
   // 题目集切换时恢复该题目集的目标；目标变化时落盘
   useEffect(() => {
-    setDailyTarget(readStoredDailyTarget(examId));
-  }, [examId, setDailyTarget]);
+    const stored = readStoredDailyTarget(examId);
+    setDailyTarget(stored);
+    setDailyTargetDraft(String(stored));
+  }, [examId, setDailyTarget, setDailyTargetDraft]);
   useEffect(() => {
     writeStoredDailyTarget(examId, dailyTarget);
   }, [examId, dailyTarget]);
@@ -162,9 +177,14 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   
   // 开始每日一练
   const handleStart = useCallback(async () => {
+    const committedTarget = normalizeDailyTarget(parseDraftNumber(dailyTargetDraft));
+    if (committedTarget !== dailyTarget) {
+      setDailyTarget(committedTarget);
+    }
+    setDailyTargetDraft(String(committedTarget));
     const isCurrent = beginRequest();
     try {
-      const result = await getDailyPractice(examId, dailyTarget);
+      const result = await getDailyPractice(examId, committedTarget);
       if (!isCurrent() || useQuestionBankStore.getState().dailyPractice !== result) return;
       onStart?.(result);
     } catch (err: unknown) {
@@ -172,7 +192,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('daily.startError'));
     }
-  }, [examId, dailyTarget, getDailyPractice, onStart, t, beginRequest]);
+  }, [examId, dailyTarget, dailyTargetDraft, setDailyTarget, setDailyTargetDraft, parseDraftNumber, getDailyPractice, onStart, t, beginRequest]);
   
   // 切换月份
   const handlePrevMonth = useCallback(() => {
@@ -317,14 +337,14 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 type="number"
                 min={5}
                 max={50}
-                value={dailyTarget}
+                value={dailyTargetDraft}
                 onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === '') return;
-                  setDailyTarget(normalizeDailyTarget(Number(raw)));
+                  setDailyTargetDraft(e.target.value);
                 }}
-                onBlur={(e) => {
-                  setDailyTarget(normalizeDailyTarget(Number(e.target.value)));
+                onBlur={() => {
+                  const next = normalizeDailyTarget(parseDraftNumber(dailyTargetDraft));
+                  setDailyTarget(next);
+                  setDailyTargetDraft(String(next));
                 }}
                 className="w-24 text-center text-sm font-medium [@media(pointer:coarse)]:!min-h-11"
 />
@@ -335,7 +355,10 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     variant={dailyTarget === n ? 'default' : 'outline'}
                     size="sm"
                     className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                    onClick={() => setDailyTarget(n)}
+                    onClick={() => {
+                      setDailyTarget(n);
+                      setDailyTargetDraft(String(n));
+                    }}
                   >
                     {n}
                   </DsButton>

@@ -821,6 +821,8 @@ export const MediaAskTab: React.FC<{
     return () => window.clearInterval(timer);
   }, [ctx, isVisible]);
 
+  const [anchorDismissed, setAnchorDismissed] = useState(false);
+
   const activeChapterIdx = useMemo(
     () => chapterIndexAt(ctx.chapters, playheadSeconds),
     [ctx.chapters, playheadSeconds],
@@ -839,6 +841,10 @@ export const MediaAskTab: React.FC<{
     [activeChapterTitle, ctx.resourceId, name, playheadSeconds],
   );
 
+  const handleClearAnchor = useCallback(() => {
+    setAnchorDismissed(true);
+  }, []);
+
   const handleCompanionAsk = useCallback(
     async (payload: {
       text: string;
@@ -847,7 +853,8 @@ export const MediaAskTab: React.FC<{
       history: CompanionQaTurn[];
       requestId: string;
     }) => {
-      const latestSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
+      const rawTime = ctx.getCurrentTime();
+      const latestSeconds = Number.isFinite(rawTime) ? Math.max(0, Math.floor(rawTime)) : 0;
       setPlayheadSeconds((prev) => (prev === latestSeconds ? prev : latestSeconds));
       return askMediaCompanionQa({
         ctx: {
@@ -856,7 +863,7 @@ export const MediaAskTab: React.FC<{
           hasTranscript: ctx.hasTranscript,
           segments: ctx.segments,
           chapters: ctx.chapters,
-          currentTimeSeconds: latestSeconds,
+          currentTimeSeconds: payload.anchor ? latestSeconds : undefined,
         },
         question: payload.text,
         history: payload.history,
@@ -882,7 +889,8 @@ export const MediaAskTab: React.FC<{
         className="flex flex-col gap-2 px-3 py-2 sm:py-3"
       >
         <MediaCompanionQaCard
-          anchor={miniChatAnchor}
+          anchor={anchorDismissed ? null : miniChatAnchor}
+          onClearAnchor={handleClearAnchor}
           defaultMinimized={false}
           expandSignal={isVisible}
           className="max-w-none"

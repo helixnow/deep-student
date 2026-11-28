@@ -41,6 +41,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { listAnkiLibraryCards } from '@/utils/chatApi';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { summarizeCardMedia } from '../cardMathPreview';
@@ -1089,22 +1090,30 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   const stageCsvPreviewFile = useCallback(async (file: File) => {
     if (importing) return;
-    const rawText = typeof (file as { text?: unknown }).text === 'function'
-      ? await file.text()
-      : await new Response(file).text();
-    stageCsvPreviewText(rawText, file.name || 'flashcards.csv', file);
+    try {
+      const rawText = typeof (file as { text?: unknown }).text === 'function'
+        ? await file.text()
+        : await new Response(file).text();
+      stageCsvPreviewText(rawText, file.name || 'flashcards.csv', file);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [importing, stageCsvPreviewText]);
 
   const pickCsvForPreview = useCallback(async () => {
     if (importing) return;
-    const { fileManager, extractFileName } = await import('@/utils/fileManager');
-    const path = await fileManager.pickSingleFile({
-      title: translate('library.import.csvPickTitle'),
-      filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
-    });
-    if (!path) return;
-    const rawText = await fileManager.readTextFile(path);
-    stageCsvPreviewText(rawText, extractFileName(path) || path);
+    try {
+      const { fileManager, extractFileName } = await import('@/utils/fileManager');
+      const path = await fileManager.pickSingleFile({
+        title: translate('library.import.csvPickTitle'),
+        filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
+      });
+      if (!path) return;
+      const rawText = await fileManager.readTextFile(path);
+      stageCsvPreviewText(rawText, extractFileName(path) || path);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [importing, translate, stageCsvPreviewText]);
 
   const handleImportApkg = useCallback(() => {
@@ -1408,21 +1417,20 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   const creationActions = (
     <>
-      <DsButton
-        type="button"
-        variant={composerOpen ? 'default' : 'primary'}
-        iconOnly={isSmallScreen}
-        aria-label={composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
-        onClick={() => {
-          if (composerOpen) setComposerOpen(false);
-          else openComposerWithDefaultDeck();
-        }}
-        aria-expanded={composerOpen}
-        className="fc-lib-create-cta text-sm"
-      >
-        {composerOpen ? <X size={18} /> : <Plus size={18} />}
-        {!isSmallScreen && (composerOpen ? translate('library.create.cancel') : translate('library.create.new'))}
-      </DsButton>
+      {!composerOpen && (
+        <DsButton
+          type="button"
+          variant="primary"
+          iconOnly={isSmallScreen}
+          aria-label={translate('library.create.new')}
+          onClick={openComposerWithDefaultDeck}
+          aria-expanded={false}
+          className="fc-lib-create-cta text-sm"
+        >
+          <Plus size={18} />
+          {!isSmallScreen && translate('library.create.new')}
+        </DsButton>
+      )}
       <DsButton
         type="button"
         variant="default"
@@ -1913,8 +1921,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   data-testid="fc-lib-apkg-file-input"
                   aria-label={translate('library.import.apkg')}
                   disabled={importing}
+                  tabIndex={-1}
+                  aria-hidden="true"
                   onChange={handleApkgFileChange}
-                  className="mt-2 block text-xs text-muted-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-foreground"
+                  className="sr-only"
                 />
               ) : (
                 <input
@@ -1924,8 +1934,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   data-testid="fc-lib-csv-file-input"
                   aria-label={translate('library.import.csv')}
                   disabled={importing}
+                  tabIndex={-1}
+                  aria-hidden="true"
                   onChange={handleCsvFileChange}
-                  className="mt-2 block text-xs text-muted-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-foreground"
+                  className="sr-only"
                 />
               )}
             </div>
@@ -2263,7 +2275,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             </button>
           ) : null}
         </div>
-        {isFiltered && scheduledItems.length > 0 ? (
+        {isFiltered && scheduledItems.some((c) => !c.suspended && c.stateId) ? (
           <DsButton
             type="button"
             variant="default"

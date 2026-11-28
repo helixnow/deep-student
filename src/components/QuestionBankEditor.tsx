@@ -270,6 +270,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const recordPracticeSessionAnswer = useQuestionBankStore(
     (state) => state.recordPracticeSessionAnswer,
   );
+  const resetPracticeSession = useQuestionBankStore(
+    (state) => state.resetPracticeSession,
+  );
 
   // 完成庆祝
   const [showCompletionCelebration, setShowCompletionCelebration] = useState(false);
@@ -1215,11 +1218,38 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       stats={completionStats}
       onRestart={() => {
         setShowCompletionCelebration(false);
-        requestNavigate(0);
+        setCompletionStats(null);
+        resetPracticeSession(practiceSessionOwner);
+        if (allowTimerControl) {
+          setTimerRunning(true);
+        }
+        if (currentIndex === 0) {
+          handleRetry();
+        } else {
+          requestNavigate(0);
+        }
       }}
       onDismiss={() => setShowCompletionCelebration(false)}
     />
   ) : null;
+
+  const formattedSubmittedAnswer = (() => {
+    if (qType === 'multiple_choice' || qType === 'indefinite_choice') {
+      return Array.from(selectedOptions).sort().join('');
+    }
+    if (qType === 'fill_blank') {
+      return fillBlankAnswers.some((v) => v.trim())
+        ? fillBlankAnswers.map((v, i) => `${i + 1}. ${v}`).join('\n')
+        : selectedAnswer;
+    }
+    if (qType === 'matching' && matchingPairs.length > 0) {
+      return encodeMatchingUserAnswer(matchingPairs);
+    }
+    if (qType === 'ordering' && orderingOrder.length > 0) {
+      return orderingOrder.join(' -> ');
+    }
+    return selectedAnswer;
+  })();
 
   const renderSubmitResultCard = (extraClassName?: string) => {
     if (!submitResult || browseMode) return null;
@@ -1236,7 +1266,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         onRetry={handleRetry}
         currentQuestion={currentQuestion}
         sessionId={sessionId}
-        selectedAnswer={selectedAnswer}
+        selectedAnswer={formattedSubmittedAnswer}
         extraClassName={extraClassName}
       />
     );
@@ -1338,7 +1368,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 userNoteSectionNode={userNoteSectionNode}
                 onToggleFavorite={() => { void handleToggleFavorite(); }}
                 onOpenCropDialog={() => setCropDialogOpen(true)}
-                onToggleSettingsPanel={() => setShowSettingsPanel(true)}
+                onToggleSettingsPanel={() => setShowSettingsPanel(!showSettingsPanel)}
                 onRefreshQuestion={onRefreshQuestion}
                 onRevealAnswer={() => setAnswerRevealed(true)}
                 onSubmit={() => { void handleSubmit(); }}

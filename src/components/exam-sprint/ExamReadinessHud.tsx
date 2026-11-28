@@ -8,6 +8,7 @@ import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import {
   SPRINT_BUDGET_PRESETS,
   clampSprintBudgetMinutes,
@@ -52,6 +53,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
   const [savingConfig, setSavingConfig] = useState(false);
   const savingRef = useRef(false);
   const configSessionRef = useRef(0);
+  const prevConfigOpenRef = useRef(false);
 
   useEffect(() => {
     configSessionRef.current += 1;
@@ -62,9 +64,16 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
   }, [config?.spaceId]);
 
   useEffect(() => {
+    const wasOpen = prevConfigOpenRef.current;
+    prevConfigOpenRef.current = configOpen;
+    if (configOpen && !wasOpen) {
+      setDraftExamDate(readiness?.examDate ?? config?.examDate ?? '');
+      setDraftBudget(clampSprintBudgetMinutes(config?.sprintBudgetMinutes, 15));
+    }
+  }, [config?.examDate, config?.sprintBudgetMinutes, configOpen, readiness?.examDate]);
+
+  useEffect(() => {
     if (!configOpen) return undefined;
-    setDraftExamDate(readiness?.examDate ?? config?.examDate ?? '');
-    setDraftBudget(clampSprintBudgetMinutes(config?.sprintBudgetMinutes, 15));
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isComposingKeyEvent(event) && !savingRef.current) {
@@ -73,8 +82,17 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       }
     };
     window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [config?.examDate, config?.sprintBudgetMinutes, configOpen, readiness?.examDate]);
+    const unregisterBack = registerBackHandler(() => {
+      if (!savingRef.current) {
+        setConfigOpen(false);
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+      unregisterBack();
+    };
+  }, [configOpen]);
 
   if (!readiness) return null;
 
@@ -135,7 +153,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       aria-label={t('examSprint.hud.editConfigLabel')}
       data-testid="exam-horizon-config-dialog"
       style={{ zIndex: Z_INDEX.modal }}
-      onClick={() => setConfigOpen(false)}
+      onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
       className="fixed inset-0 flex items-center justify-center bg-background/75 p-4 backdrop-blur-xs"
     >
       <div
@@ -148,9 +166,10 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
           </h3>
           <button
             type="button"
+            disabled={savingConfig}
             aria-label={t('examSprint.hud.cancelConfig')}
-            onClick={() => setConfigOpen(false)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
           >
             <X size={16} aria-hidden="true" />
           </button>
@@ -215,8 +234,9 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
         <div className="mt-5 flex items-center justify-end gap-2 border-t border-border/35 pt-3.5">
           <button
             type="button"
-            onClick={() => setConfigOpen(false)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border/35 bg-card px-4 py-2 text-xs font-medium text-foreground hover:bg-muted/50"
+            disabled={savingConfig}
+            onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border/35 bg-card px-4 py-2 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
           >
             {t('examSprint.hud.cancelConfig')}
           </button>

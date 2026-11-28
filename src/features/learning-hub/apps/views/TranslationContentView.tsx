@@ -26,6 +26,7 @@ import {
 } from '@/dstu/adapters/translationDstuAdapter';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -182,6 +183,7 @@ const CopyButton: React.FC<{
       timerRef.current = window.setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {
       console.error('[TranslationContentView] Copy failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [text]);
 

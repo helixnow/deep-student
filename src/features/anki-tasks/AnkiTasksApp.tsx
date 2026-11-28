@@ -681,8 +681,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                   <AnimatedNumber value={stats?.templateCount ?? 0} />
                 </span>
               </CommonTooltip>
-              {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
-              {!isSmallScreen && (
+              {/* 移动端有整行入口、桌面空态有双引导入口，均避免重复渲染 */}
+              {!isSmallScreen && sessions.length > 0 && onOpenTemplateManagement && (
                 <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-sm">
                   {t('taskDashboard.openTemplateLib')}
                 </DsButton>
@@ -745,8 +745,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           )}
         </div>
 
-        {/* ======== 移动端模板库入口 ======== */}
-        {isSmallScreen && onOpenTemplateManagement && (
+        {/* ======== 移动端模板库入口（空态时由空态双引导承接，避免上下重复两个模板库按钮） ======== */}
+        {isSmallScreen && sessions.length > 0 && onOpenTemplateManagement && (
           <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
@@ -925,7 +925,6 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 <DsButton
                   size="sm"
                   variant="primary"
-                 
                   // 不能借 onNavigateToChat 传占位 ID：它会被当成真实会话切过去，
                   // 发送时后端以 "Invalid session ID format" 拒绝。
                   onClick={() => onOpenChat?.()}
@@ -937,8 +936,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 {onOpenTemplateManagement && (
                   <DsButton
                     size="sm"
-                    variant="default"
-                   
+                    variant="utility"
                     onClick={onOpenTemplateManagement}
                   >
                     <Palette size={14} />

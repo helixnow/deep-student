@@ -110,6 +110,13 @@ export const EngineSettingsSection: React.FC<{
   const [engineResults, setEngineResults] = React.useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [providerSaving, setProviderSaving] = React.useState(false);
   const [activeEngine, setActiveEngine] = React.useState<string>('bing_rss');
+  const [timeoutMsDraft, setTimeoutMsDraft] = React.useState(
+    () => String(config.webSearchTimeoutMs ?? 15000),
+  );
+
+  React.useEffect(() => {
+    setTimeoutMsDraft(String(config.webSearchTimeoutMs ?? 15000));
+  }, [config.webSearchTimeoutMs]);
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -647,11 +654,20 @@ export const EngineSettingsSection: React.FC<{
             <Input
               type="number"
               min={1000}
+              max={60000}
               step={500}
-              value={config.webSearchTimeoutMs}
-              onChange={(e) => {
-                const v = parseInt(e.target.value || '0', 10) || 15000;
-                setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTimeoutMs: Math.min(60000, Math.max(1000, v)) }));
+              value={timeoutMsDraft}
+              onChange={(e) => setTimeoutMsDraft(e.target.value)}
+              onBlur={() => {
+                const parsed = parseInt(timeoutMsDraft.trim(), 10);
+                const fallback = config.webSearchTimeoutMs ?? 15000;
+                const clamped = Number.isFinite(parsed)
+                  ? Math.min(60000, Math.max(1000, parsed))
+                  : fallback;
+                setTimeoutMsDraft(String(clamped));
+                if (clamped !== config.webSearchTimeoutMs) {
+                  setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTimeoutMs: clamped }));
+                }
               }}
               className="!w-24 [@media(pointer:coarse)]:!h-11"
             />

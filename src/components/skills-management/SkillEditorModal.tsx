@@ -202,6 +202,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<string>('basic');
   const initialSnapshotRef = useRef<string>(serializeFormData(formData));
 
@@ -272,6 +273,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   // 处理保存
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current || isSaving) return;
 
     // 验证（内置技能放宽 name 格式验证）
     const validationErrors = validateForm(formData, isEdit, isBuiltinSkill, t as any);
@@ -301,6 +303,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       embeddedTools: formData.embeddedTools,
     };
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       await onSave(trimmedPayload);
@@ -315,17 +318,19 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
         String(error),
       );
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
-  }, [formData, isEdit, isBuiltinSkill, onSave, onOpenChange, t]);
+  }, [formData, isEdit, isBuiltinSkill, isSaving, onSave, onOpenChange, t]);
 
   // 处理取消
   const handleCancel = useCallback(() => {
+    if (savingRef.current || isSaving) return;
     if (isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onOpenChange(false);
-  }, [isDirty, onOpenChange, t]);
+  }, [isDirty, isSaving, onOpenChange, t]);
 
   // 保持最新的取消逻辑，供返回键 / 页面顶栏返回箭头调用（注册保持稳定）
   const handleCancelRef = useRef(handleCancel);
@@ -363,11 +368,12 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   }, [embeddedMode, open, requestCloseRef]);
 
   const handleModalOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && (savingRef.current || isSaving)) return;
     if (!nextOpen && isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onOpenChange(nextOpen);
-  }, [isDirty, onOpenChange, t]);
+  }, [isDirty, isSaving, onOpenChange, t]);
 
   // 根据名称生成建议 ID
   const suggestId = useCallback(() => {
@@ -404,7 +410,8 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleCancel}
- className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            disabled={isSaving}
+            className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
           </DsButton>

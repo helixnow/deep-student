@@ -34,7 +34,6 @@ import { registerArtifactRenderer } from '@/components/previews/artifactRenderer
 import { DiagramAndLiveSvgView } from '@/components/previews/DiagramAndLiveSvgView';
 import { htmlUsesScripts, shouldAutoPreviewHtml } from '@/components/previews/chatHtmlPreviewDocument';
 import { OpenUILangRenderer } from '@/features/generative-ui';
-import { ReplyCommandActionButton } from '@/features/chat/utils/replyCommandAndSecretLoop';
 import {
   launchSandboxWorkbench,
   pinArtifactToCanvas,
@@ -975,12 +974,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     });
   };
 
+  const [isSavingHtml, setIsSavingHtml] = useState(false);
+  const savingHtmlRef = useRef(false);
+  const [isSavingOpenui, setIsSavingOpenui] = useState(false);
+  const savingOpenuiRef = useRef(false);
+
   const handleSaveHtmlToSpace = async (payload: {
     html: string;
     title: string;
     widgetId: string;
   }) => {
-    if (isStreaming) return;
+    if (isStreaming || savingHtmlRef.current) return;
+    savingHtmlRef.current = true;
+    setIsSavingHtml(true);
     const { sessionId, groupId } = resolveChatSessionContext();
     const resolvedTitle =
       payload.title && payload.title !== t('codeBlock.htmlPreviewTitle')
@@ -1006,6 +1012,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       try {
         showGlobalNotification('error', tGenUi('artifact.saveFailed', { message }));
       } catch {}
+    } finally {
+      savingHtmlRef.current = false;
+      if (isMountedRef.current) {
+        setIsSavingHtml(false);
+      }
     }
   };
 
@@ -1024,7 +1035,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   };
 
   const handleSaveOpenuiToSpace = async () => {
-    if (isStreaming) return;
+    if (isStreaming || savingOpenuiRef.current) return;
+    savingOpenuiRef.current = true;
+    setIsSavingOpenui(true);
     const { sessionId, groupId } = resolveChatSessionContext();
     try {
       const result = await usePinnedArtifactStore.getState().saveArtifactToStudySpace({
@@ -1046,6 +1059,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       try {
         showGlobalNotification('error', tGenUi('artifact.saveFailed', { message }));
       } catch {}
+    } finally {
+      savingOpenuiRef.current = false;
+      if (isMountedRef.current) {
+        setIsSavingOpenui(false);
+      }
     }
   };
 
@@ -1318,17 +1336,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     return () => ro.disconnect();
   }, [previewVisible]);
 
-  // ---- 「…」更多菜单（SVG / HTML / OpenUI / InteractiveHTML） ----
+  // ---- 「…」更多菜单（SVG / HTML / OpenUI / Diagram / InteractiveHTML） ----
   const showingSource = canRenderSvg
     ? !svgPreviewActive
     : canRenderOpenUI
       ? !openuiPreviewActive
-      : canRenderInteractiveHtml
-        ? !interactiveHtmlPreviewActive
-        : !htmlPreviewActive;
+      : canRenderDiagram
+        ? !diagramPreviewActive
+        : canRenderInteractiveHtml
+          ? !interactiveHtmlPreviewActive
+          : !htmlPreviewActive;
   const moreActions: CodeBlockMenuAction[] = [];
   if (hasLivePreview) {
-    if (!canRenderOpenUI) {
+    if (!canRenderOpenUI && !canRenderDiagram && !interactiveHtmlPreviewActive) {
       moreActions.push({
         key: 'download',
         label: t('codeBlock.download'),
@@ -1359,22 +1379,24 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       icon: <Copy size={16} />,
       onSelect: () => { void handleCopy(); },
     });
-    moreActions.push({
-      key: 'toggle-view',
-      label: showingSource ? t('codeBlock.viewPreview') : t('codeBlock.viewCode'),
-      icon: showingSource ? <Eye size={16} /> : <Code size={16} />,
-      onSelect: () => {
-        if (canRenderSvg) {
-          setSvgView(showingSource ? 'preview' : 'source');
-        } else if (canRenderOpenUI) {
-          setOpenuiView(showingSource ? 'preview' : 'source');
-        } else if (canRenderInteractiveHtml) {
-          setInteractiveHtmlView(showingSource ? 'preview' : 'source');
-        } else {
-          setHtmlViewOverride(showingSource ? 'preview' : 'source');
-        }
-      },
-    });
+    if (!interactiveHtmlPreviewActive && !diagramPreviewActive) {
+      moreActions.push({
+        key: 'toggle-view',
+        label: showingSource ? t('codeBlock.viewPreview') : t('codeBlock.viewCode'),
+        icon: showingSource ? <Eye size={16} /> : <Code size={16} />,
+        onSelect: () => {
+          if (canRenderSvg) {
+            setSvgView(showingSource ? 'preview' : 'source');
+          } else if (canRenderOpenUI || canRenderDiagram) {
+            setOpenuiView(showingSource ? 'preview' : 'source');
+          } else if (canRenderInteractiveHtml) {
+            setInteractiveHtmlView(showingSource ? 'preview' : 'source');
+          } else {
+            setHtmlViewOverride(showingSource ? 'preview' : 'source');
+          }
+        },
+      });
+    }
     if (canRenderHtml || canRenderInteractiveHtml) {
       moreActions.push({
         key: 'open-sandbox',
@@ -1454,6 +1476,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
               variant="ghost"
               size="sm"
               className="code-block-copy"
+              disabled={isSavingOpenui}
               onClick={() => void handleSaveOpenuiToSpace()}
               data-testid="openui-save-space-button"
             >
@@ -1463,7 +1486,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           </>
         )}
         {svgPreviewActive && progressiveSvg !== null && zoomControls}
-        {(htmlPreviewActive || interactiveHtmlPreviewActive) && !isStreaming && (
+        {htmlPreviewActive && !interactiveHtmlPreviewActive && !isStreaming && (
           <DsButton
             variant="ghost"
             size="icon"
@@ -1482,7 +1505,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
             <DownloadSimple size={14} />
           </DsButton>
         )}
-        {(htmlPreviewActive || interactiveHtmlPreviewActive) && (htmlOverflowing || htmlExpanded) && (
+        {htmlPreviewActive && !interactiveHtmlPreviewActive && (htmlOverflowing || htmlExpanded) && (
           <DsButton
             variant="ghost"
             size="icon"
@@ -1505,12 +1528,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
-        <ReplyCommandActionButton
-          isStreaming={!!isStreaming}
-          language={language}
-          command={codeContent}
-          onRun={handleCopy}
-        />
         <DsButton variant="ghost" size="sm" className="code-block-copy [@media(pointer:coarse)]:!min-h-11" onClick={handleCopy}>
           <IconSwap
             active={copied}
@@ -1625,6 +1642,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
                   void handleSaveHtmlToSpace(payload);
                 }
           }
+          saveToSpaceDisabled={isSavingHtml}
         />
       </MermaidErrorBoundary>
     );

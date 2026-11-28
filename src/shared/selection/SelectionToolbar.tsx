@@ -23,8 +23,10 @@ import { Copy, Check, Sparkle, Translate, ChatDots, Cards, NotePencil, Quotes } 
 import { useTranslation } from 'react-i18next';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useViewStore } from '@/stores/viewStore';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
+import { getErrorMessage } from '@/utils/errorUtils';
 import type { SelectionRect } from './useTextSelection';
 
 // ============================================================================
@@ -470,15 +472,19 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    await copyTextToClipboard(selectedText);
-    setCopied(true);
-    if (copiedTimerRef.current !== null) {
-      window.clearTimeout(copiedTimerRef.current);
+    try {
+      await copyTextToClipboard(selectedText);
+      setCopied(true);
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, 1500);
+    } catch (error) {
+      showGlobalNotification('error', getErrorMessage(error));
     }
-    copiedTimerRef.current = window.setTimeout(() => {
-      copiedTimerRef.current = null;
-      setCopied(false);
-    }, 1500);
   }, [selectedText]);
 
   // 选中内容变化时重置已复制状态；卸载时清理定时器

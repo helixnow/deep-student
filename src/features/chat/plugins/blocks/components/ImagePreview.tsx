@@ -6,12 +6,14 @@
  * （原图尺寸 + 可滚动查看 + 下载/外部打开操作，禁模态框）。
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import './image-preview.css';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { openUrl } from '@/utils/urlOpener';
 import { fileManager } from '@/utils/fileManager';
 import {
@@ -68,6 +70,14 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadingRef = useRef(false);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setHasError(false);
+    setIsExpanded(false);
+  }, [src]);
 
   const handleLoad = useCallback(() => {
     setIsLoading(false);
@@ -104,22 +114,34 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   }, [isExpanded]);
 
   const handleDownload = useCallback(async () => {
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
+    setIsDownloading(true);
     try {
       const response = await fetch(src);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
+      }
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
       const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
       const fileName = `${alt || 'image'}.${ext}`;
-      await fileManager.saveBinaryFile({
+      const result = await fileManager.saveBinaryFile({
         title: fileName,
         defaultFileName: fileName,
         data: new Uint8Array(arrayBuffer),
         filters: [{ name: 'Images', extensions: [ext] }],
       });
-    } catch (error) {
+      if (result?.canceled) return;
+      showGlobalNotification('success', t('codeBlock.saved', { defaultValue: '已保存' }));
+    } catch (error: unknown) {
       console.error('[ImagePreview] Download failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      downloadingRef.current = false;
+      setIsDownloading(false);
     }
-  }, [src, alt]);
+  }, [src, alt, t]);
 
   const handleOpenInNewTab = useCallback(() => {
     openUrl(src);
@@ -166,7 +188,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={handleDownload}
+              disabled={isDownloading}
+              onClick={() => void handleDownload()}
               aria-label={t('blocks.imageGen.download')}
               title={t('blocks.imageGen.download')}
             >

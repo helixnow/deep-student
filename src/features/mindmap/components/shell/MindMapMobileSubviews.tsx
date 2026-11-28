@@ -24,7 +24,6 @@ import {
   Presentation,
   SelectionPlus,
   ShareNetwork,
-  Tray,
   TreeStructure,
   Upload,
 } from '@phosphor-icons/react';
@@ -136,11 +135,6 @@ const MobileMorePanel: React.FC<{
   const save = useMindMapStore((state) => state.save);
   const autoExcerptEnabled = useMindMapStore((state) => state.autoExcerptEnabled);
   const setAutoExcerptEnabled = useMindMapStore((state) => state.setAutoExcerptEnabled);
-  const stagingTrayOpen = useMindMapStore((state) => state.stagingTrayOpen);
-  const setStagingTrayOpen = useMindMapStore((state) => state.setStagingTrayOpen);
-  const stagingCount = useMindMapStore(
-    (state) => state.document.stagingExcerpts?.length ?? 0,
-  );
   const reciteMode = useMindMapStore((state) => state.reciteMode);
   const setReciteMode = useMindMapStore((state) => state.setReciteMode);
   const hideCompleted = useMindMapStore((state) => state.hideCompleted);
@@ -272,15 +266,6 @@ const MobileMorePanel: React.FC<{
             checked={autoExcerptEnabled}
             disabled={reciteMode}
             onClick={() => setAutoExcerptEnabled(!autoExcerptEnabled)}
-          />
-          <MobileMenuRow
-            icon={<Tray size={18} />}
-            label={t('mindmap:mn5.stagingTrayTitle')}
-            badge={stagingCount}
-            checked={stagingTrayOpen}
-            disabled={reciteMode}
-            testId="mm-mobile-more-staging-tray"
-            onClick={closeThen(() => setStagingTrayOpen(!stagingTrayOpen))}
           />
           <MobileMenuRow
             icon={<BookOpen size={18} />}

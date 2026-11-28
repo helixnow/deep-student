@@ -466,7 +466,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             {renderFooter('chat-empty-composer-layout__footer')}
             {/* Super 会话：自动投递暂停提示条（非 Super / 未暂停时不渲染） */}
             <SuperInboxPausedBanner sessionId={displayedSessionId} />
-            <AgentTaskPanel store={store} chatStore={store} />
+            <AgentTaskPanel key={displayedSessionId} store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
           </ThreadContentShell>
         </div>
@@ -484,7 +484,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           <SuperInboxPausedBanner sessionId={displayedSessionId} />
 
           {/* Agent todo panel — 贴在输入栏上方 */}
-          <AgentTaskPanel store={store} chatStore={store} />
+          <AgentTaskPanel key={displayedSessionId} store={store} chatStore={store} />
 
           {/* 输入栏 */}
           {renderInputBar(undefined, 'docked', shouldAutoFocusMobileEmptyComposer)}

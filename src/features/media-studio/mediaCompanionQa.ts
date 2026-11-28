@@ -42,7 +42,7 @@ export interface CompanionQaContextInput {
   hasTranscript: boolean;
   segments: readonly CompanionTranscriptSegment[];
   chapters: readonly CompanionChapter[];
-  currentTimeSeconds: number;
+  currentTimeSeconds?: number;
 }
 
 export type CompanionQaResult =
@@ -169,10 +169,16 @@ function extractQueryTerms(question: string): string[] {
   return Array.from(terms).slice(0, 40);
 }
 
+function resolvePlayheadSeconds(currentTimeSeconds: number | undefined): number | null {
+  return typeof currentTimeSeconds === 'number' && Number.isFinite(currentTimeSeconds)
+    ? Math.max(0, Math.floor(currentTimeSeconds))
+    : null;
+}
+
 function scoreSegmentRelevance(
   seg: CompanionTranscriptSegment,
   terms: readonly string[],
-  playheadMs: number,
+  playheadMs: number | null,
 ): number {
   const textLower = seg.text.toLowerCase();
   let score = 0;
@@ -182,9 +188,11 @@ function scoreSegmentRelevance(
     }
   }
   // 距离播放位置越近给予轻微加权，同分时优先当前上下文
-  const distSec = Math.min(Math.abs(seg.startMs - playheadMs), Math.abs(seg.endMs - playheadMs)) / 1000;
-  if (distSec <= 60) score += 0.6;
-  else if (distSec <= 180) score += 0.25;
+  if (playheadMs !== null) {
+    const distSec = Math.min(Math.abs(seg.startMs - playheadMs), Math.abs(seg.endMs - playheadMs)) / 1000;
+    if (distSec <= 60) score += 0.6;
+    else if (distSec <= 180) score += 0.25;
+  }
   return score;
 }
 
@@ -214,9 +222,9 @@ export function selectRelevantTranscriptContext(
   ctx: CompanionQaContextInput,
   question: string,
 ): SelectedTranscriptContext {
-  const nowSeconds = Math.max(0, Math.floor(ctx.currentTimeSeconds));
-  const playheadMs = nowSeconds * 1000;
-  const activeChapter = findActiveChapter(ctx.chapters, nowSeconds);
+  const nowSeconds = resolvePlayheadSeconds(ctx.currentTimeSeconds);
+  const playheadMs = nowSeconds !== null ? nowSeconds * 1000 : null;
+  const activeChapter = nowSeconds !== null ? findActiveChapter(ctx.chapters, nowSeconds) : null;
   const doneSegments = ctx.segments
     .filter((seg) => seg.status === 'done' && seg.text.trim().length > 0)
     .sort((a, b) => a.startMs - b.startMs);
@@ -231,9 +239,12 @@ export function selectRelevantTranscriptContext(
     };
   }
 
-  const fromMs = Math.max(0, nowSeconds - COMPANION_QA_PLAYHEAD_LOOKBACK_SECONDS) * 1000;
-  const toMs = (nowSeconds + COMPANION_QA_PLAYHEAD_LOOKAHEAD_SECONDS) * 1000 + 1;
-  const nearbySegments = doneSegments.filter((seg) => seg.endMs > fromMs && seg.startMs < toMs);
+  const fromMs = nowSeconds !== null ? Math.max(0, nowSeconds - COMPANION_QA_PLAYHEAD_LOOKBACK_SECONDS) * 1000 : 0;
+  const toMs = nowSeconds !== null ? (nowSeconds + COMPANION_QA_PLAYHEAD_LOOKAHEAD_SECONDS) * 1000 + 1 : 0;
+  const nearbySegments =
+    nowSeconds !== null
+      ? doneSegments.filter((seg) => seg.endMs > fromMs && seg.startMs < toMs)
+      : [];
 
   const terms = extractQueryTerms(question);
   const scored = doneSegments
@@ -260,13 +271,16 @@ export function selectRelevantTranscriptContext(
     pushFallback(seg);
   }
   if (fallbackPool.length === 0) {
-    const nearest = [...doneSegments]
-      .sort((a, b) => {
-        const distA = Math.min(Math.abs(a.startMs - playheadMs), Math.abs(a.endMs - playheadMs));
-        const distB = Math.min(Math.abs(b.startMs - playheadMs), Math.abs(b.endMs - playheadMs));
-        return distA - distB;
-      })
-      .slice(0, 3);
+    const nearest =
+      playheadMs !== null
+        ? [...doneSegments]
+            .sort((a, b) => {
+              const distA = Math.min(Math.abs(a.startMs - playheadMs), Math.abs(a.endMs - playheadMs));
+              const distB = Math.min(Math.abs(b.startMs - playheadMs), Math.abs(b.endMs - playheadMs));
+              return distA - distB;
+            })
+            .slice(0, 3)
+        : doneSegments.slice(0, 3);
     for (const seg of nearest) pushFallback(seg);
   }
   fallbackPool.sort((a, b) => a.startMs - b.startMs);
@@ -304,12 +318,14 @@ export function selectRelevantTranscriptContext(
   };
 
   // 1) 当前播放窗口内片段（按离 playhead 近到远优先纳入）
-  const nearbyWithIndex = doneSegments
-    .map((seg, index) => ({ seg, index }))
-    .filter(({ seg }) => seg.endMs > fromMs && seg.startMs < toMs)
-    .sort((a, b) => Math.abs(a.seg.startMs - playheadMs) - Math.abs(b.seg.startMs - playheadMs));
-  for (const { index } of nearbyWithIndex) {
-    tryAddIndex(index);
+  if (playheadMs !== null) {
+    const nearbyWithIndex = doneSegments
+      .map((seg, index) => ({ seg, index }))
+      .filter(({ seg }) => seg.endMs > fromMs && seg.startMs < toMs)
+      .sort((a, b) => Math.abs(a.seg.startMs - playheadMs) - Math.abs(b.seg.startMs - playheadMs));
+    for (const { index } of nearbyWithIndex) {
+      tryAddIndex(index);
+    }
   }
 
   // 2) 全课高相关命中片段及其前后各 1 段上下文
@@ -321,14 +337,20 @@ export function selectRelevantTranscriptContext(
 
   // 3) 若窗口与关键词都为空，从最近位置向两侧扩展
   if (chosenIndices.size === 0) {
-    const byDist = doneSegments
-      .map((seg, index) => ({
-        index,
-        dist: Math.min(Math.abs(seg.startMs - playheadMs), Math.abs(seg.endMs - playheadMs)),
-      }))
-      .sort((a, b) => a.dist - b.dist);
-    for (const { index } of byDist.slice(0, 12)) {
-      tryAddIndex(index);
+    if (playheadMs !== null) {
+      const byDist = doneSegments
+        .map((seg, index) => ({
+          index,
+          dist: Math.min(Math.abs(seg.startMs - playheadMs), Math.abs(seg.endMs - playheadMs)),
+        }))
+        .sort((a, b) => a.dist - b.dist);
+      for (const { index } of byDist.slice(0, 12)) {
+        tryAddIndex(index);
+      }
+    } else {
+      for (let index = 0; index < Math.min(12, doneSegments.length); index += 1) {
+        tryAddIndex(index);
+      }
     }
   }
 
@@ -354,8 +376,7 @@ export function buildCompanionQaPrompt(params: {
   presetId?: string;
 }): string {
   const { ctx, question, selection, history = [], presetId } = params;
-  const nowSeconds = Math.max(0, Math.floor(ctx.currentTimeSeconds));
-  const nowLabel = formatCompanionTimestamp(nowSeconds);
+  const nowSeconds = resolvePlayheadSeconds(ctx.currentTimeSeconds);
 
   const lines: string[] = [
     '你是正在音视频学习页陪伴学生听课的 AI 学习助教。请根据课程信息与带时间戳的字幕片段，直接、准确、有条理地回答学生的问题。',
@@ -368,8 +389,11 @@ export function buildCompanionQaPrompt(params: {
     '',
     '【课程上下文】',
     `- 课程名称：《${ctx.courseName}》`,
-    `- 当前播放位置：[${nowLabel}]`,
   ];
+
+  if (nowSeconds !== null) {
+    lines.push(`- 当前播放位置：[${formatCompanionTimestamp(nowSeconds)}]`);
+  }
 
   if (selection.activeChapter) {
     lines.push(

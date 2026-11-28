@@ -17,6 +17,7 @@ import {
   SortDescending,
   Check,
   ListChecks,
+  SidebarSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -59,6 +60,10 @@ interface FinderBatchToolbarProps {
   hasOpenApp?: boolean;
   /** 关闭应用回调 */
   onCloseApp?: () => void;
+  /** 右侧应用面板折叠时后台保留的打开标签数量 */
+  collapsedAppTabCount?: number;
+  /** 恢复已折叠的右侧应用面板 */
+  onRestoreAppPanel?: () => void;
   /** ★ 2026-06-12（审阅问题 FE-S3）：多选模式开关（触屏设备） */
   multiSelectMode?: boolean;
   /** 多选模式切换回调（传入时显示开关按钮） */
@@ -101,6 +106,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   onSortChange,
   hasOpenApp = false,
   onCloseApp,
+  collapsedAppTabCount = 0,
+  onRestoreAppPanel,
   multiSelectMode = false,
   onToggleMultiSelectMode,
   isTrashView = false,
@@ -453,11 +460,27 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               )
             )}
 
-            {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}
-            <DsButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className={cn(isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-7 !w-7 !p-1.5', 'hover:bg-[var(--interactive-hover)] ml-0.5')} title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label={hasOpenApp ? t('finder.appPanel.close') : t('common:close')}>
+            {/* 清除选择按钮 */}
+            <DsButton variant="ghost" size="icon" iconOnly onClick={onClearSelection} className={cn(isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-7 !w-7 !p-1.5', 'hover:bg-[var(--interactive-hover)] ml-0.5')} title={t('common:close')} aria-label={t('common:close')}>
               <X size={16} className="text-accent-foreground" />
             </DsButton>
           </>
+        )}
+
+        {/* 恢复已折叠的右侧应用面板 - 无选中项且右侧栏被拖压收起时显示 */}
+        {!hasSelection && collapsedAppTabCount > 0 && onRestoreAppPanel && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onRestoreAppPanel}
+            data-testid="finder-restore-app-panel"
+            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            title={t('finder.appPanel.restoreTitle')}
+            aria-label={t('finder.appPanel.restoreTitle')}
+          >
+            <SidebarSimple size={14} aria-hidden="true" />
+            <span>{t('finder.appPanel.restore', { count: collapsedAppTabCount })}</span>
+          </DsButton>
         )}
 
         {/* 关闭应用按钮 - 无选中项但有应用打开时显示 */}

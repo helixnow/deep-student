@@ -149,7 +149,7 @@ interface SessionCardProps {
   tags?: string[];
   onSelect: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
-  onStartEdit: (session: SessionItem) => void;
+  onStartEdit?: (session: SessionItem) => void;
   onSaveEdit: (sessionId: string) => void;
   onCancelEdit: () => void;
   onEditTitleChange: (value: string) => void;
@@ -243,7 +243,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       resetDeleteConfirmation();
-      onStartEdit(session);
+      onStartEdit?.(session);
     },
     [onStartEdit, resetDeleteConfirmation, session]
   );
@@ -305,9 +305,11 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
             isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
           )}
         >
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7'}>
-            <PencilSimple size={isTouchPrimary ? 16 : 14} />
-          </DsButton>
+          {Boolean(onStartEdit) && (
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7'}>
+              <PencilSimple size={isTouchPrimary ? 16 : 14} />
+            </DsButton>
+          )}
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession')} title={t('browser.exportSession')} className={isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7'}>
             {exporting ? <CircleNotch size={isTouchPrimary ? 16 : 14} className="animate-spin" /> : <DownloadSimple size={isTouchPrimary ? 16 : 14} />}
           </DsButton>
@@ -971,7 +973,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={onSelectSession}
                           onDelete={onDeleteSession}
-                          onStartEdit={handleStartEdit}
+                          onStartEdit={onRenameSession ? handleStartEdit : undefined}
                           onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={handleEditTitleChange}
@@ -1024,7 +1026,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                         tags={sessionTags.tagsBySession.get(session.id)}
                         onSelect={onSelectSession}
                         onDelete={onDeleteSession}
-                        onStartEdit={handleStartEdit}
+                        onStartEdit={onRenameSession ? handleStartEdit : undefined}
                         onSaveEdit={handleSaveEdit}
                         onCancelEdit={handleCancelEdit}
                         onEditTitleChange={handleEditTitleChange}
@@ -1085,7 +1087,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={onSelectSession}
                           onDelete={onDeleteSession}
-                          onStartEdit={handleStartEdit}
+                          onStartEdit={onRenameSession ? handleStartEdit : undefined}
                           onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={handleEditTitleChange}
@@ -1133,7 +1135,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           tags={sessionTags.tagsBySession.get(session.id)}
                           onSelect={onSelectSession}
                           onDelete={onDeleteSession}
-                          onStartEdit={handleStartEdit}
+                          onStartEdit={onRenameSession ? handleStartEdit : undefined}
                           onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
                           onEditTitleChange={handleEditTitleChange}

@@ -16,6 +16,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { commandRegistry } from '../registry/commandRegistry';
+import { isGlobalCommandEnabled } from '../registry/capabilityRegistry';
 import { shortcutManager, type ShortcutConflict } from '../registry/shortcutManager';
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
@@ -60,7 +61,9 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
 
   const allCommands = useMemo(() => {
     void version;
-    return commandRegistry.getAll();
+    return commandRegistry
+      .getAll()
+      .filter((cmd) => !cmd.id.startsWith('global.') || isGlobalCommandEnabled(cmd.id));
   }, [version]);
 
   const filteredCommands = useMemo(() => {
@@ -178,7 +181,17 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
           showGlobalNotification('error', t('command_palette:import_failed'));
           return;
         }
-        const result = shortcutManager.importConfig(config);
+        const result = shortcutManager.importConfig(config as Record<string, unknown>);
+        if (result.imported === 0 && result.skipped.length > 0) {
+          showGlobalNotification(
+            'warning',
+            t('command_palette:config_imported_partial', {
+              imported: result.imported,
+              skipped: result.skipped.length,
+            }),
+          );
+          return;
+        }
         const msg = result.skipped.length > 0
           ? t('command_palette:config_imported_partial', { imported: result.imported, skipped: result.skipped.length })
           : t('command_palette:config_imported');

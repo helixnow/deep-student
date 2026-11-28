@@ -2,6 +2,8 @@
  * 确定性 export-intent — 把当前 Generative UI intent 导出为 Markdown 并复制到剪贴板。
  * low risk，无副作用，不走 HITL。
  */
+import i18next from 'i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 import {
@@ -29,6 +31,10 @@ export function createExportIntentActionHandlers(
         const text = buildIntentExportMarkdown(intent, markdownLabels);
         if (!text) return;
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
   };

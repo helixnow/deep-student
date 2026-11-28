@@ -11,6 +11,8 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsDialog, DsDialogBody, DsDialogFooter, DsDialogHeader, DsDialogTitle } from '@/components/ui/DsDialog';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import type { InsightCard, InsightDraftInput, InsightOwnership } from '../types';
 
@@ -65,6 +67,8 @@ export function InsightConfirmDialog({ open, onOpenChange, initial, onSubmit, su
         evidence: fromCard ? [] : initial.evidence,
       });
       onOpenChange(false);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }

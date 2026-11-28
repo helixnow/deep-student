@@ -573,11 +573,15 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 
   const copy = useCallback(
     async (text: string) => {
-      const ok = await copyTextToClipboard(text);
-      showGlobalNotification(
-        ok ? 'success' : 'error',
-        ok ? t('learningHub:mediaTranscript.copied') : t('learningHub:mediaTranscript.copyFailed'),
-      );
+      try {
+        const ok = await copyTextToClipboard(text);
+        showGlobalNotification(
+          ok ? 'success' : 'error',
+          ok ? t('learningHub:mediaTranscript.copied') : t('learningHub:mediaTranscript.copyFailed'),
+        );
+      } catch {
+        showGlobalNotification('error', t('learningHub:mediaTranscript.copyFailed'));
+      }
     },
     [t],
   );
@@ -1059,6 +1063,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
       {!selecting && nativeSelection && (
         <div
           data-testid="transcript-text-selection-bar"
+          onMouseDown={(e) => e.preventDefault()}
           className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border/35 bg-background/95 px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))] backdrop-blur-sm"
           role="toolbar"
           aria-label={t('learningHub:mediaTranscript.textSelectionToolbar', { defaultValue: '选中字幕操作' })}
@@ -1184,16 +1189,6 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
               {t('learningHub:mediaTranscript.cardsFromSelection')}
             </DsButton>
           )}
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={exitSelecting}
-            aria-label={t('learningHub:mediaTranscript.selectDone')}
-            title={t('learningHub:mediaTranscript.selectDone')}
-          >
-            <X size={14} aria-hidden="true" />
-          </DsButton>
         </div>
       )}
     </section>

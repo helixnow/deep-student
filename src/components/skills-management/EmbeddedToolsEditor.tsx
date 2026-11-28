@@ -128,10 +128,15 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
 
   const addProperty = useCallback((toolIndex: number) => {
     const tool = tools[toolIndex];
-    const propName = `param_${Object.keys(tool.inputSchema.properties).length + 1}`;
+    const existing = tool.inputSchema.properties;
+    let idx = Object.keys(existing).length + 1;
+    while (Object.prototype.hasOwnProperty.call(existing, `param_${idx}`)) {
+      idx += 1;
+    }
+    const propName = `param_${idx}`;
     updateInputSchema(toolIndex, {
       properties: {
-        ...tool.inputSchema.properties,
+        ...existing,
         [propName]: createEmptyProperty(),
       },
     });

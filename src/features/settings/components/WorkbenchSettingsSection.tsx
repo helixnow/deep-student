@@ -700,6 +700,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             type="button"
             variant="outline"
             size="sm"
+            disabled={!loaded || !mode}
             onClick={() => {
               try {
                 window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));

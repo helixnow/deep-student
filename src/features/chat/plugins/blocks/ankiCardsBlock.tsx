@@ -1154,6 +1154,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               onDeckNameChange={handleDeckNameChange}
               onSyncStatusChange={handleSyncStatusChange}
               onCardsPersisted={handleCardsPersisted}
+              hideExportInMenu={showCompletionSummary}
             />
           )}
         </FullWidthCardWrapper>

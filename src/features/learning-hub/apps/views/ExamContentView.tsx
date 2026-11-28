@@ -59,6 +59,10 @@ import { useExamQbankControlBridge } from './exam/useExamQbankControlBridge';
 import { useExamAuthoringDrafts } from './exam/useExamAuthoringDrafts';
 import { useExamDomainRefreshAndAnchors } from './exam/useExamDomainRefreshAndAnchors';
 import { ExamHeaderAndTabs } from './exam/ExamHeaderAndTabs';
+import {
+  clearPendingExamQuestionFocus,
+  peekPendingExamQuestionFocus,
+} from '../../mistakeBook/mistakeBookNavigation';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionImportAuditPanel = lazy(() => import('@/components/QuestionImportAuditPanel'));
@@ -304,6 +308,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       setPendingSettingsOpen(false);
     }
   }, [pendingSettingsOpen, viewMode]);
+
+  // 错题本冷跳转定位握手：题目集加载超过重试窗口时，加载完成后仍能准确落到目标题
+  useEffect(() => {
+    if (isLoading || questions.length === 0) return;
+    const pending = peekPendingExamQuestionFocus(sessionId);
+    if (!pending) return;
+    const targetIndex = questions.findIndex((question) => question.id === pending.questionId);
+    clearPendingExamQuestionFocus(sessionId, pending.questionId);
+    if (targetIndex < 0) return;
+    requestViewMode('practice', () => navigate(targetIndex));
+  }, [isLoading, navigate, questions, requestViewMode, sessionId]);
 
   // 管理视图筛选（搜索逐键触发大列表过滤）降级为 transition，保持输入流畅
   const handleFilterChange = useCallback((filters: ManageFilters) => {

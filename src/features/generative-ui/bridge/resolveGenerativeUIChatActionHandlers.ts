@@ -36,7 +36,10 @@ import {
   createCopyBlockActionHandlers,
   type CopyBlockActionLabels,
 } from '../handlers/copyBlockActionHandlers';
-import type { IntentExportMarkdownLabels } from '../utils/buildIntentExportMarkdown';
+import {
+  buildIntentExportMarkdown,
+  type IntentExportMarkdownLabels,
+} from '../utils/buildIntentExportMarkdown';
 import type { ResearchExportMarkdownLabels } from '../utils/buildResearchExportMarkdown';
 import { buildExportMarkdownI18nLabels } from '../utils/buildExportMarkdownI18nLabels';
 import {
@@ -99,6 +102,7 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   workbenchLabels?: WorkbenchLearningHandlerLabels;
   intentExportLabels?: Partial<IntentExportMarkdownLabels>;
   researchExportLabels?: Partial<ResearchExportMarkdownLabels>;
+  onDismissNoteSuggestion?: () => void;
 }
 
 /**
@@ -112,7 +116,10 @@ export function resolveGenerativeUIChatActionHandlers(
   const intentExportLabels = input.intentExportLabels ?? localizedExportLabels((labels) => labels.intent);
   const researchExportLabels = input.researchExportLabels ?? localizedExportLabels((labels) => labels.research);
   const handlers: Record<string, GenerativeActionDefinition> = Object.create(null);
-  const workbench = createWorkbenchLearningHandlers(input.workbenchLabels);
+  const workbench = createWorkbenchLearningHandlers(input.workbenchLabels, {
+    getPlanMarkdown: () => buildIntentExportMarkdown(input.intent, intentExportLabels),
+    planTitle: input.intent.meta?.title,
+  });
 
   for (const id of actionIds) {
     const handler = lookupGenerativeActionHandler(workbench, id);
@@ -147,6 +154,7 @@ export function resolveGenerativeUIChatActionHandlers(
             applyEdit: applyEditLabel,
             dismissSuggestion: dismissLabel,
           },
+          input.onDismissNoteSuggestion ? { onDismiss: input.onDismissNoteSuggestion } : undefined,
         ),
       );
     }

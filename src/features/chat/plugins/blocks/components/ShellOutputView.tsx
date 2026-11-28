@@ -23,6 +23,7 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -127,11 +128,21 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
       variant="ghost"
       size="sm"
       onClick={async () => {
-        const ok = await copyTextToClipboard(text);
-        if (ok) {
-          setCopied(true);
-          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-          resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
+        try {
+          const ok = await copyTextToClipboard(text);
+          if (ok) {
+            setCopied(true);
+            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+            resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
+          }
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error && err.message
+              ? err.message
+              : typeof err === 'string' && err.trim()
+                ? err
+                : String(err ?? '');
+          showGlobalNotification('error', message);
         }
       }}
       className="!h-auto min-h-8 lg:min-h-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 !p-1 text-2xs text-muted-foreground hover:text-foreground"

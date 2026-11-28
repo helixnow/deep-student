@@ -252,8 +252,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         <WorkbenchSidebarRow
           isActive={isActive}
           aria-current={isActive ? 'page' : undefined}
-          className={isActive ? 'cursor-default' : undefined}
-          onClick={isActive ? undefined : () => onNavigate(type)}
+          onClick={() => onNavigate(type)}
           leftSlot={renderedIcon}
           rightSlot={count !== undefined && count > 0 ? (
             <span className="text-xs tabular-nums text-[color:var(--shell-navigation-muted)]">

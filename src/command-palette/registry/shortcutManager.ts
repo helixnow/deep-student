@@ -287,18 +287,22 @@ class ShortcutManager {
   /**
    * 导入自定义快捷键配置（带校验）
    */
-  importConfig(config: Record<string, string>): { imported: number; skipped: string[] } {
+  importConfig(config: Record<string, unknown>): { imported: number; skipped: string[] } {
     const skipped: string[] = [];
     const validEntries: [string, string][] = [];
 
     for (const [commandId, shortcut] of Object.entries(config)) {
-      // 校验 commandId 是否存在
-      if (!commandRegistry.getById(commandId)) {
+      // 校验 commandId 是否存在且快捷键值为字符串
+      if (!commandRegistry.getById(commandId) || typeof shortcut !== 'string') {
         skipped.push(commandId);
         continue;
       }
       // 保存原始格式（比较时再 normalizeShortcut）
       validEntries.push([commandId, shortcut]);
+    }
+
+    if (validEntries.length === 0 && skipped.length > 0) {
+      return { imported: 0, skipped };
     }
 
     this.customShortcuts = new Map(validEntries);

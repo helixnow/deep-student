@@ -30,6 +30,14 @@ export interface CardsHubDesktopNavProps {
  * 将「今日 / 库 / 统计 / 制卡 / 模板」拍平在同一行，彻底消除
  * 「顶栏胶囊分段器 + 页内下划线 Tab」的双层导航叠罗汉。
  */
+let pendingCardsHubScreen: CardsHubReviewScreen | null = null;
+
+export function consumePendingCardsHubScreen(): CardsHubReviewScreen | null {
+  const next = pendingCardsHubScreen;
+  pendingCardsHubScreen = null;
+  return next;
+}
+
 export const CardsHubDesktopNav: React.FC<CardsHubDesktopNavProps> = ({
   activeSection,
   dueTotal = 0,
@@ -43,6 +51,7 @@ export const CardsHubDesktopNav: React.FC<CardsHubDesktopNavProps> = ({
       onSelectReviewScreen(screen);
       return;
     }
+    pendingCardsHubScreen = screen;
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent<{ screen: CardsHubReviewScreen }>(CARDS_HUB_SELECT_SCREEN_EVENT, {

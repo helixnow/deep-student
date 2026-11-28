@@ -135,7 +135,10 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
       : focusedTypeId
     : t('menubar.appName');
 
-  const appRows = useAppMenuRows('workbench.app', { focusedWindowId, focusedTypeId });
+  const canOpenNewWindow = focusedDef
+    ? focusedDef.instanceMode === 'multi' && focusedDef.showInLauncher !== false
+    : true;
+  const appRows = useAppMenuRows('workbench.app', { focusedWindowId, focusedTypeId, canOpenNewWindow });
 
   return (
     <>

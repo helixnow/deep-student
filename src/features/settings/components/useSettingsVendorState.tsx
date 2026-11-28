@@ -431,7 +431,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
-  const handleSaveVendorBaseUrl = async (vendorId: string, baseUrl: string) => {
+  const handleSaveVendorBaseUrl = async (vendorId: string, baseUrl: string): Promise<boolean> => {
     try {
       const vendor = vendors.find(v => v.id === vendorId);
       if (!vendor) {
@@ -439,10 +439,12 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, baseUrl };
       await upsertVendor(updated);
+      return true;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('保存接口地址失败:', errorMessage);
       showGlobalNotification('error', t('settings:vendor_panel.base_url_save_failed'));
+      return false;
     }
   };
 

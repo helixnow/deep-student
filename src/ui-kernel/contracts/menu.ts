@@ -71,6 +71,8 @@ export interface AppMenuDock {
   appLabel: string;
   /** Undefined when the app has no definition. */
   instanceMode: 'single' | 'multi' | undefined;
+  /** Whether launching a new blank window for this app is supported (false for single-instance or resource-only apps). */
+  canOpenNewWindow?: boolean;
   /** The app's windows, oldest first. */
   windows: readonly AppMenuDockWindow[];
   /** The front-most window of the workbench (any app), or null. */
@@ -203,7 +205,7 @@ export interface AppMenuFinderTab {
 
 export interface AppMenuContexts {
   'workbench.brand': { beginRename(): void };
-  'workbench.app': { focusedWindowId: string | null; focusedTypeId: string | null };
+  'workbench.app': { focusedWindowId: string | null; focusedTypeId: string | null; canOpenNewWindow?: boolean };
   'workbench.window': { focusedWindowId: string | null; windows: readonly AppMenuWindow[] };
   'workbench.dock': AppMenuDock;
   'workbench.desktop': AppMenuDesktop;

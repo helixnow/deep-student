@@ -364,6 +364,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
           className="flex items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy || fixedLink) return;
             void runProbe(input, null);
           }}
         >
@@ -596,7 +597,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
           <DsButton
             variant="outline"
             size="sm"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
             disabled={importing}
             className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-muted/50"
           >

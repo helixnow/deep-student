@@ -42,6 +42,7 @@ import {
 import type { Icon } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface StreamingAnnotatedTextProps {
   text: string;
@@ -426,8 +427,13 @@ const MarkerDetailCard: React.FC<{
 }> = ({ marker, t, nav, applyChange, isApplied = false, onApplySuggestion, onUndoSuggestion }) => {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
   }, []);
 
   const suggestionText =
@@ -445,12 +451,17 @@ const MarkerDetailCard: React.FC<{
     || marker.comment
     || (marker.type === 'ins' && marker.inferredInsertion ? t('essay_grading:markers.inferred_insert_hint') : undefined);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!suggestionText) return;
-    void copyTextToClipboard(suggestionText);
-    setCopied(true);
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    try {
+      await copyTextToClipboard(suggestionText);
+      if (!mountedRef.current) return;
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error: unknown) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
   };
 
   const badge = CARD_BADGES[marker.type];
@@ -619,7 +630,7 @@ const MarkerDetailCard: React.FC<{
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={handleCopy}
+            onClick={() => { void handleCopy(); }}
             className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}

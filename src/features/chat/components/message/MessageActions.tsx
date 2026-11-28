@@ -270,7 +270,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   });
 
   const showInlineCopyOnly = !compactMobile;
-  const showInlineRetry = !compactMobile && !isUser && Boolean(onRetry);
+  const showInlineRetry = !isUser && Boolean(onRetry);
   const showInlineEdit = !compactMobile && isUser && Boolean(onEdit);
   const hasSecondaryActions = Boolean(
     canDelete ||

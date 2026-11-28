@@ -182,23 +182,12 @@ export const QuestionSettingsDrawer: React.FC<QuestionSettingsDrawerProps> = ({
           </div>
         )}
 
-        {/* 当前题目操作 */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentQuestion')}</h4>
-          <div className="space-y-2">
-            <DsButton
-              variant="outline"
-              className="w-full justify-start gap-2"
-              onClick={onToggleFavorite}
-            >
-              {isFavorite ? (
-                <Star size={16} className="fill-warning text-warning" />
-              ) : (
-                <Star size={16} />
-              )}
-              {isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-            </DsButton>
-            {canDelete && (
+        {/* 当前题目操作（收藏按钮已由题目顶栏统一承载，避免抽屉内重复与只读态空点） */}
+        {canDelete && (
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentQuestion')}</h4>
+            <div className="space-y-2">
+              {canDelete && (
               deleteConfirmOpen ? (
                 /* 内联删除确认：替代模态对话框 */
                 <div className="ui-rise-in rounded-md border border-destructive/30 bg-destructive/5 p-2.5 space-y-2">
@@ -242,9 +231,10 @@ export const QuestionSettingsDrawer: React.FC<QuestionSettingsDrawerProps> = ({
                   {t('common:delete')}
                 </DsButton>
               )
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 显示设置 */}
         <div className="space-y-3">

@@ -7,11 +7,19 @@ export type DataGovernanceTabTarget = {
   requestId: number;
 };
 
+export type SettingsSectionTarget = {
+  section: 'tool-permissions';
+  requestId: number;
+};
+
 interface SettingsShellState {
   activeTab: string;
   dataGovernanceTabTarget: DataGovernanceTabTarget | null;
+  pendingSectionTarget: SettingsSectionTarget | null;
   setActiveTab: (tab: string) => void;
   requestDataGovernanceTab: (tab: unknown) => void;
+  requestSettingsSection: (section: unknown) => void;
+  consumeSettingsSection: (requestId?: number) => void;
   applySettingsRoute: (route: PendingSettingsRoute) => void;
 }
 
@@ -77,6 +85,7 @@ function normalizeSettingsTab(value: string): string {
 export const useSettingsShellStore = create<SettingsShellState>()((set, get) => ({
   activeTab: 'apis',
   dataGovernanceTabTarget: null,
+  pendingSectionTarget: null,
   setActiveTab: (tab) => set({ activeTab: tab }),
   requestDataGovernanceTab: (tab) => {
     const normalized = normalizeDataGovernanceTab(tab);
@@ -89,12 +98,34 @@ export const useSettingsShellStore = create<SettingsShellState>()((set, get) => 
       },
     }));
   },
+  requestSettingsSection: (section) => {
+    if (section !== 'tool-permissions') return;
+
+    set((state) => ({
+      pendingSectionTarget: {
+        section: 'tool-permissions',
+        requestId: (state.pendingSectionTarget?.requestId ?? 0) + 1,
+      },
+    }));
+  },
+  consumeSettingsSection: (requestId) => {
+    set((state) => {
+      if (!state.pendingSectionTarget) return state;
+      if (requestId !== undefined && state.pendingSectionTarget.requestId !== requestId) {
+        return state;
+      }
+      return { pendingSectionTarget: null };
+    });
+  },
   applySettingsRoute: (route) => {
     const mappedTab = normalizeSettingsTab(route.tab);
     set({ activeTab: mappedTab });
 
     if (mappedTab === 'data-governance') {
       get().requestDataGovernanceTab(route.dataGovernanceTab);
+    }
+    if (mappedTab === 'mcp' && route.section === 'tool-permissions') {
+      get().requestSettingsSection(route.section);
     }
   },
 }));

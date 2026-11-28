@@ -738,8 +738,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const [compactContextStatus, setCompactContextStatus] = useState<
       'success' | 'not-needed' | 'skipped' | 'error' | null
     >(null);
+    const compactionPendingRef = useRef<Set<string>>(new Set());
     useEffect(() => {
-      setIsCompactingContext(false);
+      setIsCompactingContext(Boolean(sessionId && compactionPendingRef.current.has(sessionId)));
       setCompactContextStatus(null);
     }, [sessionId]);
     // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
@@ -1024,6 +1025,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     useEffect(() => {
       setSelectedAgents([]);
+      setSelectedModels([]);
+      setCompareMode(false);
     }, [sessionId]);
 
     useEffect(() => {
@@ -1316,15 +1319,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     } = useInputBarV2(store, inputBarOptions);
 
     // 手动压缩上下文（放在 useInputBarV2 之后：依赖其解构出的 isStreaming）
-    const compactionPendingRef = useRef(false);
     const handleCompactContext = useCallback(async (focusHint?: string) => {
+      const targetSessionId = sessionId;
       const modelConfigId =
         model2OverrideId || activeRuntimeModelInfo?.id || currentModelInfo?.id || modelId;
       if (
-        !sessionId || !modelConfigId || compactionPendingRef.current || isStreaming
+        !targetSessionId || !modelConfigId || compactionPendingRef.current.has(targetSessionId) || isStreaming
         || store.getState().compactionInProgress
       ) return;
-      compactionPendingRef.current = true;
+      compactionPendingRef.current.add(targetSessionId);
       setIsCompactingContext(true);
       setCompactContextStatus(null);
       showGlobalNotification(
@@ -1336,16 +1339,19 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 契约：新版返回 { status, reason? }；联调期间可能仍是旧 boolean，
         // normalizeCompactSessionResponse 内部做降级兼容
         const rawResult = await invoke<unknown>('chat_v2_compact_session', {
-          sessionId,
+          sessionId: targetSessionId,
           modelConfigId,
           contextLimit: contextUsageLimitTokens || null,
         });
         const result = normalizeCompactSessionResponse(rawResult);
         const reasonText = t(`chatV2:${compactionReasonI18nKey(result.reason)}`);
+        const isStillCurrentSession = store.getState().sessionId === targetSessionId;
 
         switch (result.status) {
           case 'compacted':
-            setCompactContextStatus('success');
+            if (isStillCurrentSession) {
+              setCompactContextStatus('success');
+            }
             showGlobalNotification(
               'success',
               result.tokensBefore && result.tokensAfter
@@ -1362,24 +1368,28 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
                 t('chatV2:slashCommands.compact.focusAppliedToast', { focus: focusHint.trim() }),
               );
             }
-            // 🆕 手动压缩同样立即刷新水位环（命令返回值携带压缩后估算）
-            if (typeof result.tokensAfter === 'number' && result.tokensAfter > 0) {
-              store.getState().setContextUsageOverride({
-                sessionId,
-                tokensAfter: result.tokensAfter,
-              });
-            }
-            try {
-              await store.getState().loadSession(sessionId);
-            } catch (reloadError) {
-              console.error(
-                '[InputBarV2] Context compacted but session reload failed:',
-                reloadError
-              );
+            if (store.getState().sessionId === targetSessionId) {
+              // 手动压缩同样立即刷新水位环（命令返回值携带压缩后估算）
+              if (typeof result.tokensAfter === 'number' && result.tokensAfter > 0) {
+                store.getState().setContextUsageOverride({
+                  sessionId: targetSessionId,
+                  tokensAfter: result.tokensAfter,
+                });
+              }
+              try {
+                await store.getState().loadSession(targetSessionId);
+              } catch (reloadError) {
+                console.error(
+                  '[InputBarV2] Context compacted but session reload failed:',
+                  reloadError
+                );
+              }
             }
             break;
           case 'notNeeded':
-            setCompactContextStatus('not-needed');
+            if (isStillCurrentSession) {
+              setCompactContextStatus('not-needed');
+            }
             showGlobalNotification(
               'info',
               t('chatV2:compaction.manualSkipped', { reason: reasonText }),
@@ -1387,7 +1397,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             );
             break;
           case 'skipped':
-            setCompactContextStatus('skipped');
+            if (isStillCurrentSession) {
+              setCompactContextStatus('skipped');
+            }
             showGlobalNotification(
               'info',
               t('chatV2:compaction.manualSkipped', { reason: reasonText }),
@@ -1395,7 +1407,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             );
             break;
           case 'failed':
-            setCompactContextStatus('error');
+            if (isStillCurrentSession) {
+              setCompactContextStatus('error');
+            }
             showGlobalNotification(
               'error',
               t('chatV2:compaction.manualFailed', { reason: reasonText }),
@@ -1405,7 +1419,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         }
       } catch (error) {
         console.error('[InputBarV2] Manual context compaction failed:', error);
-        setCompactContextStatus('error');
+        if (store.getState().sessionId === targetSessionId) {
+          setCompactContextStatus('error');
+        }
         showGlobalNotification(
           'error',
           t('chatV2:compaction.manualFailed', {
@@ -1414,8 +1430,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           t('chatV2:inputBar.plusMenu.compactionFailed'),
         );
       } finally {
-        compactionPendingRef.current = false;
-        setIsCompactingContext(false);
+        compactionPendingRef.current.delete(targetSessionId);
+        if (store.getState().sessionId === targetSessionId) {
+          setIsCompactingContext(false);
+        }
       }
     }, [
       activeRuntimeModelInfo?.id,
@@ -1992,12 +2010,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 1. 先检查是否命中 33 个内置斜杠命令（/goal, /compact, /plan, /btw, /remember, /feynman, /anki 等）
     // 2. 未命中时回退到 /skill-id 前缀激活解析（最多叠加 5 个）
     const sendMessageWithSkillCommands = useCallback(async () => {
-      const rawInput = store.getState().inputValue;
+      const currentState = store.getState();
+      const rawInput = currentState.inputValue;
+      const isCurrentSessionCompacting = Boolean(
+        currentState.sessionId && compactionPendingRef.current.has(currentState.sessionId),
+      );
       const builtinInvocation = parseSubmittedBuiltinSlashCommand(rawInput);
       if (builtinInvocation) {
         if (builtinInvocation.spec.id === 'compact') {
-          if (isStreaming || compactionPendingRef.current || store.getState().compactionInProgress) return;
-        } else if (compactionPendingRef.current || store.getState().compactionInProgress) {
+          if (isStreaming || isCurrentSessionCompacting || currentState.compactionInProgress) return;
+        } else if (isCurrentSessionCompacting || currentState.compactionInProgress) {
           return;
         } else if (isStreaming && !builtinInvocation.spec.allowDuringStream) {
           showGlobalNotification('info', t('chatV2:slashCommands.common.busyStreaming'));
@@ -2010,7 +2032,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         });
         return;
       }
-      if (compactionPendingRef.current || store.getState().compactionInProgress) return;
+      if (isCurrentSessionCompacting || currentState.compactionInProgress) return;
       const parsed = parseLeadingSkillCommands(rawInput);
       if (parsed.skillIds.length > 0) {
         for (const skillId of parsed.skillIds) {
@@ -2030,8 +2052,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [store, activeSkillIds, activateSkill, sendMessage, isStreaming, t]);
 
     const steerMessageWithSkillCommands = useCallback(async () => {
-      const rawInput = store.getState().inputValue;
-      if (compactionPendingRef.current || store.getState().compactionInProgress) return;
+      const currentState = store.getState();
+      const rawInput = currentState.inputValue;
+      const isCurrentSessionCompacting = Boolean(
+        currentState.sessionId && compactionPendingRef.current.has(currentState.sessionId),
+      );
+      if (isCurrentSessionCompacting || currentState.compactionInProgress) return;
       const builtinInvocation = parseSubmittedBuiltinSlashCommand(rawInput);
       if (builtinInvocation && builtinInvocation.spec.allowDuringStream) {
         store.getState().setInputValue('');
@@ -2256,10 +2282,19 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关
         // 🔧 会话切换 key（用于重置内部状态）
         sessionSwitchKey={sessionSwitchKey}
-        // 🔧 P1-27: 上下文引用可视化
+        // 🔧 P1-27: 上下文引用可视化（仅清空本组件可见引用，不误清技能/伪附件托管引用）
         pendingContextRefs={pendingContextRefs}
         onRemoveContextRef={removeContextRef}
-        onClearContextRefs={clearContextRefs}
+        onClearContextRefs={() => {
+          const hiddenTypes = new Set([
+            'note', 'textbook', 'exam', 'essay', 'translation',
+            'image', 'file', 'mindmap', 'todo', 'skill', 'skill_instruction',
+          ]);
+          const visibleRefs = pendingContextRefs.filter(
+            (ref) => !hiddenTypes.has(ref.typeId) && !ref.autoLoaded,
+          );
+          visibleRefs.forEach((ref) => removeContextRef(ref.resourceId));
+        }}
         onContextRefCreated={handleContextRefCreated}
         // 🆕 工具审批请求
         pendingApprovalRequest={pendingApprovalRequest}

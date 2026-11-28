@@ -24,7 +24,33 @@ import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { MarkdownRenderer } from './renderers/MarkdownRenderer';
+
+async function resolveExplainErrorMessage(error: unknown): Promise<string> {
+  try {
+    const { getErrorMessage } = await import('@/utils/errorUtils');
+    return getErrorMessage(error);
+  } catch {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    if (error && typeof error === 'object') {
+      const record = error as Record<string, unknown>;
+      for (const key of ['message', 'detail', 'error']) {
+        if (typeof record[key] === 'string' && (record[key] as string).trim()) {
+          return record[key] as string;
+        }
+      }
+      try {
+        const serialized = JSON.stringify(error);
+        if (serialized && serialized !== '{}') return serialized;
+      } catch {
+        // fall through
+      }
+    }
+    return 'An unknown error occurred';
+  }
+}
 
 // ============================================================================
 // 类型
@@ -54,8 +80,8 @@ export interface ExplainPopoverProps {
   contextBefore?: string;
   /** 选区后文 */
   contextAfter?: string;
-  /** 一键将解读结果存入 PDF 批注笔记 */
-  onSaveToAnnotation?: (text: string) => void;
+  /** 一键将解读结果存入 PDF 批注笔记（返回 false 表示未实际落库） */
+  onSaveToAnnotation?: (text: string) => boolean | void;
 }
 
 // ============================================================================
@@ -160,9 +186,10 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
         lensCacheRef.current.set(cacheKey, result.assistant_message);
         setExplanation(result.assistant_message);
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        const message = await resolveExplainErrorMessage(err);
         if (requestIdRef.current !== reqId) return;
-        setError(String(err));
+        setError(message);
       })
       .finally(() => {
         if (requestIdRef.current === reqId) setIsLoading(false);
@@ -215,10 +242,18 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
   const handleCopy = useCallback(async () => {
     if (!explanation) return;
-    await copyTextToClipboard(explanation);
-    setCopied(true);
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    try {
+      const ok = await copyTextToClipboard(explanation);
+      if (ok === false) return;
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, 1500);
+    } catch (err) {
+      showGlobalNotification('error', await resolveExplainErrorMessage(err));
+    }
   }, [explanation]);
 
   const handleAddToInput = useCallback(() => {
@@ -229,7 +264,8 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
   const handleSaveToAnnotation = useCallback(() => {
     if (!explanation || !onSaveToAnnotation) return;
-    onSaveToAnnotation(explanation);
+    const saved = onSaveToAnnotation(explanation);
+    if (saved === false) return;
     setPinned(true);
     if (pinnedTimerRef.current) clearTimeout(pinnedTimerRef.current);
     pinnedTimerRef.current = setTimeout(() => setPinned(false), 1500);

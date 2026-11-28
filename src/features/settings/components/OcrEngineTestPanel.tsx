@@ -148,7 +148,23 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       const testResults = await Promise.all(promises);
       setResults(testResults);
 
-      showGlobalNotification('success', t('settings:ocr.test_complete', { count: testResults.length }));
+      const successCount = testResults.filter((r) => r.success).length;
+      if (successCount === 0) {
+        const firstError = testResults.find((r) => r.error)?.error;
+        showGlobalNotification(
+          'error',
+          firstError
+            ? `${t('settings:status.test_failed')}: ${firstError}`
+            : t('settings:status.test_failed'),
+        );
+      } else if (successCount < testResults.length) {
+        showGlobalNotification(
+          'warning',
+          `${t('settings:ocr.test_complete', { count: testResults.length })} (${successCount}/${testResults.length})`,
+        );
+      } else {
+        showGlobalNotification('success', t('settings:ocr.test_complete', { count: testResults.length }));
+      }
     } catch (error: unknown) {
       console.error('OCR 测试失败:', error);
       showGlobalNotification('error', `${t('settings:ocr.error')}: ${error instanceof Error ? error.message : String(error)}`);

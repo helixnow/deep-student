@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
+import { useNotesChromeSlot } from '@/features/notes/notesChromeSlot';
 import { updateFocusModeOwners, type NotesFocusModeEventDetail } from '@/features/notes';
 import { invoke } from '@tauri-apps/api/core';
 import { noteNeedsColumnsWriter } from '@/features/notes/noteEditorHost';
@@ -250,6 +251,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const toggleRightPanel = useCallback(() => {
     setRightPanelVisible((visible) => !visible);
   }, []);
+  const notesChromeSlot = useNotesChromeSlot();
 
   // ========== 状态 ==========
   const [isLoading, setIsLoading] = useState(true);
@@ -1247,12 +1249,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setRightPanelVisible(false);
           } : undefined}
         >
-          <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-[var(--notes-hairline,hsl(var(--border)))] px-2.5">
-            <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
-            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
-              <X size={13} aria-hidden="true" />
-            </DsButton>
-          </div>
+          {propertiesOverlay && !notesChromeSlot && (
+            <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-[var(--notes-hairline,hsl(var(--border)))] px-2.5">
+              <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
+              <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
+                <X size={13} aria-hidden="true" />
+              </DsButton>
+            </div>
+          )}
           <div className="min-h-0 flex-1 overflow-hidden">
             <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={outlineContent} onTagsChange={readOnly ? undefined : handleTagsChange}
               beforeOutline={<NoteLearningPropertiesSection key={`${noteId}:${node.path}`} node={node} readOnly={readOnly} />} />

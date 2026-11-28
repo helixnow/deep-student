@@ -180,7 +180,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
     return preset.displayName;
   };
 
-  if (mode === 'settings' && isCollapsed && state === 'idle' && entryTab === 'key') {
+  if (mode === 'settings' && isCollapsed && !isBusy && entryTab === 'key') {
     return (
       <div
         data-testid="byok-provisioner-collapsed"
@@ -291,7 +291,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               ]}
             />
           )}
-          {mode === 'settings' && (
+          {mode === 'settings' && !isBusy && (
             <DsButton
               variant="ghost"
               size="sm"

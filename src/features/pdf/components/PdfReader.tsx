@@ -24,16 +24,24 @@ export const PdfReader: React.FC = () => {
   // 供 useMobileHeader rightActions 调用（handleSelectFile 在下方定义）
   const handleSelectFileRef = useRef<() => void>(() => {});
 
+  const [file, setFile] = useState<File | null>(null);
+  const [externalUrl, setExternalUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>('document.pdf');
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const { isSmallScreen } = useBreakpoint();
+
+  const hasDocument = Boolean(file || externalUrl);
+
   // D-1: 移动端顶栏标题（pdf-reader 视图直挂本组件）
   // ★ 2026-07-08（移动端审计 D-2）：文件打开后页内不再有「选择文件」入口，
-  // 换文件只能退出视图重进 —— 把打开文件动作收进统一顶栏右侧。
+  // 换文件只能退出视图重进 —— 仅在已打开文档时在统一顶栏右侧展示换文件入口，空态/错误态直接用页内按钮避免重复。
   useMobileHeader('pdf-reader', {
     title: t('common:navigation.pdf_reader'),
     // ★ 顶栏统一：返回箭头回聊天主视图（与设置/总览等子页一致）。
     // viewStore.setCurrentView 仅允许 App.tsx 写入，跨组件导航走 NAVIGATE_TO_VIEW 事件。
     showBackArrow: true,
     onMenuClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }),
-    rightActions: (
+    rightActions: hasDocument ? (
       <DsButton
         variant="ghost"
         size="sm"
@@ -44,16 +52,9 @@ export const PdfReader: React.FC = () => {
       >
         <UploadSimple size={18} />
       </DsButton>
-    ),
-  }, [t]);
+    ) : undefined,
+  }, [t, hasDocument]);
 
-  const [file, setFile] = useState<File | null>(null);
-  const [externalUrl, setExternalUrl] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>('document.pdf');
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const { isSmallScreen } = useBreakpoint();
-
-  const hasDocument = Boolean(file || externalUrl);
   useDesktopHeader(
     'pdf-reader',
     {
@@ -63,7 +64,7 @@ export const PdfReader: React.FC = () => {
             { id: 'pdf-file', label: fileName },
           ]
         : [{ id: 'pdf-root', label: t('common:navigation.pdf_reader') }],
-      actions: (
+      actions: hasDocument ? (
         <DsButton
           variant="ghost"
           size="sm"
@@ -73,7 +74,7 @@ export const PdfReader: React.FC = () => {
           <UploadSimple size={14} />
           <span>{t('pdf:empty.select_button')}</span>
         </DsButton>
-      ),
+      ) : undefined,
     },
     [t, hasDocument, fileName],
     !isSmallScreen,

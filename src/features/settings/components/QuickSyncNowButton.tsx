@@ -52,6 +52,8 @@ export interface QuickSyncNowButtonProps {
   onSyncTrigger?: () => void | boolean | Promise<void | boolean>;
   /** Custom testid for unambiguous test targeting */
   dataTestId?: string;
+  /** 父容器已展示持久化未解决冲突横幅时隐藏重复徽章 */
+  hideConflictBadge?: boolean;
   className?: string;
 }
 
@@ -59,6 +61,7 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
   cloudConfiguredOverride,
   onSyncTrigger,
   dataTestId = 'settings-quick-sync-now-btn',
+  hideConflictBadge = false,
   className,
 }) => {
   const { t, i18n } = useTranslation(['sync', 'data', 'common']);
@@ -284,7 +287,7 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
     }
   }, [enterMaintenanceMode, exitMaintenanceMode, i18n?.language, isSyncing, localRunning, onSyncTrigger, t]);
 
-  if (!effectiveConfigured && unresolvedConflictCount === 0) {
+  if (!effectiveConfigured && (hideConflictBadge || unresolvedConflictCount === 0)) {
     return null;
   }
 
@@ -292,7 +295,7 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
 
   return (
     <div className="inline-flex flex-wrap items-center gap-2">
-      {unresolvedConflictCount > 0 && (
+      {!hideConflictBadge && unresolvedConflictCount > 0 && (
         <DsButton
           type="button"
           variant="warning"

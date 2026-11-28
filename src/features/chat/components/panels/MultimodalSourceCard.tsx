@@ -118,12 +118,16 @@ function usePageImageSrc(item: UnifiedSourceItem): string | null {
   const key = resourceId && typeof pageIndex === 'number' ? `${resourceId}:${pageIndex}` : null;
   const [src, setSrc] = useState<string | null>(() => (key && pageImageCache.get(key)) || null);
   useEffect(() => {
-    if (!key || !resourceId || typeof pageIndex !== 'number') return;
+    if (!key || !resourceId || typeof pageIndex !== 'number') {
+      setSrc(null);
+      return;
+    }
     const cached = pageImageCache.get(key);
     if (cached) {
       setSrc(cached);
       return;
     }
+    setSrc(null);
     let cancelled = false;
     void import('@/api/vfsRagApi')
       .then(({ getPdfPageImageDataUrl }) => getPdfPageImageDataUrl(resourceId, pageIndex))

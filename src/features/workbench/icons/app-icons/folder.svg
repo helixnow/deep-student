@@ -1,13 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-  <linearGradient id="fd_back" x1="75" x2="75" y1="26" y2="92" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#14607E" offset="0"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
-  </linearGradient>
-  <path d="M18 36a10 10 0 0 1 10-10h28l12 12h46a10 10 0 0 1 10 10v56H18V36z" fill="url(#fd_back)"/>
-  <linearGradient id="fd_front" x1="75" x2="75" y1="52" y2="124" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#2BB3A3" offset="0"/>
-    <stop stop-color="#127487" offset="1"/>
-  </linearGradient>
-  <path d="M14 60a8 8 0 0 1 8-8h106a8 8 0 0 1 7.8 9.8l-10.6 50a10 10 0 0 1-9.8 8H26.6a10 10 0 0 1-9.8-8l-10.6-50A8 8 0 0 1 14 60z" fill="url(#fd_front)"/>
-  <path d="M22 52h106a8 8 0 0 1 7.7 6H14.3a8 8 0 0 1 7.7-6z" fill="#fff" opacity=".22"/>
-</svg>
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0, 0) scale(1)">
+  <defs><clipPath id="wb-folder-bare-fclip"><path d="M 7 15.8 C 7 12.87 9.37 10.5 12.3 10.5 H 23.2 C 25.7 10.5 27.1 11.55 28.5 13.35 L 30.1 15.4 C 31.0 16.55 32.2 17.1 33.8 17.1 H 51.7 C 54.63 17.1 57 19.47 57 22.4 V 46.5 C 57 49.54 54.54 52 51.5 52 H 12.5 C 9.46 52 7 49.54 7 46.5 V 15.8 Z"/></clipPath></defs>
+  <rect x="7" y="21.5" width="50" height="31.8" rx="5.6" fill="#1E3A5F" fill-opacity="0.18"/>
+  <g clip-path="url(#wb-folder-bare-fclip)">
+  <rect x="6" y="10" width="52" height="43" fill="#3B73AE"/>
+  <rect x="6" y="19.8" width="52" height="4" fill="#2F5E91"/>
+  <rect x="6.5" y="21.2" width="51" height="31" rx="3.2" fill="#35689E"/>
+  <rect x="6.5" y="21.2" width="51" height="28.6" rx="3.2" fill="#5E9CE0"/>
+  <line x1="8" y1="22.1" x2="56" y2="22.1" stroke="#9ACAFA" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  </g></svg>

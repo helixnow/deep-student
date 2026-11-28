@@ -627,6 +627,7 @@ export async function getWorkspaceBinding(chatSessionId: string): Promise<Worksp
 export async function setWorkspaceBinding(
   input: SetWorkspaceBindingRequest,
 ): Promise<WorkspaceBinding | null> {
+  const prevBinding = useAgentMeshStore.getState().workspaceBindings[input.chatSessionId] ?? null;
   const trimmedRoot = input.rootPath.trim();
   const optimistic: WorkspaceBinding | null = trimmedRoot
     ? {
@@ -642,16 +643,21 @@ export async function setWorkspaceBinding(
   if (!activeBridge?.setWorkspaceBinding) {
     return optimistic;
   }
-  const confirmedRaw = await activeBridge.setWorkspaceBinding({
-    ...input,
-    rootPath: trimmedRoot,
-  });
-  if (confirmedRaw !== undefined) {
-    const confirmed = normalizeHostBinding(confirmedRaw, input.chatSessionId);
-    useAgentMeshStore.getState().setWorkspaceBindingState(input.chatSessionId, confirmed);
-    return confirmed;
+  try {
+    const confirmedRaw = await activeBridge.setWorkspaceBinding({
+      ...input,
+      rootPath: trimmedRoot,
+    });
+    if (confirmedRaw !== undefined) {
+      const confirmed = normalizeHostBinding(confirmedRaw, input.chatSessionId);
+      useAgentMeshStore.getState().setWorkspaceBindingState(input.chatSessionId, confirmed);
+      return confirmed;
+    }
+    return optimistic;
+  } catch (err) {
+    useAgentMeshStore.getState().setWorkspaceBindingState(input.chatSessionId, prevBinding);
+    throw err;
   }
-  return optimistic;
 }
 
 export async function startTurn(input: StartExternalTurnRequest): Promise<MeshThreadState | null> {
@@ -693,7 +699,10 @@ export async function steerTurn(input: SteerExternalTurnRequest): Promise<boolea
   if (!activeBridge?.steerTurn) {
     return false;
   }
-  await activeBridge.steerTurn(input);
+  const res = await activeBridge.steerTurn(input);
+  if (res && typeof res === 'object' && 'ok' in res && res.ok === false) {
+    return false;
+  }
   return true;
 }
 
@@ -716,7 +725,12 @@ export async function interruptTurn(input: InterruptExternalTurnRequest): Promis
 export async function respondApproval(input: RespondApprovalRequest): Promise<boolean> {
   const store = useAgentMeshStore.getState();
   const thread = store.threads[input.threadId];
-  if (thread && thread.pendingApproval?.requestId === input.requestId) {
+  const prevPendingApproval = thread?.pendingApproval ?? null;
+  const prevStatus = thread?.status;
+  const didOptimisticPatch = Boolean(
+    thread && thread.pendingApproval?.requestId === input.requestId,
+  );
+  if (didOptimisticPatch && thread) {
     const nextStatus: MeshThreadStatus =
       input.decision === 'deny'
         ? 'running'
@@ -732,19 +746,39 @@ export async function respondApproval(input: RespondApprovalRequest): Promise<bo
   if (!activeBridge?.respondApproval) {
     return false;
   }
-  await activeBridge.respondApproval(input);
-  return true;
+  try {
+    await activeBridge.respondApproval(input);
+    return true;
+  } catch (err) {
+    if (didOptimisticPatch && prevStatus !== undefined) {
+      useAgentMeshStore.getState().patchThread(input.threadId, {
+        pendingApproval: prevPendingApproval,
+        status: prevStatus,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function setHumanControlled(input: SetHumanControlledRequest): Promise<boolean> {
+  const prevHumanControlled = useAgentMeshStore.getState().threads[input.threadId]?.humanControlled;
   useAgentMeshStore.getState().patchThread(input.threadId, {
     humanControlled: input.humanControlled,
   });
   if (!activeBridge?.setHumanControlled) {
     return false;
   }
-  await activeBridge.setHumanControlled(input);
-  return true;
+  try {
+    await activeBridge.setHumanControlled(input);
+    return true;
+  } catch (err) {
+    if (prevHumanControlled !== undefined) {
+      useAgentMeshStore.getState().patchThread(input.threadId, {
+        humanControlled: prevHumanControlled,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function getSessionSnapshot(
@@ -802,25 +836,37 @@ export async function swarmControl(input: SwarmControlRequest): Promise<SwarmSes
 export async function saveCustomCliTemplate(
   template: CustomCliTemplate,
 ): Promise<CustomCliTemplate> {
+  const prevTemplates = useAgentMeshStore.getState().customTemplates;
   useAgentMeshStore.getState().upsertCustomTemplate(template);
   if (activeBridge?.saveCustomCliTemplate) {
-    const saved = await activeBridge.saveCustomCliTemplate(template);
-    if (saved) {
-      const normalizedSaved: CustomCliTemplate = {
-        ...saved,
-        updatedAt: toEpochMs(saved.updatedAt),
-      };
-      useAgentMeshStore.getState().upsertCustomTemplate(normalizedSaved);
-      return normalizedSaved;
+    try {
+      const saved = await activeBridge.saveCustomCliTemplate(template);
+      if (saved) {
+        const normalizedSaved: CustomCliTemplate = {
+          ...saved,
+          updatedAt: toEpochMs(saved.updatedAt),
+        };
+        useAgentMeshStore.getState().upsertCustomTemplate(normalizedSaved);
+        return normalizedSaved;
+      }
+    } catch (err) {
+      useAgentMeshStore.setState({ customTemplates: prevTemplates });
+      throw err;
     }
   }
   return template;
 }
 
 export async function deleteCustomCliTemplate(templateId: string): Promise<void> {
+  const prevTemplates = useAgentMeshStore.getState().customTemplates;
   useAgentMeshStore.getState().removeCustomTemplate(templateId);
   if (activeBridge?.deleteCustomCliTemplate) {
-    await activeBridge.deleteCustomCliTemplate(templateId);
+    try {
+      await activeBridge.deleteCustomCliTemplate(templateId);
+    } catch (err) {
+      useAgentMeshStore.setState({ customTemplates: prevTemplates });
+      throw err;
+    }
   }
 }
 

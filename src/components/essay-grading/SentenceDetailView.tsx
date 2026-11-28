@@ -30,6 +30,7 @@ import type { Icon } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface SentenceDetailViewProps {
   markers: StreamingMarker[];
@@ -100,17 +101,27 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
 }) => {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyTextToClipboard(text);
-    setCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopied(false), 2000);
+    try {
+      await copyTextToClipboard(text);
+      if (!mountedRef.current) return;
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (error: unknown) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -118,7 +129,7 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
       variant="ghost"
       size="sm"
       aria-label={copied ? copiedLabel : label}
-      onClick={handleCopy}
+      onClick={(e) => { void handleCopy(e); }}
       className={cn(
         coarseHitClassFor24,
         'h-6 px-1.5 ml-auto shrink-0 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',

@@ -136,13 +136,15 @@ function selectAll(target: HTMLElement): void {
     target.select();
     return;
   }
-  if (target.isContentEditable) {
-    const range = document.createRange();
-    range.selectNodeContents(target);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-  }
+  const sel = window.getSelection();
+  if (!sel) return;
+  const container = target.isContentEditable
+    ? target
+    : (target.closest('[data-message-content], .prose, .markdown-body, article, [role="document"]') as HTMLElement | null) ?? target;
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 // ───────────────────────────────────────────────────────────────────

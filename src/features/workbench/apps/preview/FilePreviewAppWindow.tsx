@@ -42,6 +42,7 @@ import {
 import './FilePreviewAppWindow.css';
 
 const MAX_SEARCH_MATCHES = 2_000;
+const PRINT_CLEANUP_TIMEOUT_MS = 60_000;
 
 const IS_MAC = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform ?? '');
 
@@ -323,6 +324,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   }, [searchState]);
   const [toolbarWidth, setToolbarWidth] = useState(Number.POSITIVE_INFINITY);
   const epubSelectionRef = useRef<PreviewSelectionMetadata>({});
+  const printCleanupRef = useRef<(() => void) | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const { referenceToChat, canReferenceToChat } = useReferenceToChat();
   const reducedMotion = useReducedMotion();
@@ -454,7 +456,13 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     };
   }, [highlightNames, searchOpen, searchQuery, node?.id]);
 
-  useEffect(() => () => clearCssHighlights(highlightNames), [highlightNames]);
+  useEffect(() => () => {
+    clearCssHighlights(highlightNames);
+  }, [highlightNames]);
+
+  useEffect(() => () => {
+    printCleanupRef.current?.();
+  }, []);
 
   // Bound per resourceId: with the previous `[]` deps, mounting through the
   // empty state left previewRootRef.current null and the listener never bound.
@@ -542,21 +550,53 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     }
     const root = previewRootRef.current;
     if (!root) return;
+    printCleanupRef.current?.();
     // Tag the printing window so print CSS only affects this preview and
     // never bleeds into portals, notifications, or other preview windows.
     root.setAttribute('data-file-preview-printing', '');
-    // 双保险：window.print() 返回后立即清理；某些 WebKit 场景 print() 立刻返回、
-    // 打印真正结束时才派发 afterprint。cleanup 自行摘除监听，避免残留。
+    // WebKit / 部分桌面壳中 window.print() 会先返回、打印真正结束后才派发 afterprint：
+    // 禁止在 finally 里同步清理，改为依赖 afterprint、matchMedia('print') 回退与 60s 兜底超时。
+    let cleaned = false;
+    let rafId = 0;
+    let timeoutId: number | null = null;
+    const mediaQuery =
+      typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+    const onMediaChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) cleanup();
+    };
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       root.removeAttribute('data-file-preview-printing');
       window.removeEventListener('afterprint', cleanup);
+      if (mediaQuery && typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', onMediaChange);
+      }
+      if (printCleanupRef.current === cleanup) {
+        printCleanupRef.current = null;
+      }
     };
+    printCleanupRef.current = cleanup;
     window.addEventListener('afterprint', cleanup);
-    requestAnimationFrame(() => {
+    if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', onMediaChange);
+    }
+    timeoutId = window.setTimeout(cleanup, PRINT_CLEANUP_TIMEOUT_MS);
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
       try {
         window.print();
-      } finally {
+      } catch (error: unknown) {
         cleanup();
+        showGlobalNotification('error', getErrorMessage(error));
       }
     });
   }, [canPrint, t]);
@@ -670,19 +710,21 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         role="toolbar"
         aria-label={t('workbench:apps.filePreview')}
       >
-        <ToolbarAction
-          label={t('filePreview.search')}
-          shortcut={shortcutLabel('F')}
-          note={canSearch ? undefined : t('filePreview.searchUnavailable')}
-          disabled={!canSearch}
-          active={searchOpen}
-          onClick={toggleSearchPanel}
-        >
-          <MagnifyingGlass size={16} />
-        </ToolbarAction>
+        {previewMode !== 'pdf' && (
+          <ToolbarAction
+            label={t('filePreview.search')}
+            shortcut={shortcutLabel('F')}
+            note={canSearch ? undefined : t('filePreview.searchUnavailable')}
+            disabled={!canSearch}
+            active={searchOpen}
+            onClick={toggleSearchPanel}
+          >
+            <MagnifyingGlass size={16} />
+          </ToolbarAction>
+        )}
         {!collapseActions && (
           <>
-            <ToolbarSeparator />
+            {previewMode !== 'pdf' && <ToolbarSeparator />}
             <ToolbarAction
               label={t('filePreview.saveAs')}
               shortcut={shortcutLabel('S')}

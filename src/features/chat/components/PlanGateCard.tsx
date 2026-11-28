@@ -18,6 +18,8 @@ import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp, 
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 
 export interface PlanGateRequestData {
   planId: string;
@@ -79,6 +81,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
         onResolved?.(approved);
       } catch (error) {
         console.error('[PlanGateCard] Failed to respond:', error);
+        showGlobalNotification('error', getErrorMessage(error));
         // 发送失败允许用户重试（超时自动拒绝除外，由 timeoutFiredRef 控制）
         respondingRef.current = false;
         setBusy(false);
@@ -88,12 +91,14 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   );
   respondRef.current = (approved) => void respond(approved);
 
-  // 新请求到达时重置倒计时与超时状态
+  // 新请求到达时重置倒计时、超时状态与提交锁，避免连续门控锁死按钮
   useEffect(() => {
     setRemaining(request.timeoutSeconds);
     setTimedOut(false);
     setCountdownPaused(false);
     setIsArgsExpanded(false);
+    setBusy(false);
+    respondingRef.current = false;
     timeoutFiredRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
 

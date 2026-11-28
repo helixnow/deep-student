@@ -113,6 +113,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileCheckMode, setMobileCheckMode] = useState(false);
+  const detailCloseGuardRef = useRef<((onConfirmClose: () => void) => boolean) | null>(null);
   // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）。
   // 注意：移动端回收站入口走本地 trashOpen（TodoSidebar 的 onOpenTrash 回调），
   // 与桌面端的 useTodoTrashView 共享 store 是两条独立路径——移动端需要接入
@@ -270,7 +271,14 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         return {
           title: mobileDetailItem?.title || t('todo:detail.title'),
           showBackArrow: true,
-          onMenuClick: () => selectItem(null),
+          onMenuClick: () => {
+            const guard = detailCloseGuardRef.current;
+            if (guard) {
+              guard(() => selectItem(null));
+            } else {
+              selectItem(null);
+            }
+          },
         };
       }
     }
@@ -433,6 +441,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
                 onMobileSearchOpenChange={setMobileSearchOpen}
                 checkMode={mobileCheckMode}
                 onCheckModeChange={setMobileCheckMode}
+                detailCloseGuardRef={detailCloseGuardRef}
               />
             )}
         </MobileSlidingLayout>

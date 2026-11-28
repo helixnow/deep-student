@@ -47,6 +47,7 @@ import { useStreamPreferences } from './renderers/StreamPreferencesContext';
 import { BlockRenderSkipContext } from './renderers/blockRenderSkip';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
+import { isWorkbenchHostEnabled } from '@/shared/workbenchHost';
 import {
   LazySessionMeshStreamSection,
   selectHasSessionMeshActivity,
@@ -477,6 +478,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // （对照 InlineImageViewer 在 currentView !== 'chat-v2' 时关闭预览）。
   const currentView = useViewStore((s) => s.currentView);
   useEffect(() => {
+    if (isWorkbenchHostEnabled()) return;
     if (isSearchOpen && currentView !== 'chat-v2') {
       closeSearch();
     }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Key, LinkSimple, NotePencil, Trash, Prohibit } from '@phosphor-icons/react';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
@@ -23,7 +23,7 @@ interface VendorConfigModalProps {
   open: boolean;
   vendor?: VendorConfig | null;
   onClose: () => void;
-  onSave: (vendor: VendorConfig) => void;
+  onSave: (vendor: VendorConfig) => void | Promise<void>;
   /** 嵌入模式：不使用 Dialog 包裹，直接渲染内容（用于移动端三屏布局） */
   embeddedMode?: boolean;
 }
@@ -74,15 +74,27 @@ const providerTypeOptions = [
 
 const protocolImpliesResponsesSupport = (protocol?: ApiProtocol | null) => protocol === 'openai_responses';
 
+const parseDefaultTimeoutMs = (raw: string): number | undefined => {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const parsed = Math.trunc(Number(trimmed));
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(120000, Math.max(1000, parsed));
+};
 
 export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigModalProps>(({ open, vendor, onClose, onSave, embeddedMode = false }, ref) => {
   const { t } = useTranslation(['settings', 'common']);
   const [formData, setFormData] = useState<VendorConfig>(vendor ?? defaultVendor);
   const [headersInput, setHeadersInput] = useState('');
   const [apiKeysInput, setApiKeysInput] = useState('');
+  const [defaultTimeoutMsDraft, setDefaultTimeoutMsDraft] = useState(
+    vendor?.defaultTimeoutMs != null ? String(vendor.defaultTimeoutMs) : '',
+  );
   const [protocolManuallySelected, setProtocolManuallySelected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forceClearApiKey, setForceClearApiKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const isEditing = Boolean(vendor && vendor.id);
   const usesNoApiKey = formData.authMode === 'none' || formData.noApiKey === true;
 
@@ -120,6 +132,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           : ''
       );
       setApiKeysInput((vendor.apiKeys ?? []).join('\n'));
+      setDefaultTimeoutMsDraft(vendor.defaultTimeoutMs != null ? String(vendor.defaultTimeoutMs) : '');
     } else {
       setFormData({
         ...defaultVendor,
@@ -129,14 +142,18 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       });
       setHeadersInput('');
       setApiKeysInput('');
+      setDefaultTimeoutMsDraft('');
     }
     setError(null);
     setForceClearApiKey(false);
+    savingRef.current = false;
+    setSaving(false);
     // 已持久化的协议属于用户选择；编辑 custom 网关 URL 时不得按推断默认值覆盖。
     setProtocolManuallySelected(Boolean(vendor?.apiProtocol));
   }, [vendor, open]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (savingRef.current) return;
     if (!formData.name.trim()) {
       setError(t('settings:vendor_modal.validation_name'));
       return;
@@ -160,7 +177,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         parsedHeaders = Object.fromEntries(
           Object.entries(parsed).map(([key, value]) => [key, String(value)])
         );
-      } catch (parseError: unknown) {
+      } catch {
         setError(t('settings:vendor_modal.headers_parse_error'));
         return;
       }
@@ -180,9 +197,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
     const apiKeys = apiKeysInput
       .split(/[\n,]/)
       .map(key => key.trim());
+    const parsedDefaultTimeoutMs = parseDefaultTimeoutMs(defaultTimeoutMsDraft);
+    setDefaultTimeoutMsDraft(parsedDefaultTimeoutMs != null ? String(parsedDefaultTimeoutMs) : '');
 
     const payload: VendorConfig = {
       ...formData,
+      defaultTimeoutMs: parsedDefaultTimeoutMs,
       providerType,
       authMode: usesNoApiKey ? 'none' : (formData.authMode === 'none' ? 'api_key' : formData.authMode ?? 'api_key'),
       // 兼容尚未迁移的前端状态；后端持久化以 authMode 为准。
@@ -196,12 +216,22 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       isBuiltin: formData.isBuiltin ?? false,
       isReadOnly: formData.isReadOnly ?? false,
     };
-    onSave(payload);
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await onSave(payload);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   // 暴露 save 方法给父组件（用于移动端顶栏保存按钮）
   useImperativeHandle(ref, () => ({
-    save: handleSave,
+    save: () => {
+      void handleSave();
+    },
   }));
 
   const nameInputId = 'vendor-config-name';
@@ -371,13 +401,13 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             min={1000}
             max={120000}
             step={1000}
-            value={formData.defaultTimeoutMs ?? ''}
-            onChange={event => setFormData(prev => ({
-              ...prev,
-              defaultTimeoutMs: event.target.value
-                ? Math.min(120000, Math.max(1000, Math.trunc(Number(event.target.value))))
-                : undefined,
-            }))}
+            value={defaultTimeoutMsDraft}
+            onChange={event => setDefaultTimeoutMsDraft(event.target.value)}
+            onBlur={() => {
+              const parsed = parseDefaultTimeoutMs(defaultTimeoutMsDraft);
+              setFormData(prev => ({ ...prev, defaultTimeoutMs: parsed }));
+              setDefaultTimeoutMsDraft(parsed != null ? String(parsed) : '');
+            }}
             placeholder="10000"
             className="mt-2"
           />
@@ -511,7 +541,17 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
 
   // 模态框模式
   return (
-    <DsDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
+    <DsDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !savingRef.current) {
+          onClose();
+        }
+      }}
+      showClose={!saving}
+      closeOnOverlay={!saving}
+      maxWidth="max-w-lg"
+    >
         <DsDialogHeader>
           <DsDialogTitle>
             {vendor ? t('settings:vendor_modal.title_edit') : t('settings:vendor_modal.title_new')}
@@ -522,10 +562,26 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           {formContent}
         </DsDialogBody>
         <DsDialogFooter className="!border-t-0">
-          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            disabled={saving}
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={() => {
+              if (!savingRef.current) onClose();
+            }}
+          >
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleSave}>{t('common:actions.save')}</DsButton>
+          <DsButton
+            variant="primary"
+            size="sm"
+            disabled={saving}
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={() => void handleSave()}
+          >
+            {saving ? t('common:actions.saving') : t('common:actions.save')}
+          </DsButton>
         </DsDialogFooter>
     </DsDialog>
   );

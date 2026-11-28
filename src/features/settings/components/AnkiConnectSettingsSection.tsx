@@ -26,7 +26,9 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
   }, []);
 
   const savePartial = async (patch: Partial<AnkiConnectSettings>) => {
-    const next = { ...(settings as any), ...patch } as AnkiConnectSettings;
+    if (!settings) return;
+    const previous = settings;
+    const next = { ...previous, ...patch } as AnkiConnectSettings;
     setSettings(next);
     try {
       await ankiConnectClient.saveSettings(patch);
@@ -38,7 +40,8 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           ankiConnectOpenFolderOnFailure: next.anki_connect_open_folder_on_failure,
         }
       }));
-    } catch (e: any) {
+    } catch (e: unknown) {
+      setSettings(previous);
       showGlobalNotification('error', `${t('common:anki.settings.save_failed')}: ${getErrorMessage(e)}`);
     }
   };

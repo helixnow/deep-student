@@ -1,21 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-  <rect x="42" y="14" width="88" height="98" rx="10" fill="#5FD0CB" opacity=".55"/>
-  <linearGradient id="tp_mid" x1="76" x2="76" y1="24" y2="122" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#14A5A0" offset="0"/>
-    <stop stop-color="#14607E" offset="1"/>
-  </linearGradient>
-  <rect x="32" y="24" width="88" height="98" rx="10" fill="url(#tp_mid)"/>
-  <linearGradient id="tp_front" x1="66" x2="66" y1="36" y2="134" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#F8FDFC" offset="0"/>
-    <stop stop-color="#D4EAE8" offset="1"/>
-  </linearGradient>
-  <rect x="22" y="36" width="88" height="98" rx="10" fill="url(#tp_front)" stroke="#A6C4CB" stroke-width="3"/>
-  <rect x="32" y="48" width="68" height="14" rx="5" fill="#1D3F6E"/>
-  <rect x="32" y="72" width="30" height="50" rx="5" fill="#14A5A0"/>
-  <linearGradient id="tp_accent" x1="86" x2="86" y1="100" y2="122" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#F9AC33" offset="0"/>
-    <stop stop-color="#F0603C" offset="1"/>
-  </linearGradient>
-  <rect x="70" y="72" width="30" height="20" rx="5" fill="#9BD9D4"/>
-  <rect x="70" y="100" width="30" height="22" rx="5" fill="url(#tp_accent)"/>
-</svg>
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="wb-templates-c"><path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z"/></clipPath></defs>
+  <g clip-path="url(#wb-templates-c)">
+  <rect x="2" y="2" width="60" height="60" fill="#1D4541"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, -2.2)" fill="#2E6862"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, 0.9)" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.05"/>
+  </g>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" fill="none" stroke="#0F172A" stroke-opacity="0.22" stroke-width="0.9"/>
+  <rect x="9.5" y="15.5" width="25" height="35" rx="4.5" transform="rotate(-16 22 39)" fill="#8CB5B0"/>
+  <rect x="29.5" y="15.5" width="25" height="35" rx="4.5" transform="rotate(16 42 39)" fill="#6B9994"/>
+  <rect x="17" y="13.8" width="30" height="40" rx="5.2" fill="#143633" fill-opacity="0.38"/>
+  <rect x="17" y="12.2" width="30" height="40" rx="5.2" fill="#C4D8D5"/>
+  <rect x="17" y="10.5" width="30" height="40" rx="5.2" fill="#FAF9F6"/>
+  <path d="M23.6 29.0C23.6 24.36 27.36 20.6 32 20.6C35.25 20.6 38.05 22.45 39.45 25.15" fill="none" stroke="#2E6862" stroke-width="2.55" stroke-linecap="round" stroke-dasharray="2.1 4.6"/>
+  <polygon points="41.7,22.5 41.6,27.8 36.7,26.2" fill="#2E6862"/>
+  <path d="M40.4 32.0C40.4 36.64 36.64 40.4 32 40.4C28.75 40.4 25.95 38.55 24.55 35.85" fill="none" stroke="#CC923E" stroke-width="2.55" stroke-linecap="round" stroke-dasharray="2.1 4.6"/>
+  <polygon points="22.3,38.5 22.4,33.2 27.3,34.8" fill="#CC923E"/></svg>

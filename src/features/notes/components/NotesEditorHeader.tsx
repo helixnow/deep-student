@@ -298,6 +298,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     };
 
     useEffect(() => {
+        setIsEditing(false);
+        pendingTitleRef.current = null;
+        titleCommittedRef.current = false;
+        escapeRevertRef.current = false;
         lastCommittedTitleRef.current = null;
         clearTitleDebounce();
     }, [noteId]);
@@ -458,6 +462,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const [isSavingTags, setIsSavingTags] = useState(false);
     /** 标签前置校验的内联错误（超长 / 控制字符 / 数量达上限） */
     const [tagError, setTagError] = useState<string | null>(null);
+    useEffect(() => {
+        setTagInputOpen(false);
+        setTagInput('');
+        setTagError(null);
+    }, [noteId]);
     const tagInputRef = useRef<HTMLInputElement>(null);
     const tagTriggerRef = useRef<HTMLButtonElement>(null);
     const restoreTagFocusRef = useRef(false);
@@ -505,17 +514,19 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }, BACK_PRIORITY.overlay);
     }, [tagSuggestionsVisible]);
 
-    const applyTags = async (next: string[]) => {
-        if (!commitTags || isSavingTags) return;
+    const applyTags = async (next: string[]): Promise<boolean> => {
+        if (!commitTags || isSavingTags) return false;
         setIsSavingTags(true);
         try {
             await commitTags(next);
+            return true;
         } catch (error: unknown) {
             console.error('[NotesEditorHeader] Failed to update tags:', error);
             showGlobalNotification(
                 'error',
                 t('notes:notifications.tagStateSaveFailed', 'Failed to save tags'),
             );
+            return false;
         } finally {
             setIsSavingTags(false);
         }
@@ -553,9 +564,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             setTagInput('');
             return;
         }
-        await applyTags([...effectiveTags, normalized]);
-        setTagInput('');
-        setTagHighlightIndex(-1);
+        const saved = await applyTags([...effectiveTags, normalized]);
+        if (saved) {
+            setTagInput('');
+            setTagHighlightIndex(-1);
+        }
     };
 
     const handleRemoveTag = (tag: string) => {

@@ -45,6 +45,8 @@ import {
 } from '@phosphor-icons/react';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { Input } from '@/components/ui/shad/Input';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
@@ -421,6 +423,14 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const expandToggledRef = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeMarkRef = useRef<HTMLElement | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current) {
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = null;
+    }
+  }, []);
 
   const text = textContent ?? '';
 
@@ -522,11 +532,17 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const handleCopy = useCallback(async () => {
     if (!text) return;
     try {
-      await copyTextToClipboard(text);
+      const ok = await copyTextToClipboard(text);
+      if (ok === false) return;
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, 1500);
     } catch (e: unknown) {
       console.error('Copy failed:', e);
+      showGlobalNotification('error', getErrorMessage(e));
     }
   }, [text]);
 
@@ -543,6 +559,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       });
     } catch (e: unknown) {
       console.error('Download failed:', e);
+      showGlobalNotification('error', getErrorMessage(e));
     }
   }, [text, fileName, title]);
 

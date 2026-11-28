@@ -34,6 +34,7 @@ function renderContent(
     case 'plan_gate':
       return (
         <PlanGateCard
+          key={interaction.toolCallId}
           sessionId={sessionId}
           request={{
             planId: interaction.planId,

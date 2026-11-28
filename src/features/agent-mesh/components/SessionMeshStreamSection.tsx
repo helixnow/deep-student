@@ -10,7 +10,19 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+
+async function resolveErrorMessage(error: unknown): Promise<string> {
+  try {
+    const { getErrorMessage } = await import('@/utils/errorUtils');
+    return getErrorMessage(error);
+  } catch {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    return 'An unknown error occurred';
+  }
+}
 import {
   formatCompactWorkspacePath,
   resolveAgentDisplayName,
@@ -101,6 +113,8 @@ const NativeTurnDiffStrip: React.FC<NativeTurnDiffStripProps> = React.memo(({ th
         if (fetched) {
           setLoadedDiff(fetched);
         }
+      } catch (err) {
+        showGlobalNotification('error', await resolveErrorMessage(err));
       } finally {
         setLoadingDiff(false);
       }
@@ -117,6 +131,8 @@ const NativeTurnDiffStrip: React.FC<NativeTurnDiffStripProps> = React.memo(({ th
         threadId: thread.threadId,
         rootPath: thread.rootPath,
       });
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
     } finally {
       setReverting(false);
     }

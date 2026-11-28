@@ -23,7 +23,7 @@
  *
  * 注：旧版 Anki 面板事件桥接已拆除。
  */
-import React, { useEffect } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { APP_EVENTS, addAppEventListener, type SettingsNavigateTabDetail } from '@/events/app';
@@ -43,6 +43,7 @@ import { launchNewChatSession, openChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
 import { resolvePluginViewAppTypeId } from '../apps/plugin-views/register';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { KB_SCOPE_PICKER_EVENT } from '@/components/study-space/kbScope';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
@@ -57,10 +58,31 @@ import {
   type MediaRefOpenDetail,
 } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 
+const LazyKbScopePickerHost = React.lazy(() =>
+  import('@/features/chat').then((m) => ({ default: m.KbScopePickerHost })),
+);
+
 /** 笔记工作区应用 typeId（同 apps/notes/register 的 NOTES_APP_TYPE_ID；不引入该注册模块以免拉起整个工作区依赖）。 */
 const NOTES_WORKSPACE_APP_TYPE_ID = 'notes';
 /** 统一文件预览应用 typeId（同 apps/content/typeMap 的 FILE_PREVIEW_APP_TYPE_ID）。 */
 const FILE_PREVIEW_APP_TYPE_ID = 'file-preview';
+/**
+ * 经典壳视图名 → 学习桌面内置应用 typeId。
+ * 注意：故意不映射 'data-management'（由 pluginViewApps.test.tsx 约束忽略）
+ * 与无 openResource 的 'learning-hub'（由 WorkbenchEventBridge.navigation.test.tsx 约束忽略）。
+ */
+const BUILTIN_VIEW_TYPE_MAP: Readonly<Record<string, string>> = {
+  settings: 'settings',
+  'sandbox-workbench': 'sandbox',
+  'task-dashboard': 'taskDashboard',
+  'chat-v2': 'chat',
+  flashcards: 'flashcards',
+  todo: 'todo',
+  media: 'media',
+  'skills-management': 'skills',
+  'template-management': 'templates',
+  dashboard: 'aiDashboard',
+};
 
 /** 失败路径：可见 toast + assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
@@ -136,19 +158,6 @@ function besidePlacement(sourceWindowId: unknown): LaunchPlacement {
   };
 }
 
-function dispatchPdfFocus(sourceId: string, pageNumber: number, quote?: string): void {
-  const fire = () => {
-    document.dispatchEvent(
-      new CustomEvent('pdf-ref:focus', {
-        detail: { sourceId, pageNumber, quote, path: sourceId.startsWith('/') ? sourceId : `/${sourceId}` },
-      }),
-    );
-  };
-  fire();
-  window.setTimeout(fire, 250);
-  window.setTimeout(fire, 800);
-}
-
 /** 与对话页右侧面板同一套重发节奏（features/chat/pages/chatPdfFocus.ts） */
 const PDF_FOCUS_RETRY_DELAYS_MS = [0, 250, 800, 1600, 3000, 5000];
 
@@ -184,6 +193,21 @@ function dispatchPdfFocusUntilHandled(sourceId: string, pageNumber: number, quot
 // ---------------------------------------------------------------------------
 
 export const WorkbenchEventBridge: React.FC = () => {
+  const [lazyKbScopeSessionId, setLazyKbScopeSessionId] = useState<string | null>(null);
+  const kbScopeHostRequestedRef = useRef(false);
+
+  useEffect(() => {
+    const onKbScopeOpen = (e: Event) => {
+      if (kbScopeHostRequestedRef.current) return;
+      const id = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (!id) return;
+      kbScopeHostRequestedRef.current = true;
+      setLazyKbScopeSessionId(id);
+    };
+    window.addEventListener(KB_SCOPE_PICKER_EVENT, onKbScopeOpen);
+    return () => window.removeEventListener(KB_SCOPE_PICKER_EVENT, onKbScopeOpen);
+  }, []);
+
   useEffect(() => {
     const onNavigateToSession = (e: Event) => {
       const detail = (e as CustomEvent<{ sessionId?: string; syncOnly?: boolean }>).detail;
@@ -259,7 +283,7 @@ export const WorkbenchEventBridge: React.FC = () => {
           // data.source（kind/sourceId/locator/title）。ChatV2Page 也监听同一事件
           // （经典壳路由 + message 滚动定位），本桥负责 workbench 壳开窗：
           // - message：交给 ChatV2Page scrollToMessage，本桥无动作（且不报错）
-          // - pdf：launch 对应资源窗 + pdf-ref:focus 三连发跳页
+          // - pdf：launch 对应资源窗 + pdf-ref:focus 带回执重发跳页
           // - mindmap/note：launch 对应资源窗（与 CHAT_OPEN_ATTACHMENT_PREVIEW
           //   同 instanceKey，重复 launch 退化为聚焦，无害）
           if (typeId === 'selection') {
@@ -276,7 +300,7 @@ export const WorkbenchEventBridge: React.FC = () => {
             if (source.kind === 'pdf') {
               launchResourceWindow(source.sourceId, undefined, source.title);
               const pageMatch = /^page:(\d+)$/.exec(source.locator ?? '');
-              if (pageMatch) dispatchPdfFocus(source.sourceId, Number(pageMatch[1]));
+              if (pageMatch) dispatchPdfFocusUntilHandled(source.sourceId, Number(pageMatch[1]));
               return;
             }
             if (source.kind === 'mindmap' || source.kind === 'note') {
@@ -363,16 +387,13 @@ export const WorkbenchEventBridge: React.FC = () => {
       const detail = (e as CustomEvent<{ view?: string; openResource?: string }>).detail;
       const openResource = detail?.openResource;
       if (typeof openResource !== 'string' || !openResource.trim()) {
-        if (detail?.view === 'settings') {
-          workbenchBus.launch({ typeId: 'settings', reason: 'api' });
-          return;
-        }
-        if (detail?.view === 'sandbox-workbench') {
-          workbenchBus.launch({ typeId: 'sandbox', reason: 'api' });
+        const view = detail?.view;
+        if (typeof view === 'string' && Object.prototype.hasOwnProperty.call(BUILTIN_VIEW_TYPE_MAP, view)) {
+          workbenchBus.launch({ typeId: BUILTIN_VIEW_TYPE_MAP[view], reason: 'api' });
           return;
         }
         // 社区插件视图（ctx.ui.navigate / kernel.navigation.navigate(viewKey)）→ 对应插件应用窗口
-        const pluginAppTypeId = resolvePluginViewAppTypeId(detail?.view);
+        const pluginAppTypeId = resolvePluginViewAppTypeId(view);
         if (pluginAppTypeId) workbenchBus.launch({ typeId: pluginAppTypeId, reason: 'api' });
         return;
       }
@@ -507,7 +528,12 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
   }, []);
 
-  return null;
+  if (!lazyKbScopeSessionId) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyKbScopePickerHost initialSessionId={lazyKbScopeSessionId} />
+    </Suspense>
+  );
 };
 
 export default WorkbenchEventBridge;

@@ -749,13 +749,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!canUndoInSession || ratingBusy} onClick={handleUndoWithFeedback}>
         <ArrowCounterClockwise size={20} />
       </DsButton>
-      {(current || lastSuspended) && <AppMenu>
+      {(current || (lastSuspended && lastSuspended.reason !== 'leech')) && <AppMenu>
         <AppMenuTrigger asChild>
           <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('common:more')}><DotsThree size={22} /></DsButton>
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           {current && <>
-            {hasCardAudio && <AppMenuItem icon={<ArrowClockwise size={18} />} onClick={handleReplayAudio}>{replayAudioLabel}</AppMenuItem>}
             <AppMenuItem icon={<ArrowSquareOut size={18} />} onClick={openSource}>{t('session.viewSource')}</AppMenuItem>
             <AppMenuItem icon={<ChatCircleText size={18} />} onClick={askAi}>{t('session.askAi')}</AppMenuItem>
             {cardActionEntries.map((entry) => {
@@ -781,7 +780,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <AppMenuItem icon={<Moon size={18} />} disabled={ratingBusy} onClick={() => void buryCurrent()}>{t('session.bury')}</AppMenuItem>
             <AppMenuItem icon={<Pause size={18} />} disabled={ratingBusy} onClick={() => void suspendCurrent()}>{t('session.suspend')}</AppMenuItem>
           </>}
-          {lastSuspended && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{resumeLabel}</AppMenuItem>}
+          {lastSuspended && lastSuspended.reason !== 'leech' && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{resumeLabel}</AppMenuItem>}
         </AppMenuContent>
       </AppMenu>}
     </>,
@@ -1076,7 +1075,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
-        {lastSuspended ? (
+        {lastSuspended && lastSuspended.reason !== 'leech' ? (
           <DsButton
             type="button"
             variant="ghost"
@@ -1104,21 +1103,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         >
           {speaking ? <Stop size={16} /> : <SpeakerHigh size={16} />}
         </DsButton>
-        {hasCardAudio ? (
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleReplayAudio}
-            aria-label={replayAudioLabel}
-            aria-keyshortcuts="R"
-            title={`${replayAudioLabel} · R`}
-            data-testid="fc-review-replay-audio-toolbar"
-          >
-            <ArrowClockwise size={16} />
-          </DsButton>
-        ) : null}
         <DsButton
           type="button"
           variant="ghost"

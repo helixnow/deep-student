@@ -84,6 +84,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const [debugLogEnabled, setDebugLogEnabled] = useState(() => debugMasterSwitch.isEnabled());
   const [debugPersistLogs, setDebugPersistLogs] = useState<boolean | null>(null);
   const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
+  const [truncateLengthDraft, setTruncateLengthDraft] = useState<string>(
+    () => String(getDefaultConfig().messageTruncateLength),
+  );
+  const savedTopbarMarginRef = React.useRef<string>(topbarTopMargin);
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
   const [diagnosticsExporting, setDiagnosticsExporting] = useState(false);
@@ -180,6 +184,18 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
       }
     })();
   }, []);
+
+  useEffect(() => {
+    setTruncateLengthDraft(String(filterConfig.messageTruncateLength));
+  }, [filterConfig.messageTruncateLength]);
+
+  useEffect(() => {
+    if (topbarTopMarginLoaded) {
+      savedTopbarMarginRef.current = topbarTopMargin;
+    }
+    // Sync initial persisted topbar margin once loaded
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topbarTopMarginLoaded]);
 
   useEffect(() => {
     const unsubscribe = debugMasterSwitch.addListener((enabled) => {
@@ -483,13 +499,12 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   if (!topbarTopMarginLoaded) return;
                   if (!invoke) return;
                   try {
-                    const numValue = parseInt(topbarTopMargin, 10);
-                    if (isNaN(numValue) || numValue < 0) {
-                      setTopbarTopMargin('0');
-                      return;
-                    }
-                    await saveSetting('topbar.top_margin', String(numValue));
-                    setTopbarTopMargin(String(numValue));
+                    const parsed = parseInt(topbarTopMargin, 10);
+                    const numValue = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+                    const normalized = String(numValue);
+                    await saveSetting('topbar.top_margin', normalized);
+                    savedTopbarMarginRef.current = normalized;
+                    setTopbarTopMargin(normalized);
                     showGlobalNotification('success', t('settings:save_success'));
                     try {
                       window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { topbarTopMargin: true } }));
@@ -497,6 +512,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       // noop
                     }
                   } catch (error: unknown) {
+                    setTopbarTopMargin(savedTopbarMarginRef.current);
                     showGlobalNotification('error', getErrorMessage(error));
                   }
                 }}
@@ -591,6 +607,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             loading={!showRawRequestLoaded}
             onCheckedChange={async (newValue) => {
               if (!showRawRequestLoaded) return;
+              const previous = showRawRequest;
               setShowRawRequest(newValue);
               if (!invoke) return;
               try {
@@ -602,6 +619,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   // noop
                 }
               } catch (error: unknown) {
+                setShowRawRequest(previous);
                 showGlobalNotification('error', getErrorMessage(error));
               }
             }}
@@ -609,13 +627,16 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
           {(() => {
             const saveConfig = async (next: typeof filterConfig) => {
+              const previous = filterConfig;
               const cfg = { ...next, preset: 'custom' as const };
               setFilterConfig(cfg);
               try {
                 await saveSetting('debug.filter_config', JSON.stringify(cfg));
                 window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { copyFilterConfig: cfg } }));
-              } catch {
-                // noop
+              } catch (error: unknown) {
+                setFilterConfig(previous);
+                setTruncateLengthDraft(String(previous.messageTruncateLength));
+                showGlobalNotification('error', getErrorMessage(error));
               }
             };
 
@@ -681,10 +702,17 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                           min={100}
                           max={50000}
                           step={100}
-                          value={filterConfig.messageTruncateLength}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value, 10);
-                            if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
+                          value={truncateLengthDraft}
+                          onChange={(e) => setTruncateLengthDraft(e.target.value)}
+                          onBlur={() => {
+                            const parsed = parseInt(truncateLengthDraft.trim(), 10);
+                            const clamped = Number.isFinite(parsed)
+                              ? Math.min(50000, Math.max(100, parsed))
+                              : filterConfig.messageTruncateLength;
+                            setTruncateLengthDraft(String(clamped));
+                            if (clamped !== filterConfig.messageTruncateLength) {
+                              void saveConfig({ ...filterConfig, messageTruncateLength: clamped });
+                            }
                           }}
                           className="h-8 w-20"
                         />
@@ -718,11 +746,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             loading={debugPersistLogs === null}
             onCheckedChange={async (newValue) => {
               if (debugPersistLogs === null) return;
+              const previous = debugPersistLogs;
               setDebugPersistLogs(newValue);
               try {
                 await saveSetting('debug.persist_logs', String(newValue));
                 showGlobalNotification('success', t('settings:save_notifications.saved'));
               } catch (error: unknown) {
+                setDebugPersistLogs(previous);
                 showGlobalNotification('error', getErrorMessage(error));
               }
             }}

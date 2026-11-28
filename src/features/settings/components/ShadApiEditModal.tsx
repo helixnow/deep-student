@@ -741,19 +741,49 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       showGlobalNotification('warning', t('api_config_modal.model_name'));
       return;
     }
+    // 提交前先同步解析 4 个数字输入框的本地草稿（防止按 Enter 或点移动顶栏保存未先 blur 导致保存旧值）
+    const parsedTemp = (() => {
+      const raw = tempInput.trim();
+      if (!raw) return formData.temperature;
+      const num = Number(raw);
+      return Number.isFinite(num) ? Math.max(0, Math.min(2, num)) : formData.temperature;
+    })();
+    const parsedMaxOutput = (() => {
+      const raw = maxTokensInput.trim();
+      if (!raw) return formData.maxOutputTokens;
+      const num = Number(raw);
+      return Number.isFinite(num) ? Math.max(1, Math.min(128000, Math.round(num))) : formData.maxOutputTokens;
+    })();
+    const parsedMaxTokensLimit = (() => {
+      const raw = maxTokensLimitInput.trim();
+      if (!raw) return undefined;
+      const num = Number(raw);
+      return Number.isFinite(num) && num > 0 ? Math.max(1, Math.min(1000000, Math.round(num))) : undefined;
+    })();
+    const parsedContextWindow = (() => {
+      const raw = contextWindowInput.trim();
+      if (!raw) return undefined;
+      const num = Number(raw);
+      return Number.isFinite(num) && num > 0 ? Math.max(1024, Math.min(2000000, Math.round(num))) : undefined;
+    })();
+
     const sanitized: EditApiConfig = {
       ...formData,
       temperature:
-        typeof formData.temperature === 'number' && Number.isFinite(formData.temperature)
-          ? formData.temperature
+        typeof parsedTemp === 'number' && Number.isFinite(parsedTemp)
+          ? parsedTemp
           : undefined,
       maxOutputTokens:
-        typeof formData.maxOutputTokens === 'number' && Number.isFinite(formData.maxOutputTokens)
-          ? Math.round(formData.maxOutputTokens)
+        typeof parsedMaxOutput === 'number' && Number.isFinite(parsedMaxOutput)
+          ? Math.round(parsedMaxOutput)
           : undefined,
       maxTokensLimit:
-        typeof formData.maxTokensLimit === 'number' && Number.isFinite(formData.maxTokensLimit)
-          ? Math.round(formData.maxTokensLimit)
+        typeof parsedMaxTokensLimit === 'number' && Number.isFinite(parsedMaxTokensLimit)
+          ? Math.round(parsedMaxTokensLimit)
+          : undefined,
+      contextWindow:
+        typeof parsedContextWindow === 'number' && Number.isFinite(parsedContextWindow)
+          ? Math.round(parsedContextWindow)
           : undefined,
       thinkingBudget:
         typeof formData.thinkingBudget === 'number' && Number.isFinite(formData.thinkingBudget)
@@ -807,12 +837,20 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       if (profileUsesDiscreteEffort && (inferredSupportsReasoning || sanitized.supportsReasoning)) {
         sanitized.supportsReasoning = true;
         sanitized.isReasoning = sanitized.isReasoning || inferredSupportsReasoning;
-        // 统一五档只承载 low..max；关闭状态由 enableThinking 表达。
-        const level = coerceReasoningLevel(sanitized.reasoningEffort);
-        if (sanitized.enableThinking || !profileReasoningControl.canDisable) {
-          sanitized.reasoningEffort = level;
-        } else {
-          sanitized.reasoningEffort = undefined;
+        // Doubao 面板承载 'enabled' | 'disabled' | 'auto' 思考模式，保留原值；其余厂商归一至统一五档。
+        const isDoubaoThinkingMode =
+          sanitized.modelAdapter === 'doubao' &&
+          (sanitized.reasoningEffort === 'enabled' ||
+            sanitized.reasoningEffort === 'disabled' ||
+            sanitized.reasoningEffort === 'auto');
+        if (!isDoubaoThinkingMode) {
+          // 统一五档只承载 low..max；关闭状态由 enableThinking 表达。
+          const level = coerceReasoningLevel(sanitized.reasoningEffort);
+          if (sanitized.enableThinking || !profileReasoningControl.canDisable) {
+            sanitized.reasoningEffort = level;
+          } else {
+            sanitized.reasoningEffort = undefined;
+          }
         }
       }
     }
@@ -825,11 +863,6 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     if (sanitized.modelAdapter === 'mimo') {
       sanitized.reasoningEffort = undefined;
       sanitized.thinkingBudget = undefined;
-    }
-    if (sanitized.modelAdapter === 'qwen') {
-      // DashScope/SiliconFlow Qwen expose a boolean switch plus a numeric
-      // thinking budget, not OpenAI-style low/medium/high effort levels.
-      sanitized.reasoningEffort = undefined;
     }
     if (!sanitized.supportsReasoning) {
       sanitized.enableThinking = false;
@@ -2248,7 +2281,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   return (
     <DsDialog
       open={true}
-      onOpenChange={() => {}}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
       closeOnOverlay={false}
       showClose={false}
       maxWidth="max-w-[672px]"

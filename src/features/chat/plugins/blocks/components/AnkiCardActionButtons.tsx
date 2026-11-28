@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
   Cards,
-  CaretUp,
   Check,
   DotsThree,
   DownloadSimple,
@@ -68,6 +67,8 @@ export interface AnkiCardActionButtonsProps {
   onSyncStatusChange?: (status: 'synced' | 'error' | 'syncing', error?: string) => void;
   /** 保存成功后用后端返回的真实 ID 更新并持久化当前块。 */
   onCardsPersisted?: (mappings: SaveAnkiCardIdMapping[]) => Promise<void>;
+  /** 完成态小结条已直出导出按钮时，避免「更多」菜单重复出现导出 APKG。 */
+  hideExportInMenu?: boolean;
 }
 
 export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
@@ -86,6 +87,7 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
   onDeckNameChange,
   onSyncStatusChange,
   onCardsPersisted,
+  hideExportInMenu = false,
 }) => {
   const { t } = useTranslation('chatV2');
   const [saveStatus, setSaveStatus] = useState<ActionStatus>('idle');
@@ -561,16 +563,18 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
 
       {cards.length > 0 && (
         <>
-          {/* 内联展开/折叠编辑：生成中也允许展开浏览 */}
-          <DsButton
-            type="button"
-            onClick={onToggleExpand}
-            variant={isExpanded ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
-          >
-            {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
-            {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
-          </DsButton>
+          {/* 内联展开编辑：展开态由展开头部唯一「收起」按钮负责，避免双收起入口 */}
+          {!isExpanded && (
+            <DsButton
+              type="button"
+              onClick={onToggleExpand}
+              variant="primary"
+              className="min-h-10 text-xs sm:text-sm"
+            >
+              <Pencil size={14} />
+              {t('blocks.ankiCards.edit')}
+            </DsButton>
+          )}
 
           {/* 加入本地卡片库 */}
           <DsButton
@@ -651,13 +655,15 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
             </AppMenuTrigger>
             <AppMenuContent align="end" width={240}>
               <AppMenuGroup>
-                <AppMenuItem
-                  icon={renderIcon(exportStatus, DownloadSimple)}
-                  onClick={() => void handleExport()}
-                  disabled={isDisabled || exportStatus === 'loading'}
-                >
-                  {t('blocks.ankiCards.export')}
-                </AppMenuItem>
+                {!hideExportInMenu && (
+                  <AppMenuItem
+                    icon={renderIcon(exportStatus, DownloadSimple)}
+                    onClick={() => void handleExport()}
+                    disabled={isDisabled || exportStatus === 'loading'}
+                  >
+                    {t('blocks.ankiCards.export')}
+                  </AppMenuItem>
+                )}
                 <AppMenuItem
                   icon={renderIcon(syncStatus, PaperPlaneRight)}
                   onClick={() => void handleSync()}

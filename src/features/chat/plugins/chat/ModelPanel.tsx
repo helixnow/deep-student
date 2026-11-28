@@ -24,6 +24,7 @@ import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPane
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 import {
   invalidateModelConfigSnapshot,
@@ -306,10 +307,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const subtitle = t('chat_host:model_panel.subtitle');
 
   const openModelSettings = useCallback(() => {
+    setPendingSettingsTab('models');
     dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
-    window.setTimeout(() => {
-      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
-    }, 120);
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
     onClose();
   }, [onClose]);
 

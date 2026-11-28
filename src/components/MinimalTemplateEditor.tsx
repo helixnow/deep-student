@@ -42,6 +42,8 @@ import { cn } from '@/utils/cn';
 import './MinimalTemplateEditor.css';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useDebounce } from '@/hooks/useDebounce';
 
 // 编辑器 Tab 类型导出
@@ -55,7 +57,7 @@ export interface MinimalTemplateEditorHandle {
 interface MinimalTemplateEditorProps {
   template: CustomAnkiTemplate | null;
   mode: 'create' | 'edit';
-  onSave: (templateData: CreateTemplateRequest) => Promise<void>;
+  onSave: (templateData: CreateTemplateRequest) => Promise<boolean | void>;
   onCancel: () => void;
   // 外部控制的 tab（可选，如果提供则使用外部控制）
   externalActiveTab?: EditorTabType;
@@ -584,9 +586,12 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
     }));
   };
 
+  const submittingRef = useRef(false);
+
   // 提交表单
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (submittingRef.current) return;
 
     const errors = validateForm();
     if (errors.length > 0) {
@@ -594,6 +599,7 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
       return;
     }
 
+    submittingRef.current = true;
     setValidationErrors([]);
     setIsSubmitting(true);
 
@@ -618,7 +624,8 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
         field_extraction_rules: effectiveRules,
       };
 
-      await onSave(templateData);
+      const saveResult = await onSave(templateData);
+      if (saveResult === false) return;
       initialStateRef.current = {
         snapshot: JSON.stringify({ formData, previewDataJson, fieldExtractionRules }),
         formData,
@@ -629,6 +636,7 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
       console.error('Failed to save template:', error);
       setValidationErrors([{ field: 'general', message: error instanceof Error ? error.message : t('save_failed') }]);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [validateForm, formData, fieldExtractionRules, previewDataJson, onSave, t]);
@@ -653,7 +661,9 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
 
     const jsonStr = JSON.stringify(templateJson, null, 2);
     setPreviewDataJson(jsonStr);
-    void copyTextToClipboard(jsonStr);
+    void copyTextToClipboard(jsonStr).catch((error: unknown) => {
+      showGlobalNotification('error', getErrorMessage(error));
+    });
   };
 
   // 完整提示词预览用模板对象
@@ -686,8 +696,12 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
 
   const handleCopyFullPrompt = useCallback(async () => {
     if (!fullPromptText) return;
-    await copyTextToClipboard(fullPromptText);
-    setPromptCopied(true);
+    try {
+      await copyTextToClipboard(fullPromptText);
+      setPromptCopied(true);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [fullPromptText]);
 
   const codeSubTabOptions = useMemo(

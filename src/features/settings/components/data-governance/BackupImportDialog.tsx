@@ -412,10 +412,13 @@ export const BackupImportDialog: React.FC<BackupImportDialogProps> = ({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
+          if (isImportingSubmitting || isStagingImportFile) return;
           resetImportDialogState();
           onOpenChange(false);
         }
       }}
+      showClose={!isImportingSubmitting && !isStagingImportFile}
+      closeOnOverlay={!isImportingSubmitting && !isStagingImportFile}
       maxWidth="max-w-md"
     >
       <DsDialogHeader>
@@ -528,8 +531,9 @@ export const BackupImportDialog: React.FC<BackupImportDialogProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          disabled={isImportingSubmitting}
+          disabled={isImportingSubmitting || isStagingImportFile}
           onClick={() => {
+            if (isImportingSubmitting || isStagingImportFile) return;
             resetImportDialogState();
             onOpenChange(false);
           }}

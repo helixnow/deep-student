@@ -8,6 +8,8 @@ import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { MathText } from '@/components/ui/MathText';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
 // 分段/对齐规则与只读查看器（TranslationViewerWrapper）共享，保持两处一致
 import { alignTexts } from '@/translation/segmentation';
@@ -70,6 +72,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
       copyTimerRef.current = window.setTimeout(() => setCopiedIndex(null), 2000);
     } catch (error: unknown) {
       console.error('[ComparisonView] Copy segment failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, []);
 

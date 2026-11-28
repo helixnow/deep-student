@@ -52,7 +52,13 @@ export function BilibiliTransportPanel() {
     </div>}
     <details className="space-y-2" open={status.settings.mode === 'proxy' || undefined}><summary className="cursor-pointer text-muted-foreground">{label('proxyAddress')}</summary><div className="space-y-2">
       <div className="flex gap-2"><Input value={proxy} onChange={(event) => setProxy(event.target.value)} className="h-8 min-w-0 flex-1 border-border/35 bg-foreground/[0.025] text-xs" aria-label={label('proxyAddress')} placeholder="http://127.0.0.1:7890" />
-        <DsButton size="sm" disabled={busy || !proxy.trim()} onClick={() => void action(() => bilibiliTransportApi.configure({ ...status.settings, proxyUrl: proxy.trim() }))}>{label('save')}</DsButton></div>
+        <DsButton
+          size="sm"
+          disabled={busy || (!proxy.trim() && (status.settings.mode === 'proxy' || !configuredProxy))}
+          onClick={() => void action(() => bilibiliTransportApi.configure({ ...status.settings, proxyUrl: proxy.trim() || null }))}
+        >
+          {label('save')}
+        </DsButton></div>
       <label className="flex items-center gap-2"><Checkbox checked={status.settings.proxyInAuto} disabled={busy} onCheckedChange={(value) => void action(() => bilibiliTransportApi.configure({ ...status.settings, proxyInAuto: value === true }))} />{label('proxyInAuto')}</label>
     </div></details>
     {!!status.diagnostics?.length && <details><summary className="cursor-pointer text-muted-foreground">{label('diagnostics')}</summary><ul className="max-h-36 overflow-auto py-2 font-mono tabular-nums text-2xs">{status.diagnostics.slice(-8).reverse().map((item) => <li key={item.requestId} className="break-all py-0.5">#{item.requestId} {item.route} {item.stage} {item.host} {item.status ?? item.errorCode} {item.elapsedMs}ms {item.bytes}B</li>)}</ul></details>}

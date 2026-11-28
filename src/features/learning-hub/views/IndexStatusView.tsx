@@ -357,6 +357,7 @@ export const IndexStatusView: React.FC = () => {
   const [textChunks, setTextChunks] = useState<TextChunkInfo[]>([]);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [clearingOcr, setClearingOcr] = useState(false);
+  const inspectReqIdRef = useRef(0);
 
   // ========== 原生多模态索引状态 ==========
   const [mmIndexing, setMmIndexing] = useState(false);
@@ -811,49 +812,64 @@ export const IndexStatusView: React.FC = () => {
   // ========== 数据透视：查看 OCR（内联 toggle，与文本块查看一致） ==========
   const handleInspectOcr = useCallback(async (resourceId: string) => {
     if (inspectingResourceId === resourceId && inspectMode === 'ocr') {
+      inspectReqIdRef.current += 1;
       setInspectMode(null);
       setInspectingResourceId(null);
       setOcrInfo(null);
+      setInspectLoading(false);
       return;
     }
+    const reqId = ++inspectReqIdRef.current;
     setInspectingResourceId(resourceId);
     setInspectMode('ocr');
     setOcrInfo(null);
     setInspectLoading(true);
     try {
       const info = await getResourceOcrInfo(resourceId);
+      if (reqId !== inspectReqIdRef.current) return;
       setOcrInfo(info);
     } catch (err: unknown) {
+      if (reqId !== inspectReqIdRef.current) return;
       debugLog.error('[IndexStatusView] getResourceOcrInfo failed:', err);
       showGlobalNotification('error', t('indexStatus.notification.getOcrInfoFailed'), err instanceof Error ? err.message : t('indexStatus.notification.unknownError'));
       setInspectMode(null);
       setInspectingResourceId(null);
     } finally {
-      setInspectLoading(false);
+      if (reqId === inspectReqIdRef.current) {
+        setInspectLoading(false);
+      }
     }
   }, [inspectingResourceId, inspectMode, t]);
 
   // ========== 数据透视：查看文本块（内联 toggle） ==========
   const handleInspectChunks = useCallback(async (resourceId: string) => {
     if (inspectingResourceId === resourceId && inspectMode === 'chunks') {
+      inspectReqIdRef.current += 1;
       setInspectMode(null);
       setInspectingResourceId(null);
       setTextChunks([]);
+      setInspectLoading(false);
       return;
     }
+    const reqId = ++inspectReqIdRef.current;
     setInspectingResourceId(resourceId);
     setInspectMode('chunks');
+    setTextChunks([]);
     setInspectLoading(true);
     try {
       const chunks = await getResourceTextChunks(resourceId);
+      if (reqId !== inspectReqIdRef.current) return;
       setTextChunks(chunks);
     } catch (err: unknown) {
+      if (reqId !== inspectReqIdRef.current) return;
       debugLog.error('[IndexStatusView] getResourceTextChunks failed:', err);
       showGlobalNotification('error', t('indexStatus.notification.getChunksFailed'), err instanceof Error ? err.message : t('indexStatus.notification.unknownError'));
       setInspectMode(null);
       setInspectingResourceId(null);
     } finally {
-      setInspectLoading(false);
+      if (reqId === inspectReqIdRef.current) {
+        setInspectLoading(false);
+      }
     }
   }, [inspectingResourceId, inspectMode, t]);
 
@@ -863,9 +879,11 @@ export const IndexStatusView: React.FC = () => {
     try {
       await clearResourceOcr(resourceId);
       showGlobalNotification('info', t('indexStatus.notification.ocrClearedReindexing'));
+      inspectReqIdRef.current += 1;
       setInspectMode(null);
       setInspectingResourceId(null);
       setOcrInfo(null);
+      setInspectLoading(false);
       try {
         await reindexResource(resourceId);
         showGlobalNotification('success', t('indexStatus.notification.ocrReindexComplete'));
@@ -883,10 +901,12 @@ export const IndexStatusView: React.FC = () => {
   }, [loadData, t]);
 
   const closeInspectPanel = useCallback(() => {
+    inspectReqIdRef.current += 1;
     setInspectMode(null);
     setInspectingResourceId(null);
     setOcrInfo(null);
     setTextChunks([]);
+    setInspectLoading(false);
   }, []);
 
   // ========== 一键索引（执行 OCR 文本索引，多模态索引仅在启用时执行）==========
@@ -1205,6 +1225,7 @@ export const IndexStatusView: React.FC = () => {
 
   // ========== 召回测试 ==========
   const handleTestSearch = useCallback(async () => {
+    if (testLoading) return;
     if (!testQuery.trim()) {
       showGlobalNotification('warning', t('indexStatus.notification.hint'), t('indexStatus.notification.enterTestQuery'));
       return;
@@ -1281,7 +1302,7 @@ export const IndexStatusView: React.FC = () => {
     } finally {
       setTestLoading(false);
     }
-  }, [testQuery, testMode, t]);
+  }, [testLoading, testQuery, testMode, t]);
 
   // ========== 展开状态 ==========
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['pending', 'failed', 'indexing']));
@@ -1771,7 +1792,10 @@ export const IndexStatusView: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
-                    className="text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+                    className={cn(
+                      'text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11',
+                      inspectingResourceId === resource.resourceId && inspectMode === 'chunks' && 'bg-primary/10 text-primary border-primary/20'
+                    )}
                   >
                     <Stack className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
@@ -1803,9 +1827,6 @@ export const IndexStatusView: React.FC = () => {
                             {t('indexStatus.detail.indexUnitCount', { count: textChunks.length })}
                           </span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
-                          <X className="h-3.5 w-3.5" />
-                        </DsButton>
                       </div>
                       <div className="p-3">
                         {inspectLoading ? (
@@ -1872,9 +1893,6 @@ export const IndexStatusView: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
-                          <X className="h-3.5 w-3.5" />
-                        </DsButton>
                       </div>
 
                       <div className="p-3">
@@ -1971,22 +1989,6 @@ export const IndexStatusView: React.FC = () => {
                             {!ocrInfo.ocrText && !ocrInfo.extractedText && !ocrInfo.ocrPages && (
                               <div className="text-center py-6 text-muted-foreground text-sm">
                                 {t('indexStatus.detail.noOcrOrExtracted')}
-                              </div>
-                            )}
-
-                            {/* 操作区 */}
-                            {ocrInfo.hasOcr && (
-                              <div className="flex justify-end pt-2 border-t border-border/30">
-                                <DsButton
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
-                                  disabled={clearingOcr}
-                                  className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
-                                >
-                                  {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
-                                  {t('indexStatus.action.clearOcrAndReindex')}
-                                </DsButton>
                               </div>
                             )}
                           </div>
@@ -2488,9 +2490,11 @@ export const IndexStatusView: React.FC = () => {
                   ))}
                 </div>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
-                <X className="h-4 w-4" />
-              </DsButton>
+              {isMobile && (
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
+                  <X className="h-4 w-4" />
+                </DsButton>
+              )}
             </div>
           </div>
           

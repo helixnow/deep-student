@@ -322,6 +322,8 @@ export const DiagramAndLiveSvgView: React.FC<DiagramAndLiveSvgViewProps> = ({
     [undoStack, blockKey, mode, localCode, onApplyPatch],
   );
 
+  const canApplyPatch = patchSearch.length > 0 || editInstruction.trim().length > 0;
+
   const handleApplyPatch = useCallback(() => {
     setEditError('');
     try {
@@ -337,6 +339,12 @@ export const DiagramAndLiveSvgView: React.FC<DiagramAndLiveSvgViewProps> = ({
 
       const rawInstruction = editInstruction.trim();
       if (!rawInstruction) {
+        setEditError(
+          t(
+            'generativeUi:canvas.editRequiredNoAi',
+            '请填写下方查找原片段与替换片段，或粘贴 { "search", "replace" } JSON 补丁',
+          ),
+        );
         return;
       }
 
@@ -354,7 +362,7 @@ export const DiagramAndLiveSvgView: React.FC<DiagramAndLiveSvgViewProps> = ({
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err));
     }
-  }, [patchSearch, patchReplace, editInstruction, localCode, commitPatchedCode]);
+  }, [patchSearch, patchReplace, editInstruction, localCode, commitPatchedCode, t]);
 
   const handleUndo = useCallback(() => {
     const rev =
@@ -521,10 +529,10 @@ export const DiagramAndLiveSvgView: React.FC<DiagramAndLiveSvgViewProps> = ({
             value={editInstruction}
             onChange={(e) => setEditInstruction(e.target.value)}
             placeholder={t(
-              'generativeUi:canvas.editInstructionPlaceholder',
-              '输入修改要求，或粘贴 { search, replace } JSON 补丁',
+              'generativeUi:canvas.editJsonPatchPlaceholder',
+              '可选：粘贴 { "search": "...", "replace": "..." } JSON 补丁',
             )}
-            aria-label={t('generativeUi:canvas.editInstructionAria', '修改要求')}
+            aria-label={t('generativeUi:canvas.editJsonPatchAria', 'JSON 补丁')}
             data-testid="canvas-edit-instruction"
             className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
           />
@@ -574,8 +582,9 @@ export const DiagramAndLiveSvgView: React.FC<DiagramAndLiveSvgViewProps> = ({
             <button
               type="button"
               onClick={handleApplyPatch}
+              disabled={!canApplyPatch}
               data-testid="canvas-apply-patch"
-              className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {t('generativeUi:canvas.applyEdit', '应用修改')}
             </button>

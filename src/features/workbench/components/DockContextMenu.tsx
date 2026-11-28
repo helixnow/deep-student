@@ -68,6 +68,7 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
     typeId,
     appLabel,
     instanceMode: def?.instanceMode,
+    canOpenNewWindow: def ? def.instanceMode === 'multi' && def.showInLauncher !== false : true,
     windows: wins.map((win) => ({ id: win.id, label: win.title || appLabel, minimized: Boolean(win.minimized) })),
     foregroundWindowId: foregroundId,
     pinned: isPinned,

@@ -78,36 +78,41 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     }, 100);
   }, []);
 
-  const handleGetDiagnostic = useCallback(async (label: string = t('diagnostic.manualDiag')) => {
-    setIsLoading(true);
+  const runDiagnostic = useCallback(async (label: string) => {
     addLog('info', `[${label}] ${t('diagnostic.diagStarting')}`);
-    
     try {
       const info = await getIndexDiagnostic();
       addLog('success', `[${label}] ${t('diagnostic.diagComplete')}`, info);
-      
+
       const issues = info.consistencyChecks.filter(c => !c.passed);
       if (issues.length > 0) {
         addLog('warning', `[${label}] ${t('diagnostic.consistencyIssues', { count: issues.length, details: issues.map(i => i.details).join('; ') })}`);
       }
     } catch (error: unknown) {
       addLog('error', `[${label}] ${t('diagnostic.diagFailed', { error: String(error) })}`);
+    }
+  }, [addLog, t]);
+
+  const handleGetDiagnostic = useCallback(async (label: string = t('diagnostic.manualDiag')) => {
+    setIsLoading(true);
+    try {
+      await runDiagnostic(label);
     } finally {
       setIsLoading(false);
     }
-  }, [addLog, t]);
+  }, [runDiagnostic, t]);
 
   const handleResetDisabled = useCallback(async () => {
     setIsLoading(true);
     addLog('info', t('diagnostic.resetStarting'));
     
     try {
-      await handleGetDiagnostic(t('diagnostic.resetBefore'));
+      await runDiagnostic(t('diagnostic.resetBefore'));
       
       const count = await resetDisabledToPending();
       addLog('success', t('diagnostic.resetCount', { count }));
       
-      await handleGetDiagnostic(t('diagnostic.resetAfter'));
+      await runDiagnostic(t('diagnostic.resetAfter'));
       
       showGlobalNotification('success', t('diagnostic.resetSuccess', { count }));
       onRefresh?.();
@@ -117,19 +122,19 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     } finally {
       setIsLoading(false);
     }
-  }, [addLog, handleGetDiagnostic, onRefresh, t]);
+  }, [addLog, onRefresh, runDiagnostic, t]);
 
   const handleResetIndexedWithoutEmb = useCallback(async () => {
     setIsLoading(true);
     addLog('info', t('diagnostic.resetNoEmbedStarting'));
     
     try {
-      await handleGetDiagnostic(t('diagnostic.resetBefore'));
+      await runDiagnostic(t('diagnostic.resetBefore'));
       
       const count = await resetIndexedWithoutEmbeddings();
       addLog('success', t('diagnostic.resetNoEmbedCount', { count }));
       
-      await handleGetDiagnostic(t('diagnostic.resetAfter'));
+      await runDiagnostic(t('diagnostic.resetAfter'));
       
       showGlobalNotification('success', t('diagnostic.resetSuccess', { count }));
       onRefresh?.();
@@ -139,20 +144,20 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     } finally {
       setIsLoading(false);
     }
-  }, [addLog, handleGetDiagnostic, onRefresh, t]);
+  }, [addLog, onRefresh, runDiagnostic, t]);
 
   const handleIndexWithDiagnostic = useCallback(async () => {
     setIsLoading(true);
     addLog('info', t('diagnostic.indexStarting'));
     
     try {
-      await handleGetDiagnostic(t('diagnostic.indexBefore'));
+      await runDiagnostic(t('diagnostic.indexBefore'));
       
       addLog('info', t('diagnostic.indexBatchStarting'));
       const result = await batchIndexPending(50);
       addLog('success', t('diagnostic.indexResult', { success: result.successCount, fail: result.failCount, total: result.total }));
       
-      await handleGetDiagnostic(t('diagnostic.indexAfter'));
+      await runDiagnostic(t('diagnostic.indexAfter'));
       
       showGlobalNotification('success', t('diagnostic.indexSuccess', { success: result.successCount }));
       onRefresh?.();
@@ -162,7 +167,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     } finally {
       setIsLoading(false);
     }
-  }, [addLog, handleGetDiagnostic, onRefresh, t]);
+  }, [addLog, onRefresh, runDiagnostic, t]);
 
   const handleDiagnoseLanceSchema = useCallback(async () => {
     setIsLoading(true);

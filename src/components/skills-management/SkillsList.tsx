@@ -18,6 +18,9 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import { useSkillFavorites } from '@/features/chat/skills/hooks/useSkillFavorites';
@@ -381,7 +384,20 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     )}
                     <AppMenuItem
                       icon={<Copy size={16} />}
-                      onClick={() => { void navigator.clipboard.writeText(skill.id); }}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const copied = await copyTextToClipboard(skill.id);
+                            if (copied) {
+                              showGlobalNotification('success', t('common:copied'));
+                            } else {
+                              showGlobalNotification('error', t('common:copy_failed'));
+                            }
+                          } catch (error: unknown) {
+                            showGlobalNotification('error', getErrorMessage(error));
+                          }
+                        })();
+                      }}
                     >
                       {t('skills:management.copy_id')}
                     </AppMenuItem>

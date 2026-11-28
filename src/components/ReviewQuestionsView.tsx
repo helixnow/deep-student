@@ -582,6 +582,25 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     return questions.filter(q => q.status === 'review');
   }, [questions]);
 
+  // 错题集合变化时清理失效的选中项并撤销待确认态，避免对已移出列表的题目误操作
+  useEffect(() => {
+    const validIds = new Set(reviewQuestions.map((q) => q.id));
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    disarm();
+  }, [reviewQuestions, disarm]);
+
   // 排序后的错题列表（默认保持题目原顺序；排序均为稳定排序）
   const sortedReviewQuestions = useMemo(() => {
     if (sortBy === 'default') return reviewQuestions;
@@ -709,11 +728,11 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
   // 重置选中题目进度
   const handleResetProgress = useCallback(async () => {
-    if (selectedIds.size === 0 || !onResetProgress) return;
+    const questionIds = selectedQuestions.map((q) => q.id);
+    if (questionIds.length === 0 || !onResetProgress) return;
     disarm();
     setIsOperating(true);
     try {
-      const questionIds = Array.from(selectedIds);
       await onResetProgress(questionIds);
       setSelectedIds(new Set());
       showGlobalNotification('success', t('practice:questionBank.resetSuccess', { count: questionIds.length }));
@@ -722,15 +741,15 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onResetProgress, disarm, t]);
+  }, [selectedQuestions, onResetProgress, disarm, t]);
 
   // 删除选中题目
   const handleDelete = useCallback(async () => {
-    if (selectedIds.size === 0 || !onDelete) return;
+    const questionIds = selectedQuestions.map((q) => q.id);
+    if (questionIds.length === 0 || !onDelete) return;
     disarm();
     setIsOperating(true);
     try {
-      const questionIds = Array.from(selectedIds);
       await onDelete(questionIds);
       setSelectedIds(new Set());
       showGlobalNotification('success', t('practice:questionBank.deleteSuccess', { count: questionIds.length }));
@@ -739,7 +758,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onDelete, disarm, t]);
+  }, [selectedQuestions, onDelete, disarm, t]);
 
   // 快速重做：跳转到该题练习
   const handleRedoQuestion = useCallback((questionId: string) => {
@@ -853,7 +872,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
               {allVisibleSelected ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </DsButton>
 
-            {selectedIds.size > 0 && (
+            {selectedQuestions.length > 0 && (
               <>
                 {/* 行内二次确认：首次点击进入待确认态（warning/danger 高亮），再次点击执行 */}
                 <DsButton
@@ -864,7 +883,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                     else armAction('reset');
                   }}
                   disabled={isOperating || !onResetProgress}
-                  title={armedAction === 'reset' ? t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size }) : undefined}
+                  title={armedAction === 'reset' ? t('practice:questionBank.confirmResetDescDetail', { count: selectedQuestions.length }) : undefined}
                   className={cn(
                     '!px-2 text-xs disabled:opacity-50',
                     armedAction !== 'reset' && 'text-info hover:bg-info/10',
@@ -872,7 +891,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 >
                   <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin motion-reduce:animate-none')} />
                   {armedAction === 'reset'
-                    ? t('review:questions.confirmReset', { count: selectedIds.size })
+                    ? t('review:questions.confirmReset', { count: selectedQuestions.length })
                     : t('review:questions.reset')}
                 </DsButton>
                 <DsButton
@@ -883,7 +902,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                     else armAction('delete');
                   }}
                   disabled={isOperating || !onDelete}
-                  title={armedAction === 'delete' ? t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size }) : undefined}
+                  title={armedAction === 'delete' ? t('practice:questionBank.confirmDeleteDesc', { count: selectedQuestions.length }) : undefined}
                   className={cn(
                     '!px-2 text-xs disabled:opacity-50',
                     armedAction !== 'delete' && 'text-destructive hover:bg-destructive/10',
@@ -891,7 +910,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 >
                   <Trash size={12} />
                   {armedAction === 'delete'
-                    ? t('review:questions.confirmDelete', { count: selectedIds.size })
+                    ? t('review:questions.confirmDelete', { count: selectedQuestions.length })
                     : t('review:questions.delete')}
                 </DsButton>
               </>

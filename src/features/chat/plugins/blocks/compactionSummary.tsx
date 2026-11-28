@@ -31,7 +31,9 @@ import {
   WarningCircle,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
 import { getChatMessageListScrollHandle } from '../../components/messageListScrollRegistry';
@@ -116,8 +118,9 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
       await copyTextToClipboard(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[CompactionSummaryBlock] Copy failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [content]);
 
@@ -134,14 +137,17 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
       setIsUndone(true);
       try {
         await store?.getState().loadSession(sessionId);
-      } catch (reloadError) {
+      } catch (reloadError: unknown) {
         console.error(
           '[CompactionSummaryBlock] Compaction undone but session reload failed:',
           reloadError
         );
+        showGlobalNotification('error', getErrorMessage(reloadError));
       }
-    } catch (error) {
-      setUndoError(error instanceof Error ? error.message : String(error));
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      setUndoError(msg);
+      showGlobalNotification('error', msg);
     } finally {
       setIsUndoing(false);
     }

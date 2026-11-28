@@ -46,7 +46,7 @@ export interface VendorSettingsContextValue {
   handleCancelEditVendor: () => void;
   handleSaveEditVendor: () => void;
   handleDeleteVendor: (vendor: VendorConfig, options?: { skipConfirm?: boolean }) => void;
-  handleSaveVendorBaseUrl: (vendorId: string, baseUrl: string) => void;
+  handleSaveVendorBaseUrl: (vendorId: string, baseUrl: string) => boolean | void | Promise<boolean | void>;
   handleSaveVendorApiKey: (vendorId: string, apiKey: string) => void;
   handleClearVendorApiKey: (vendorId: string) => void;
   handleOpenModelEditor: (vendor: VendorConfig, profile?: ModelProfile) => void;

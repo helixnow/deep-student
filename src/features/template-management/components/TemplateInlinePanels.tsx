@@ -57,18 +57,6 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           <Upload size={15} aria-hidden />
           {t('templateMgmt.import_panel_title')}
         </h3>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onClose}
-          disabled={isImporting}
-          aria-label={t('templateMgmt.panel_close')}
-          title={t('templateMgmt.panel_close')}
-         
-        >
-          <X size={14} />
-        </DsButton>
       </header>
 
       <p className="wb-tm-panel-desc">{t('import_external_dialog_desc')}</p>
@@ -226,18 +214,6 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
            
           >
             {t('clear_selection_button')}
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={onClose}
-            disabled={isExporting}
-            aria-label={t('templateMgmt.panel_close')}
-            title={t('templateMgmt.panel_close')}
-           
-          >
-            <X size={14} />
           </DsButton>
         </div>
       </header>

@@ -364,6 +364,8 @@ export const Settings: React.FC<SettingsComponentProps> = ({
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
     config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
     config.webSearchDeepseekNeedContent,
+    config.webSearchEngine, config.webSearchTimeoutMs, config.webSearchInjectSnippetMax,
+    config.webSearchInjectTotalMax, config.webSearchWhitelist, config.webSearchBlacklist,
   ]);
 
   // Ensure the settings scroll viewport remains vertically scrollable across all viewports

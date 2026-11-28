@@ -34,6 +34,11 @@ import { isContentDirty } from '../content/contentDirtyRegistry';
 import { cn } from '@/lib/utils';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  BACK_PRIORITY,
+  isElementVisibleForBack,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import './NotesBacklinksPanel.css';
 import './notes-backlinks-extras.css';
 
@@ -143,6 +148,8 @@ export interface NotesBacklinksPanelProps {
   requestedTab?: NotesBacklinksTabRequest | null;
   /** 面板当前真实生效页签变化时通知宿主，供快捷键/命令面板判断切换目标。 */
   onActiveTabChange?: (tab: PanelTab) => void;
+  /** 宿主顶栏/状态栏已提供常驻切换入口时隐藏面板内部重复的关闭按钮 */
+  hideCloseButton?: boolean;
   className?: string;
 }
 
@@ -650,6 +657,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   graphContent,
   requestedTab,
   onActiveTabChange,
+  hideCloseButton = false,
   className,
 }) => {
   const { t } = useTranslation('workbench');
@@ -688,6 +696,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   const mentionsSequenceRef = useRef(0);
   const watchRefreshTimerRef = useRef<number | null>(null);
   const creatingTitlesRef = useRef(new Set<string>());
+  const panelRef = useRef<HTMLElement>(null);
   const titleId = useId();
 
   const noteNodes = useMemo(
@@ -1183,6 +1192,15 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     onClose();
   }, [onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      if (!isElementVisibleForBack(panelRef.current)) return false;
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [onClose, open]);
+
   const onTabListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -1285,6 +1303,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
 
   return (
     <aside
+      ref={panelRef}
       className={cn('notes-backlinks-panel', className)}
       data-notes-backlinks-panel
       role="complementary"
@@ -1366,17 +1385,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             {activeResource?.type === 'note' && <span title={activeResource.name}>{activeResource.name}</span>}
           </div>
         )}
-        <div className="notes-backlinks-panel-actions">
-          <button
-            type="button"
-            className="notes-backlinks-panel-icon-button"
-            onClick={onClose}
-            aria-label={closeButtonLabel}
-            title={closeButtonLabel}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
+        {!hideCloseButton && (
+          <div className="notes-backlinks-panel-actions">
+            <button
+              type="button"
+              className="notes-backlinks-panel-icon-button"
+              onClick={onClose}
+              aria-label={closeButtonLabel}
+              title={closeButtonLabel}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </header>
 
       {hasExtraTabs && activeResource?.type === 'note' && (

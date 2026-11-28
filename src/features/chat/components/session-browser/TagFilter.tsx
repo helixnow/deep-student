@@ -155,14 +155,18 @@ export const AddTagInput: React.FC<{
     if (trimmed) {
       onAdd(trimmed);
       setValue('');
-      setShowInput(false);
     }
+    setShowInput(false);
   };
 
   if (!showInput) {
     return (
       <button
-        onClick={() => setShowInput(true)}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowInput(true);
+        }}
         aria-label={t('tags.addPlaceholder')}
       // 伪元素扩大触控命中区（视觉保持紧凑）
       // coarse 下 -inset-[14px]：16px 按钮（12px 图标 + py-0.5）+ 2×14px = 44px 触控目标
@@ -177,12 +181,18 @@ export const AddTagInput: React.FC<{
     <Input
       type="text"
       value={value}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
         // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
         if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-        if (e.key === 'Enter') handleSubmit();
+        if (e.key === 'Enter') {
+          e.stopPropagation();
+          handleSubmit();
+        }
         if (e.key === 'Escape') {
+          e.stopPropagation();
           // 取消输入：清空草稿，避免下次打开残留旧值
           setValue('');
           setShowInput(false);

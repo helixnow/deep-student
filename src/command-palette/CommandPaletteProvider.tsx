@@ -33,6 +33,7 @@ import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
 import { normalizeShortcut, buildShortcutString } from './registry/shortcutUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 export const WORKBENCH_OPEN_APPS_PANEL_EVENT = 'workbench:open-apps-panel';
 export const WORKBENCH_TOGGLE_APPS_PANEL_EVENT = 'workbench:toggle-apps-panel';
@@ -202,9 +203,29 @@ export function CommandPaletteProvider({
   }, [workbenchActive, t, i18n.language]);
 
   const commandPaletteNavigate = useCallback((view: CurrentView, params?: Record<string, unknown>) => {
-    if (workbenchActive && isWorkbenchHostEnabled() && view === 'sandbox-workbench') {
-      launchWorkbenchApp({ typeId: 'sandbox', reason: 'command' });
-      return;
+    if (workbenchActive && isWorkbenchHostEnabled()) {
+      const workbenchTypeByView: Partial<Record<CurrentView, string>> = {
+        'chat-v2': 'chat',
+        'skills-management': 'skills',
+        media: 'media',
+        flashcards: 'flashcards',
+        'task-dashboard': 'taskDashboard',
+        todo: 'todo',
+        'learning-hub': 'files',
+        'pdf-reader': 'files',
+        'template-management': 'templates',
+        'sandbox-workbench': 'sandbox',
+        settings: 'settings',
+      };
+      if (view === 'dashboard' || view === 'data-management') {
+        dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
+        return;
+      }
+      const mappedTypeId = workbenchTypeByView[view];
+      if (mappedTypeId) {
+        launchWorkbenchApp({ typeId: mappedTypeId, reason: 'command' });
+        return;
+      }
     }
     navigate(view, params);
   }, [navigate, workbenchActive]);
@@ -233,20 +254,15 @@ export function CommandPaletteProvider({
     close,
   ]);
   
-  // 执行命令
+  // 执行命令（commandRegistry.execute 已统一弹出错误通知，此处仅记录日志避免双 toast）
   const executeCommand = useCallback(async (id: string) => {
     try {
       await commandRegistry.execute(id, deps);
       close(); // 执行后关闭面板
     } catch (error: unknown) {
       console.error('[CommandPalette] 命令执行失败:', error);
-      showGlobalNotification(
-        'error',
-        t('command_palette:error.execute_failed'),
-        t('common:status.error')
-      );
     }
-  }, [deps, close, t]);
+  }, [deps, close]);
   
   // 搜索命令（使用 ref 读取 currentView，避免每次视图切换重建）
   const searchCommands = useCallback((query: string) => {

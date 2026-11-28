@@ -47,7 +47,7 @@ export interface OpenUILangRendererProps {
   /** 已回答的数据快照（用于回显用户选择与锁定表单） */
   answer?: OpenUILangAnswerData | Record<string, unknown> | null;
   disabled?: boolean;
-  onSubmit?: (payload: OpenUILangSubmitPayload) => void | Promise<void>;
+  onSubmit?: (payload: OpenUILangSubmitPayload) => boolean | void | Promise<boolean | void>;
   onNotDrawn?: (result: OnNotDrawnAutoHealResult) => void;
   className?: string;
 }
@@ -868,22 +868,53 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
   }));
   const [noteText, setNoteText] = useState<string>(() => normalizedAnswer?.note ?? '');
   const [submittedData, setSubmittedData] = useState<OpenUILangAnswerData | null>(normalizedAnswer);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const prevSourceRef = useRef(source);
+  const prevHadAnswerRef = useRef(Boolean(normalizedAnswer));
 
   useEffect(() => {
+    const sourceChanged = prevSourceRef.current !== source;
+    if (sourceChanged) {
+      prevSourceRef.current = source;
+      prevHadAnswerRef.current = Boolean(normalizedAnswer);
+      setFormValues({
+        ...defaultValues,
+        ...(normalizedAnswer?.values ?? {}),
+      });
+      setNoteText(normalizedAnswer?.note ?? '');
+      setSubmittedData(normalizedAnswer);
+      return;
+    }
+
+    if (normalizedAnswer) {
+      prevHadAnswerRef.current = true;
+      setFormValues((prev) => ({
+        ...defaultValues,
+        ...prev,
+        ...normalizedAnswer.values,
+      }));
+      setSubmittedData(normalizedAnswer);
+      setNoteText(normalizedAnswer.note ?? '');
+      return;
+    }
+
+    if (prevHadAnswerRef.current) {
+      prevHadAnswerRef.current = false;
+      setFormValues({ ...defaultValues });
+      setNoteText('');
+      setSubmittedData(null);
+      return;
+    }
+
     setFormValues((prev) => ({
       ...defaultValues,
       ...prev,
-      ...(normalizedAnswer?.values ?? {}),
     }));
-    if (normalizedAnswer) {
-      setSubmittedData(normalizedAnswer);
-      if (normalizedAnswer.note !== undefined) {
-        setNoteText(normalizedAnswer.note);
-      }
-    }
-  }, [defaultValues, normalizedAnswer]);
+  }, [source, defaultValues, normalizedAnswer]);
 
-  const isLocked = disabled || isStreaming || Boolean(submittedData);
+  const canSubmit = Boolean(onSubmit || awaitAnswer);
+  const isLocked = disabled || isStreaming || isSubmitting || Boolean(submittedData);
 
   const handleFieldChange = useCallback(
     (name: string, val: unknown) => {
@@ -894,8 +925,8 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
   );
 
   const handleButtonSubmit = useCallback(
-    (buttonLabel: string, buttonValue: string) => {
-      if (isLocked) return;
+    async (buttonLabel: string, buttonValue: string) => {
+      if (isLocked || isSubmittingRef.current || !canSubmit) return;
       const mergedValues: Record<string, unknown> = {
         ...defaultValues,
         ...formValues,
@@ -908,12 +939,28 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
         ...(trimmedNote ? { note: trimmedNote } : {}),
       };
       const summary = buildSubmissionSummary(buttonLabel, mergedValues, trimmedNote);
-      if (awaitAnswer || onSubmit) {
-        setSubmittedData(data);
+      if (!onSubmit) {
+        if (awaitAnswer) {
+          setSubmittedData(data);
+        }
+        return;
       }
-      void onSubmit?.({ summary, data });
+
+      isSubmittingRef.current = true;
+      setIsSubmitting(true);
+      try {
+        const result = await onSubmit({ summary, data });
+        if (result !== false) {
+          setSubmittedData(data);
+        }
+      } catch (err) {
+        console.error('[OpenUILangRenderer] Submit failed:', err);
+      } finally {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+      }
     },
-    [awaitAnswer, defaultValues, formValues, isLocked, noteText, onSubmit],
+    [awaitAnswer, canSubmit, defaultValues, formValues, isLocked, noteText, onSubmit],
   );
 
   const renderValue = (val: OpenUIValue, keyPrefix: string): React.ReactNode => {
@@ -1802,19 +1849,21 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
                 ? 'bg-transparent text-foreground hover:bg-muted/50'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90';
 
+        const isButtonDisabled = isLocked || !canSubmit;
+
         return (
           <button
             type="button"
             data-openui-component="Button"
             data-variant={variant}
             aria-pressed={isChosen || undefined}
-            disabled={isLocked}
-            onClick={() => handleButtonSubmit(label, value)}
+            disabled={isButtonDisabled}
+            onClick={() => void handleButtonSubmit(label, value)}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
               variantClasses,
               isChosen && 'ring-2 ring-primary ring-offset-1',
-              isLocked && 'cursor-default opacity-75',
+              isButtonDisabled && 'cursor-default opacity-75',
             )}
           >
             {isChosen && <Check size={12} weight="bold" />}
@@ -1878,7 +1927,7 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
     );
   }
 
-  const showInteractiveFooter = awaitAnswer || program.hasInteractiveControls;
+  const showInteractiveFooter = canSubmit && (awaitAnswer || program.hasInteractiveControls);
   const hasAnyButton = program.hasExplicitButton || Boolean(ensuredAwaitResult?.injectedSubmitButton);
 
   return (
@@ -1906,7 +1955,7 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
                 type="button"
                 data-openui-component="Button"
                 disabled={isLocked}
-                onClick={() => handleButtonSubmit('Confirm', 'confirm')}
+                onClick={() => void handleButtonSubmit('Confirm', 'confirm')}
                 className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-75"
               >
                 <Check size={12} weight="bold" />

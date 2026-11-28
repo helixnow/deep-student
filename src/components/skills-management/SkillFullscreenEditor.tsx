@@ -69,6 +69,8 @@ export interface SkillFullscreenEditorProps {
   originRect?: DOMRect | null;
   /** 主题模式 */
   theme?: 'light' | 'dark';
+  /** 外部顶栏面包屑返回时触发内部未保存修改确认 */
+  requestCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface ValidationErrors {
@@ -161,6 +163,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   onDelete,
   originRect,
   theme = 'dark',
+  requestCloseRef,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
   const isEdit = Boolean(skill);
@@ -188,6 +191,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
 
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<string>('basic');
   // 桌面全屏编辑器默认直接提供可编辑 <Textarea> 承载 SKILL.md 正文，保留语法高亮按需切换
   const [useHighlightEditor, setUseHighlightEditor] = useState(false);
@@ -270,6 +274,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   // 处理保存
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current || isSaving) return;
 
     const validationErrors = validateForm(formData, isEdit, isBuiltinSkill, t as any);
     if (Object.keys(validationErrors).length > 0) {
@@ -298,6 +303,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       embeddedTools: formData.embeddedTools,
     };
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       await onSave(trimmedPayload);
@@ -312,16 +318,26 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         String(error),
       );
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
-  }, [formData, isEdit, isBuiltinSkill, onSave, onClose, t]);
+  }, [formData, isEdit, isBuiltinSkill, isSaving, onSave, onClose, t]);
 
   const handleCloseRequest = useCallback(() => {
+    if (savingRef.current || isSaving) return;
     if (isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onClose();
-  }, [isDirty, onClose, t]);
+  }, [isDirty, isSaving, onClose, t]);
+
+  useEffect(() => {
+    if (!requestCloseRef) return;
+    requestCloseRef.current = open ? handleCloseRequest : null;
+    return () => {
+      requestCloseRef.current = null;
+    };
+  }, [open, handleCloseRequest, requestCloseRef]);
 
   useEventRegistry(open ? [
     {
@@ -383,6 +399,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={handleCloseRequest}
+                disabled={isSaving}
                 aria-label={t('common:actions.close')}
                 className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >

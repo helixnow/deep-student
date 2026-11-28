@@ -328,13 +328,12 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
               // ui-rise-in：新添加的 chip 挂载入场（150ms fade+rise，reduced-motion 自动降级）
               className="group/attachment-chip ui-rise-in relative inline-flex min-w-0 shrink-0 items-center"
             >
-              <DsButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => handleChipClick(attachment)}
+              <div
+                onClick={() => {
+                  if (!disabled) handleChipClick(attachment);
+                }}
                 className={cn(
-                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] max-sm:min-h-11',
+                  'attachment-preview-chip inline-flex h-8 w-max items-center justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] max-sm:min-h-11',
                   !disabled && '[@media(pointer:coarse)]:gap-1 [@media(pointer:coarse)]:pl-0 max-sm:gap-1 max-sm:pl-0',
                   isError
                     ? 'border-destructive/40 hover:border-destructive/60'
@@ -354,7 +353,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       })
                 }
               >
-                {/* 图标区域：上传/处理中显示进度环；hover 时变为 X 删除按钮 */}
+                {/* 图标区域：上传/处理中显示进度环；hover 时变为 X 删除按钮（与主点击按钮平级，避免嵌套 button） */}
                 <span
                   data-testid={`attachment-chip-icon-${attachment.id}`}
                   className={cn(
@@ -385,6 +384,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   {/* Hover：X 图标覆盖。触屏 / 窄屏（<= 640px）没有 hover，
                       删除按钮常显且实体 <button> 盒尺寸扩大到 44×44px，内部居中绘制 × 圆点 */}
                   {!disabled && (
+                    // eslint-disable-next-line ds-components/no-native-button -- 紧凑 chip 图标叠层删除按钮，需精确控制 20px/44px 命中盒
                     <button
                       type="button"
                       onClick={(event) => {
@@ -401,54 +401,65 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     </button>
                   )}
                 </span>
-                {/* ★ M6：超长文件名截断（完整名在 chip title 中） */}
-                <span className="max-w-[10rem] truncate">{attachment.name}</span>
-                {/* PDF 页数徽标（页数已知时显示） */}
-                {typeof chipStatus.totalPages === 'number' && chipStatus.totalPages > 0 && (
-                  <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-px text-2xs font-medium leading-none tabular-nums text-muted-foreground">
-                    {t('chatV2:inputBar.chip.pages', { count: chipStatus.totalPages })}
-                  </span>
-                )}
-                {/* ★ 截断预警角标：纯文本注入超过 100KB 时提示将截断（详情见 tooltip） */}
-                {truncationLikely && (
-                  <span
-                    className="whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-2xs font-medium leading-none text-warning"
-                    title={t('chatV2:inputBar.chip.truncatedTitle')}
-                  >
-                    {t('chatV2:inputBar.chip.truncated')}
-                  </span>
-                )}
-                {/* 注入模式微型摘要：无回调或禁用时静态展示；支持切换时移至 chip 右侧可点击弹出胶囊 */}
-                {modeSummary && !isError && (!onInjectModesChange || disabled) && (
-                  <span
-                    className={cn(
-                      'whitespace-nowrap text-2xs font-medium leading-none',
-                      chipStatus.lifecycle === 'partial' ? 'text-warning' : 'text-muted-foreground'
-                    )}
-                    title={statusTitle}
-                  >
-                    {modeSummary}
-                  </span>
-                )}
-                {/* 错误态：内联标签 + 重试入口 */}
-                {isError && (
-                  <span className="whitespace-nowrap text-2xs font-medium leading-none text-destructive">
-                    {t('chatV2:inputBar.chip.error')}
-                  </span>
-                )}
-                {/* 状态点：可检索(成功)/部分就绪(警示)/处理中(信息脉冲) */}
-                {!isError && chipStatus.selectedModes.length > 0 && (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      chipStatus.lifecycle === 'ready' && 'bg-success',
-                      chipStatus.lifecycle === 'partial' && 'bg-warning',
-                      isBusy && 'bg-info animate-pulse motion-reduce:animate-none'
-                    )}
-                  />
-                )}
-              </DsButton>
+                {/* eslint-disable-next-line ds-components/no-native-button -- chip 主交互内容按钮，与左侧删除按钮平级避免嵌套 button */}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleChipClick(attachment);
+                  }}
+                  className="inline-flex h-full min-w-0 items-center gap-2 rounded-full bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer disabled:cursor-default"
+                >
+                  {/* ★ M6：超长文件名截断（完整名在 chip title 中） */}
+                  <span className="max-w-[10rem] truncate">{attachment.name}</span>
+                  {/* PDF 页数徽标（页数已知时显示） */}
+                  {typeof chipStatus.totalPages === 'number' && chipStatus.totalPages > 0 && (
+                    <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-px text-2xs font-medium leading-none tabular-nums text-muted-foreground">
+                      {t('chatV2:inputBar.chip.pages', { count: chipStatus.totalPages })}
+                    </span>
+                  )}
+                  {/* ★ 截断预警角标：纯文本注入超过 100KB 时提示将截断（详情见 tooltip） */}
+                  {truncationLikely && (
+                    <span
+                      className="whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-2xs font-medium leading-none text-warning"
+                      title={t('chatV2:inputBar.chip.truncatedTitle')}
+                    >
+                      {t('chatV2:inputBar.chip.truncated')}
+                    </span>
+                  )}
+                  {/* 注入模式微型摘要：无回调或禁用时静态展示；支持切换时移至 chip 右侧可点击弹出胶囊 */}
+                  {modeSummary && !isError && (!onInjectModesChange || disabled) && (
+                    <span
+                      className={cn(
+                        'whitespace-nowrap text-2xs font-medium leading-none',
+                        chipStatus.lifecycle === 'partial' ? 'text-warning' : 'text-muted-foreground'
+                      )}
+                      title={statusTitle}
+                    >
+                      {modeSummary}
+                    </span>
+                  )}
+                  {/* 错误态：内联标签 + 重试入口 */}
+                  {isError && (
+                    <span className="whitespace-nowrap text-2xs font-medium leading-none text-destructive">
+                      {t('chatV2:inputBar.chip.error')}
+                    </span>
+                  )}
+                  {/* 状态点：可检索(成功)/部分就绪(警示)/处理中(信息脉冲) */}
+                  {!isError && chipStatus.selectedModes.length > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'h-1.5 w-1.5 shrink-0 rounded-full',
+                        chipStatus.lifecycle === 'ready' && 'bg-success',
+                        chipStatus.lifecycle === 'partial' && 'bg-warning',
+                        isBusy && 'bg-info animate-pulse motion-reduce:animate-none'
+                      )}
+                    />
+                  )}
+                </button>
+              </div>
               {/* PDF / 图片附件注入模式快捷切换入口（点击展开 文本 / OCR / 图片 选择器） */}
               {modeSummary && !isError && onInjectModesChange && !disabled && (
                 <Popover>

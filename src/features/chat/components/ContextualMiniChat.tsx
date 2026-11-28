@@ -394,17 +394,19 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handlePromote}
-            data-testid="promote-to-main-chat-btn"
-            className="h-auto lg:h-auto [@media(pointer:coarse)]:min-h-11 gap-1 px-2 py-1 text-xs font-medium rounded border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
-          >
-            <span>{t('miniChat.promoteButton', { defaultValue: '迁入主会话' })}</span>
-            <ArrowUpRight className="w-3 h-3" />
-          </DsButton>
+          {Boolean(onPromoteToMainChat) && (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handlePromote}
+              data-testid="promote-to-main-chat-btn"
+              className="h-auto lg:h-auto [@media(pointer:coarse)]:min-h-11 gap-1 px-2 py-1 text-xs font-medium rounded border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+            >
+              <span>{t('miniChat.promoteButton', { defaultValue: '迁入主会话' })}</span>
+              <ArrowUpRight className="w-3 h-3" />
+            </DsButton>
+          )}
           <DsButton
             type="button"
             variant="ghost"

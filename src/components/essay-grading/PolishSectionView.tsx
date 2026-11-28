@@ -10,6 +10,7 @@ import { ArrowRight, PencilSimple, Copy, Check, Eye, EyeSlash } from '@phosphor-
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface PolishSectionViewProps {
   items: PolishItem[];
@@ -122,16 +123,26 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [showDiff, setShowDiff] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
-  const handleCopy = (text: string, index: number) => {
-    copyTextToClipboard(text);
-    setCopiedIndex(index);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopiedIndex(null), 2000);
+  const handleCopy = async (text: string, index: number) => {
+    try {
+      await copyTextToClipboard(text);
+      if (!mountedRef.current) return;
+      setCopiedIndex(index);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (error: unknown) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
   };
 
   const diffs = useMemo(
@@ -200,7 +211,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                   variant="ghost"
                   size="sm"
                   aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
-                  onClick={() => handleCopy(item.polished, index)}
+                  onClick={() => { void handleCopy(item.polished, index); }}
                   className={cn(
                     coarseHitClassFor24,
                     'h-6 px-1.5 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',

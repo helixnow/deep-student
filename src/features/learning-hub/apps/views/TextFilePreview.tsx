@@ -34,6 +34,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { openUrl } from '@/utils/urlOpener';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import {
   SourceImageViewer,
@@ -347,6 +349,7 @@ const CopyTextButton: React.FC<{ text: string }> = ({ text }) => {
       timerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (err: unknown) {
       console.warn('[TextFilePreview] Copy failed:', err);
+      showGlobalNotification('error', getErrorMessage(err));
     }
   }, [text]);
 

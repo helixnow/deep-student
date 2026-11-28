@@ -246,7 +246,7 @@ describe('UnifiedDailySprintPlayer resilience, mobile UX, rescue tools, images &
 
   it('collapses to a compact bottom return bar on <640px mobile when viewing source and restores sprint via button or Android back', async () => {
     vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
-      matches: query === '(max-width: 639px)',
+      matches: query === '(max-width: 639px)' || query === '(max-width: 767px)',
       media: query,
       onchange: null,
       addEventListener: vi.fn(),

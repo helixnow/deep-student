@@ -1,4 +1,4 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isMobilePlatform } from '@/utils/platform';
@@ -36,17 +36,23 @@ export interface McpToolEditorEmbeddedContext {
   refreshSnapshots: (options?: { reload?: boolean }) => Promise<void>;
 }
 
-export function renderMcpToolEditorEmbedded({
-  config, setConfig, isSmallScreen, t, closeRightPanel, mcpToolSubmitRef, mcpToolModal, setMcpToolModal,
-  showMcpApiKey, setShowMcpApiKey, refreshSnapshots,
-}: McpToolEditorEmbeddedContext) {
-  if (!mcpToolModal.open) {
+export function renderMcpToolEditorEmbedded(ctx: McpToolEditorEmbeddedContext) {
+  if (!ctx.mcpToolModal.open) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        <p className="text-sm">{t('settings:sections.select_tool_to_edit')}</p>
+        <p className="text-sm">{ctx.t('settings:sections.select_tool_to_edit')}</p>
       </div>
     );
   }
+  return <McpToolEditorEmbeddedView {...ctx} />;
+}
+
+function McpToolEditorEmbeddedView({
+  config, setConfig, isSmallScreen, t, closeRightPanel, mcpToolSubmitRef, mcpToolModal, setMcpToolModal,
+  showMcpApiKey, setShowMcpApiKey, refreshSnapshots,
+}: McpToolEditorEmbeddedContext) {
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const isEditing = mcpToolModal.index != null;
   const draft = mcpToolModal.draft;
@@ -61,6 +67,7 @@ export function renderMcpToolEditorEmbedded({
         : '';
 
   const handleClose = () => {
+    if (savingRef.current) return;
     setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
     closeRightPanel();
   };
@@ -103,6 +110,7 @@ export function renderMcpToolEditorEmbedded({
   };
 
   const handleSubmit = async () => {
+    if (savingRef.current) return;
     try {
       let toolToSave: McpToolConfig;
       if (mcpToolModal.mode === 'json') {
@@ -147,22 +155,51 @@ export function renderMcpToolEditorEmbedded({
           return;
         }
       } else {
+        if (!draft.name.trim()) {
+          showGlobalNotification('error', t('settings:validations.enter_tool_name'));
+          return;
+        }
+        if (transport === 'websocket') {
+          const wsUrl = (draft.url || '').trim();
+          if (!wsUrl || !/^wss?:\/\//i.test(wsUrl)) {
+            showGlobalNotification('error', t('settings:mcp_descriptions.websocket_url_required'));
+            return;
+          }
+        }
+        if (transport === 'sse' || transport === 'streamable_http') {
+          const endpointUrl = (draft.endpoint || draft.fetch?.url || '').trim();
+          if (!endpointUrl || !/^https?:\/\//i.test(endpointUrl)) {
+            showGlobalNotification(
+              'error',
+              transport === 'streamable_http'
+                ? t('settings:mcp_descriptions.http_endpoint_label', 'HTTP Endpoint *')
+                : t('settings:mcp_descriptions.sse_endpoint_label', 'SSE Endpoint *'),
+            );
+            return;
+          }
+        }
+        if (transport === 'stdio' && !draft.command?.trim()) {
+          showGlobalNotification('error', t('settings:validations.enter_command'));
+          return;
+        }
+
         const argsSource = draft.args;
         const normalizedArgs = Array.isArray(argsSource)
           ? argsSource.map(item => (typeof item === 'string' ? item.trim() : String(item))).filter(Boolean)
           : typeof argsSource === 'string'
             ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
             : [];
+        const trimmedEndpoint = (draft.endpoint || draft.fetch?.url || '').trim();
         toolToSave = {
           id: draft.id || `mcp_${Date.now()}`,
-          name: draft.name,
+          name: draft.name.trim(),
           transportType: transport,
-          command: transport === 'stdio' ? draft.command : undefined,
+          command: transport === 'stdio' ? draft.command?.trim() : undefined,
           args: transport === 'stdio' ? normalizedArgs : undefined,
           env: draft.env,
-          url: transport === 'websocket' ? draft.url : undefined,
-          endpoint: (transport === 'sse' || transport === 'streamable_http') ? (draft.endpoint || draft.fetch?.url) : undefined,
-          fetch: (transport === 'sse' || transport === 'streamable_http') ? { type: transport, url: draft.endpoint || draft.fetch?.url || '' } : undefined,
+          url: transport === 'websocket' ? draft.url?.trim() : undefined,
+          endpoint: (transport === 'sse' || transport === 'streamable_http') ? trimmedEndpoint : undefined,
+          fetch: (transport === 'sse' || transport === 'streamable_http') ? { type: transport, url: trimmedEndpoint } : undefined,
           apiKey: draft.apiKey,
           oauth: draft.apiKey ? undefined : draft.oauth,
           namespace: draft.namespace,
@@ -185,25 +222,33 @@ export function renderMcpToolEditorEmbedded({
       } else {
         nextList[mcpToolModal.index] = toolToSave;
       }
+
+      savingRef.current = true;
+      setSaving(true);
       try {
-        if (invoke) {
-          await saveSetting('mcp.tools.list', JSON.stringify(nextList));
+        try {
+          if (invoke) {
+            await saveSetting('mcp.tools.list', JSON.stringify(nextList));
+          }
+          setConfig(prev => ({ ...prev, mcpTools: nextList }));
+        } catch (e) {
+          const message = getErrorMessage(e);
+          showGlobalNotification('error', `${t('settings:mcp_descriptions.save_failed')}: ${message}`);
+          return;
         }
-        setConfig(prev => ({ ...prev, mcpTools: nextList }));
-      } catch (e) {
-        const message = getErrorMessage(e);
-        showGlobalNotification('error', `${t('settings:mcp_descriptions.save_failed')}: ${message}`);
-        return;
+        try {
+          await refreshSnapshots({ reload: true });
+        } catch (e) {
+          const errMsg = getErrorMessage(e);
+          showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
+        }
+        setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
+        closeRightPanel();
+        showGlobalNotification('success', t('common:mcp_tool_saved'));
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-      try {
-        await refreshSnapshots({ reload: true });
-      } catch (e) {
-        const errMsg = getErrorMessage(e);
-        showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
-      }
-      setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
-      closeRightPanel();
-      showGlobalNotification('success', t('common:mcp_tool_saved'));
     } catch (error) {
       setMcpToolModal(prev => ({ ...prev, error: getErrorMessage(error) }));
     }
@@ -368,7 +413,14 @@ export function renderMcpToolEditorEmbedded({
                   <DsButton
                     variant="outline"
                     size="sm"
-                    onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
+                    onClick={() => {
+                      const existing = draft.env || {};
+                      let idx = Object.keys(existing).length + 1;
+                      while (Object.prototype.hasOwnProperty.call(existing, `ENV_${idx}`)) {
+                        idx += 1;
+                      }
+                      updateDraft({ env: { ...existing, [`ENV_${idx}`]: '' } });
+                    }}
                     className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -406,8 +458,8 @@ export function renderMcpToolEditorEmbedded({
       {/* 移动端：保存唯一出口在统一顶栏 Check（P1-7，同模型编辑器），底栏不再重复；桌面右侧面板保留 */}
       {!isSmallScreen && (
       <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
-        <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
-        <DsButton variant="primary" onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+        <DsButton variant="ghost" disabled={saving} onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+        <DsButton variant="primary" disabled={saving} onClick={() => void handleSubmit()} className="min-h-11 flex-1">{saving ? t('common:actions.saving') : (isEditing ? t('common:actions.save') : t('common:actions.create'))}</DsButton>
       </div>
       )}
     </div>

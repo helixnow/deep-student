@@ -38,7 +38,7 @@ import { CONVERT_MARKDOWN_TO_NOTE_EVENT } from '../../dragDropRouting';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
-import { isAndroidMobileShell, isMobilePlatform } from '@/utils/platform';
+import { isAndroidMobileShell, isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
 import { withStagedTextbookFile } from '../../textbookFileImport';
 
@@ -570,10 +570,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // ★ 2026-06-12（审阅 UI/UX）：原文件失联时让用户挑选新位置重新关联。
   // 后端 textbooks_relink 校验 SHA-256 一致后更新 original_path 并自愈 blob。
+  const isRelinkingRef = useRef(false);
   const handleRelink = useCallback(async () => {
+    if (isRelinkingRef.current || isRelinking) return;
+    isRelinkingRef.current = true;
     setIsRelinking(true);
     try {
-      if (isAndroidMobileShell()) {
+      if (isAndroidMobileShell() || isWebUiShell()) {
         const [file] = await pickWebViewFiles(false);
         if (!file) return;
         await withStagedTextbookFile(file, (newPath) => invoke('textbooks_relink', { id: node.id, newPath }));
@@ -593,9 +596,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err), t('textbook:relink.failed'));
     } finally {
+      isRelinkingRef.current = false;
       setIsRelinking(false);
     }
-  }, [node.id, node.name, t]);
+  }, [isRelinking, node.id, node.name, t]);
 
   // ★ 用系统默认应用打开原文件（不支持预览类型的逃生出口）
   const handleOpenExternal = useCallback(async (path: string) => {

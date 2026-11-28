@@ -91,46 +91,55 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
         'transition-colors'
       )}
     >
-      {/* 折叠头部 */}
-      <DsButton
-        variant="ghost"
-        size="sm"
-        onClick={toggleExpanded}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg [@media(pointer:coarse)]:!min-h-11"
-      >
-        {/* 展开/折叠图标 */}
-        {isExpanded ? (
-          <CaretDown size={16} className="text-muted-foreground" />
-        ) : (
-          <CaretRight size={16} className="text-muted-foreground" />
-        )}
-
-        {/* OCR 图标 */}
-        <Scan
-          className={cn(
-            'w-4 h-4',
-            ocrStatus === 'success' ? 'text-success' : 'text-destructive'
+      {/* 折叠头部：外层为 flex 容器，避免把重试 DsButton 嵌套在折叠 DsButton 内部 */}
+      <div className="flex items-center gap-1 pr-2">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={toggleExpanded}
+          aria-expanded={isExpanded}
+          className="min-w-0 flex-1 !justify-start gap-2 !px-3 !py-2 !rounded-lg [@media(pointer:coarse)]:!min-h-11"
+        >
+          {/* 展开/折叠图标 */}
+          {isExpanded ? (
+            <CaretDown size={16} className="shrink-0 text-muted-foreground" />
+          ) : (
+            <CaretRight size={16} className="shrink-0 text-muted-foreground" />
           )}
-        />
 
-        {/* 标题 */}
-        <span className="font-medium text-foreground">
-          {t('analysis.ocrResult.title')}
-        </span>
+          {/* OCR 图标 */}
+          <Scan
+            className={cn(
+              'w-4 h-4 shrink-0',
+              ocrStatus === 'success' ? 'text-success' : 'text-destructive'
+            )}
+          />
 
-        {/* 状态图标 */}
-        {ocrStatus === 'success' ? (
-          <CheckCircle size={16} className="text-success ml-auto" />
-        ) : (
-          <div className="flex items-center gap-2 ml-auto">
-            <WarningCircle size={16} className="text-destructive" />
-            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
-              <ArrowClockwise size={12} />
-              {t('analysis.ocrResult.retry')}
-            </DsButton>
-          </div>
+          {/* 标题 */}
+          <span className="truncate font-medium text-foreground">
+            {t('analysis.ocrResult.title')}
+          </span>
+
+          {/* 状态图标 */}
+          {ocrStatus === 'success' ? (
+            <CheckCircle size={16} className="text-success ml-auto shrink-0" />
+          ) : (
+            <WarningCircle size={16} className="text-destructive ml-auto shrink-0" />
+          )}
+        </DsButton>
+
+        {ocrStatus !== 'success' && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleRetry}
+            className="shrink-0 text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
+          >
+            <ArrowClockwise size={12} />
+            {t('analysis.ocrResult.retry')}
+          </DsButton>
         )}
-      </DsButton>
+      </div>
 
       {/* 内容区域 */}
       {isExpanded && (
