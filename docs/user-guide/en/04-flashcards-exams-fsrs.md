@@ -2,7 +2,7 @@
 
 > Remember what you learn with minimal daily effort: DeepStudent combines FSRS-6 spaced repetition, a unified pre-exam sprint queue, instant search across thousands of cards, Anki compatibility, and draft-checked Question Sets.
 
-![FSRS-6 daily flashcard review dashboard](../images/flashcards-desktop-light.webp)
+![FSRS-6 daily flashcard review dashboard](../images/en/flashcards-desktop-light.webp)
 
 ---
 
@@ -71,7 +71,7 @@
 
 **What you want to do**: Move decks smoothly between DeepStudent and Anki — with every diagram, audio clip, and math equation displaying properly on both Desktop and WebUI.
 
-![Card templates, preview, and Anki export workspace](../images/anki-desktop-light.webp)
+![Card templates, preview, and Anki export workspace](../images/en/anki-desktop-light.webp)
 
 ### Import & Export `.apkg` (Full WebUI Media Parity)
 
@@ -95,7 +95,7 @@
 
 **What you want to do**: Build structured practice sets from past exams or AI-authored questions, practice in realistic test modes, and make sure AI never dumps unverified questions into your permanent bank.
 
-![Question Set workspace with mastery stats and mistake tracking](../images/question-bank-desktop-light.webp)
+![Question Set workspace with mastery stats and mistake tracking](../images/en/question-bank-desktop-light.webp)
 
 1. **Create or import a Question Set**:
    - Open **Files** → **New Question Set** (or **Question Set Workbench**) and upload an exam PDF/image set, import JSON/CSV, or ask AI in Chat to draft practice questions from your notes.

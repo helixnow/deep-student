@@ -2,7 +2,7 @@
 
 > DeepStudent's chat is built around your actual study materials — and with **Memory v2**, your AI remembers how you like to be taught, tracks your real weak spots across courses, shows you exactly which memories shaped every answer, and lets you roll back changes anytime.
 
-![AI Chat with grounded citations and study artifacts](../images/chat-desktop-light.webp)
+![AI Chat with grounded citations and study artifacts](../images/en/chat-desktop-light.webp)
 
 ---
 

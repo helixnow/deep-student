@@ -1,0 +1,235 @@
+{
+  "version": "0.20.12",
+  "lang": "en",
+  "generatedAt": "2026-11-28T03:15:50.875Z",
+  "chapters": {
+    "workbench": {
+      "title": "Study Desktop",
+      "caption": "Multi-window workspace: AI chat and generated flashcards alongside FSRS-6 daily review, calendar, and AI study briefing.",
+      "desktop": {
+        "light": "workbench-desktop-light.webp",
+        "dark": "workbench-desktop-dark.webp"
+      }
+    },
+    "chat": {
+      "title": "AI Chat & Sessions",
+      "caption": "Grounded study chat over Machine Learning Systems Ch. 3 with clickable PDF page citations and generated study artifacts.",
+      "desktop": {
+        "light": "chat-desktop-light.webp",
+        "dark": "chat-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "chat-mobile-light.webp",
+        "dark": "chat-mobile-dark.webp"
+      }
+    },
+    "research-memory": {
+      "title": "Deep Research & Long-Term Memory",
+      "caption": "Web deep research with source attribution and transparent long-term study memory management.",
+      "desktop": {
+        "light": "research-memory-desktop-light.webp",
+        "dark": "research-memory-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "research-memory-mobile-light.webp",
+        "dark": "research-memory-mobile-dark.webp"
+      }
+    },
+    "learning-hub": {
+      "title": "Files & Library",
+      "caption": "Unified library for PDFs, notes, subject folders, and automatic knowledge-base indexing status.",
+      "desktop": {
+        "light": "learning-hub-desktop-light.webp",
+        "dark": "learning-hub-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "learning-hub-mobile-light.webp",
+        "dark": "learning-hub-mobile-dark.webp"
+      }
+    },
+    "reading-translation": {
+      "title": "Document Reading & Translation",
+      "caption": "Side-by-side paper reading, highlights, and paragraph-aligned bilingual translation.",
+      "desktop": {
+        "light": "reading-translation-desktop-light.webp",
+        "dark": "reading-translation-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "reading-translation-mobile-light.webp",
+        "dark": "reading-translation-mobile-dark.webp"
+      }
+    },
+    "media": {
+      "title": "Media & Lectures",
+      "caption": "Lecture playback with synced timestamped transcripts, companion Q&A, and illustrated handouts.",
+      "desktop": {
+        "light": "media-desktop-light.webp",
+        "dark": "media-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "media-mobile-light.webp",
+        "dark": "media-mobile-dark.webp"
+      }
+    },
+    "paper-search": {
+      "title": "Academic Paper Search",
+      "caption": "Multi-source academic search across arXiv and OpenAlex with one-click library ingestion.",
+      "desktop": {
+        "light": "paper-search-desktop-light.webp",
+        "dark": "paper-search-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "paper-search-mobile-light.webp",
+        "dark": "paper-search-mobile-dark.webp"
+      }
+    },
+    "notes": {
+      "title": "Notes",
+      "caption": "Linked Markdown notes with math formulas, backlinks, outline navigation, and reversible AI edits.",
+      "desktop": {
+        "light": "notes-desktop-light.webp",
+        "dark": "notes-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "notes-mobile-light.webp",
+        "dark": "notes-mobile-dark.webp"
+      }
+    },
+    "mindmap": {
+      "title": "Mind Map",
+      "caption": "Structured concept map with canvas/outline views and masked recall testing.",
+      "desktop": {
+        "light": "mindmap-desktop-light.webp",
+        "dark": "mindmap-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "mindmap-mobile-light.webp",
+        "dark": "mindmap-mobile-dark.webp"
+      }
+    },
+    "essay": {
+      "title": "Essay Review",
+      "caption": "Rubric-based essay scoring with inline sentence marks, dimension breakdown, and polishing.",
+      "desktop": {
+        "light": "essay-desktop-light.webp",
+        "dark": "essay-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "essay-mobile-light.webp",
+        "dark": "essay-mobile-dark.webp"
+      }
+    },
+    "productivity": {
+      "title": "Todo, Pomodoro & Command Palette",
+      "caption": "Study planning and focus workflow with prioritized todos, Pomodoro timer, and activity stats.",
+      "desktop": {
+        "light": "productivity-desktop-light.webp",
+        "dark": "productivity-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "productivity-mobile-light.webp",
+        "dark": "productivity-mobile-dark.webp"
+      }
+    },
+    "question-bank": {
+      "title": "Exam Sets & Practice",
+      "caption": "Structured question bank with mastery stats, type filters, and cross-set mistake review.",
+      "desktop": {
+        "light": "question-bank-desktop-light.webp",
+        "dark": "question-bank-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "question-bank-mobile-light.webp",
+        "dark": "question-bank-mobile-dark.webp"
+      }
+    },
+    "anki": {
+      "title": "Anki Card Maker & Templates",
+      "caption": "Card creation, live template preview, deck organization, and .apkg export.",
+      "desktop": {
+        "light": "anki-desktop-light.webp",
+        "dark": "anki-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "anki-mobile-light.webp",
+        "dark": "anki-mobile-dark.webp"
+      }
+    },
+    "flashcards": {
+      "title": "FSRS-6 Flashcard Review",
+      "caption": "Daily FSRS-6 spaced-repetition dashboard with progress ring and due queue breakdown.",
+      "desktop": {
+        "light": "flashcards-desktop-light.webp",
+        "dark": "flashcards-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "flashcards-mobile-light.webp",
+        "dark": "flashcards-mobile-dark.webp"
+      }
+    },
+    "models": {
+      "title": "Model Providers & Assignment",
+      "caption": "15 preset model providers, local Ollama support, and per-capability slot assignment.",
+      "desktop": {
+        "light": "models-desktop-light.webp",
+        "dark": "models-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "models-mobile-light.webp",
+        "dark": "models-mobile-dark.webp"
+      }
+    },
+    "skills-mcp": {
+      "title": "Skills & MCP Extensions",
+      "caption": "Built-in on-demand skills and external MCP server integration management.",
+      "desktop": {
+        "light": "skills-mcp-desktop-light.webp",
+        "dark": "skills-mcp-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "skills-mcp-mobile-light.webp",
+        "dark": "skills-mcp-mobile-dark.webp"
+      }
+    },
+    "data-sync": {
+      "title": "Data Governance & Cloud Sync",
+      "caption": "Local backups, encrypted archive policies, and cross-device cloud synchronization.",
+      "desktop": {
+        "light": "data-sync-desktop-light.webp",
+        "dark": "data-sync-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "data-sync-mobile-light.webp",
+        "dark": "data-sync-mobile-dark.webp"
+      }
+    },
+    "plugin-workshop": {
+      "title": "AI Plugin Workshop & Manager",
+      "caption": "Natural-language AI Plugin Workshop, installed community plugins, built-in capabilities, and channels.",
+      "desktop": {
+        "light": "plugin-workshop-desktop-light.webp",
+        "dark": "plugin-workshop-desktop-dark.webp"
+      }
+    },
+    "mobile": {
+      "title": "Mobile Guide",
+      "caption": "One-handed 390px mobile chat and study card experience tailored for touch devices.",
+      "mobile": {
+        "light": "mobile-mobile-light.webp",
+        "dark": "mobile-mobile-dark.webp"
+      }
+    },
+    "webui-pwa": {
+      "title": "Self-Hosted WebUI & PWA",
+      "caption": "Self-hosted browser workbench: full Study Desktop on desktop browsers and adaptive mobile shell on phones.",
+      "desktop": {
+        "light": "webui-pwa-desktop-light.webp",
+        "dark": "webui-pwa-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "webui-pwa-mobile-light.webp",
+        "dark": "webui-pwa-mobile-dark.webp"
+      }
+    }
+  }
+}

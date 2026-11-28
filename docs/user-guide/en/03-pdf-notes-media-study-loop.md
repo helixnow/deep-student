@@ -2,7 +2,7 @@
 
 > Reading papers, writing structured notes, watching recorded lectures, and translating dense passages all live in one connected loop — every highlight, note excerpt, and lecture Q&A stays linked straight back to its exact page or `mm:ss` timestamp.
 
-![Side-by-side paper reading and bilingual translation](../images/reading-translation-desktop-light.webp)
+![Side-by-side paper reading and bilingual translation](../images/en/reading-translation-desktop-light.webp)
 
 ---
 
@@ -49,7 +49,7 @@
 
 **What you want to do**: Turn PDF highlights into permanent Markdown notes, jump straight back to the source page while working in a narrow split screen, and juggle similarly named notes across courses without mixing them up.
 
-![Markdown notes with formulas, outline, and linked citations](../images/notes-desktop-light.webp)
+![Markdown notes with formulas, outline, and linked citations](../images/en/notes-desktop-light.webp)
 
 ### Export Highlights to Notes & Jump Back in Split View
 
@@ -77,7 +77,7 @@ When you keep multiple similarly titled notes open at once — for example, `Cal
 
 **What you want to do**: Study recorded lectures, course videos, or audio recordings — ask about the exact concept the professor just explained, jump straight to `mm:ss` citations, and turn lectures into handouts or flashcards.
 
-![Media Studio with timestamped transcript and lecture notes](../images/media-desktop-light.webp)
+![Media Studio with timestamped transcript and lecture notes](../images/en/media-desktop-light.webp)
 
 1. **Import and add a transcript**: Drag a video/audio file (or supported lecture link) into **Media Studio**. Click **Transcribe** — or if you already have subtitles, use **Import subtitle file…** from the item menu to import **`.srt`, `.vtt`, `.ass`, `.txt`, or Bilibili `.json`** files directly and skip transcription time and cost. Non-subtitle files are rejected cleanly instead of corrupting the transcript, and importing over an existing transcript asks for overwrite confirmation (**Replace existing subtitles?**).
 2. **Use Grounded Companion Q&A while watching**:
