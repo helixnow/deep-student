@@ -862,6 +862,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   // 恢复完成后重启对话框状态
   const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const restartingRef = useRef(false);
 
   // 导入完成后提示恢复对话框状态
   const [showRestorePromptDialog, setShowRestorePromptDialog] = useState(false);
@@ -2840,17 +2842,24 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <DsButton
             variant="primary"
             size="sm"
+            disabled={isRestarting}
             className="[@media(pointer:coarse)]:!min-h-11"
             onClick={async () => {
-              setShowRestartDialog(false);
+              if (restartingRef.current) return;
+              restartingRef.current = true;
+              setIsRestarting(true);
               try {
                 await TauriAPI.restartApp();
+                setShowRestartDialog(false);
                 if (import.meta.env.DEV || isWebUiShell()) {
                   window.location.reload();
                 }
               } catch (error: unknown) {
                 console.error('重启应用失败:', error);
                 showGlobalNotification('error', getErrorMessage(error));
+              } finally {
+                restartingRef.current = false;
+                setIsRestarting(false);
               }
             }}
           >

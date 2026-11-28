@@ -468,7 +468,7 @@ export const Settings: React.FC<SettingsComponentProps> = ({
       onClearCache: handleClearCaches,
       onOpenPolicy: handleOpenMcpPolicy,
       onCreateServer: handleCreateMcpTool,
-      onEditServer: useStandaloneMobileShell ? (server) => handleEditMcpTool(server as McpToolConfig, (config.mcpTools || []).findIndex((s) => s.id === server.id)) : undefined,
+      onEditServer: useStandaloneMobileShell ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined,
       scrollElement: settingsScrollElement,
     }),
     statistics: () => ({ embedded: true, mode: 'stats' }),

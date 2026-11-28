@@ -10,6 +10,8 @@ import { useTranslation } from 'react-i18next';
 import { ShieldWarning, TerminalWindow } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import {
   agentMeshHost,
   resolveAgentDisplayName,
@@ -48,6 +50,8 @@ export const ExternalCliApprovalBar: React.FC<ExternalCliApprovalBarProps> = ({
           requestId: effectiveApproval.requestId,
           decision,
         });
+      } catch (err) {
+        showGlobalNotification('error', getErrorMessage(err));
       } finally {
         setSubmitting(false);
       }

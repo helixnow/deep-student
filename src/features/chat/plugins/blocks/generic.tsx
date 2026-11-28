@@ -15,7 +15,9 @@ import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Question, CaretDown, Copy, Check, CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../../components/ui/TextShimmer';
@@ -55,8 +57,9 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
       await copyTextToClipboard(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[GenericBlock] Copy failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [text]);
 

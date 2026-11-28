@@ -586,9 +586,12 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
     }));
   };
 
+  const submittingRef = useRef(false);
+
   // 提交表单
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (submittingRef.current) return;
 
     const errors = validateForm();
     if (errors.length > 0) {
@@ -596,6 +599,7 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
       return;
     }
 
+    submittingRef.current = true;
     setValidationErrors([]);
     setIsSubmitting(true);
 
@@ -632,6 +636,7 @@ const MinimalTemplateEditor = React.forwardRef<MinimalTemplateEditorHandle, Mini
       console.error('Failed to save template:', error);
       setValidationErrors([{ field: 'general', message: error instanceof Error ? error.message : t('save_failed') }]);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [validateForm, formData, fieldExtractionRules, previewDataJson, onSave, t]);

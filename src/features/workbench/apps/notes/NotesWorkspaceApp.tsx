@@ -267,6 +267,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenu | null>(null);
   const [resourceDialog, setResourceDialog] = useState<ResourceDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
+  const dialogBusyRef = useRef(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const [libraryDialog, setLibraryDialog] = useState<{ open: boolean; tab: 'export' | 'import' }>({
     open: false,
@@ -793,90 +795,107 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [loadResources, t]);
 
   const deleteContextResource = useCallback(async () => {
+    if (dialogBusyRef.current) return;
     if (!resourceDialog || resourceDialog.mode !== 'delete') return;
     const target = resourceDialog.target;
-    if (target.kind === 'resource') {
-      const key = `${target.node.type}:${target.node.id}`;
-      // dstu.delete can notify the global resource-sync listener before its
-      // promise resolves. Mark this user-confirmed deletion first so that
-      // listener cannot enqueue a redundant dirty-tab confirmation.
-      pendingConfirmedDeletionKeysRef.current.add(key);
-      try {
-        const result = await dstu.delete(target.node.path || `/${target.node.id}`);
-        if (!result.ok) {
-          const message = result.error.toUserMessage();
-          setStatus(message);
-          setDialogError(message);
-          return;
-        }
-        // The user already confirmed moving this resource to the trash. Do not
-        // ask a second discard question or retain a tab for a deleted resource.
-        await closeTab(key, { force: true });
-        notifyMovedToTrash(target.node.id, target.node.type, target.node.name);
-      } finally {
-        pendingConfirmedDeletionKeysRef.current.delete(key);
-      }
-    } else {
-      const result = await folderApi.deleteFolder(target.id);
-      if (!result.ok) {
-        const message = result.error.toUserMessage();
-        setStatus(message);
-        setDialogError(message);
-        return;
-      }
-      notifyMovedToTrash(target.id, 'folder', target.name);
-    }
-    setResourceDialog(null);
-    await loadResources({ blocking: false });
-  }, [closeTab, loadResources, notifyMovedToTrash, resourceDialog]);
-
-  // 多选批量删除：一次内联确认，逐项移入回收站，失败逐项上报
-  const deleteContextResources = useCallback(async () => {
-    if (!resourceDialog || resourceDialog.mode !== 'delete-many') return;
-    const targets = resourceDialog.targets;
-    let failed = 0;
-    let lastError: string | null = null;
-    for (const target of targets) {
+    dialogBusyRef.current = true;
+    setDialogBusy(true);
+    try {
       if (target.kind === 'resource') {
         const key = `${target.node.type}:${target.node.id}`;
+        // dstu.delete can notify the global resource-sync listener before its
+        // promise resolves. Mark this user-confirmed deletion first so that
+        // listener cannot enqueue a redundant dirty-tab confirmation.
         pendingConfirmedDeletionKeysRef.current.add(key);
         try {
           const result = await dstu.delete(target.node.path || `/${target.node.id}`);
           if (!result.ok) {
-            failed += 1;
-            lastError = result.error.toUserMessage();
-            continue;
+            const message = result.error.toUserMessage();
+            setStatus(message);
+            setDialogError(message);
+            return;
           }
+          // The user already confirmed moving this resource to the trash. Do not
+          // ask a second discard question or retain a tab for a deleted resource.
           await closeTab(key, { force: true });
+          notifyMovedToTrash(target.node.id, target.node.type, target.node.name);
         } finally {
           pendingConfirmedDeletionKeysRef.current.delete(key);
         }
       } else {
         const result = await folderApi.deleteFolder(target.id);
         if (!result.ok) {
-          failed += 1;
-          lastError = result.error.toUserMessage();
+          const message = result.error.toUserMessage();
+          setStatus(message);
+          setDialogError(message);
+          return;
+        }
+        notifyMovedToTrash(target.id, 'folder', target.name);
+      }
+      setResourceDialog(null);
+      await loadResources({ blocking: false });
+    } finally {
+      dialogBusyRef.current = false;
+      setDialogBusy(false);
+    }
+  }, [closeTab, loadResources, notifyMovedToTrash, resourceDialog]);
+
+  // 多选批量删除：一次内联确认，逐项移入回收站，失败逐项上报
+  const deleteContextResources = useCallback(async () => {
+    if (dialogBusyRef.current) return;
+    if (!resourceDialog || resourceDialog.mode !== 'delete-many') return;
+    const targets = resourceDialog.targets;
+    dialogBusyRef.current = true;
+    setDialogBusy(true);
+    try {
+      let failed = 0;
+      let lastError: string | null = null;
+      for (const target of targets) {
+        if (target.kind === 'resource') {
+          const key = `${target.node.type}:${target.node.id}`;
+          pendingConfirmedDeletionKeysRef.current.add(key);
+          try {
+            const result = await dstu.delete(target.node.path || `/${target.node.id}`);
+            if (!result.ok) {
+              failed += 1;
+              lastError = result.error.toUserMessage();
+              continue;
+            }
+            await closeTab(key, { force: true });
+          } finally {
+            pendingConfirmedDeletionKeysRef.current.delete(key);
+          }
+        } else {
+          const result = await folderApi.deleteFolder(target.id);
+          if (!result.ok) {
+            failed += 1;
+            lastError = result.error.toUserMessage();
+          }
         }
       }
+      setResourceDialog(null);
+      const succeeded = targets.length - failed;
+      if (succeeded > 0) {
+        const message = t('notesWorkspace.status.movedManyToTrash', {
+          defaultValue: '{{count}} items moved to trash',
+          count: succeeded,
+        });
+        setStatus(message);
+        showGlobalNotification('success', message);
+      }
+      if (failed > 0 && lastError) {
+        setStatus(lastError);
+        showGlobalNotification('error', lastError);
+      }
+      await loadResources({ blocking: false });
+    } finally {
+      dialogBusyRef.current = false;
+      setDialogBusy(false);
     }
-    setResourceDialog(null);
-    const succeeded = targets.length - failed;
-    if (succeeded > 0) {
-      const message = t('notesWorkspace.status.movedManyToTrash', {
-        defaultValue: '{{count}} items moved to trash',
-        count: succeeded,
-      });
-      setStatus(message);
-      showGlobalNotification('success', message);
-    }
-    if (failed > 0 && lastError) {
-      setStatus(lastError);
-      showGlobalNotification('error', lastError);
-    }
-    await loadResources({ blocking: false });
   }, [closeTab, loadResources, resourceDialog, t]);
 
   const createFolder = useCallback(async () => {
+    if (dialogBusyRef.current) return;
     if (!resourceDialog || resourceDialog.mode !== 'create-folder') return;
     const name = resourceDialog.value.trim();
     if (!name) {
@@ -896,17 +915,24 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setDialogError(t('notesWorkspace.validation.nameInvalidChars', 'Names can\'t contain line breaks or control characters'));
       return;
     }
-    const result = await folderApi.createFolder(name, resourceDialog.parentId ?? undefined);
-    if (!result.ok) {
-      const message = result.error.toUserMessage();
-      setStatus(message);
-      setDialogError(message);
-      return;
+    dialogBusyRef.current = true;
+    setDialogBusy(true);
+    try {
+      const result = await folderApi.createFolder(name, resourceDialog.parentId ?? undefined);
+      if (!result.ok) {
+        const message = result.error.toUserMessage();
+        setStatus(message);
+        setDialogError(message);
+        return;
+      }
+      setSelectedFolderId(result.value.id);
+      setDialogError(null);
+      setResourceDialog(null);
+      await loadResources({ blocking: false });
+    } finally {
+      dialogBusyRef.current = false;
+      setDialogBusy(false);
     }
-    setSelectedFolderId(result.value.id);
-    setDialogError(null);
-    setResourceDialog(null);
-    await loadResources({ blocking: false });
   }, [loadResources, resourceDialog, t]);
 
   const createResource = useCallback(async (type: ResourceType, folderId?: string | null) => {
@@ -1711,6 +1737,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       favorites={favorites}
       resourceDialog={resourceDialog}
       dialogError={dialogError}
+      dialogBusy={dialogBusy}
       onResourceDialogChange={setResourceDialog}
       onDialogErrorChange={setDialogError}
       onCreateResource={(type, folderId) => { void createResource(type, folderId); }}

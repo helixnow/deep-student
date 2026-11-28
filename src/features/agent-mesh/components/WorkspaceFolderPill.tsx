@@ -7,9 +7,21 @@ import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { formatWorkspaceFolderBasename } from '../types';
 import { setWorkspaceBinding } from '../hostBridge';
 import { useAgentMeshStore } from '../store/useAgentMeshStore';
+
+async function resolveErrorMessage(error: unknown): Promise<string> {
+  try {
+    const { getErrorMessage } = await import('@/utils/errorUtils');
+    return getErrorMessage(error);
+  } catch {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    return 'An unknown error occurred';
+  }
+}
 
 export interface WorkspaceFolderPillProps {
   sessionId?: string | null;
@@ -30,10 +42,15 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
   );
 
   const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [draftPath, setDraftPath] = useState(binding?.rootPath ?? '');
   const [isolatedBranch, setIsolatedBranch] = useState(Boolean(binding?.isolatedBranch));
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [effectiveSessionId]);
 
   useEffect(() => {
     if (!open) {
@@ -93,34 +110,53 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
 
   const applyBinding = useCallback(
     async (nextPath: string, nextIsolated = isolatedBranch) => {
-      await setWorkspaceBinding({
-        chatSessionId: effectiveSessionId,
-        rootPath: nextPath.trim(),
-        isolatedBranch: nextIsolated,
-      });
-      setOpen(false);
+      if (submitting) return;
+      setSubmitting(true);
+      try {
+        await setWorkspaceBinding({
+          chatSessionId: effectiveSessionId,
+          rootPath: nextPath.trim(),
+          isolatedBranch: nextIsolated,
+        });
+        setOpen(false);
+      } catch (err) {
+        showGlobalNotification('error', await resolveErrorMessage(err));
+      } finally {
+        setSubmitting(false);
+      }
     },
-    [effectiveSessionId, isolatedBranch],
+    [effectiveSessionId, isolatedBranch, submitting],
   );
 
   const handleBrowseNative = useCallback(async () => {
+    if (submitting) return;
+    let selectedPath: string | null = null;
     try {
       const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
       const selected = await dialogOpen({ directory: true, multiple: false });
       if (typeof selected === 'string' && selected.trim()) {
-        const trimmed = selected.trim();
-        setDraftPath(trimmed);
-        await setWorkspaceBinding({
-          chatSessionId: effectiveSessionId,
-          rootPath: trimmed,
-          isolatedBranch,
-        });
-        setOpen(false);
+        selectedPath = selected.trim();
       }
     } catch {
       inputRef.current?.focus();
+      return;
     }
-  }, [effectiveSessionId, isolatedBranch]);
+    if (!selectedPath) return;
+    setDraftPath(selectedPath);
+    setSubmitting(true);
+    try {
+      await setWorkspaceBinding({
+        chatSessionId: effectiveSessionId,
+        rootPath: selectedPath,
+        isolatedBranch,
+      });
+      setOpen(false);
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [effectiveSessionId, isolatedBranch, submitting]);
 
   const folderLabel = formatWorkspaceFolderBasename(binding?.rootPath);
   const selectFolderLabel = t('agentMesh:workspace.selectFolder', {
@@ -202,6 +238,7 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
           <DsButton
             variant="secondary"
             size="sm"
+            disabled={submitting}
             data-testid="workspace-folder-browse-btn"
             onClick={() => void handleBrowseNative()}
             className="mb-2.5 !h-8 w-full justify-center gap-1.5 text-xs font-medium"
@@ -250,6 +287,7 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  disabled={submitting}
                   data-testid="workspace-folder-clear-btn"
                   onClick={() => void applyBinding('', false)}
                   className="!h-7 !px-2 text-xs text-muted-foreground hover:text-foreground"
@@ -261,7 +299,7 @@ export const WorkspaceFolderPill: React.FC<WorkspaceFolderPillProps> = ({
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={!draftPath.trim()}
+                disabled={submitting || !draftPath.trim()}
                 data-testid="workspace-folder-apply-btn"
                 className="!h-7 !px-3 text-xs"
               >

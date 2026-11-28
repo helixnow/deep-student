@@ -83,6 +83,8 @@ import {
   AppMenuItem,
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { showArchiveSessionToast } from '@/features/chat/utils/archiveSessionToast';
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import {
@@ -338,6 +340,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const [sessionListLoadError, setSessionListLoadError] = useState<string | null>(null);
   const [isRetryingSessionList, setIsRetryingSessionList] = useState(false);
   const [workbenchModeEnabled, setWorkbenchModeEnabled] = useState(true);
+  const [isTogglingWorkbenchMode, setIsTogglingWorkbenchMode] = useState(false);
+  const workbenchModePendingRef = useRef(false);
   const draggedRecentGroupIdRef = useRef<string | null>(null);
   const draggedSessionIdRef = useRef<string | null>(null);
   const deleteConfirmResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -415,12 +419,26 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     };
   }, []);
 
-  const handleWorkbenchModeAction = useCallback(() => {
-    const nextEnabled = !workbenchModeEnabled;
-    setWorkbenchModeEnabled(nextEnabled);
-    void persistWorkbenchModeEnabled(nextEnabled).then((saved) => {
-      if (!saved) setWorkbenchModeEnabled(!nextEnabled);
-    });
+  const handleWorkbenchModeAction = useCallback(async () => {
+    if (workbenchModePendingRef.current) return;
+    const previousEnabled = workbenchModeEnabled;
+    const nextEnabled = !previousEnabled;
+    workbenchModePendingRef.current = true;
+    setIsTogglingWorkbenchMode(true);
+    try {
+      const saved = await persistWorkbenchModeEnabled(nextEnabled);
+      if (saved) {
+        setWorkbenchModeEnabled(nextEnabled);
+      } else {
+        setWorkbenchModeEnabled(previousEnabled);
+      }
+    } catch (error) {
+      setWorkbenchModeEnabled(previousEnabled);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      workbenchModePendingRef.current = false;
+      setIsTogglingWorkbenchMode(false);
+    }
   }, [workbenchModeEnabled]);
 
   useEffect(() => {
@@ -531,6 +549,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to toggle recent session pin:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, []);
 
@@ -643,6 +662,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       showArchiveSessionToast(t, 'chatV2');
     } catch (error) {
       console.warn('[ModernSidebar] Failed to archive recent session:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [activeSessionId, handleRecentSessionOpen, refreshSidebarData, recentSessions, t]);
@@ -683,6 +703,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to delete recent session:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [activeSessionId, handleRecentSessionOpen, recentSessions, refreshSidebarData, resetDeleteConfirmation, setRecentSessions, superSessionId]);
@@ -708,6 +729,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to move session to group:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [recentSessions, refreshSidebarData, setRecentSessions]);
@@ -810,6 +832,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to toggle recent group pin:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [refreshSidebarData, recentGroups]);
@@ -913,6 +936,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to reorder recent groups:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       void refreshSidebarData();
     }
   }, [clearRecentGroupDragState, moveRecentSessionToGroup, refreshSidebarData, setRecentGroups]);
@@ -958,10 +982,6 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       if (isNewSessionAction) {
         if (currentView !== view) {
           handleViewChange(view);
-          requestAnimationFrame(() => {
-            window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
-          });
-          return;
         }
 
         window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
@@ -1622,7 +1642,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                     ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Study Desktop' })
                     : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })
                 }
-                onClick={handleWorkbenchModeAction}
+                disabled={isTogglingWorkbenchMode}
+                onClick={() => void handleWorkbenchModeAction()}
               >
                 <Desktop size={17} />
               </DsButton>

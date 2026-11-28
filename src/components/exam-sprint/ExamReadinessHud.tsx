@@ -8,6 +8,7 @@ import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import {
   SPRINT_BUDGET_PRESETS,
   clampSprintBudgetMinutes,
@@ -52,6 +53,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
   const [savingConfig, setSavingConfig] = useState(false);
   const savingRef = useRef(false);
   const configSessionRef = useRef(0);
+  const prevConfigOpenRef = useRef(false);
 
   useEffect(() => {
     configSessionRef.current += 1;
@@ -62,9 +64,16 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
   }, [config?.spaceId]);
 
   useEffect(() => {
+    const wasOpen = prevConfigOpenRef.current;
+    prevConfigOpenRef.current = configOpen;
+    if (configOpen && !wasOpen) {
+      setDraftExamDate(readiness?.examDate ?? config?.examDate ?? '');
+      setDraftBudget(clampSprintBudgetMinutes(config?.sprintBudgetMinutes, 15));
+    }
+  }, [config?.examDate, config?.sprintBudgetMinutes, configOpen, readiness?.examDate]);
+
+  useEffect(() => {
     if (!configOpen) return undefined;
-    setDraftExamDate(readiness?.examDate ?? config?.examDate ?? '');
-    setDraftBudget(clampSprintBudgetMinutes(config?.sprintBudgetMinutes, 15));
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isComposingKeyEvent(event) && !savingRef.current) {
@@ -73,8 +82,17 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       }
     };
     window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [config?.examDate, config?.sprintBudgetMinutes, configOpen, readiness?.examDate]);
+    const unregisterBack = registerBackHandler(() => {
+      if (!savingRef.current) {
+        setConfigOpen(false);
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+      unregisterBack();
+    };
+  }, [configOpen]);
 
   if (!readiness) return null;
 

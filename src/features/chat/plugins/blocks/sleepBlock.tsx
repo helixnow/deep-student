@@ -181,77 +181,63 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
   return (
     <div>
       {/* 紧凑头部行 */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-        className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer [@media(pointer:coarse)]:min-h-11"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <ToolActivitySweep
-            active={isAgentActive}
-            className="h-6 w-6 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
-          >
-            <Robot size={14} className="text-muted-foreground" />
-          </ToolActivitySweep>
-          <span className="truncate text-xs font-medium text-muted-foreground">
-            {skillName}
-          </span>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5">
-          {isAgentActive ? (
-            <TextShimmer
-              className="text-xs text-muted-foreground"
-              duration={1.5}
-              spread={3}
+      <div className="flex items-center gap-1 bg-muted/20 hover:bg-muted/40 transition-colors min-h-[var(--touch-target-size)] lg:min-h-0">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={onToggle}
+          aria-expanded={!isCollapsed}
+          className="min-w-0 flex-1 !h-auto !justify-between gap-2 !px-3 !py-2 !rounded-none hover:!bg-transparent"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ToolActivitySweep
+              active={isAgentActive}
+              className="h-6 w-6 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
             >
-              {statusText}
-            </TextShimmer>
-          ) : (
-            <span className="text-xs text-muted-foreground">{statusText}</span>
-          )}
-          {statusIcon}
-          {/* 用 span 避免嵌套可交互按钮 */}
-          {!isCollapsed && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsFullHeight(!isFullHeight);
-              }}
-              onMouseDown={(e) => { e.stopPropagation(); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setIsFullHeight(!isFullHeight);
-                }
-              }}
-              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
-              aria-label={t('sleep.toggleSize')}
-            >
-              {isFullHeight ? (
-                <ArrowsIn size={14} className="text-muted-foreground" />
-              ) : (
-                <ArrowsOut size={14} className="text-muted-foreground" />
-              )}
+              <Robot size={14} className="text-muted-foreground" />
+            </ToolActivitySweep>
+            <span className="truncate text-xs font-medium text-muted-foreground">
+              {skillName}
             </span>
-          )}
-          {isCollapsed ? (
-            <CaretRight size={14} className="text-muted-foreground shrink-0" />
-          ) : (
-            <CaretDown size={14} className="text-muted-foreground shrink-0" />
-          )}
-        </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isAgentActive ? (
+              <TextShimmer
+                className="text-xs text-muted-foreground"
+                duration={1.5}
+                spread={3}
+              >
+                {statusText}
+              </TextShimmer>
+            ) : (
+              <span className="text-xs text-muted-foreground">{statusText}</span>
+            )}
+            {statusIcon}
+            {isCollapsed ? (
+              <CaretRight size={14} className="text-muted-foreground shrink-0" />
+            ) : (
+              <CaretDown size={14} className="text-muted-foreground shrink-0" />
+            )}
+          </div>
+        </DsButton>
+        {!isCollapsed && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => setIsFullHeight(!isFullHeight)}
+            className="mr-1.5 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t('sleep.toggleSize')}
+            title={t('sleep.toggleSize')}
+          >
+            {isFullHeight ? (
+              <ArrowsIn size={14} className="text-muted-foreground" />
+            ) : (
+              <ArrowsOut size={14} className="text-muted-foreground" />
+            )}
+          </DsButton>
+        )}
       </div>
 
       {/* 嵌入聊天视图 - 无额外边框；高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围 */}

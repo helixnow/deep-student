@@ -462,13 +462,6 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-foreground">{reflectionReport.summary}</span>
-                <button
-                  type="button"
-                  onClick={() => setReflectionReport(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {t('common:actions.close')}
-                </button>
               </div>
               {reflectionReport.proposals.length > 0 && (
                 <div className="divide-y divide-border/35">
@@ -632,7 +625,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
               <Input
                 value={newRuleText}
                 onChange={e => setNewRuleText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddRule(); } }}
+                onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { e.preventDefault(); void handleAddRule(); } }}
                 placeholder={t('settings:memory.kernel.addRulePlaceholder')}
                 className="h-8 text-xs flex-1 min-w-[200px]"
                 disabled={busy}
@@ -748,7 +741,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
                   <Input
                     value={newGoalText}
                     onChange={e => setNewGoalText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
+                    onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
                     placeholder={t('settings:memory.kernel.addGoalPlaceholder')}
                     className="h-7 text-xs flex-1"
                     disabled={busy}

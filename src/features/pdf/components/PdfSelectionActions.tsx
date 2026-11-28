@@ -242,6 +242,29 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
 
   useEffect(() => clearAppendFeedbackTimer, [clearAppendFeedbackTimer]);
 
+  const prevDocumentIdentityRef = useRef({
+    selectionSourceId,
+    interopResourceId,
+    documentTitle,
+  });
+  useEffect(() => {
+    const prev = prevDocumentIdentityRef.current;
+    if (
+      prev.selectionSourceId === selectionSourceId &&
+      prev.interopResourceId === interopResourceId &&
+      prev.documentTitle === documentTitle
+    ) {
+      return;
+    }
+    prevDocumentIdentityRef.current = {
+      selectionSourceId,
+      interopResourceId,
+      documentTitle,
+    };
+    closePanel();
+    dismissAppendFeedback();
+  }, [selectionSourceId, interopResourceId, documentTitle, closePanel, dismissAppendFeedback]);
+
   // Android 返回键：先关结果面板，不要直接退出阅读器。
   // 用共享可见性守卫注册：保活但不可见的 PDF 实例（ViewLayerRenderer
   // keep-alive 隐藏层）若残留打开的面板，不得吞掉活跃页面的返回键。

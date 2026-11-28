@@ -109,7 +109,8 @@ const ModelAssignmentRow = ({
             const merged = await onSave(field, v || null);
             setConfig((prev: any) => ({ ...prev, [configKey]: merged[field] || '' }));
             showGlobalNotification('success', notificationKey);
-          } catch (error: unknown) {
+          } catch {
+            // Error notification is handled by onSave / saveSingleAssignmentField
           }
         }}
         variant="full"
@@ -245,7 +246,9 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
         ? 'vl_reranker'
         : 'text_reranker';
       if (!model || !supportsKnowledgeModelCapability(model, requiredCapability)) {
-        throw new Error(`Model ${value} does not support ${requiredCapability}`);
+        const message = `Model ${value} does not support ${requiredCapability}`;
+        showGlobalNotification('error', message);
+        throw new Error(message);
       }
     }
     return await saveSingleAssignmentField(field, value);

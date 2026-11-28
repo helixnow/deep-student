@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { detectProviderBrand, type ProviderBrand } from '@/utils/providerIconEngine';
 import type { ContextWindowUsage } from './contextWindowUsage';
@@ -595,9 +596,30 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
 
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [modelMenuInitialView, setModelMenuInitialView] = useState<'models' | 'params'>('models');
+  const [confirmDangerOpen, setConfirmDangerOpen] = useState(false);
+  const [dangerConfirmSyncing, setDangerConfirmSyncing] = useState(false);
   const [popoverLayout, setPopoverLayout] = useState<T3PopoverLayoutState>(() =>
     computeT3PopoverLayout(null, isMobile)
   );
+
+  const handleRequestDangerConfirm = useCallback(() => {
+    setIsModelMenuOpen(false);
+    setConfirmDangerOpen(true);
+  }, []);
+
+  const handleConfirmDangerPreset = useCallback(async () => {
+    if (!onPermissionPresetChange || dangerConfirmSyncing) {
+      setConfirmDangerOpen(false);
+      return;
+    }
+    setDangerConfirmSyncing(true);
+    setConfirmDangerOpen(false);
+    try {
+      await onPermissionPresetChange('danger_full_access', true);
+    } finally {
+      setDangerConfirmSyncing(false);
+    }
+  }, [dangerConfirmSyncing, onPermissionPresetChange]);
 
   const syncPopoverLayout = useCallback(() => {
     const next = computeT3PopoverLayout(runtimeModelTriggerRef.current, isMobile);
@@ -841,6 +863,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                       sessionId={sessionId}
                       permissionPreset={permissionPreset}
                       onPermissionPresetChange={onPermissionPresetChange}
+                      onRequestDangerConfirm={handleRequestDangerConfirm}
                       onRequestClose={() => setIsModelMenuOpen(false)}
                       isMobile={isMobile}
                       layoutTier={popoverLayout.tier}
@@ -957,6 +980,20 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           </CommonTooltip>
         )}
       </div>
+
+      {/* 高风险全自动确认弹窗：挂在 AppMenu 之外，避免关闭模型菜单时弹窗被同步卸载 */}
+      <DsAlertDialog
+        open={confirmDangerOpen}
+        onOpenChange={setConfirmDangerOpen}
+        confirmVariant="danger"
+        title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
+        description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
+        cancelText={t('common:actions.cancel')}
+        confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
+        onConfirm={() => {
+          void handleConfirmDangerPreset();
+        }}
+      />
     </div>
   );
 };

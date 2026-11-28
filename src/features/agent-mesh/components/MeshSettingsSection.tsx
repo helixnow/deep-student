@@ -12,7 +12,19 @@ import { SettingSection, settingsQuietInteractiveRowClassName } from '@/componen
 import { SettingRow, SettingsGroup, SwitchRow } from '@/components/settings/settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { SettingsSectionRenderProps } from '@/ui-kernel/contracts/settings';
+
+async function resolveErrorMessage(error: unknown): Promise<string> {
+  try {
+    const { getErrorMessage } = await import('@/utils/errorUtils');
+    return getErrorMessage(error);
+  } catch {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    return 'An unknown error occurred';
+  }
+}
 import { cn } from '@/lib/utils';
 import type { MeshAgentInfo, MeshCustomCliTemplate } from '../workbench-types';
 import { useAgentMeshWorkbenchStore } from '../workbenchBridge';
@@ -73,6 +85,27 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
   const [customName, setCustomName] = useState('');
   const [customCommand, setCustomCommand] = useState('');
   const [customArgs, setCustomArgs] = useState('');
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [deletingCustomId, setDeletingCustomId] = useState<string | null>(null);
+  const [maxHopsDraft, setMaxHopsDraft] = useState<string>(
+    String(safetyPreferences.maxAutonomousHops),
+  );
+
+  useEffect(() => {
+    setMaxHopsDraft(String(safetyPreferences.maxAutonomousHops));
+  }, [safetyPreferences.maxAutonomousHops]);
+
+  const commitMaxHopsDraft = useCallback(() => {
+    const trimmed = maxHopsDraft.trim();
+    const parsed = trimmed === '' ? Number.NaN : Number(trimmed);
+    const clamped = Number.isFinite(parsed)
+      ? Math.max(2, Math.min(64, Math.round(parsed)))
+      : safetyPreferences.maxAutonomousHops;
+    setMaxHopsDraft(String(clamped));
+    if (clamped !== safetyPreferences.maxAutonomousHops) {
+      updateSafetyPreferences({ maxAutonomousHops: clamped });
+    }
+  }, [maxHopsDraft, safetyPreferences.maxAutonomousHops, updateSafetyPreferences]);
 
   useEffect(() => {
     void probeDetectedAgents(false);
@@ -94,6 +127,7 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
 
   const handleSaveOverride = async (e: React.FormEvent, agentId: string) => {
     e.preventDefault();
+    if (savingOverrideId) return;
     setSavingOverrideId(agentId);
     try {
       await saveCliOverride({
@@ -105,18 +139,23 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
           .filter(Boolean),
       });
       setEditingAgentId(null);
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
     } finally {
       setSavingOverrideId(null);
     }
   };
 
   const handleResetOverride = async (agentId: string) => {
+    if (savingOverrideId) return;
     setSavingOverrideId(agentId);
     try {
       await resetCliOverride(agentId);
       setOverridePathDraft('');
       setOverrideArgsDraft('');
       setEditingAgentId(null);
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
     } finally {
       setSavingOverrideId(null);
     }
@@ -160,17 +199,36 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
 
   const handleSaveCustom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customId.trim() || !customCommand.trim()) return;
-    await saveCustomTemplate({
-      id: customId.trim(),
-      name: customName.trim() || customId.trim(),
-      command: customCommand.trim(),
-      args: customArgs
-        .split(/\s+/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-    });
-    closeCustomForm();
+    if (savingCustom || !customId.trim() || !customCommand.trim()) return;
+    setSavingCustom(true);
+    try {
+      await saveCustomTemplate({
+        id: customId.trim(),
+        name: customName.trim() || customId.trim(),
+        command: customCommand.trim(),
+        args: customArgs
+          .split(/\s+/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
+      closeCustomForm();
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setSavingCustom(false);
+    }
+  };
+
+  const handleRemoveCustom = async (id: string) => {
+    if (deletingCustomId) return;
+    setDeletingCustomId(id);
+    try {
+      await removeCustomTemplate(id);
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setDeletingCustomId(null);
+    }
   };
 
   return (
@@ -486,6 +544,7 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
                     type="button"
                     size="sm"
                     variant="ghost"
+                    disabled={savingCustom}
                     onClick={closeCustomForm}
                   >
                     {tr('settings.cancel', '取消')}
@@ -494,7 +553,7 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
                     type="submit"
                     size="sm"
                     variant="primary"
-                    disabled={!customId.trim() || !customCommand.trim()}
+                    disabled={savingCustom || !customId.trim() || !customCommand.trim()}
                     data-testid="mesh-settings-custom-save"
                   >
                     {tr('settings.save', '保存')}
@@ -542,10 +601,11 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
                       size="icon"
                       variant="ghost"
                       iconOnly
+                      disabled={deletingCustomId === tpl.id}
                       aria-label={tr('settings.deleteCustomAria', '删除 {{name}}', { name: tpl.name })}
                       data-testid={`mesh-settings-custom-delete-${tpl.id}`}
                       className="!h-8 !w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => void removeCustomTemplate(tpl.id)}
+                      onClick={() => void handleRemoveCustom(tpl.id)}
                     >
                       <Trash size={14} aria-hidden="true" />
                     </DsButton>
@@ -615,12 +675,15 @@ export const MeshSettingsSection: React.FC<MeshSettingsSectionProps> = () => {
                   max={64}
                   data-testid="mesh-settings-max-hops-input"
                   aria-label={tr('settings.maxHopsLabel', '连续自动接力上限')}
-                  value={safetyPreferences.maxAutonomousHops}
-                  onChange={(e) =>
-                    updateSafetyPreferences({
-                      maxAutonomousHops: Math.max(2, Math.min(64, Number(e.target.value) || 12)),
-                    })
-                  }
+                  value={maxHopsDraft}
+                  onChange={(e) => setMaxHopsDraft(e.target.value)}
+                  onBlur={commitMaxHopsDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitMaxHopsDraft();
+                    }
+                  }}
                   className="!w-24"
                 />
                 <span className="text-xs text-muted-foreground/70">

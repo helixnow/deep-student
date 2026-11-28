@@ -853,7 +853,8 @@ export const MediaAskTab: React.FC<{
       history: CompanionQaTurn[];
       requestId: string;
     }) => {
-      const latestSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
+      const rawTime = ctx.getCurrentTime();
+      const latestSeconds = Number.isFinite(rawTime) ? Math.max(0, Math.floor(rawTime)) : 0;
       setPlayheadSeconds((prev) => (prev === latestSeconds ? prev : latestSeconds));
       return askMediaCompanionQa({
         ctx: {

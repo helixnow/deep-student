@@ -155,7 +155,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       onSessionSave: async (updatedSession: EssayGradingSession) => {
         try {
           // 先持久化 DSTU 元数据，成功后再更新本地状态，避免失败时状态与存储不一致
-          await essayDstuAdapter.updateSessionMeta(
+          const result = await essayDstuAdapter.updateSessionMeta(
             updatedSession.id,
             {
               title: updatedSession.title,
@@ -166,6 +166,9 @@ const EssayContentView: React.FC<ContentViewProps> = ({
               isFavorite: updatedSession.isFavorite,
             }
           );
+          if (!result.ok) {
+            throw result.error;
+          }
           if (isCurrent()) {
             setSession(updatedSession);
           }

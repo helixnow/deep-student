@@ -1198,24 +1198,22 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   </span>
                 </DsButton>
               )}
-              {/* 次要操作收纳开关（运行中横滑区常显，仅空闲态渲染） */}
-              {mode === 'idle' && (
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => setMobileMoreOpen((v) => !v)}
-                  aria-expanded={mobileMoreOpen}
-                  title={t('pomodoro.controls.more', '更多操作')}
-                  aria-label={t('pomodoro.controls.more', '更多操作')}
-                  className={cn(
-                    '!h-11 !w-11 transition-colors duration-150 ease-standard',
-                    mobileMoreOpen && 'text-primary',
-                  )}
-                >
-                  <DotsThree size={20} weight="bold" />
-                </DsButton>
-              )}
+              {/* 次要操作收纳开关 */}
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => setMobileMoreOpen((v) => !v)}
+                aria-expanded={mobileMoreOpen || mode !== 'idle'}
+                title={t('pomodoro.controls.more', '更多操作')}
+                aria-label={t('pomodoro.controls.more', '更多操作')}
+                className={cn(
+                  '!h-11 !w-11 transition-colors duration-150 ease-standard',
+                  mobileMoreOpen && 'text-primary',
+                )}
+              >
+                <DotsThree size={20} weight="bold" />
+              </DsButton>
             </div>
           </div>
 

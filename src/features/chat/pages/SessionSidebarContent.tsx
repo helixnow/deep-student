@@ -914,7 +914,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         <section className="space-y-0.5">
           <button
             type="button"
-            onClick={openArchivedSessionsSettings}
+            onClick={() => {
+              setSessionSheetOpen(false);
+              openArchivedSessionsSettings();
+            }}
             className={
               unified
                 ? mobileDrawerThreadRowClassName(false, 'group gap-2.5 text-muted-foreground')

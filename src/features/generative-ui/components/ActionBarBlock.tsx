@@ -2,14 +2,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+
+function extractActionError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return '';
+}
 import type { ActionBarProps } from '../schema';
 import type { GenerativeActionDefinition, GenerativeUIAction, RiskLevel } from '../types';
 import { lookupGenerativeActionHandler, resolveEffectiveRiskLevel } from '../actions';
 import {
-  getDefaultGenerativeActionUndoStack,
+  GenerativeActionUndoStack,
   resolveGenerativeActionUndo,
-  type GenerativeActionUndoStack,
 } from '../handlers/actionUndoStack';
 import { GenerativeActionTimeoutError } from '../handlers/actionTimeout';
 import { GenerativeActionRateLimitError } from '../handlers/actionRateLimit';
@@ -17,7 +26,7 @@ import { GenerativeActionRateLimitError } from '../handlers/actionRateLimit';
 export interface ActionBarBlockProps extends ActionBarProps {
   actionHandlers?: Record<string, GenerativeActionDefinition>;
   onAction?: (action: GenerativeUIAction) => void;
-  /** 可注入撤销栈；默认模块单例。不改变 HITL risk 确认行为。 */
+  /** 可注入撤销栈；默认每实例独立栈。不改变 HITL risk 确认行为。 */
   undoStack?: GenerativeActionUndoStack;
 }
 
@@ -40,9 +49,11 @@ export function ActionBarBlock({
   actions,
   actionHandlers,
   onAction,
-  undoStack = getDefaultGenerativeActionUndoStack(),
+  undoStack,
 }: ActionBarBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const defaultUndoStack = useMemo(() => new GenerativeActionUndoStack(), []);
+  const activeUndoStack = undoStack ?? defaultUndoStack;
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
   const [dialogActionId, setDialogActionId] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
@@ -50,8 +61,8 @@ export function ActionBarBlock({
     message: '',
     sequence: 0,
   });
-  const [showUndoControl, setShowUndoControl] = useState(() => undoStack.canUndo());
-  const [undoAvailable, setUndoAvailable] = useState(() => undoStack.canUndo());
+  const [showUndoControl, setShowUndoControl] = useState(() => activeUndoStack.canUndo());
+  const [undoAvailable, setUndoAvailable] = useState(() => activeUndoStack.canUndo());
   const executingRef = useRef(false);
   const itemRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [tabStopId, setTabStopId] = useState<string | null>(null);
@@ -148,24 +159,31 @@ export function ActionBarBlock({
           const result = await handler.handler();
           const undoFn = resolveGenerativeActionUndo(handler, result);
           if (undoFn) {
-            undoStack.push({
+            activeUndoStack.push({
               actionId,
               riskLevel: handler.riskLevel,
               undo: undoFn,
             });
             setShowUndoControl(true);
-            setUndoAvailable(undoStack.canUndo());
+            setUndoAvailable(activeUndoStack.canUndo());
           }
         }
         onAction?.({ type: 'execute', actionId });
         announce(t('action.live_ok', { label }));
       } catch (error) {
         if (error instanceof GenerativeActionTimeoutError) {
-          announce(t('action.live_timeout', { label }));
+          const msg = t('action.live_timeout', { label });
+          announce(msg);
+          showGlobalNotification('error', msg);
         } else if (error instanceof GenerativeActionRateLimitError) {
-          announce(t('action.live_rate_limit', { label }));
+          const msg = t('action.live_rate_limit', { label });
+          announce(msg);
+          showGlobalNotification('error', msg);
         } else {
-          announce(t('action.live_error', { label }));
+          const liveMsg = t('action.live_error', { label });
+          announce(liveMsg);
+          const detail = extractActionError(error);
+          showGlobalNotification('error', detail || liveMsg, detail ? liveMsg : undefined);
         }
       } finally {
         executingRef.current = false;
@@ -174,24 +192,31 @@ export function ActionBarBlock({
         setDialogActionId(null);
       }
     },
-    [actionHandlers, actions, announce, enforceHandlerRegistry, onAction, t, undoStack],
+    [actionHandlers, actions, activeUndoStack, announce, enforceHandlerRegistry, onAction, t],
   );
 
   const runUndo = useCallback(async () => {
-    if (executingRef.current || !undoStack.canUndo()) return;
+    if (executingRef.current) return;
+    if (!activeUndoStack.canUndo()) {
+      setUndoAvailable(false);
+      return;
+    }
     executingRef.current = true;
     setExecuting(true);
     try {
-      await undoStack.undo();
+      await activeUndoStack.undo();
       announce(t('action.live_undo'));
-    } catch {
-      announce(t('action.live_undo_error'));
+    } catch (error) {
+      const liveMsg = t('action.live_undo_error');
+      announce(liveMsg);
+      const detail = extractActionError(error);
+      showGlobalNotification('error', detail || liveMsg, detail ? liveMsg : undefined);
     } finally {
       executingRef.current = false;
       setExecuting(false);
-      setUndoAvailable(undoStack.canUndo());
+      setUndoAvailable(activeUndoStack.canUndo());
     }
-  }, [announce, t, undoStack]);
+  }, [activeUndoStack, announce, t]);
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {

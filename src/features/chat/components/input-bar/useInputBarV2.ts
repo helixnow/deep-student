@@ -12,6 +12,7 @@ import type { ChatStore } from '../../core/types/store';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import i18n from 'i18next';
 import type { ModelInfo } from '../../utils/parseModelMentions';
@@ -977,19 +978,42 @@ export function useInputBarV2(
       state.sessionId,
     );
     if (externalThread && state.inputValue.trim()) {
-      const steerText = state.inputValue.trim();
-      clearComposerDraft(state.sessionId);
-      optionsRef.current?.onClearDraft?.(state.sessionId);
-      if (state.sessionId) {
-        sessionDraftLruClearer?.(state.sessionId);
+      const previousInput = state.inputValue;
+      const steerText = previousInput.trim();
+      try {
+        const ok = await agentMeshHost.steerTurn({
+          threadId: externalThread.threadId,
+          chatSessionId: state.sessionId || externalThread.chatSessionId,
+          text: steerText,
+          priority: 'correction',
+        });
+        if (ok === true) {
+          clearComposerDraft(state.sessionId);
+          optionsRef.current?.onClearDraft?.(state.sessionId);
+          if (state.sessionId) {
+            sessionDraftLruClearer?.(state.sessionId);
+          }
+          if (store.getState().inputValue === previousInput) {
+            store.getState().setInputValue('');
+          }
+        } else {
+          if (!store.getState().inputValue.trim()) {
+            store.getState().setInputValue(previousInput);
+          }
+          showGlobalNotification(
+            'error',
+            i18n.t(
+              'agentMesh:routing.hostUnavailable',
+              '外部智能体宿主桥接未就绪，请在桌面端启用多智能体插件',
+            ),
+          );
+        }
+      } catch (err) {
+        if (!store.getState().inputValue.trim()) {
+          store.getState().setInputValue(previousInput);
+        }
+        showGlobalNotification('error', getErrorMessage(err));
       }
-      state.setInputValue('');
-      await agentMeshHost.steerTurn({
-        threadId: externalThread.threadId,
-        chatSessionId: state.sessionId || externalThread.chatSessionId,
-        text: steerText,
-        priority: 'correction',
-      });
       return;
     }
 

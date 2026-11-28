@@ -33,6 +33,33 @@ const SliderRow: React.FC<{
 }> = ({ label, unit, value, min, max, onChange }) => {
   const { t } = useTranslation('todo');
   const clampVal = (raw: number) => Math.max(min, Math.min(max, Math.round(raw)));
+  const [draft, setDraft] = React.useState(String(value));
+  const [focused, setFocused] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!focused) {
+      setDraft(String(value));
+    }
+  }, [value, focused]);
+
+  const commitDraft = (rawText: string) => {
+    const trimmed = rawText.trim();
+    if (trimmed === '') {
+      setDraft(String(value));
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const next = clampVal(parsed);
+    setDraft(String(next));
+    if (next !== value) {
+      onChange(next);
+    }
+  };
+
   return (
     <div className="wb-sys-pomo-set-row">
       <div className="wb-sys-pomo-set-rowhead">
@@ -51,15 +78,33 @@ const SliderRow: React.FC<{
             type="number"
             min={min}
             max={max}
-            value={value}
+            value={draft}
             aria-label={t('pomodoro.settings.numberInputAria', {
               label,
               defaultValue: `${label}`,
             })}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              setFocused(false);
+              commitDraft(draft);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitDraft(draft);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setDraft(String(value));
+              }
+            }}
             onChange={(e) => {
-              const parsed = Number(e.target.value);
-              if (!Number.isNaN(parsed)) {
-                onChange(clampVal(parsed));
+              const nextDraft = e.target.value;
+              setDraft(nextDraft);
+              const trimmed = nextDraft.trim();
+              if (trimmed === '') return;
+              const parsed = Number(trimmed);
+              if (Number.isInteger(parsed) && parsed >= min && parsed <= max && parsed !== value) {
+                onChange(parsed);
               }
             }}
             className="h-6 w-14 rounded border border-border/60 bg-background/70 px-1.5 text-right font-mono text-xs tabular-nums text-foreground focus:outline-none focus:ring-1 focus:ring-primary"

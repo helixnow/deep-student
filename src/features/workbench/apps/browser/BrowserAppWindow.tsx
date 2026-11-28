@@ -35,6 +35,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useBrowserSession } from '@/features/browser/hooks/useBrowserSession';
 import { browserApi, localizeBrowserGateMessage } from '@/features/browser/browserApi';
 import { BROWSER_CONTENT_USER_INPUT_EVENT } from '@/features/browser/controlModeSync';
@@ -148,11 +149,12 @@ const NavControls: React.FC<{
 const AddressBar: React.FC<{
   draft: string;
   loading: boolean;
+  disabled?: boolean;
   security: 'secure' | 'insecure' | 'neutral';
   inputRef: React.RefObject<HTMLInputElement | null>;
   onDraftChange: (value: string) => void;
   onSubmit: (value: string) => void;
-}> = ({ draft, loading, security, inputRef, onDraftChange, onSubmit }) => {
+}> = ({ draft, loading, disabled = false, security, inputRef, onDraftChange, onSubmit }) => {
   const { t } = useTranslation('workbench');
   const securityLabel =
     security === 'secure'
@@ -167,6 +169,7 @@ const AddressBar: React.FC<{
       data-loading={loading ? 'true' : 'false'}
       onSubmit={(e) => {
         e.preventDefault();
+        if (disabled) return;
         const next = draft.trim();
         if (next) onSubmit(next);
       }}
@@ -190,6 +193,7 @@ const AddressBar: React.FC<{
         className="wb-browser-address-input ds-search-input"
         type="text"
         value={draft}
+        disabled={disabled}
         onChange={(e) => onDraftChange(e.target.value)}
         placeholder={t('browser.addressPlaceholder')}
         aria-label={t('browser.addressPlaceholder')}
@@ -1349,19 +1353,57 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
   const { ref: sizeRef } = useWbSysSize();
   const session = useBrowserSession({ launchPayload, hydrateOnMount: true });
   const closeSession = session.closeSession;
+  const hydrateFromRust = session.hydrateFromRust;
   const [gatesDisabled, setGatesDisabled] = useState(false);
   const [gatesDisabledMessage, setGatesDisabledMessage] = useState<string | null>(null);
+  const launchabilityMountedRef = useRef(true);
+  const launchabilitySeqRef = useRef(0);
+  const prevGatesDisabledRef = useRef<boolean | null>(null);
+
+  const refreshLaunchability = useCallback(() => {
+    const seq = ++launchabilitySeqRef.current;
+    void resolveBrowserLaunchability()
+      .then((snap) => {
+        if (!launchabilityMountedRef.current || seq !== launchabilitySeqRef.current) return;
+        const nextDisabled = !snap.open;
+        const becameEnabled = prevGatesDisabledRef.current === true && !nextDisabled;
+        prevGatesDisabledRef.current = nextDisabled;
+        setGatesDisabled(nextDisabled);
+        setGatesDisabledMessage(snap.closeMessage);
+        if (becameEnabled) {
+          void hydrateFromRust().catch(() => {
+            // Store records lastError.
+          });
+        }
+      })
+      .catch(() => {
+        // Keep current gate state if launchability check fails transiently.
+      });
+  }, [hydrateFromRust]);
+
   useEffect(() => {
-    let cancelled = false;
-    void resolveBrowserLaunchability().then((snap) => {
-      if (cancelled) return;
-      setGatesDisabled(!snap.open);
-      setGatesDisabledMessage(snap.closeMessage);
-    });
+    launchabilityMountedRef.current = true;
+    refreshLaunchability();
     return () => {
-      cancelled = true;
+      launchabilityMountedRef.current = false;
     };
-  }, []);
+  }, [refreshLaunchability]);
+
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'workbench:settings-changed',
+        listener: refreshLaunchability,
+      },
+      {
+        target: 'window',
+        type: 'workbench:mode-changed',
+        listener: refreshLaunchability,
+      },
+    ],
+    [refreshLaunchability],
+  );
   const addressRef = useRef<HTMLInputElement | null>(null);
   const pageSlotRef = useRef<HTMLDivElement | null>(null);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
@@ -1601,6 +1643,7 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
         <AddressBar
           draft={session.addressDraft}
           loading={session.loading}
+          disabled={gatesDisabled}
           security={browserConnectionSecurity(session.currentUrl, Boolean(session.sessionId))}
           inputRef={addressRef}
           onDraftChange={gatesDisabled ? () => {} : session.setAddressDraft}

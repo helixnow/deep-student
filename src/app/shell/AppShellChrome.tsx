@@ -37,7 +37,7 @@ import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { Z_INDEX } from '@/config/zIndex';
 import type { CurrentView } from '@/types/navigation';
 import type { ShellView } from '@/ui-kernel/contracts/shell';
-import { PageLoadingFallback } from '@/lazyComponents';
+import { LazyImportConversationDialog, PageLoadingFallback } from '@/lazyComponents';
 import { DesktopShellSidebarLayers } from './DesktopShellSidebarLayers';
 import { DesktopSidebarResizeHandle } from './DesktopSidebarResizeHandle';
 import { DesktopShellSidebarPortalProvider } from './DesktopShellSidebarPortal';
@@ -142,6 +142,9 @@ export interface AppShellChromeProps {
   maintenanceRequiresRestart: boolean;
 
   /** 全局浮层 */
+  showImportConversation: boolean;
+  setShowImportConversation: (open: boolean) => void;
+  handleImportConversationSuccess: (mistakeId: string) => Promise<void>;
   showCloudStorageSettings: boolean;
   setShowCloudStorageSettings: (open: boolean) => void;
   debugPanelRequested: boolean;
@@ -169,6 +172,7 @@ export function AppShellChrome(props: AppShellChromeProps) {
     desktopShellSidebarPortalValue, desktopShellHeaderPortalValue,
     desktopShellSidebarKind, desktopShellSidebarLayers, registeredViewLayers, contentBodyRef,
     maintenanceMode, maintenanceReason, maintenanceRequiresRestart,
+    showImportConversation, setShowImportConversation, handleImportConversationSuccess,
     showCloudStorageSettings, setShowCloudStorageSettings,
     debugPanelRequested, debugPanelOpenRequest, welcomeOnboardingOpen, dismissWelcomeOnboarding,
   } = props;
@@ -534,6 +538,19 @@ export function AppShellChrome(props: AppShellChromeProps) {
       {/* CmdK 由 Notes 模块内部管理 */}
       {/* 全局通知容器 */}
       <NotificationContainer />
+
+      {/* 导入对话弹窗 - 全局挂载，确保在任意视图和 Workbench 模式下均可打开 */}
+      {showImportConversation && (
+        <Suspense fallback={null}>
+          <LazyImportConversationDialog
+            open={showImportConversation}
+            onOpenChange={setShowImportConversation}
+            onImportSuccess={(conversationId) => {
+              void handleImportConversationSuccess(conversationId ?? '');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <DsDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">

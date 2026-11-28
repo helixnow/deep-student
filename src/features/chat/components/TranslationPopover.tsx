@@ -47,6 +47,8 @@ import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import type {
@@ -609,6 +611,25 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     };
   }, [isVisible, sourceText]);
 
+  // 原文或可见性变化时重置复制与钉入反馈标记及对应定时器
+  useEffect(() => {
+    if (copiedSourceTimerRef.current) {
+      clearTimeout(copiedSourceTimerRef.current);
+      copiedSourceTimerRef.current = null;
+    }
+    if (copiedTranslationTimerRef.current) {
+      clearTimeout(copiedTranslationTimerRef.current);
+      copiedTranslationTimerRef.current = null;
+    }
+    if (pinnedAnnotationTimerRef.current) {
+      clearTimeout(pinnedAnnotationTimerRef.current);
+      pinnedAnnotationTimerRef.current = null;
+    }
+    setCopiedSource(false);
+    setCopiedTranslation(false);
+    setPinnedAnnotation(false);
+  }, [isVisible, sourceText]);
+
   // 关闭时清理：取消请求 + 清空状态
   useEffect(() => {
     if (!isVisible) {
@@ -620,6 +641,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       setIsLoading(false);
       setCopiedSource(false);
       setCopiedTranslation(false);
+      setPinnedAnnotation(false);
       setHoveredIndex(null);
       setUsedFallback(false);
       setCollapsed(false);
@@ -701,27 +723,37 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   const handleCopySource = useCallback(async () => {
     if (!fullSource) return;
     try {
-      await copyTextToClipboard(fullSource);
+      const ok = await copyTextToClipboard(fullSource);
+      if (ok === false) return;
     } catch (err) {
       console.error('[TranslationPopover] Copy source failed:', err);
+      showGlobalNotification('error', getErrorMessage(err));
       return;
     }
     setCopiedSource(true);
     if (copiedSourceTimerRef.current) clearTimeout(copiedSourceTimerRef.current);
-    copiedSourceTimerRef.current = setTimeout(() => setCopiedSource(false), 1500);
+    copiedSourceTimerRef.current = setTimeout(() => {
+      copiedSourceTimerRef.current = null;
+      setCopiedSource(false);
+    }, 1500);
   }, [fullSource]);
 
   const handleCopyTranslation = useCallback(async () => {
     if (!fullTranslation) return;
     try {
-      await copyTextToClipboard(fullTranslation);
+      const ok = await copyTextToClipboard(fullTranslation);
+      if (ok === false) return;
     } catch (err) {
       console.error('[TranslationPopover] Copy translation failed:', err);
+      showGlobalNotification('error', getErrorMessage(err));
       return;
     }
     setCopiedTranslation(true);
     if (copiedTranslationTimerRef.current) clearTimeout(copiedTranslationTimerRef.current);
-    copiedTranslationTimerRef.current = setTimeout(() => setCopiedTranslation(false), 1500);
+    copiedTranslationTimerRef.current = setTimeout(() => {
+      copiedTranslationTimerRef.current = null;
+      setCopiedTranslation(false);
+    }, 1500);
   }, [fullTranslation]);
 
   const handleAddToInput = useCallback(() => {

@@ -2,6 +2,8 @@
  * 确定性 copy-block — 把当前 Generative UI 中单个 block 的 JSON 复制到剪贴板。
  * low risk，无副作用，不走 HITL。
  */
+import i18next from 'i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeBlockIntent, GenerativeUIIntent } from '../types';
 
@@ -52,6 +54,10 @@ export function createCopyBlockActionHandlers(
         const text = serializeGenerativeUIBlock(block);
         if (!text) return;
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
   };

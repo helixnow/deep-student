@@ -135,10 +135,16 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [durationDraft, setDurationDraft] = useState('60');
   const [totalCount, setTotalCount] = useState(30);
+  const [totalCountDraft, setTotalCountDraft] = useState('30');
   const [totalCountTouched, setTotalCountTouched] = useState(false);
   const [shuffle, setShuffle] = useState(true);
   const [includeMistakes, setIncludeMistakes] = useState(true);
+
+  const parseDraftNumber = useCallback((raw: string): number => (
+    raw.trim() === '' ? Number.NaN : Number(raw)
+  ), []);
 
   // 与 TimedPracticeMode 一致的输入钳制：时长为 0/NaN 会导致 targetEndTime = 现在，
   // 考试一开始就被自动交卷
@@ -282,6 +288,18 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 开始考试
   const handleStart = useCallback(async () => {
     const isCurrent = beginStartRequest();
+    const committedDuration = normalizeDurationMinutes(parseDraftNumber(durationDraft));
+    setDurationMinutes(committedDuration);
+    setDurationDraft(String(committedDuration));
+    let effectiveTotalCount = configuredCount;
+    if (totalCountTouched) {
+      const committedTotal = normalizeTotalCount(parseDraftNumber(totalCountDraft));
+      setTotalCount(committedTotal);
+      setTotalCountDraft(String(committedTotal));
+      const typeCount = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
+      const diffCount = Object.values(difficultyDistribution).reduce((a, b) => a + b, 0);
+      effectiveTotalCount = Math.max(typeCount, diffCount, committedTotal);
+    }
     const cleanedTypeDistribution = Object.fromEntries(
       Object.entries(typeDistribution).filter(([, count]) => count > 0),
     );
@@ -289,10 +307,10 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       Object.entries(difficultyDistribution).filter(([, count]) => count > 0),
     );
     const config: MockExamConfig = {
-      duration_minutes: durationMinutes,
+      duration_minutes: committedDuration,
       type_distribution: cleanedTypeDistribution,
       difficulty_distribution: cleanedDifficultyDistribution,
-      total_count: configuredCount,
+      total_count: effectiveTotalCount,
       shuffle,
       include_mistakes: includeMistakes,
     };
@@ -311,7 +329,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('mockExam.startError'));
     }
-  }, [examId, durationMinutes, configuredCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t, beginStartRequest, isCurrentSession]);
+  }, [examId, durationDraft, totalCountDraft, totalCountTouched, configuredCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t, beginStartRequest, isCurrentSession, normalizeDurationMinutes, normalizeTotalCount, parseDraftNumber]);
 
   useEffect(() => {
     if (!activeSession || activeSession.is_submitted) {
@@ -514,13 +532,20 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 type="number"
                 min={10}
                 max={180}
-                value={durationMinutes}
+                value={durationDraft}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw === '') return;
-                  setDurationMinutes(normalizeDurationMinutes(Number(raw)));
+                  setDurationDraft(raw);
+                  const parsed = parseDraftNumber(raw);
+                  if (Number.isFinite(parsed)) {
+                    setDurationMinutes(normalizeDurationMinutes(parsed));
+                  }
                 }}
-                onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
+                onBlur={() => {
+                  const next = normalizeDurationMinutes(parseDraftNumber(durationDraft));
+                  setDurationMinutes(next);
+                  setDurationDraft(String(next));
+                }}
                 className="[@media(pointer:coarse)]:text-[16px]"
 />
             </div>
@@ -530,16 +555,21 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 type="number"
                 min={1}
                 max={100}
-                value={totalCountTouched ? totalCount : configuredCount}
+                value={totalCountTouched ? totalCountDraft : String(configuredCount)}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw === '') return;
                   setTotalCountTouched(true);
-                  setTotalCount(normalizeTotalCount(Number(raw)));
+                  setTotalCountDraft(raw);
+                  const parsed = parseDraftNumber(raw);
+                  if (Number.isFinite(parsed)) {
+                    setTotalCount(normalizeTotalCount(parsed));
+                  }
                 }}
-                onBlur={(e) => {
+                onBlur={() => {
                   if (!totalCountTouched) return;
-                  setTotalCount(normalizeTotalCount(Number(e.target.value)));
+                  const next = normalizeTotalCount(parseDraftNumber(totalCountDraft));
+                  setTotalCount(next);
+                  setTotalCountDraft(String(next));
                 }}
                 className="[@media(pointer:coarse)]:text-[16px]"
 />

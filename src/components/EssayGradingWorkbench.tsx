@@ -1728,12 +1728,14 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // 历史管理函数已移除 - 由 Learning Hub 管理
 
   // 复制结果
-  const handleCopyResult = useCallback(async () => {
+  const handleCopyResult = useCallback(async (): Promise<boolean> => {
     try {
       await copyTextToClipboard(gradingResult);
       showGlobalNotification('success', t('essay_grading:result_section.copied'));
+      return true;
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
+      return false;
     }
   }, [gradingResult, t]);
 

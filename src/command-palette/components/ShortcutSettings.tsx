@@ -181,7 +181,17 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
           showGlobalNotification('error', t('command_palette:import_failed'));
           return;
         }
-        const result = shortcutManager.importConfig(config);
+        const result = shortcutManager.importConfig(config as Record<string, unknown>);
+        if (result.imported === 0 && result.skipped.length > 0) {
+          showGlobalNotification(
+            'warning',
+            t('command_palette:config_imported_partial', {
+              imported: result.imported,
+              skipped: result.skipped.length,
+            }),
+          );
+          return;
+        }
         const msg = result.skipped.length > 0
           ? t('command_palette:config_imported_partial', { imported: result.imported, skipped: result.skipped.length })
           : t('command_palette:config_imported');

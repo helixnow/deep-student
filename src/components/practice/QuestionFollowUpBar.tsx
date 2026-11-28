@@ -218,6 +218,9 @@ export const QuestionFollowUpBar: React.FC<{
           record_history: false,
         },
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('qbank:refresh', { detail: { examId } }));
+      }
       showGlobalNotification(
         'success',
         nextReason

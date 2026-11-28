@@ -2,6 +2,8 @@
  * Notes 写入 HITL action handlers — 经 canvas:ai-edit-request 建议通道，不直写后端。
  */
 
+import i18n from '@/i18n';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CanvasEditOperation } from '@/features/notes/hooks/useAIEditState';
 import { getNoteAIEditControl } from '@/features/notes/aiEditControlRegistry';
 import type { GenerativeActionDefinition } from '../types';
@@ -37,7 +39,7 @@ export function createNotesEditActionHandlers(
   labels: NotesEditActionLabels,
   callbacks?: NotesEditActionCallbacks,
 ): Record<string, GenerativeActionDefinition> {
-  return {
+  const handlers: Record<string, GenerativeActionDefinition> = {
     'apply-note-edit': {
       id: 'apply-note-edit',
       label: labels.applyEdit,
@@ -66,7 +68,16 @@ export function createNotesEditActionHandlers(
         // 入栈，而用户 accept 在其后。undo 时按当下状态分流：
         //   未 accept（建议仍 pending）→ 撤回建议（reject）；
         //   已 accept → checkpoint 栈顶回滚（经 aiEditControlRegistry 通道）。
-        if (!result.claimed) return undefined;
+        if (!result.claimed) {
+          throw new Error(
+            result.reason ||
+              String(
+                i18n.t('generativeUi:notes.edit_dispatch_unclaimed', {
+                  defaultValue: '没有匹配的笔记编辑器认领建议',
+                }),
+              ),
+          );
+        }
         return {
           undo: async () => {
             const control = getNoteAIEditControl(suggestion.noteId);
@@ -80,13 +91,20 @@ export function createNotesEditActionHandlers(
         };
       },
     },
-    'dismiss-note-suggestion': {
-      id: 'dismiss-note-suggestion',
-      label: labels.dismissSuggestion,
-      riskLevel: 'low',
-      handler: async () => {
-        callbacks?.onDismiss?.();
-      },
+  };
+
+  handlers['dismiss-note-suggestion'] = {
+    id: 'dismiss-note-suggestion',
+    label: labels.dismissSuggestion,
+    riskLevel: 'low',
+    handler: async () => {
+      if (callbacks?.onDismiss) {
+        callbacks.onDismiss();
+        return;
+      }
+      showGlobalNotification('info', labels.dismissSuggestion);
     },
   };
+
+  return handlers;
 }

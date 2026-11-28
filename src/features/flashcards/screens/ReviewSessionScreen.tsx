@@ -749,7 +749,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!canUndoInSession || ratingBusy} onClick={handleUndoWithFeedback}>
         <ArrowCounterClockwise size={20} />
       </DsButton>
-      {(current || lastSuspended) && <AppMenu>
+      {(current || (lastSuspended && lastSuspended.reason !== 'leech')) && <AppMenu>
         <AppMenuTrigger asChild>
           <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('common:more')}><DotsThree size={22} /></DsButton>
         </AppMenuTrigger>
@@ -780,7 +780,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <AppMenuItem icon={<Moon size={18} />} disabled={ratingBusy} onClick={() => void buryCurrent()}>{t('session.bury')}</AppMenuItem>
             <AppMenuItem icon={<Pause size={18} />} disabled={ratingBusy} onClick={() => void suspendCurrent()}>{t('session.suspend')}</AppMenuItem>
           </>}
-          {lastSuspended && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{resumeLabel}</AppMenuItem>}
+          {lastSuspended && lastSuspended.reason !== 'leech' && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{resumeLabel}</AppMenuItem>}
         </AppMenuContent>
       </AppMenu>}
     </>,

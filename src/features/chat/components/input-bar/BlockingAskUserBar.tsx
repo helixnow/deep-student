@@ -308,11 +308,12 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               const numberLabel = `${index + 1}.`;
 
               if (multiple) {
+                const checkboxId = `ask-user-${toolCallId}-option-${index}`;
                 return (
-                  <label
+                  <div
                     key={index}
                     className={cn(
-                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                      'group flex w-full items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                       isChecked
                         ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                       : isRecommended
@@ -321,25 +322,31 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                       disabled && 'pointer-events-none opacity-50'
                     )}
                   >
-                    <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
-                      {numberLabel}
-                    </span>
-                    <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
-                      {option.label}
-                      {isRecommended && (
-                        <span className="ml-1 text-muted-foreground">
-                          ({t('askUser.recommended')})
-                        </span>
-                      )}
-                    </span>
+                    <label
+                      htmlFor={checkboxId}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3"
+                    >
+                      <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
+                        {numberLabel}
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
+                        {option.label}
+                        {isRecommended && (
+                          <span className="ml-1 text-muted-foreground">
+                            ({t('askUser.recommended')})
+                          </span>
+                        )}
+                      </span>
+                    </label>
                     {renderOptionReason(option)}
                     <Checkbox
+                      id={checkboxId}
                       checked={isChecked}
                       onCheckedChange={() => handleToggleCheck(index)}
                       disabled={disabled}
                       className="h-4 w-4 rounded-[6px] border-[color:var(--button-primary-border)]"
                     />
-                  </label>
+                  </div>
                 );
               }
 

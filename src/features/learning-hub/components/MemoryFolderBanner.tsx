@@ -18,7 +18,6 @@ import {
   ListPlus,
   CircleNotch,
   Plus,
-  X,
   GitBranch,
   List,
   CheckCircle,
@@ -479,7 +478,6 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.batch_import')}</span>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:actions.close')}><X size={12} /></DsButton>
               </div>
               <Textarea
                 placeholder={t('memory.batch_import_placeholder')}
@@ -520,7 +518,6 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.create_title')}</span>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:actions.close')}><X size={12} /></DsButton>
               </div>
               <Input
                 placeholder={t('memory.title_placeholder')}

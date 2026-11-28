@@ -89,6 +89,8 @@ export function WorkbenchNotesLibraryDialog({
         filters: [{ name: t('export.filter_name'), extensions: ['zip'] }],
       });
       if (selected) setExportTargetPath(selected);
+    } catch (error: unknown) {
+      showGlobalNotification('error', extractErrorMessage(error, t('export.failed')));
     } finally {
       setExportPathLoading(false);
     }

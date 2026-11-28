@@ -21,8 +21,21 @@ export type PendingChatNavigation =
   | { kind: 'session'; sessionId: string }
   | { kind: 'new-session' };
 
+export interface PendingChatPrefill {
+  content: string;
+  autoSend?: boolean;
+}
+
 let pending: PendingChatNavigation | null = null;
+let pendingPrefill: PendingChatPrefill | null = null;
 let readyCount = 0;
+
+function dispatchPrefill(prefill: PendingChatPrefill): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
+    detail: { content: prefill.content, autoSend: prefill.autoSend },
+  }));
+}
 
 function dispatchNavigation(nav: PendingChatNavigation): void {
   if (typeof window === 'undefined') return;
@@ -65,6 +78,24 @@ export function requestChatNewSession(): void {
   dispatchNavigation({ kind: 'new-session' });
 }
 
+/**
+ * 请求预填聊天输入框（CHAT_V2_SET_INPUT）。
+ * 未就绪时挂起待 markChatPageReady() 消费，同时仍派发标准事件供壳层/已挂载页响应；
+ * 若已挂载页直接消费，会调用 invalidatePendingChatPrefill() 避免重复填充。
+ */
+export function requestChatPrefill(content: string, autoSend?: boolean): void {
+  if (!content) return;
+  if (!isChatPageReady()) {
+    pendingPrefill = { content, autoSend };
+  }
+  dispatchPrefill({ content, autoSend });
+}
+
+/** 页面已直接消费预填事件或主动取消：作废挂起的预填意图。 */
+export function invalidatePendingChatPrefill(): void {
+  pendingPrefill = null;
+}
+
 /** 用户手动切会话 / 页面已直接消费导航事件：作废挂起的导航意图。 */
 export function invalidatePendingChatNavigation(): void {
   pending = null;
@@ -77,8 +108,11 @@ export function invalidatePendingChatNavigation(): void {
 export function markChatPageReady(): () => void {
   readyCount += 1;
   const nav = pending;
+  const prefill = pendingPrefill;
   pending = null;
+  pendingPrefill = null;
   if (nav) dispatchNavigation(nav);
+  if (prefill) dispatchPrefill(prefill);
 
   let released = false;
   return () => {
@@ -93,8 +127,14 @@ export function peekPendingChatNavigation(): PendingChatNavigation | null {
   return pending;
 }
 
+/** 测试辅助：查看当前挂起预填意图。 */
+export function peekPendingChatPrefill(): PendingChatPrefill | null {
+  return pendingPrefill;
+}
+
 /** 测试辅助：重置模块状态。 */
 export function resetChatNavigationHandshakeForTest(): void {
   pending = null;
+  pendingPrefill = null;
   readyCount = 0;
 }

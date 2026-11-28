@@ -12,6 +12,11 @@ import { useTranslation } from 'react-i18next';
 import { trashApi, type DstuNode } from '@/dstu';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import {
+  BACK_PRIORITY,
+  isElementVisibleForBack,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
@@ -289,6 +294,20 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       : [],
     [onEscapeKeyDown, open],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      if (!isElementVisibleForBack(panelRef.current)) return false;
+      if (confirm) {
+        if (!busy) setConfirm(null);
+        return true;
+      }
+      if (busy) return true;
+      close();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [busy, close, confirm, open]);
 
   const locale = i18n.language || 'zh-CN';
 

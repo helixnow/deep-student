@@ -573,11 +573,15 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 
   const copy = useCallback(
     async (text: string) => {
-      const ok = await copyTextToClipboard(text);
-      showGlobalNotification(
-        ok ? 'success' : 'error',
-        ok ? t('learningHub:mediaTranscript.copied') : t('learningHub:mediaTranscript.copyFailed'),
-      );
+      try {
+        const ok = await copyTextToClipboard(text);
+        showGlobalNotification(
+          ok ? 'success' : 'error',
+          ok ? t('learningHub:mediaTranscript.copied') : t('learningHub:mediaTranscript.copyFailed'),
+        );
+      } catch {
+        showGlobalNotification('error', t('learningHub:mediaTranscript.copyFailed'));
+      }
     },
     [t],
   );

@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
-import { APP_EVENTS, dispatchAppEvent, toAppEventListener } from '@/events';
+import { useCallback, useEffect, useRef } from 'react';
+import { APP_EVENTS, toAppEventListener } from '@/events';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useViewStore } from '@/stores/viewStore';
-import type { CurrentView } from '@/types/navigation';
+import { isWorkbenchHostEnabled, launchWorkbenchApp } from '@/shared/workbenchHost';
 import {
   clearChatHandoffReturnView,
   getChatHandoffReturnView,
@@ -15,6 +15,13 @@ import {
 } from '@/features/notes/openNoteEvent';
 import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import {
+  isChatPageReady,
+  peekPendingChatNavigation,
+  requestChatNewSession,
+  requestChatPrefill,
+  requestChatSessionNavigation,
+} from '@/features/chat/navigation/pendingChatNavigation';
 import type { SetCurrentView } from '../navigation/viewRouting';
 import type { OpenInLearningHub } from './useShellNavigationEvents';
 
@@ -101,6 +108,13 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
     handleNavigateToNote({ noteId: detail.noteId, source: detail.source });
   }, [handleNavigateToNote, workbenchActive]);
 
+  const pendingPrefillCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => {
+    pendingPrefillCleanupRef.current?.();
+    pendingPrefillCleanupRef.current = null;
+  }, []);
+
   const handlePrefillChatInput = useCallback((detail: {
     content: string;
     autoSend?: boolean;
@@ -114,29 +128,68 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
       setChatHandoffReturnView(originView);
     }
 
-    setCurrentView('chat-v2');
+    pendingPrefillCleanupRef.current?.();
+    pendingPrefillCleanupRef.current = null;
+
+    if (workbenchActive && isWorkbenchHostEnabled()) {
+      launchWorkbenchApp({ typeId: 'chat', reason: 'api' });
+    } else {
+      setCurrentView('chat-v2');
+    }
+
     if (!newSession) {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend });
-      }, 150);
+      requestChatPrefill(content, autoSend);
       return;
     }
+
     // 新会话就绪（current-session-changed）后再填入；3s 兜底，避免填进旧会话或丢失
     const previousSessionId = sessionManager.getCurrentSessionId();
     let done = false;
+    let unsubscribe: (() => void) | null = null;
+    let fallbackTimer: number | null = null;
+    const cleanup = () => {
+      done = true;
+      if (unsubscribe) {
+        const dispose = unsubscribe;
+        unsubscribe = null;
+        dispose();
+      }
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if (pendingPrefillCleanupRef.current === cleanup) {
+        pendingPrefillCleanupRef.current = null;
+      }
+    };
     const fill = () => {
       if (done) return;
-      done = true;
-      unsubscribe();
-      window.clearTimeout(fallbackTimer);
-      setTimeout(() => dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend }), 150);
+      cleanup();
+      requestChatPrefill(content, autoSend);
     };
-    const unsubscribe = sessionManager.subscribe((event) => {
-      if (event.type === 'current-session-changed' && event.sessionId && event.sessionId !== previousSessionId) fill();
+    pendingPrefillCleanupRef.current = cleanup;
+    unsubscribe = sessionManager.subscribe((event) => {
+      if (event.type === 'current-session-changed' && event.sessionId && event.sessionId !== previousSessionId) {
+        fill();
+      }
     });
-    const fallbackTimer = window.setTimeout(fill, 3000);
-    requestAnimationFrame(() => dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION));
-  }, [setCurrentView]);
+    fallbackTimer = window.setTimeout(fill, 3000);
+    requestChatNewSession();
+  }, [setCurrentView, workbenchActive]);
+
+  const handleColdNavigateToSession = useCallback((detail: { sessionId?: string }) => {
+    const sessionId = detail?.sessionId;
+    if (!sessionId || isChatPageReady()) return;
+    const pending = peekPendingChatNavigation();
+    if (pending?.kind === 'session' && pending.sessionId === sessionId) return;
+    requestChatSessionNavigation(sessionId);
+  }, []);
+
+  const handleColdChatNewSession = useCallback(() => {
+    if (isChatPageReady()) return;
+    if (peekPendingChatNavigation()?.kind === 'new-session') return;
+    requestChatNewSession();
+  }, []);
 
   // ★ irec 相关事件监听已废弃（图谱模块已移除）
   // ★ navigateToMistakeById 事件监听已废弃（2026-01 清理）
@@ -148,4 +201,9 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
     { target: 'window', type: 'DSTU_OPEN_NOTE', listener: handleClassicShellOpenNote },
     { target: 'window', type: APP_EVENTS.PREFILL_CHAT_INPUT, listener: toAppEventListener(handlePrefillChatInput) },
   ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handleClassicShellOpenNote, handlePrefillChatInput]);
+
+  useEventRegistry([
+    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_SESSION, listener: toAppEventListener(handleColdNavigateToSession) },
+    { target: 'window', type: APP_EVENTS.CHAT_NEW_SESSION, listener: handleColdChatNewSession },
+  ], [handleColdNavigateToSession, handleColdChatNewSession]);
 }

@@ -795,7 +795,9 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const handleSelectionAskAi = useCallback((text: string) => {
     handleSelectionAddAsContext(text);
     if (!isMobilePlatform()) {
-      void openQuickAssistantWindow().catch(() => {});
+      void openQuickAssistantWindow().catch((error: unknown) => {
+        showGlobalNotification('error', getErrorMessage(error));
+      });
     }
   }, [handleSelectionAddAsContext]);
 
@@ -2080,6 +2082,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
               />
             )}
             <NotesEditorHeader
+              key={noteId ?? 'no-note'}
               lastSaved={save.lastSaved} saveStatus={save.saveStatus}
               onRetrySave={effectiveReadOnly ? undefined : save.handleManualSave}
               charCount={charCount} initialTitle={initialTitle}

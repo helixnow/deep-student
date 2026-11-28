@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import {
   getLocalizedSkillDescription,
@@ -49,7 +50,7 @@ export const SkillDetailPreview: React.FC<SkillDetailPreviewProps> = ({
   const { t } = useTranslation(['skills', 'common']);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !skill) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -58,8 +59,15 @@ export const SkillDetailPreview: React.FC<SkillDetailPreviewProps> = ({
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+    const unregisterBack = registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      unregisterBack();
+    };
+  }, [open, skill, onClose]);
 
   if (!open || !skill) return null;
 

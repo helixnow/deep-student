@@ -92,7 +92,13 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(30);
+  const [durationDraft, setDurationDraft] = useState('30');
   const [questionCount, setQuestionCount] = useState(20);
+  const [questionCountDraft, setQuestionCountDraft] = useState('20');
+
+  const parseDraftNumber = useCallback((raw: string): number => (
+    raw.trim() === '' ? Number.NaN : Number(raw)
+  ), []);
 
   const normalizeDurationMinutes = useCallback((value: number): number => {
     if (!Number.isFinite(value)) return 30;
@@ -215,8 +221,14 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   }, [examId, startTimedPractice, onStart, t, beginRequest]);
 
   const handleStart = useCallback(async () => {
-    await startWithConfig(durationMinutes, questionCount);
-  }, [startWithConfig, durationMinutes, questionCount]);
+    const committedDuration = normalizeDurationMinutes(parseDraftNumber(durationDraft));
+    const committedCount = normalizeQuestionCount(parseDraftNumber(questionCountDraft));
+    setDurationMinutes(committedDuration);
+    setDurationDraft(String(committedDuration));
+    setQuestionCount(committedCount);
+    setQuestionCountDraft(String(committedCount));
+    await startWithConfig(committedDuration, committedCount);
+  }, [startWithConfig, durationDraft, questionCountDraft, normalizeDurationMinutes, normalizeQuestionCount, parseDraftNumber]);
 
   // 交卷后的会话仍在 store 里（exam 维度门禁过），用于配置页展示上轮总结
   const lastFinishedSession = activeSession?.is_submitted ? activeSession : null;
@@ -225,7 +237,9 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   const handleRestartLastConfig = useCallback(async () => {
     if (!lastFinishedSession) return;
     setDurationMinutes(lastFinishedSession.duration_minutes);
+    setDurationDraft(String(lastFinishedSession.duration_minutes));
     setQuestionCount(lastFinishedSession.question_count);
+    setQuestionCountDraft(String(lastFinishedSession.question_count));
     await startWithConfig(
       lastFinishedSession.duration_minutes,
       lastFinishedSession.question_count,
@@ -365,13 +379,20 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 type="number"
                 min={5}
                 max={180}
-                value={durationMinutes}
+                value={durationDraft}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw === '') return;
-                  setDurationMinutes(normalizeDurationMinutes(Number(raw)));
+                  setDurationDraft(raw);
+                  const parsed = parseDraftNumber(raw);
+                  if (Number.isFinite(parsed)) {
+                    setDurationMinutes(normalizeDurationMinutes(parsed));
+                  }
                 }}
-                onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
+                onBlur={() => {
+                  const next = normalizeDurationMinutes(parseDraftNumber(durationDraft));
+                  setDurationMinutes(next);
+                  setDurationDraft(String(next));
+                }}
                 className="text-center font-medium [@media(pointer:coarse)]:text-[16px]"
 />
               <div className="flex flex-wrap gap-1.5">
@@ -380,7 +401,10 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                     key={preset}
                     variant={durationMinutes === preset ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setDurationMinutes(preset)}
+                    onClick={() => {
+                      setDurationMinutes(preset);
+                      setDurationDraft(String(preset));
+                    }}
                     className="[@media(pointer:coarse)]:!min-h-11"
                   >
                     {t('timed.minutesShort', { count: preset })}
@@ -395,13 +419,20 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 type="number"
                 min={5}
                 max={100}
-                value={questionCount}
+                value={questionCountDraft}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw === '') return;
-                  setQuestionCount(normalizeQuestionCount(Number(raw)));
+                  setQuestionCountDraft(raw);
+                  const parsed = parseDraftNumber(raw);
+                  if (Number.isFinite(parsed)) {
+                    setQuestionCount(normalizeQuestionCount(parsed));
+                  }
                 }}
-                onBlur={(e) => setQuestionCount(normalizeQuestionCount(Number(e.target.value)))}
+                onBlur={() => {
+                  const next = normalizeQuestionCount(parseDraftNumber(questionCountDraft));
+                  setQuestionCount(next);
+                  setQuestionCountDraft(String(next));
+                }}
                 className="text-center font-medium [@media(pointer:coarse)]:text-[16px]"
 />
             </div>

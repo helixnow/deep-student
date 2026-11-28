@@ -256,7 +256,6 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
     currentView, isSmallScreen, setCurrentView, setIsSelectingTemplate,
     chatV2Blocked, t, isSelectingTemplate, handleTemplateSelected,
     handleTemplateSelectionCancel, templateManagementRefreshTick,
-    showImportConversation, setShowImportConversation, handleImportConversationSuccess,
     uiLabEnabled, viewEntries, visitedViews, viewNavDirection,
   } = options;
 
@@ -308,16 +307,18 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
     }
   }, [setCurrentView]);
 
+  const handleInertImportDialogOpenChange = useCallback(() => undefined, []);
+
+  // 全局导入对话弹窗已提升至 AppShellChrome，此处保留 inert(open=false) 占位以保持视图层契约兼容
   const dataManagementContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <LazyDataImportExport onBack={handleDataManagementBack} />
       <LazyImportConversationDialog
-        open={showImportConversation}
-        onOpenChange={setShowImportConversation}
-        onImportSuccess={handleImportConversationSuccess}
+        open={false}
+        onOpenChange={handleInertImportDialogOpenChange}
       />
     </Suspense>
-  ), [showImportConversation, handleImportConversationSuccess, handleDataManagementBack, setShowImportConversation]);
+  ), [handleDataManagementBack, handleInertImportDialogOpenChange]);
 
   const {
     todoContent,

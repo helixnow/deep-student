@@ -1,7 +1,10 @@
 import React, { useCallback } from 'react';
+import i18n from 'i18next';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { StoreApi } from 'zustand';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import type { ChatStore } from '../../core/types/store';
 import { QueuedMessageBubble } from './QueuedMessageBubble';
 import { QueueErrorBar } from './QueueErrorBar';
@@ -83,14 +86,28 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     if (currentExternalThread) {
       const queuedItem = (store.getState().queuedMessages ?? []).find((q) => q.id === id);
       if (queuedItem) {
-        markSteered?.(id);
-        await steerTurn({
-          threadId: currentExternalThread.threadId,
-          chatSessionId: currentSessionId || currentExternalThread.chatSessionId,
-          text: queuedItem.content,
-          priority: 'correction',
-        });
-        removeQueued(id);
+        try {
+          const ok = await steerTurn({
+            threadId: currentExternalThread.threadId,
+            chatSessionId: currentSessionId || currentExternalThread.chatSessionId,
+            text: queuedItem.content,
+            priority: 'correction',
+          });
+          if (ok === true) {
+            markSteered?.(id);
+            removeQueued(id);
+          } else {
+            showGlobalNotification(
+              'error',
+              i18n.t(
+                'agentMesh:routing.hostUnavailable',
+                '外部智能体宿主桥接未就绪，请在桌面端启用多智能体插件',
+              ),
+            );
+          }
+        } catch (err) {
+          showGlobalNotification('error', getErrorMessage(err));
+        }
         return;
       }
     }

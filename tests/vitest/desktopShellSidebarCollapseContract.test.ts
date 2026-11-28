@@ -30,7 +30,7 @@ describe('desktop shell sidebar collapse contract', () => {
   it('initializes view state before sidebar layout without a cross-module currentView TDZ', () => {
     const entrySource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
     const layoutSource = readFileSync(resolve(process.cwd(), 'src/app/shell/useDesktopSidebarLayout.ts'), 'utf-8');
-    const currentViewIndex = entrySource.indexOf('} = useAppViewState({ isSmallScreen, isDemoShell });');
+    const currentViewIndex = entrySource.indexOf('} = useAppViewState({ isSmallScreen, isDemoShell, workbenchActive });');
     const desktopNavigationWidthIndex = entrySource.indexOf('const layout = useDesktopSidebarLayout({ isSmallScreen, workbenchActive, topbarTopMargin, t });');
 
     expect(currentViewIndex).toBeGreaterThanOrEqual(0);
@@ -64,7 +64,7 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('{shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
-    expect(appSource).toContain("dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);");
+    expect(appSource).toContain('requestChatNewSession();');
   });
 
   it('uses a plain frame icon when collapsed and a left-rail frame icon when expanded', () => {

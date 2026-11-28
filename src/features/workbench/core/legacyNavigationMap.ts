@@ -30,14 +30,20 @@
  */
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { t } from '@/utils/i18n';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import type { ActivateRequest, LaunchRequest } from './types';
 import { workbenchBus } from './workbenchBus';
-import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
+import {
+  requestChatPrefill,
+  requestChatSessionNavigation,
+} from '@/features/chat/navigation/pendingChatNavigation';
 import {
   collectFocusHandoffDescriptor,
   saveHandoffDescriptor,
   type WorkbenchHandoffDescriptor,
 } from './handoffDescriptor';
+
+const PLUGIN_VIEW_TYPE_PREFIX = 'plugin-view.';
 
 const RESOURCE_TYPE_IDS = new Set([
   'note',
@@ -63,6 +69,7 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   templates: 'template-management',
   taskDashboard: 'task-dashboard',
   sandbox: 'sandbox-workbench',
+  aiDashboard: 'dashboard',
   // 闪卡传统壳页面（2026-09）：OS 模式之外也有独立入口，降级为导航而非 no-op
   flashcards: 'flashcards',
   // 音视频子应用（2026-10）：学习桌面「音视频」窗口 ↔ 经典壳 'media' 视图
@@ -75,6 +82,12 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
  * flashcards 曾在此列（2026-09 起映射到传统壳 flashcards 视图）。 */
 const LEGACY_NOOP_TYPE_IDS = new Set(['pomodoro', 'browser']);
 
+function extractPluginViewKey(typeId: string): string | null {
+  if (!typeId.startsWith(PLUGIN_VIEW_TYPE_PREFIX)) return null;
+  const viewKey = typeId.slice(PLUGIN_VIEW_TYPE_PREFIX.length).trim();
+  return viewKey || null;
+}
+
 function dispatch(name: string, detail?: unknown): void {
   try {
     window.dispatchEvent(new CustomEvent(name, detail !== undefined ? { detail } : undefined));
@@ -83,14 +96,16 @@ function dispatch(name: string, detail?: unknown): void {
   }
 }
 
-/** 视图切换后延迟派发页面级事件（等 React 渲染，节奏与 App.tsx 现有链路一致） */
-function dispatchDeferred(name: string, detail: unknown, delay = 150): void {
-  window.setTimeout(() => dispatch(name, detail), delay);
-}
-
-/** 该 typeId 在经典壳是否有可落地的视图（chat / 资源类 / 显式视图映射） */
+/** 该 typeId 在经典壳是否有可落地的视图（chat / 插件 / 资源类 / 显式视图映射） */
 function hasLegacyViewMapping(typeId: string): boolean {
-  return typeId === 'chat' || RESOURCE_TYPE_IDS.has(typeId) || Boolean(VIEW_BY_TYPE_ID[typeId]);
+  return (
+    typeId === 'chat'
+    || typeId === 'chat-session'
+    || typeId === 'pluginWorkshop'
+    || RESOURCE_TYPE_IDS.has(typeId)
+    || Object.prototype.hasOwnProperty.call(VIEW_BY_TYPE_ID, typeId)
+    || extractPluginViewKey(typeId) !== null
+  );
 }
 
 /**
@@ -100,12 +115,22 @@ function hasLegacyViewMapping(typeId: string): boolean {
  * 返回是否命中映射（no-op / 未知 typeId → false，不派发任何事件）。
  */
 function dispatchLegacyViewNavigation(typeId: string, resourceId: string | null): boolean {
-  if (typeId === 'chat') {
+  if (typeId === 'chat' || typeId === 'chat-session') {
     dispatch('NAVIGATE_TO_VIEW', { view: 'chat-v2' });
     if (resourceId) {
       // ChatV2Page 可能尚未挂载：交给导航握手（就绪立即派发，未就绪挂起待消费）
       requestChatSessionNavigation(resourceId);
     }
+    return true;
+  }
+  if (typeId === 'pluginWorkshop') {
+    setPendingSettingsRoute({ tab: 'plugins' });
+    dispatch('NAVIGATE_TO_VIEW', { view: 'settings' });
+    return true;
+  }
+  const pluginViewKey = extractPluginViewKey(typeId);
+  if (pluginViewKey) {
+    dispatch('NAVIGATE_TO_VIEW', { view: pluginViewKey });
     return true;
   }
   if (RESOURCE_TYPE_IDS.has(typeId)) {
@@ -115,7 +140,9 @@ function dispatchLegacyViewNavigation(typeId: string, resourceId: string | null)
     });
     return true;
   }
-  const view = VIEW_BY_TYPE_ID[typeId];
+  const view = Object.prototype.hasOwnProperty.call(VIEW_BY_TYPE_ID, typeId)
+    ? VIEW_BY_TYPE_ID[typeId]
+    : undefined;
   if (view) {
     dispatch('NAVIGATE_TO_VIEW', { view });
     return true;
@@ -131,8 +158,8 @@ export function translateLegacyNavigation(
   const { typeId } = req;
   const instanceKey = 'instanceKey' in req ? req.instanceKey : undefined;
 
-  if (typeId === 'chat') {
-    dispatchLegacyViewNavigation('chat', instanceKey ?? null);
+  if (typeId === 'chat' || typeId === 'chat-session') {
+    dispatchLegacyViewNavigation(typeId, instanceKey ?? null);
     if (kind === 'activate') {
       const activate = req as ActivateRequest;
       if (activate.action === 'setInput') {
@@ -143,7 +170,7 @@ export function translateLegacyNavigation(
             : payload && typeof payload === 'object'
               ? (payload as { content?: string }).content
               : undefined;
-        if (content) dispatchDeferred('CHAT_V2_SET_INPUT', { content }, 300);
+        if (content) requestChatPrefill(content);
       }
       // focusInput / scrollToMessage：legacy 页面自行处理焦点，切换会话已足够
     }

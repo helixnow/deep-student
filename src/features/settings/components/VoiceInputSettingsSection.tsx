@@ -337,6 +337,9 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
   const [support, setSupport] = useState<VoiceRecordingSupport | null>(null);
   const [historyEntries, setHistoryEntries] = useState<VoiceInputHistoryEntry[]>([]);
   const [vocabularyDraft, setVocabularyDraft] = useState('');
+  const [maxDurationDraft, setMaxDurationDraft] = useState(
+    () => String(DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
+  );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const savedConfigRef = useRef<VoiceInputConfig>(DEFAULT_VOICE_INPUT_CONFIG);
 
@@ -365,6 +368,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         if (disposed) return;
         savedConfigRef.current = loadedConfig;
         setConfig(loadedConfig);
+        setMaxDurationDraft(String(loadedConfig.maxDurationMs));
         setVocabularyDraft(serializeVocabularyDraft(loadedConfig.dictationVocabulary));
         setSupport(loadedSupport);
         setHistoryEntries(loadedHistory);
@@ -400,10 +404,12 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         const savedConfig = await saveVoiceInputConfig(nextConfig);
         savedConfigRef.current = savedConfig;
         setConfig(savedConfig);
+        setMaxDurationDraft(String(savedConfig.maxDurationMs));
         setVocabularyDraft(serializeVocabularyDraft(savedConfig.dictationVocabulary));
       } catch {
         const fallbackConfig = savedConfigRef.current;
         setConfig(fallbackConfig);
+        setMaxDurationDraft(String(fallbackConfig.maxDurationMs));
         setVocabularyDraft(serializeVocabularyDraft(fallbackConfig.dictationVocabulary));
         showGlobalNotification(
           'error',
@@ -645,23 +651,28 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
           <Input
             disabled={saving}
             type="number"
+            min={1000}
+            max={600000}
             inputMode="numeric"
-            value={String(config.maxDurationMs)}
+            value={maxDurationDraft}
             onChange={(event) => {
-              setConfig((current) => ({
-                ...current,
-                maxDurationMs: Number(event.target.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
-              }));
+              setMaxDurationDraft(event.target.value);
             }}
             onBlur={(event) => {
+              const raw = event.currentTarget.value.trim();
+              const parsed = parseInt(raw, 10);
+              const clamped = Number.isFinite(parsed)
+                ? Math.min(600000, Math.max(1000, parsed))
+                : savedConfigRef.current.maxDurationMs;
+              setMaxDurationDraft(String(clamped));
               const nextConfig = {
                 ...config,
-                maxDurationMs: Number(
-                  event.currentTarget.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs
-                ),
+                maxDurationMs: clamped,
               };
               setConfig(nextConfig);
-              void persist(nextConfig);
+              if (clamped !== savedConfigRef.current.maxDurationMs) {
+                void persist(nextConfig);
+              }
             }}
             className="w-32 [@media(pointer:coarse)]:h-11"
           />

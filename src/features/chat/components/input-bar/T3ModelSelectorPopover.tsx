@@ -139,6 +139,7 @@ export interface T3ModelSelectorPopoverProps {
     preset: PermissionPreset,
     confirm?: boolean,
   ) => void | Promise<void>;
+  onRequestDangerConfirm?: () => void;
   onRequestClose?: () => void;
   isMobile?: boolean;
   layoutTier?: T3PopoverLayoutTier;
@@ -347,6 +348,7 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
   sessionId,
   permissionPreset,
   onPermissionPresetChange,
+  onRequestDangerConfirm,
   onRequestClose,
   isMobile = false,
   layoutTier,
@@ -840,12 +842,16 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
       }
       if (preset === 'danger_full_access') {
         setPermissionMenuOpen(false);
+        if (onRequestDangerConfirm) {
+          onRequestDangerConfirm();
+          return;
+        }
         setConfirmDangerOpen(true);
         return;
       }
       void applyPermissionPreset(preset);
     },
-    [applyPermissionPreset, permissionPreset],
+    [applyPermissionPreset, onRequestDangerConfirm, permissionPreset],
   );
 
   // 右栏推理强度状态推导：当前焦点为编程 CLI 时，切换到该 CLI 的推理强度档位
@@ -2091,20 +2097,22 @@ export const T3ModelSelectorPopover: React.FC<T3ModelSelectorPopoverProps> = ({
         </div>
       </div>
 
-      {/* 高风险全自动确认弹窗（复用统一 DsAlertDialog，不使用浏览器原生确认框） */}
-      <DsAlertDialog
-        open={confirmDangerOpen}
-        onOpenChange={setConfirmDangerOpen}
-        confirmVariant="danger"
-        title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
-        description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
-        cancelText={t('common:actions.cancel')}
-        confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
-        onConfirm={() => {
-          setConfirmDangerOpen(false);
-          void applyPermissionPreset('danger_full_access', true);
-        }}
-      />
+      {/* 高风险全自动确认弹窗（未由外层宿主接管时使用本地兜底，避免在 AppMenuContent 卸载时被销毁） */}
+      {!onRequestDangerConfirm && (
+        <DsAlertDialog
+          open={confirmDangerOpen}
+          onOpenChange={setConfirmDangerOpen}
+          confirmVariant="danger"
+          title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
+          description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
+          cancelText={t('common:actions.cancel')}
+          confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
+          onConfirm={() => {
+            setConfirmDangerOpen(false);
+            void applyPermissionPreset('danger_full_access', true);
+          }}
+        />
+      )}
     </>
   );
 };

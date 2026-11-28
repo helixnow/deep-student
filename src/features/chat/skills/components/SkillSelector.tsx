@@ -177,7 +177,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       if ((isSkillDisabledNow(skillId) || isUntrusted) && !activeSkillIds.includes(skillId)) return;
       onToggleSkill(skillId);
     },
-    [disabled, allSkills, onToggleSkill, activeSkillIds, isSkillDisabledNow, resolveEffectiveTrustStatus]
+    [disabled, allSkills, onToggleSkill, activeSkillIds, isSkillDisabledNow]
   );
 
   const isSkillActive = useCallback(
@@ -297,6 +297,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     return (
       <ComposerPanel.Row
         key={skill.id}
+        interactiveSlots={!isMenuVariant}
         selected={isMenuVariant ? isActiveSkill : isSelected}
         selectedAccent="tinted"
         onClick={() => {

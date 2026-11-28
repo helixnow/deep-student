@@ -2,6 +2,7 @@
  * Research 场景 action handlers — Chat / HPIAS 面板上下文注入
  */
 import i18next from 'i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 import {
@@ -51,6 +52,10 @@ export function createCopyReportFallbackActionHandlers(
         const text = reportBody || buildIntentExportMarkdown(intent, markdownLabels).trim();
         if (!text) return;
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
   };
@@ -70,6 +75,10 @@ export function createResearchBriefingActionHandlers(
         const text = callbacks.getReportBody().trim();
         if (!text) return;
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
     'export-plan': {
@@ -80,6 +89,10 @@ export function createResearchBriefingActionHandlers(
         const text = callbacks.getExportMarkdown().trim();
         if (!text) return;
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
     'export-intent': {
@@ -96,6 +109,10 @@ export function createResearchBriefingActionHandlers(
           return;
         }
         await copyTextToClipboard(text);
+        showGlobalNotification(
+          'success',
+          i18next.t('common:copied', { defaultValue: '已复制到剪贴板' }),
+        );
       },
     },
   };

@@ -17,7 +17,19 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+
+async function resolveErrorMessage(error: unknown): Promise<string> {
+  try {
+    const { getErrorMessage } = await import('@/utils/errorUtils');
+    return getErrorMessage(error);
+  } catch {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    return 'An unknown error occurred';
+  }
+}
 import {
   formatCompactWorkspacePath,
   resolveAgentDisplayName,
@@ -78,6 +90,8 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
   const [subagentsExpanded, setSubagentsExpanded] = useState(false);
   const [diffFilesExpanded, setDiffFilesExpanded] = useState(false);
   const [reverting, setReverting] = useState(false);
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [controlSubmitting, setControlSubmitting] = useState(false);
 
   const agentLabel = useMemo(
     () => resolveAgentDisplayName(thread.agentId, thread.agentName),
@@ -104,13 +118,20 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
   const checkpointId = thread.lastCheckpointId ?? thread.diffSummary?.checkpointId;
   const isReverted = Boolean(thread.revertedAt);
 
-  const handleApprovalDecision = (decision: MeshApprovalDecision) => {
-    if (!thread.pendingApproval) return;
-    void respondApproval({
-      threadId: thread.threadId,
-      requestId: thread.pendingApproval.requestId,
-      decision,
-    });
+  const handleApprovalDecision = async (decision: MeshApprovalDecision) => {
+    if (!thread.pendingApproval || approvalSubmitting) return;
+    setApprovalSubmitting(true);
+    try {
+      await respondApproval({
+        threadId: thread.threadId,
+        requestId: thread.pendingApproval.requestId,
+        decision,
+      });
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setApprovalSubmitting(false);
+    }
   };
 
   const handleRevert = async () => {
@@ -123,24 +144,42 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
         threadId: thread.threadId,
         rootPath: thread.rootPath,
       });
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
     } finally {
       setReverting(false);
     }
   };
 
-  const handleToggleTakeover = () => {
-    void setHumanControlled({
-      threadId: thread.threadId,
-      chatSessionId: thread.chatSessionId,
-      humanControlled: !thread.humanControlled,
-    });
+  const handleToggleTakeover = async () => {
+    if (controlSubmitting) return;
+    setControlSubmitting(true);
+    try {
+      await setHumanControlled({
+        threadId: thread.threadId,
+        chatSessionId: thread.chatSessionId,
+        humanControlled: !thread.humanControlled,
+      });
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setControlSubmitting(false);
+    }
   };
 
-  const handleInterrupt = () => {
-    void interruptTurn({
-      threadId: thread.threadId,
-      chatSessionId: thread.chatSessionId,
-    });
+  const handleInterrupt = async () => {
+    if (controlSubmitting) return;
+    setControlSubmitting(true);
+    try {
+      await interruptTurn({
+        threadId: thread.threadId,
+        chatSessionId: thread.chatSessionId,
+      });
+    } catch (err) {
+      showGlobalNotification('error', await resolveErrorMessage(err));
+    } finally {
+      setControlSubmitting(false);
+    }
   };
 
   const handleExplainChangesInChat = () => {
@@ -374,8 +413,9 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
             <DsButton
               variant="primary"
               size="sm"
+              disabled={approvalSubmitting}
               data-testid="external-approval-allow-once"
-              onClick={() => handleApprovalDecision('allow_once')}
+              onClick={() => void handleApprovalDecision('allow_once')}
               className="!h-7 !px-2.5 text-xs"
             >
               {t('agentMesh:inlineCard.allowOnce', { defaultValue: '允许一次' })}
@@ -383,8 +423,9 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
             <DsButton
               variant="outline"
               size="sm"
+              disabled={approvalSubmitting}
               data-testid="external-approval-allow-session"
-              onClick={() => handleApprovalDecision('allow_session')}
+              onClick={() => void handleApprovalDecision('allow_session')}
               className="!h-7 !px-2.5 text-xs"
             >
               {t('agentMesh:inlineCard.allowSession', { defaultValue: '本会话允许' })}
@@ -392,8 +433,9 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              disabled={approvalSubmitting}
               data-testid="external-approval-deny"
-              onClick={() => handleApprovalDecision('deny')}
+              onClick={() => void handleApprovalDecision('deny')}
               className="!h-7 !px-2.5 text-xs text-destructive hover:bg-destructive/10"
             >
               {t('agentMesh:inlineCard.deny', { defaultValue: '拒绝' })}
@@ -494,8 +536,9 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              disabled={controlSubmitting}
               data-testid="external-turn-interrupt-btn"
-              onClick={handleInterrupt}
+              onClick={() => void handleInterrupt()}
               className="!h-6 !px-1.5 !py-0 gap-1 text-caption font-normal text-muted-foreground/70 hover:text-destructive"
             >
               <StopCircle size={12} />
@@ -506,8 +549,9 @@ export const InlineExternalTurnCard: React.FC<InlineExternalTurnCardProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
+            disabled={controlSubmitting}
             data-testid="external-turn-takeover-btn"
-            onClick={handleToggleTakeover}
+            onClick={() => void handleToggleTakeover()}
             className={cn(
               '!h-6 !px-1.5 !py-0 gap-1 text-caption font-normal text-muted-foreground/70 hover:text-foreground',
               thread.humanControlled && 'text-primary',

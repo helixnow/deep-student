@@ -677,7 +677,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
         setFocusedItemId(null);
       }
     }
-  }, [clearChecked]);
+  }, [clearChecked, detailCloseGuardRef]);
 
   useEventRegistry(
     [{ target: 'document', type: 'keydown', listener: handleDocumentKeyDown }],

@@ -1066,6 +1066,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setShowPaperGuideMenu(false);
     setShowHighlightMenu(false);
     setPendingHighlight(null);
+    setActiveHighlightId(null);
+    setActiveHighlightAnchor(null);
     locateRefTokenRef.current++;
     setIsLocatingRef(false);
     jumpHistoryRef.current = EMPTY_JUMP_HISTORY;
@@ -5159,6 +5161,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const renderHighlightList = (onNavigate?: () => void) => (
     <React.Suspense fallback={null}>
       <PdfAnnotationsPanel
+        key={resourcePath ?? 'pdf'}
         highlights={highlights}
         fileName={fileName}
         resourcePath={resourcePath}
@@ -5685,6 +5688,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID。 */}
       <React.Suspense fallback={null}>
         <PdfSelectionActions
+          key={resourcePath ?? fileName ?? 'pdf'}
           containerRef={containerRef}
           enabled={resolvedEnableTextSelection}
           isMobileLike={isMobileLike}

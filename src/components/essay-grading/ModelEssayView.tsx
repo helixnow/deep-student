@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { BookOpen, Copy, Check, TextT } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface ModelEssayViewProps {
   essay: string;
@@ -26,9 +27,14 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
   const [copied, setCopied] = useState(false);
   const [serif, setSerif] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
   const trimmed = essay?.trim() ?? '';
@@ -54,11 +60,16 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
     );
   }
 
-  const handleCopy = () => {
-    copyTextToClipboard(trimmed);
-    setCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copyTextToClipboard(trimmed);
+      if (!mountedRef.current) return;
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (error: unknown) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -87,7 +98,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
           variant="ghost"
           size="sm"
           aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
-          onClick={handleCopy}
+          onClick={() => { void handleCopy(); }}
           className={cn(
             'h-6 px-1.5 gap-1 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5 transition-colors duration-200 motion-reduce:transition-none',
             copied

@@ -299,6 +299,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     draftFront,
     draftBack,
     draftTags,
+    draftClozeMode,
+    effectiveIsCloze,
     editValues,
     isCloze,
     card.id,

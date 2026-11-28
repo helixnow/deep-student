@@ -116,14 +116,22 @@ interface AiQuestionGenerationPanelProps {
 interface SpecRow {
   id: string;
   questionType: QuestionType;
-  count: number;
+  count: string;
 }
+
+const normalizeSpecCount = (raw: string): number => {
+  const trimmed = raw.trim();
+  if (!trimmed) return 1;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(100, Math.round(parsed)));
+};
 
 let specRowSeq = 0;
 const newSpecRow = (questionType: QuestionType = 'single_choice', count = 3): SpecRow => ({
   id: `spec_${Date.now()}_${specRowSeq++}`,
   questionType,
-  count,
+  count: String(count),
 });
 
 // ============================================================================
@@ -268,12 +276,20 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   const hasDrafts = drafts.length > 0;
   const taskFailed = task?.status === 'failed';
   const maxQuestions = useMemo(
-    () => specs.reduce((sum, spec) => sum + (Number.isFinite(spec.count) ? spec.count : 0), 0),
+    () => specs.reduce((sum, spec) => {
+      const trimmed = spec.count.trim();
+      if (!trimmed) return sum;
+      const parsed = Number(trimmed);
+      return sum + (Number.isFinite(parsed) && parsed > 0 ? Math.min(100, Math.round(parsed)) : 0);
+    }, 0),
     [specs],
   );
 
+  const selectedInitKeyRef = useRef<string | null>(null);
+
   // 面板打开时重置预览选择；关闭时**不再取消任务**（后台继续），仅复位表单
   useEffect(() => {
+    selectedInitKeyRef.current = null;
     if (open) {
       setSelected(new Set());
     } else {
@@ -292,19 +308,18 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
 
   // 任务完成或直读待确认草稿就绪时默认全选草稿；
   // 每个任务/草稿只初始化一次，避免后续 store 刷新覆盖用户勾选
-  const selectedInitKeyRef = useRef<string | null>(null);
   const draftInitKey = usingLoadedDraft
     ? `draft:${loadedDraft?.job_id}:${loadedDraft?.drafts.length}`
     : task?.status === 'completed' && task.drafts.length > 0
       ? `task:${task.id}:${task.drafts.length}`
       : null;
   useEffect(() => {
-    if (!draftInitKey || drafts.length === 0) return;
+    if (!open || !draftInitKey || drafts.length === 0) return;
     if (selectedInitKeyRef.current !== draftInitKey) {
       selectedInitKeyRef.current = draftInitKey;
       setSelected(new Set(drafts.map((_, index) => index)));
     }
-  }, [draftInitKey, drafts]);
+  }, [open, draftInitKey, drafts]);
 
   // 检测当前题目集是否已有存量题（空题目集禁止仅靠勾选「基于现有题目生成」绕过上下文门禁）
   const [existingQuestionCount, setExistingQuestionCount] = useState<number>(0);
@@ -504,7 +519,21 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     (basedOnExisting && canUseExistingQuestions);
 
   const handleStart = async () => {
-    if (submitting || maxQuestions <= 0 || maxQuestions > 100) return;
+    if (submitting) return;
+    const normalizedSpecs = specs.map((spec) => ({
+      ...spec,
+      normalizedCount: normalizeSpecCount(spec.count),
+    }));
+    const committedMaxQuestions = normalizedSpecs.reduce(
+      (sum, spec) => sum + spec.normalizedCount,
+      0,
+    );
+    setSpecs(normalizedSpecs.map(({ id, questionType, normalizedCount }) => ({
+      id,
+      questionType,
+      count: String(normalizedCount),
+    })));
+    if (committedMaxQuestions <= 0 || committedMaxQuestions > 100) return;
     if (!hasGenerationContext) {
       showGlobalNotification(
         'warning',
@@ -516,10 +545,10 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
       await startGeneration({
         exam_id: examId,
         model_config_id: modelId || null,
-        max_questions: maxQuestions,
-        specs: specs.map((spec) => ({
+        max_questions: committedMaxQuestions,
+        specs: normalizedSpecs.map((spec) => ({
           question_type: spec.questionType,
-          count: spec.count,
+          count: spec.normalizedCount,
           difficulty: (difficulty || null) as Difficulty | null,
         })),
         difficulty: (difficulty || null) as Difficulty | null,
@@ -666,7 +695,8 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                       min={1}
                       max={100}
                       value={spec.count}
-                      onChange={(e) => updateSpec(spec.id, { count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+                      onChange={(e) => updateSpec(spec.id, { count: e.target.value })}
+                      onBlur={(e) => updateSpec(spec.id, { count: String(normalizeSpecCount(e.target.value)) })}
                       className="w-16 h-8 rounded-md border border-border bg-transparent px-2 text-sm"
                       aria-label={t('exam_sheet:aiGeneration.countLabel')}
                     />

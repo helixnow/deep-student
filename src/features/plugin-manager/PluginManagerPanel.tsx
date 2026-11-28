@@ -459,9 +459,20 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
     setUrlError(null);
     setUrlSubmitting(true);
     try {
-      await controller.installPackageFromUrl(trimmed);
-      setUrlDialogOpen(false);
-      setUrlInput('');
+      const result = await controller.installPackageFromUrl(trimmed);
+      if (result?.status === 'installed') {
+        setUrlDialogOpen(false);
+        setUrlInput('');
+      } else if (result?.status === 'rejected') {
+        setUrlError(result.detail || result.code);
+      } else if (result?.status === 'rolled-back') {
+        setUrlError(result.reason);
+      } else {
+        const snapshotError = controller.getSnapshot().error;
+        if (snapshotError) {
+          setUrlError(snapshotError.detail ?? snapshotError.code);
+        }
+      }
     } finally {
       setUrlSubmitting(false);
     }

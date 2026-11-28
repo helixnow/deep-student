@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
   Cards,
-  CaretUp,
   Check,
   DotsThree,
   DownloadSimple,
@@ -564,16 +563,18 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
 
       {cards.length > 0 && (
         <>
-          {/* 内联展开/折叠编辑：生成中也允许展开浏览 */}
-          <DsButton
-            type="button"
-            onClick={onToggleExpand}
-            variant={isExpanded ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
-          >
-            {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
-            {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
-          </DsButton>
+          {/* 内联展开编辑：展开态由展开头部唯一「收起」按钮负责，避免双收起入口 */}
+          {!isExpanded && (
+            <DsButton
+              type="button"
+              onClick={onToggleExpand}
+              variant="primary"
+              className="min-h-10 text-xs sm:text-sm"
+            >
+              <Pencil size={14} />
+              {t('blocks.ankiCards.edit')}
+            </DsButton>
+          )}
 
           {/* 加入本地卡片库 */}
           <DsButton

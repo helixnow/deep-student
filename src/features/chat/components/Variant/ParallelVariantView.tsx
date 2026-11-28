@@ -337,7 +337,21 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
           : 'flex-1 min-w-[200px]'
       )}
       data-variant-index={variantIndex}
-      onClick={canSwitch ? handleSwitch : undefined}
+      onClick={
+        canSwitch
+          ? (e) => {
+              const target = e.target instanceof Element ? e.target : null;
+              if (
+                target &&
+                target !== e.currentTarget &&
+                target.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]')
+              ) {
+                return;
+              }
+              handleSwitch();
+            }
+          : undefined
+      }
       onKeyDown={
         canSwitch
           ? (e) => {
@@ -606,6 +620,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       await onRetryAll();
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Retry all failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setIsRetryingAll(false);
     }
@@ -618,6 +633,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       await onDeleteMessage();
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Delete message failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setIsDeleting(false);
     }
@@ -632,6 +648,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Copy failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [onCopy, copied]);
 
@@ -643,10 +660,45 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       await onBranchSession();
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Branch failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setIsBranching(false);
     }
   }, [onBranchSession, isBranching, isLocked]);
+
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const savingNoteRef = useRef(false);
+  const handleSaveAsNote = useCallback(async () => {
+    if (!onSaveAsNote || savingNoteRef.current) return;
+    savingNoteRef.current = true;
+    setIsSavingNote(true);
+    try {
+      await onSaveAsNote();
+    } catch (error: unknown) {
+      console.error('[MessageLevelActions] Save as note failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      savingNoteRef.current = false;
+      setIsSavingNote(false);
+    }
+  }, [onSaveAsNote]);
+
+  const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
+  const exportingMarkdownRef = useRef(false);
+  const handleExportMarkdown = useCallback(async () => {
+    if (!onExportMarkdown || exportingMarkdownRef.current) return;
+    exportingMarkdownRef.current = true;
+    setIsExportingMarkdown(true);
+    try {
+      await onExportMarkdown();
+    } catch (error: unknown) {
+      console.error('[MessageLevelActions] Export markdown failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      exportingMarkdownRef.current = false;
+      setIsExportingMarkdown(false);
+    }
+  }, [onExportMarkdown]);
 
   // ≥768 触屏平板无 hover：coarse 指针下操作栏常显，否则消息级操作不可达
   // （与 MessageItem footer 的 coarse 指针契约一致）
@@ -723,12 +775,12 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
               {onSaveAsNote && (
-                <AppMenuItem onClick={() => void onSaveAsNote()}>
+                <AppMenuItem onClick={() => void handleSaveAsNote()} disabled={isSavingNote}>
                   {t('messageItem.actions.saveAsNote')}
                 </AppMenuItem>
               )}
               {onExportMarkdown && (
-                <AppMenuItem onClick={() => void onExportMarkdown()}>
+                <AppMenuItem onClick={() => void handleExportMarkdown()} disabled={isExportingMarkdown}>
                   {t('messageItem.actions.exportMarkdown')}
                 </AppMenuItem>
               )}

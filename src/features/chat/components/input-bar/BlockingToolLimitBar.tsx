@@ -9,6 +9,8 @@ import React, { useCallback, useState } from 'react';
 import { Warning, Play, CircleNotch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import type { BlockingInteraction } from '../../core/types/store';
 
 type ToolLimitInteraction = Extract<BlockingInteraction, { kind: 'tool_limit' }>;
@@ -28,6 +30,7 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
       await interaction.onContinue();
     } catch (error) {
       console.error('[BlockingToolLimitBar] Continue failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setIsContinuing(false);
     }

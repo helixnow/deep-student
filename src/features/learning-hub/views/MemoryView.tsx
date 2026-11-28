@@ -374,12 +374,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       searchReqIdRef.current++;
       setIsSearchMode(false);
       setSearchResults([]);
+      setSelectedIds(new Set());
+      setConfirmingBatchDelete(false);
       return;
     }
 
     if (!isSearchMode) {
       viewModeBeforeSearch.current = viewMode;
     }
+    setSelectedIds(new Set());
+    setConfirmingBatchDelete(false);
     const reqId = ++searchReqIdRef.current;
     setIsSearching(true);
     setIsSearchMode(true);
@@ -405,6 +409,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setSearchQuery('');
     setIsSearchMode(false);
     setSearchResults([]);
+    setSelectedIds(new Set());
+    setConfirmingBatchDelete(false);
     setViewMode(viewModeBeforeSearch.current);
   }, []);
 
@@ -631,6 +637,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       if (result.added + result.updated > 0) {
         handleCancelBatchImport();
         loadMemories();
+        if (viewModeRef.current === 'tree') {
+          void loadTree();
+        }
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Batch import failed:', error);
@@ -638,7 +647,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsMutating(false);
     }
-  }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, newMemoryFolderPath, parseBatchImportItems, t]);
+  }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, loadTree, newMemoryFolderPath, parseBatchImportItems, t]);
 
   // ========== 内联展开预览 ==========
   const handleToggleExpand = useCallback(async (noteId: string) => {
@@ -762,7 +771,17 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         setExpandedMemoryId(null);
         setExpandedContent(null);
       }
+      setSelectedIds(prev => {
+        if (!prev.has(noteId)) return prev;
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+      setConfirmingBatchDelete(false);
       loadMemories();
+      if (viewModeRef.current === 'tree') {
+        void loadTree();
+      }
       if (isSearchMode) {
         setSearchResults(prev => prev.filter(r => r.noteId !== noteId));
       }
@@ -772,7 +791,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsMutating(false);
     }
-  }, [t, loadMemories, expandedMemoryId, isSearchMode]);
+  }, [t, loadMemories, loadTree, expandedMemoryId, isSearchMode]);
 
   /** 第一次点击进入确认态，确认态内再次点击执行删除 */
   const handleDeleteMemory = useCallback((noteId: string) => {
@@ -818,10 +837,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 批量删除（行内二次确认） ==========
   const executeBatchDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
+    const deletedIds = new Set(selectedIds);
     setConfirmingBatchDelete(false);
     setIsMutating(true);
     try {
-      const result = await batchDeleteMemories(Array.from(selectedIds));
+      const result = await batchDeleteMemories(Array.from(deletedIds));
       if (result.failed > 0) {
         showGlobalNotification('warning', t('memory.batch_delete_partial', { succeeded: result.succeeded, failed: result.failed }));
       } else {
@@ -829,18 +849,24 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
       setSelectedIds(new Set());
       setBatchMode(false);
-      if (expandedMemoryId && selectedIds.has(expandedMemoryId)) {
+      if (expandedMemoryId && deletedIds.has(expandedMemoryId)) {
         setExpandedMemoryId(null);
         setExpandedContent(null);
       }
+      if (isSearchMode) {
+        setSearchResults(prev => prev.filter(r => !deletedIds.has(r.noteId)));
+      }
       loadMemories();
+      if (viewModeRef.current === 'tree') {
+        void loadTree();
+      }
     } catch (error: unknown) {
       console.error('[MemoryView] Batch delete failed:', error);
       showGlobalNotification('error', t('memory.batch_delete_error'));
     } finally {
       setIsMutating(false);
     }
-  }, [selectedIds, t, loadMemories, expandedMemoryId]);
+  }, [selectedIds, t, loadMemories, loadTree, expandedMemoryId, isSearchMode]);
 
   const handleBatchDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -869,9 +895,35 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     [isSearchMode, searchResults, memories],
   );
 
+  useEffect(() => {
+    const visibleSet = new Set(visibleIds);
+    setSelectedIds(prev => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visibleSet.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      if (changed) {
+        setConfirmingBatchDelete(false);
+        return next;
+      }
+      return prev;
+    });
+  }, [visibleIds]);
+
+  const allVisibleSelected = useMemo(
+    () => visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id)),
+    [visibleIds, selectedIds],
+  );
+
   const handleToggleSelectAll = useCallback(() => {
     setSelectedIds(prev => {
-      if (prev.size === visibleIds.length && visibleIds.length > 0) {
+      if (visibleIds.length > 0 && visibleIds.every((id) => prev.has(id))) {
         return new Set();
       }
       return new Set(visibleIds);
@@ -1562,7 +1614,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               onClick={handleToggleSelectAll}
               className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
             >
-              {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
+              {allVisibleSelected ? t('memory.deselect_all') : t('memory.select_all')}
             </DsButton>
             {selectedIds.size > 0 && (
               <>
@@ -2247,13 +2299,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
             )
           ) : viewMode === 'list' && memories.length === 0 ? (
-            // 空状态 - 更简洁
+            // 空状态 - 顶栏已有新建记忆入口，此处保持克制提示
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
-              <span className="text-sm mb-2">{t('memory.empty')}</span>
-              <DsButton variant="ghost" size="sm" onClick={handleOpenCreate} className="text-primary hover:underline !p-0 !h-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
-                {t('memory.create_first')}
-              </DsButton>
+              <span className="text-sm">{t('memory.empty')}</span>
             </div>
           ) : viewMode === 'list' ? (
             // 记忆列表 - 内联展开布局 + 批量选择 + 内联编辑

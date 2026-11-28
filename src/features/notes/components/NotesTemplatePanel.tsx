@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/shad/Dialog'
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { addTypedEventListener } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import {
   applyPreviewedNoteTemplate, fillUnsetTemplateLearningProps, getNoteTemplates, renderNoteTemplate,
   type NoteTemplate, type NoteTemplateApplyMode, type NoteTemplateDocument, type NoteTemplateDocumentHost, type NoteTemplateLearningPropsHost,
@@ -58,10 +59,17 @@ interface Draft {
 
 const VARIABLES = ['{{title}}', '{{date}}', '{{time}}'];
 
+const serializeDraft = (draft: Draft, liveMarkdown?: string): string => JSON.stringify({
+  title: draft.title,
+  markdown: liveMarkdown ?? draft.markdown,
+  defaultForCourse: draft.defaultForCourse,
+  learningPreset: draft.learningPreset,
+});
+
 export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   open, onRequestClose, onApplyTemplate, disabled = false, panelId, triggerRef, documentHost, learningPropsHost,
 }) => {
-  const { t, i18n } = useTranslation(['notes']);
+  const { t, i18n } = useTranslation(['notes', 'common']);
   const builtins = getNoteTemplates(i18n?.resolvedLanguage ?? i18n?.language ?? 'en-US');
   const [personal, setPersonal] = useState<PersonalNoteTemplate[]>([]);
   const [loadingPersonal, setLoadingPersonal] = useState(false);
@@ -73,6 +81,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   const [baseline, setBaseline] = useState<NoteTemplateDocument>();
   const [position, setPosition] = useState<{ from: number; to: number }>();
   const draftEditorRef = useRef<CrepeEditorApi | null>(null);
+  const draftInitialSnapshotRef = useRef<string | null>(null);
   // 预览编辑器常驻复用：切换模板只 setMarkdown，不重建 Crepe（重建一次需完整初始化全部插件）
   const previewApiRef = useRef<CrepeEditorApi | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +98,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
     if (!open) return;
     capture();
     setSelection((current) => current ?? (builtins[0] ? { kind: 'builtin', id: builtins[0].id } : null));
+    draftInitialSnapshotRef.current = null;
     setDraft(null); setConfirm(null); setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在每次打开时初始化
   }, [open]);
@@ -135,6 +145,36 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
     window.setTimeout(() => triggerRef?.current?.focus(), 0);
   }, [onRequestClose, triggerRef]);
 
+  const isDraftDirty = useCallback((): boolean => {
+    if (!draft) return false;
+    const currentMarkdown = draftEditorRef.current?.getMarkdown() ?? draft.markdown;
+    if (!draft.id) {
+      return (
+        draft.title.trim().length > 0 ||
+        currentMarkdown.trim().length > 0 ||
+        draft.defaultForCourse.trim().length > 0 ||
+        Object.keys(draft.learningPreset).length > 0
+      );
+    }
+    return serializeDraft(draft, currentMarkdown) !== draftInitialSnapshotRef.current;
+  }, [draft]);
+
+  const requestClose = useCallback(() => {
+    if (busy) return;
+    if (
+      isDraftDirty() &&
+      !unifiedConfirm(
+        t('common:confirmMessages.unsaved_changes', {
+          defaultValue: '有未保存的更改，确定要离开吗？',
+        }),
+        { key: `notes-template-panel-discard:${panelId}` },
+      )
+    ) {
+      return;
+    }
+    close();
+  }, [busy, close, isDraftDirty, panelId, t]);
+
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
     setBusy(true); setError('');
@@ -160,7 +200,12 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
     close();
   });
 
-  const startEdit = (next: Draft) => { setDraft(next); setConfirm(null); setError(''); };
+  const startEdit = (next: Draft) => {
+    draftInitialSnapshotRef.current = serializeDraft(next);
+    setDraft(next);
+    setConfirm(null);
+    setError('');
+  };
   const saveDraft = () => draft && void run(async () => {
     const markdown = draftEditorRef.current?.getMarkdown() ?? draft.markdown;
     const saved = await savePersonalNoteTemplate({
@@ -169,6 +214,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
     });
     setPersonal((current) => [...current.filter((item) => item.id !== saved.id), saved]);
     setSelection({ kind: 'personal', id: saved.id });
+    draftInitialSnapshotRef.current = null;
     setDraft(null);
     showGlobalNotification('success', t('notes:personalTemplates.saved'));
   });
@@ -207,7 +253,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   const presetEntries = Object.entries(selected?.learningPreset ?? {}) as Array<[LearningField, string]>;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose(); }}>
       <DialogContent id={panelId} className="notes-tpl-dialog" aria-labelledby={`${panelId}-title`}>
         <div className="notes-tpl-layout">
           <nav className="notes-tpl-nav" ref={navRef} onKeyDown={onNavKeyDown} aria-label={t('notes:templateGallery.title', { defaultValue: '模板' })}>

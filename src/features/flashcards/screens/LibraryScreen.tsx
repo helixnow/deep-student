@@ -41,6 +41,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { listAnkiLibraryCards } from '@/utils/chatApi';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { summarizeCardMedia } from '../cardMathPreview';
@@ -1089,22 +1090,30 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   const stageCsvPreviewFile = useCallback(async (file: File) => {
     if (importing) return;
-    const rawText = typeof (file as { text?: unknown }).text === 'function'
-      ? await file.text()
-      : await new Response(file).text();
-    stageCsvPreviewText(rawText, file.name || 'flashcards.csv', file);
+    try {
+      const rawText = typeof (file as { text?: unknown }).text === 'function'
+        ? await file.text()
+        : await new Response(file).text();
+      stageCsvPreviewText(rawText, file.name || 'flashcards.csv', file);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [importing, stageCsvPreviewText]);
 
   const pickCsvForPreview = useCallback(async () => {
     if (importing) return;
-    const { fileManager, extractFileName } = await import('@/utils/fileManager');
-    const path = await fileManager.pickSingleFile({
-      title: translate('library.import.csvPickTitle'),
-      filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
-    });
-    if (!path) return;
-    const rawText = await fileManager.readTextFile(path);
-    stageCsvPreviewText(rawText, extractFileName(path) || path);
+    try {
+      const { fileManager, extractFileName } = await import('@/utils/fileManager');
+      const path = await fileManager.pickSingleFile({
+        title: translate('library.import.csvPickTitle'),
+        filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
+      });
+      if (!path) return;
+      const rawText = await fileManager.readTextFile(path);
+      stageCsvPreviewText(rawText, extractFileName(path) || path);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [importing, translate, stageCsvPreviewText]);
 
   const handleImportApkg = useCallback(() => {

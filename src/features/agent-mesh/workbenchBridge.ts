@@ -1013,10 +1013,16 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
 
   bindWorkspacePath: async (chatSessionId, rootPath) => {
     const trimmed = rootPath.trim();
+    const prevBindings = get().workspaceBindings;
     set((state) => ({
       workspaceBindings: { ...state.workspaceBindings, [chatSessionId]: trimmed },
     }));
-    await activeHostAdapter?.setWorkspaceBinding?.({ chatSessionId, rootPath: trimmed });
+    try {
+      await activeHostAdapter?.setWorkspaceBinding?.({ chatSessionId, rootPath: trimmed });
+    } catch (err) {
+      set({ workspaceBindings: prevBindings });
+      throw err;
+    }
   },
 
   refreshSessionSnapshot: async (chatSessionId) => {
@@ -1090,6 +1096,13 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         ]
       : [];
 
+    const prevSnapshot = {
+      activeSessionId: state.activeSessionId,
+      swarmBySession: state.swarmBySession,
+      membersBySession: state.membersBySession,
+      boardBySession: state.boardBySession,
+    };
+
     set((prev) => ({
       activeSessionId: chatSessionId,
       swarmBySession: { ...prev.swarmBySession, [chatSessionId]: optimisticSession },
@@ -1115,15 +1128,21 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       coordinatorAgent: 'deepstudent',
       maxAutonomousHops: maxHops,
     };
-    const resp = await activeHostAdapter?.swarmControl?.(req);
-    if (resp) {
-      get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.(req);
+      if (resp) {
+        get().applySessionSnapshot(chatSessionId, resp);
+      }
+    } catch (err) {
+      set(prevSnapshot);
+      throw err;
     }
   },
 
   toggleSwarmPause: async (chatSessionId) => {
     const current = get().swarmBySession[chatSessionId];
     if (!current) return;
+    const prevSwarms = get().swarmBySession;
     const nextAction = current.status === 'paused' ? 'resume' : 'pause';
     const nextStatus = nextAction === 'pause' ? 'paused' : 'active';
     set((state) => ({
@@ -1137,16 +1156,22 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         },
       },
     }));
-    const resp = await activeHostAdapter?.swarmControl?.({
-      action: nextAction,
-      chatSessionId,
-    });
-    if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.({
+        action: nextAction,
+        chatSessionId,
+      });
+      if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    } catch (err) {
+      set({ swarmBySession: prevSwarms });
+      throw err;
+    }
   },
 
   resumeCircuitBreaker: async (chatSessionId, extraHops = 12) => {
     const current = get().swarmBySession[chatSessionId];
     if (!current) return;
+    const prevSwarms = get().swarmBySession;
     const nextMax = Math.max(current.maxAutonomousHops, current.autonomousHops + extraHops);
     set((state) => ({
       swarmBySession: {
@@ -1162,18 +1187,24 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         },
       },
     }));
-    const resp = await activeHostAdapter?.swarmControl?.({
-      action: 'reset_circuit_breaker',
-      chatSessionId,
-      maxAutonomousHops: nextMax,
-    });
-    if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.({
+        action: 'reset_circuit_breaker',
+        chatSessionId,
+        maxAutonomousHops: nextMax,
+      });
+      if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    } catch (err) {
+      set({ swarmBySession: prevSwarms });
+      throw err;
+    }
   },
 
   addSwarmMember: async ({ chatSessionId, agentId, rosterName, roleTitle, ownedGlobs = [] }) => {
     const cleanRoster = (rosterName?.trim() || agentId).replace(/^@/, '');
     const cleanAgent = agentId.replace(/^@/, '');
     const agentMeta = get().agents.find((a) => a.id === cleanAgent);
+    const prevMembers = get().membersBySession;
     const newMember: MeshSwarmMember = {
       chatSessionId,
       rosterName: cleanRoster,
@@ -1196,20 +1227,27 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         },
       };
     });
-    const resp = await activeHostAdapter?.swarmControl?.({
-      action: 'add_member',
-      chatSessionId,
-      rosterName: cleanRoster,
-      agentId: cleanAgent,
-      roleTitle: newMember.roleTitle,
-      ownedGlobs,
-    });
-    if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.({
+        action: 'add_member',
+        chatSessionId,
+        rosterName: cleanRoster,
+        agentId: cleanAgent,
+        roleTitle: newMember.roleTitle,
+        ownedGlobs,
+      });
+      if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    } catch (err) {
+      set({ membersBySession: prevMembers });
+      throw err;
+    }
   },
 
   postBoardMessage: async ({ chatSessionId, text, priority = 'correction', mentions }) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const prevBoard = get().boardBySession;
+    const prevSwarms = get().swarmBySession;
     const parsedMentions = mentions ?? parseMentionsFromText(trimmed);
     const currentBoard = get().boardBySession[chatSessionId] ?? [];
     const nextSeq = (currentBoard[currentBoard.length - 1]?.seq ?? get().swarmBySession[chatSessionId]?.headSeq ?? 0) + 1;
@@ -1245,16 +1283,21 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
           : state.swarmBySession,
       };
     });
-    const resp = await activeHostAdapter?.swarmControl?.({
-      action: 'post_message',
-      chatSessionId,
-      sender: 'human',
-      senderKind: 'human',
-      priority,
-      text: trimmed,
-      mentions: parsedMentions,
-    });
-    if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.({
+        action: 'post_message',
+        chatSessionId,
+        sender: 'human',
+        senderKind: 'human',
+        priority,
+        text: trimmed,
+        mentions: parsedMentions,
+      });
+      if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    } catch (err) {
+      set({ boardBySession: prevBoard, swarmBySession: prevSwarms });
+      throw err;
+    }
   },
 
   steerMember: async ({ chatSessionId, rosterName, threadId, prompt }) => {
@@ -1296,6 +1339,8 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
   interruptMember: async ({ chatSessionId, rosterName, threadId, reason = 'user_interrupt' }) => {
     const cleanRoster = rosterName.replace(/^@/, '');
     const state = get();
+    const prevMembers = state.membersBySession;
+    const prevThreads = state.threadsBySession;
     const resolvedThread = (state.threadsBySession[chatSessionId] ?? []).find(
       (t) => (threadId && t.threadId === threadId) || t.rosterName === cleanRoster || t.agentId === cleanRoster,
     );
@@ -1318,16 +1363,23 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       },
     }));
     if (resolvedThread?.threadId) {
-      await activeHostAdapter?.interruptTurn?.({
-        chatSessionId,
-        threadId: resolvedThread.threadId,
-        reason,
-      });
+      try {
+        await activeHostAdapter?.interruptTurn?.({
+          chatSessionId,
+          threadId: resolvedThread.threadId,
+          reason,
+        });
+      } catch (err) {
+        set({ membersBySession: prevMembers, threadsBySession: prevThreads });
+        throw err;
+      }
     }
   },
 
   toggleHumanTakeover: async ({ chatSessionId, rosterName, threadId, humanControlled }) => {
     const cleanRoster = rosterName.replace(/^@/, '');
+    const prevMembers = get().membersBySession;
+    const prevThreads = get().threadsBySession;
     set((prev) => ({
       membersBySession: {
         ...prev.membersBySession,
@@ -1344,18 +1396,24 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         ),
       },
     }));
-    await activeHostAdapter?.setHumanControlled?.({
-      chatSessionId,
-      rosterName: cleanRoster,
-      threadId: threadId ?? undefined,
-      humanControlled,
-    });
+    try {
+      await activeHostAdapter?.setHumanControlled?.({
+        chatSessionId,
+        rosterName: cleanRoster,
+        threadId: threadId ?? undefined,
+        humanControlled,
+      });
+    } catch (err) {
+      set({ membersBySession: prevMembers, threadsBySession: prevThreads });
+      throw err;
+    }
   },
 
   handoffMemberToCli: async ({ chatSessionId, fromRosterName, targetAgentId, summary, nextTask }) => {
     const cleanFrom = fromRosterName.replace(/^@/, '');
     const cleanTarget = targetAgentId.replace(/^@/, '');
     const handoffSummary = summary?.trim() || `承接 @${cleanFrom} 的上下文与最近文件改动继续推进`;
+    const prevMembers = get().membersBySession;
     set((prev) => {
       const existing = prev.membersBySession[chatSessionId] ?? [];
       const hasTarget = existing.some((m) => m.rosterName === cleanTarget || m.agentId === cleanTarget);
@@ -1382,18 +1440,25 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       };
     });
 
-    const resp = await activeHostAdapter?.swarmControl?.({
-      action: 'handoff_member',
-      chatSessionId,
-      rosterName: cleanFrom,
-      targetAgentId: cleanTarget,
-      summary: handoffSummary,
-      nextTask: nextTask?.trim() || handoffSummary,
-    });
-    if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    try {
+      const resp = await activeHostAdapter?.swarmControl?.({
+        action: 'handoff_member',
+        chatSessionId,
+        rosterName: cleanFrom,
+        targetAgentId: cleanTarget,
+        summary: handoffSummary,
+        nextTask: nextTask?.trim() || handoffSummary,
+      });
+      if (resp) get().applySessionSnapshot(chatSessionId, resp);
+    } catch (err) {
+      set({ membersBySession: prevMembers });
+      throw err;
+    }
   },
 
   respondThreadApproval: async ({ chatSessionId, threadId, requestId, decision, note }) => {
+    const prevThreads = get().threadsBySession;
+    const prevMembers = get().membersBySession;
     set((prev) => ({
       threadsBySession: {
         ...prev.threadsBySession,
@@ -1416,13 +1481,18 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         ),
       },
     }));
-    await activeHostAdapter?.respondApproval?.({
-      chatSessionId,
-      threadId,
-      requestId,
-      decision,
-      note,
-    });
+    try {
+      await activeHostAdapter?.respondApproval?.({
+        chatSessionId,
+        threadId,
+        requestId,
+        decision,
+        note,
+      });
+    } catch (err) {
+      set({ threadsBySession: prevThreads, membersBySession: prevMembers });
+      throw err;
+    }
   },
 
   loadCheckpointDiff: async ({ chatSessionId, checkpointId, rootPath }) => {
@@ -1576,6 +1646,8 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
 
   saveCustomTemplate: async (template) => {
     const cleanId = template.id.trim().replace(/^@/, '');
+    const prevTemplates = get().customTemplates;
+    const prevAgents = get().agents;
     const normalized: MeshCustomCliTemplate = {
       ...template,
       id: cleanId,
@@ -1599,21 +1671,34 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
         agents: mergeAgentCatalog([...prev.agents, customAgent]),
       };
     });
-    await activeHostAdapter?.saveCustomCliTemplate?.(normalized);
+    try {
+      await activeHostAdapter?.saveCustomCliTemplate?.(normalized);
+    } catch (err) {
+      set({ customTemplates: prevTemplates, agents: prevAgents });
+      throw err;
+    }
   },
 
   removeCustomTemplate: async (id) => {
     const cleanId = id.trim().replace(/^@/, '');
+    const prevTemplates = get().customTemplates;
+    const prevAgents = get().agents;
     set((prev) => ({
       customTemplates: prev.customTemplates.filter((t) => t.id !== cleanId),
       agents: prev.agents.filter((a) => !(a.driver === 'custom' && a.id === cleanId)),
     }));
-    await activeHostAdapter?.deleteCustomCliTemplate?.({ id: cleanId });
+    try {
+      await activeHostAdapter?.deleteCustomCliTemplate?.({ id: cleanId });
+    } catch (err) {
+      set({ customTemplates: prevTemplates, agents: prevAgents });
+      throw err;
+    }
   },
 
   saveCliOverride: async (input) => {
     const cleanId = input.agentId.trim().replace(/^@/, '').toLowerCase();
     if (!cleanId) return;
+    const prevAgents = get().agents;
     const cleanPath = typeof input.executablePath === 'string' ? input.executablePath.trim() : '';
     const cleanArgs = (input.extraArgs ?? []).map((arg) => arg.trim()).filter(Boolean);
     set((prev) => ({
@@ -1629,12 +1714,17 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       ),
     }));
     if (activeHostAdapter?.saveCliOverride) {
-      await activeHostAdapter.saveCliOverride({
-        agentId: cleanId,
-        executablePath: cleanPath || null,
-        extraArgs: cleanArgs,
-        ...(input.env ? { env: input.env } : {}),
-      });
+      try {
+        await activeHostAdapter.saveCliOverride({
+          agentId: cleanId,
+          executablePath: cleanPath || null,
+          extraArgs: cleanArgs,
+          ...(input.env ? { env: input.env } : {}),
+        });
+      } catch (err) {
+        set({ agents: prevAgents });
+        throw err;
+      }
       await get().probeDetectedAgents(true);
     }
   },
@@ -1642,6 +1732,7 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
   resetCliOverride: async (agentId) => {
     const cleanId = agentId.trim().replace(/^@/, '').toLowerCase();
     if (!cleanId) return;
+    const prevAgents = get().agents;
     set((prev) => ({
       agents: prev.agents.map((agent) =>
         agent.id === cleanId
@@ -1655,7 +1746,12 @@ export const useAgentMeshWorkbenchStore = create<AgentMeshWorkbenchState>((set, 
       ),
     }));
     if (activeHostAdapter?.deleteCliOverride) {
-      await activeHostAdapter.deleteCliOverride({ agentId: cleanId });
+      try {
+        await activeHostAdapter.deleteCliOverride({ agentId: cleanId });
+      } catch (err) {
+        set({ agents: prevAgents });
+        throw err;
+      }
       await get().probeDetectedAgents(true);
     }
   },

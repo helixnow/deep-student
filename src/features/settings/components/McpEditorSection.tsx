@@ -336,9 +336,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       // 空 args 保持为空：仅 UI placeholder 提示，不隐式注入默认 filesystem args
     }
 
+    const configIndex = (config.mcpTools || []).findIndex((entry: McpToolConfig) => entry.id === tool.id);
+    const resolvedIndex = configIndex >= 0 ? configIndex : idx;
+
     setMcpToolModal({
       open: true,
-      index: idx,
+      index: resolvedIndex,
       mode: 'json',
       jsonInput,
       draft: {

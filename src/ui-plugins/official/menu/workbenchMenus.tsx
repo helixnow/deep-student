@@ -56,15 +56,8 @@ export const officialAppMenuEntries: readonly SlotEntry<AppMenuContribution>[] =
       run: () => { void workbenchMode.setEnabled(false); },
     },
   ]),
-  official('app:windows', 10, 'workbench.app', ({ t, workbench, focusedTypeId, focusedWindowId, canOpenNewWindow }) => (focusedTypeId ? [
-    {
-      id: 'new-window',
-      icon: <Plus size={15} weight="bold" />,
-      label: t('dock.newWindow'),
-      testId: 'wb-menubar-app-new-window',
-      ...(canOpenNewWindow === false ? { disabled: true } : {}),
-      run: () => workbench.launchApp(focusedTypeId),
-    },
+  official('app:windows', 10, 'workbench.app', ({ t, workbench, focusedTypeId, focusedWindowId }) => (focusedTypeId ? [
+    { id: 'new-window', icon: <Plus size={15} weight="bold" />, label: t('dock.newWindow'), testId: 'wb-menubar-app-new-window', run: () => workbench.launchApp(focusedTypeId) },
     separator('close-separator'),
     {
       id: 'close-window', icon: <X size={15} weight="bold" />, label: t('dock.closeWindow'), testId: 'wb-menubar-app-close-window',

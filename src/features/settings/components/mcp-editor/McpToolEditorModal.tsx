@@ -1,4 +1,4 @@
-import type { Dispatch, ReactElement, SetStateAction } from 'react';
+import { useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -45,13 +45,19 @@ export interface McpToolEditorModalContext {
   refreshSnapshots: (options?: { reload?: boolean }) => Promise<void>;
 }
 
-export function renderMcpToolEditorModal({
-  config, setConfig, isSmallScreen, t, mcpToolModal, setMcpToolModal, showMcpApiKey, setShowMcpApiKey,
+export function renderMcpToolEditorModal(ctx: McpToolEditorModalContext) {
+  // 移动端使用右侧滑动面板，不渲染模态框
+  if (ctx.isSmallScreen) return null;
+  if (!ctx.mcpToolModal.open) return null;
+  return <McpToolEditorModalView {...ctx} />;
+}
+
+function McpToolEditorModalView({
+  config, setConfig, t, mcpToolModal, setMcpToolModal, showMcpApiKey, setShowMcpApiKey,
   describeToolCount, handleMcpTestResult, handleMcpTestError, renderInfoPopover, refreshSnapshots,
 }: McpToolEditorModalContext) {
-  // 移动端使用右侧滑动面板，不渲染模态框
-  if (isSmallScreen) return null;
-  if (!mcpToolModal.open) return null;
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const isEditing = mcpToolModal.index != null;
   const draft = mcpToolModal.draft;
@@ -66,6 +72,7 @@ export function renderMcpToolEditorModal({
         : '';
 
   const handleClose = () => {
+    if (savingRef.current) return;
     setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
   };
 
@@ -221,6 +228,7 @@ export function renderMcpToolEditorModal({
   };
 
   const handleSubmit = async () => {
+    if (savingRef.current) return;
     try {
       let toolToSave: McpToolConfig;
       if (mcpToolModal.mode === 'json') {
@@ -264,13 +272,19 @@ export function renderMcpToolEditorModal({
           showGlobalNotification('error', t('settings:validations.enter_tool_name'));
           return;
         }
-        if (transport === 'websocket' && !draft.url?.trim()) {
-          showGlobalNotification('error', t('settings:mcp_descriptions.websocket_url_required'));
-          return;
+        if (transport === 'websocket') {
+          const wsUrl = (draft.url || '').trim();
+          if (!wsUrl || !/^wss?:\/\//i.test(wsUrl)) {
+            showGlobalNotification('error', t('settings:mcp_descriptions.websocket_url_required'));
+            return;
+          }
         }
-        if ((transport === 'sse' || transport === 'streamable_http') && !(draft.endpoint || draft.fetch?.url)?.trim()) {
-          showGlobalNotification('error', transport === 'streamable_http' ? t('settings:mcp_descriptions.http_endpoint_label', 'HTTP Endpoint *') : t('settings:mcp_descriptions.sse_endpoint_label', 'SSE Endpoint *'));
-          return;
+        if (transport === 'sse' || transport === 'streamable_http') {
+          const endpointUrl = (draft.endpoint || draft.fetch?.url || '').trim();
+          if (!endpointUrl || !/^https?:\/\//i.test(endpointUrl)) {
+            showGlobalNotification('error', transport === 'streamable_http' ? t('settings:mcp_descriptions.http_endpoint_label', 'HTTP Endpoint *') : t('settings:mcp_descriptions.sse_endpoint_label', 'SSE Endpoint *'));
+            return;
+          }
         }
         if (transport === 'stdio' && !draft.command?.trim()) {
           showGlobalNotification('error', t('settings:validations.enter_command'));
@@ -281,7 +295,7 @@ export function renderMcpToolEditorModal({
         if (transport === 'sse' || transport === 'streamable_http') {
           normalizedDraft.fetch = {
             type: transport,
-            url: draft.endpoint || draft.fetch?.url || '',
+            url: (draft.endpoint || draft.fetch?.url || '').trim(),
           };
         }
         if (transport === 'stdio') {
@@ -314,24 +328,32 @@ export function renderMcpToolEditorModal({
       } else {
         nextList[mcpToolModal.index] = toolToSave;
       }
+
+      savingRef.current = true;
+      setSaving(true);
       try {
-        if (invoke) {
-          await saveSetting('mcp.tools.list', JSON.stringify(nextList));
+        try {
+          if (invoke) {
+            await saveSetting('mcp.tools.list', JSON.stringify(nextList));
+          }
+          setConfig(prev => ({ ...prev, mcpTools: nextList }));
+        } catch (error) {
+          const message = getErrorMessage(error);
+          showGlobalNotification('error', `${t('settings:mcp_descriptions.save_failed')}: ${message}`);
+          return;
         }
-        setConfig(prev => ({ ...prev, mcpTools: nextList }));
-      } catch (error) {
-        const message = getErrorMessage(error);
-        showGlobalNotification('error', `${t('settings:mcp_descriptions.save_failed')}: ${message}`);
-        return;
+        try {
+          await refreshSnapshots({ reload: true });
+        } catch (e) {
+          const errMsg = getErrorMessage(e);
+          showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
+        }
+        setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
+        showGlobalNotification('success', t('common:mcp_tool_saved'));
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-      try {
-        await refreshSnapshots({ reload: true });
-      } catch (e) {
-        const errMsg = getErrorMessage(e);
-        showGlobalNotification('warning', t('settings:mcp_descriptions.refresh_failed', { error: errMsg }));
-      }
-      setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
-      showGlobalNotification('success', t('common:mcp_tool_saved'));
     } catch (error) {
       setMcpToolModal(prev => ({ ...prev, error: getErrorMessage(error) }));
     }
@@ -580,8 +602,8 @@ export function renderMcpToolEditorModal({
         )}
 
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
-          <DsButton size="sm" variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+          <DsButton variant="ghost" size="sm" disabled={saving} className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
+          <DsButton size="sm" variant="primary" disabled={saving} className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void handleSubmit()}>{saving ? t('common:actions.saving') : (isEditing ? t('common:actions.save') : t('common:actions.create'))}</DsButton>
         </DsDialogFooter>
       </div>
     </UnifiedModal>

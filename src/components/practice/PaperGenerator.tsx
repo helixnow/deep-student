@@ -7,7 +7,7 @@
  * - 保存试卷并导出 PDF / Word / Markdown
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
@@ -105,6 +105,8 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // UI 状态
   const [showPreview, setShowPreview] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const exportingRef = useRef(false);
 
   // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
   // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
@@ -215,14 +217,20 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   const handleExport = useCallback(async () => {
     if (!generatedPaper) return;
     if (exportFormat === 'preview') return;
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExporting(true);
     try {
       const { exportPaperToFile } = await import('./paperExport');
       await exportPaperToFile(generatedPaper, { format: exportFormat, includeAnswers, includeExplanations });
     } catch (err: unknown) {
       console.error('Failed to export paper:', err);
       showGlobalNotification('error', getErrorMessage(err));
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
     }
-  }, [generatedPaper, exportFormat, includeAnswers, includeExplanations, t]);
+  }, [generatedPaper, exportFormat, includeAnswers, includeExplanations]);
   
   // 切换题目展开
   const toggleQuestion = useCallback((id: string) => {
@@ -264,8 +272,15 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
               </DsButton>
             )}
             {exportFormat !== 'preview' && (
-              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleExport}>
-                <Download size={16} className="mr-1" />
+              <DsButton
+                size="sm"
+                disabled={exporting}
+                className="[@media(pointer:coarse)]:!min-h-11"
+                onClick={() => { void handleExport(); }}
+              >
+                {exporting
+                  ? <CircleNotch size={16} className="mr-1 animate-spin motion-reduce:animate-none" />
+                  : <Download size={16} className="mr-1" />}
                 {t('paper.export')}
               </DsButton>
             )}

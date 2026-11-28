@@ -265,7 +265,7 @@ function App() {
     currentViewRef,
     isSmallScreenRef,
     uiLabEnabled,
-  } = useAppViewState({ isSmallScreen, isDemoShell });
+  } = useAppViewState({ isSmallScreen, isDemoShell, workbenchActive });
   const layout = useDesktopSidebarLayout({ isSmallScreen, workbenchActive, topbarTopMargin, t });
   const { leftPanelCollapsed, leftPanelWidth } = layout;
   const { toggleDesktopWindowMaximize } = useDesktopWindowMaximizeToggle();
@@ -542,6 +542,9 @@ function App() {
       maintenanceMode={maintenanceMode}
       maintenanceReason={maintenanceReason}
       maintenanceRequiresRestart={maintenanceRequiresRestart}
+      showImportConversation={showImportConversation}
+      setShowImportConversation={setShowImportConversation}
+      handleImportConversationSuccess={handleImportConversationSuccess}
       showCloudStorageSettings={showCloudStorageSettings}
       setShowCloudStorageSettings={setShowCloudStorageSettings}
       debugPanelRequested={debugPanelRequested}

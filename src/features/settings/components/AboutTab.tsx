@@ -103,6 +103,7 @@ export const AboutTab: React.FC = () => {
   const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
   const [frequency, setFrequencyState] = useState<UpdateFrequency>(getUpdateFrequency);
   const [frequencyDays, setFrequencyDaysState] = useState<number>(getUpdateFrequencyDays);
+  const [frequencyDaysDraft, setFrequencyDaysDraft] = useState<string>(() => String(getUpdateFrequencyDays()));
   const [noRemind, setNoRemindState] = useState<boolean>(getNoRemind);
 
   const handleChannelChange = useCallback((val: UpdateChannel) => {
@@ -118,11 +119,18 @@ export const AboutTab: React.FC = () => {
     }
   }, []);
 
-  const handleFrequencyDaysChange = useCallback((days: number) => {
-    const clamped = Math.max(1, Math.round(days));
-    setUpdateFrequencyDays(clamped);
-    setFrequencyDaysState(clamped);
-  }, []);
+  const commitFrequencyDays = useCallback((raw: string) => {
+    const trimmed = raw.trim();
+    const parsed = Number(trimmed);
+    const clamped = trimmed !== '' && Number.isFinite(parsed)
+      ? Math.min(365, Math.max(1, Math.round(parsed)))
+      : frequencyDays;
+    setFrequencyDaysDraft(String(clamped));
+    if (clamped !== frequencyDays) {
+      setUpdateFrequencyDays(clamped);
+      setFrequencyDaysState(clamped);
+    }
+  }, [frequencyDays]);
 
   const handleResetNoRemind = useCallback(() => {
     setNoRemind(false);
@@ -237,8 +245,9 @@ export const AboutTab: React.FC = () => {
                         type="number"
                         min={1}
                         max={365}
-                        value={frequencyDays}
-                        onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
+                        value={frequencyDaysDraft}
+                        onChange={(e) => setFrequencyDaysDraft(e.target.value)}
+                        onBlur={() => commitFrequencyDays(frequencyDaysDraft)}
                         className="w-16 text-center"
                       />
                     )}

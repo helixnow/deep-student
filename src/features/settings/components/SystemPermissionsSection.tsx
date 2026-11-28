@@ -22,6 +22,7 @@ import {
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isMacOS, isMobilePlatform, isWindows } from '@/utils/platform';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isTauriRuntime } from '@/api/tauriClient';
@@ -282,14 +283,9 @@ export function SystemPermissionsSection() {
   }, [t]);
 
   const openDirectoryPermissions = useCallback(() => {
+    useSettingsShellStore.getState().requestSettingsSection('tool-permissions');
     setPendingSettingsTab('mcp');
     dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'mcp' });
-    window.setTimeout(() => {
-      document.getElementById('settings-tool-permissions')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 0);
   }, []);
 
   if (!supported) return null;

@@ -14,6 +14,7 @@ import { setActiveOpenResourceHandler } from '@/dstu/openResource';
 interface AppViewStateOptions {
   isSmallScreen: boolean;
   isDemoShell: boolean;
+  workbenchActive?: boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ function resolveInitialViewFromShortcut(): CurrentView {
   return 'chat-v2';
 }
 
-export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOptions) {
+export function useAppViewState({ isSmallScreen, isDemoShell, workbenchActive = false }: AppViewStateOptions) {
   const viewEntries = useSlot<ShellViewContribution>('views');
   const [currentView, setCurrentViewRaw] = useState<CurrentView>(() => resolveInitialViewFromShortcut());
   const activeView = viewEntries.find(entry => entry.key === currentView)?.value;
@@ -62,7 +63,9 @@ export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOpti
   );
 
   // 消费并清理 URL 上的 ?shortcut= 参数，避免后续刷新页面时被旧快捷入口重新劫持
+  // Workbench 模式下保留 ?shortcut= 交由 WorkbenchEventBridge 消费
   useEffect(() => {
+    if (workbenchActive) return;
     if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') return;
     try {
       const url = new URL(window.location.href);
@@ -76,7 +79,7 @@ export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOpti
     } catch {
       /* ignore malformed location or sandboxed history */
     }
-  }, []);
+  }, [workbenchActive]);
 
   useEffect(() => {
     isSmallScreenRef.current = isSmallScreen;
@@ -176,7 +179,7 @@ export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOpti
   }, [isDemoShell]);
 
   // 启动恢复回执跳转设置页；UI Lab 关闭时退出 ui-lab 视图
-  const { uiLabEnabled } = useViewRedirects(currentView, setCurrentView);
+  const { uiLabEnabled } = useViewRedirects(currentView, setCurrentView, workbenchActive);
 
   // 🔍 诊断：分离调度延迟 vs 渲染时间（找出 200-400ms 的真正来源）
   useEffect(() => {

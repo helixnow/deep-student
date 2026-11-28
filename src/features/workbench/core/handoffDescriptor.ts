@@ -69,7 +69,7 @@ export const WORKBENCH_HANDOFF_STORAGE_KEY = 'desktop.workbenchHandoff';
  */
 export const DEFAULT_HANDOFF_MAX_AGE_MS = 15 * 60_000;
 
-const APP_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const APP_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const MAX_RESOURCE_ID_LENGTH = 256;
 const MAX_INNER_ROUTE_LENGTH = 256;
 

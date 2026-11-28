@@ -42,6 +42,8 @@ export interface AppendToNotePickerProps {
   /** 关闭整个流程 */
   onCancel: () => void;
   onConfirm: (note: AppendTargetNote) => void;
+  /** 是否正在保存追加，防止重复提交 */
+  isSaving?: boolean;
 }
 
 /** 从 DSTU 路径取所在目录（"/高考复习/函数/note_x" → "高考复习 / 函数"；根目录返回空串） */
@@ -57,6 +59,7 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
   onBack,
   onCancel,
   onConfirm,
+  isSaving = false,
 }) => {
   const { t, i18n } = useTranslation(['chatV2', 'learningHub', 'common']);
   const [query, setQuery] = useState('');
@@ -130,9 +133,9 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
   const selected = notes.find((note) => note.id === selectedId) ?? null;
 
   const handleConfirm = useCallback(() => {
-    if (!selected) return;
+    if (!selected || isSaving) return;
     onConfirm({ id: selected.id, name: selected.name });
-  }, [selected, onConfirm]);
+  }, [isSaving, selected, onConfirm]);
 
   const formatDate = (ms: number) => {
     if (!Number.isFinite(ms) || ms <= 0) return '';
@@ -205,12 +208,15 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
                 !isSelected && 'hover:bg-[var(--interactive-hover)]',
               )}
               onClick={() => setSelectedId(note.id)}
-              onDoubleClick={() => onConfirm({ id: note.id, name: note.name })}
+              onDoubleClick={() => { if (!isSaving) onConfirm({ id: note.id, name: note.name }); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  if (isSelected) onConfirm({ id: note.id, name: note.name });
-                  else setSelectedId(note.id);
+                  if (isSelected) {
+                    if (!isSaving) onConfirm({ id: note.id, name: note.name });
+                  } else {
+                    setSelectedId(note.id);
+                  }
                 } else if (e.key === ' ') {
                   e.preventDefault();
                   setSelectedId(note.id);
@@ -238,7 +244,7 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
   );
 
   const backToCreate = (
-    <DsButton variant="ghost" size="sm" onClick={onBack} className="gap-1.5 px-2 max-w-full">
+    <DsButton variant="ghost" size="sm" onClick={onBack} disabled={isSaving} className="gap-1.5 px-2 max-w-full">
       <NotePencil size={14} className="shrink-0" aria-hidden="true" />
       <span className="truncate">{t('chatV2:selectionToolbar.appendToNoteBackToCreate', '改为新建笔记')}</span>
     </DsButton>
@@ -257,11 +263,17 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
         data-testid="append-note-picker"
         data-inline="true"
       >
-        <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
+        <div
+          className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 pb-1.5 shrink-0"
+          style={{
+            paddingTop: 'calc(0.375rem + var(--mobile-safe-area-top, var(--android-safe-area-top, env(safe-area-inset-top, 0px))))',
+          }}
+        >
           <DsButton
             variant="ghost"
             size="sm"
             onClick={onBack}
+            disabled={isSaving}
             aria-label={t('common:back')}
             className="gap-1 px-2 shrink-0"
           >
@@ -277,12 +289,12 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
           {listBody}
         </CustomScrollArea>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border/50 px-3 py-2 shrink-0 bg-background pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+        <div className="flex items-center justify-end gap-2 border-t border-border/50 px-3 py-2 shrink-0 bg-background pb-[calc(0.5rem+var(--mobile-safe-area-bottom,var(--android-safe-area-bottom,env(safe-area-inset-bottom,0px))))]">
           <div className="mr-auto min-w-0">{backToCreate}</div>
-          <DsButton variant="ghost" size="sm" onClick={onCancel} className="px-4">
+          <DsButton variant="ghost" size="sm" onClick={onCancel} disabled={isSaving} className="px-4">
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selected} className="px-4">
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selected || isSaving} className="px-4">
             {confirmLabel}
           </DsButton>
         </div>
@@ -293,7 +305,7 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
   return (
     <DsDialog
       open={open}
-      onOpenChange={(next) => { if (!next) onCancel(); }}
+      onOpenChange={(next) => { if (!next && !isSaving) onCancel(); }}
       maxWidth="max-w-md"
     >
       <div data-testid="append-note-picker" data-inline="false" className="contents">
@@ -314,10 +326,10 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
 
         <DsDialogFooter>
           <div className="mr-auto min-w-0">{backToCreate}</div>
-          <DsButton variant="ghost" size="sm" onClick={onCancel}>
+          <DsButton variant="ghost" size="sm" onClick={onCancel} disabled={isSaving}>
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selected}>
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selected || isSaving}>
             {confirmLabel}
           </DsButton>
         </DsDialogFooter>

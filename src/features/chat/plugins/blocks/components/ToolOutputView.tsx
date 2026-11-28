@@ -11,7 +11,9 @@ import { cn } from '@/utils/cn';
 import { CheckCircle, FileJs, FileText, Globe, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { builtinToolSkills } from '@/features/chat/skills/builtin-tools';
 
@@ -545,8 +547,9 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
       await copyTextToClipboard(copyableText);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ToolOutputView] Copy failed:', error);
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [copyableText]);
 

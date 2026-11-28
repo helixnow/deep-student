@@ -338,15 +338,13 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   }, []);
 
   const copyJsonToClipboard = useCallback(async (content: string) => {
-    if (navigator?.clipboard?.writeText) {
-      try {
-        await copyTextToClipboard(content);
-        return true;
-      } catch (err: unknown) {
-        console.warn('clipboard write failed', err);
-      }
+    try {
+      await copyTextToClipboard(content);
+      return true;
+    } catch (err: unknown) {
+      console.warn('clipboard write failed', err);
+      return false;
     }
-    return false;
   }, []);
 
   const getSuggestedFileName = useCallback((name: string, fallback: string) => {
@@ -458,15 +456,16 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
 
       if (!saved) {
         const copied = await copyJsonToClipboard(exportJson);
-        showGlobalNotification(
-          copied ? 'info' : 'warning',
-          copied ? t('dialog_unavailable_batch') : t('dialog_unavailable_no_clipboard'),
-        );
-        if (!copied) {
+        if (copied) {
+          showGlobalNotification('info', t('dialog_unavailable_batch'));
+          setActivePanel(null);
+          setBatchExportSelection(new Set());
+        } else {
+          const message = t('dialog_unavailable_no_clipboard');
+          showGlobalNotification('warning', message);
+          setExportPanelError(message);
           console.log('Templates JSON:', exportJson);
         }
-        setActivePanel(null);
-        setBatchExportSelection(new Set());
       }
     } catch (err: unknown) {
       logError(t('batch_export_failed'), err);
@@ -824,6 +823,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
                 onClick: () => {
                   if (!confirmDiscardEditorChanges()) return;
+                  backToBrowse();
                   navigateToFlashcards();
                 },
               },
@@ -964,6 +964,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       searchTerm,
       isImporting,
       onCancel,
+      backToBrowse,
       navigateToFlashcards,
       handleCancelEdit,
       handleEditorDiscard,

@@ -24,6 +24,8 @@ import {
 } from '@phosphor-icons/react';
 import { fileManager } from '@/utils/fileManager';
 import { useViewStore } from '@/stores/viewStore';
+import { isWorkbenchHostEnabled } from '@/shared/workbenchHost';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { isAndroid } from '@/utils/platform';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -381,8 +383,9 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onNext, onPrev, canNavigateNext, canNavigatePrev, handleResetView, zoomBy]);
 
-  // 全局视图切换离开 chat-v2 时，强制关闭预览
+  // 全局视图切换离开 chat-v2 时，强制关闭预览（Workbench 宿主下多面板共存不适用经典视图互斥）
   useEffect(() => {
+    if (isWorkbenchHostEnabled()) return;
     if (isOpen && currentView !== 'chat-v2') {
       onClose();
     }
@@ -447,6 +450,8 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
       });
     } catch (error) {
       console.error('[InlineImageViewer] Download failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      showGlobalNotification('error', message);
     }
   }, [images, currentIndex]);
 

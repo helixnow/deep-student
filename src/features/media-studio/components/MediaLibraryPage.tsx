@@ -56,9 +56,13 @@ import { DesktopHeaderSearch } from '@/components/layout/DesktopHeaderSearch';
 import { dstu, folderApi } from '@/dstu';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
-import { fileManager } from '@/utils/fileManager';
+import { fileManager, saveAndroidStagedFile, usesAndroidSaf } from '@/utils/fileManager';
+import { isWebUiShell } from '@/utils/platform';
+import { isTauriEnvironment } from '@/utils/urlOpener';
+import { abortStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
+import { isWorkbenchHostEnabled, launchWorkbenchApp } from '@/shared/workbenchHost';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { mediaTranscriptApi } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
+import { mediaTranscriptApi, type TranscriptExportFormat, type TranscriptSegment } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import {
   BilibiliLinkDialog,
   summarizeBilibiliBatch,
@@ -92,6 +96,130 @@ import './MediaLibraryPage.css';
 
 /** 媒体文件大：拖放上限与导入上限（4 GB，见设计契约 §4）一致 */
 const MAX_MEDIA_FILE_SIZE = 4 * 1024 * 1024 * 1024;
+const MAX_SUBTITLE_FILE_SIZE = 20 * 1024 * 1024;
+const PASSTHROUGH_SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.json', '.bcc'] as const;
+const CONVERTIBLE_SUBTITLE_EXTENSIONS = ['.ass', '.ssa', '.txt'] as const;
+const UNSUPPORTED_SUBTITLE_FORMAT_ERROR =
+  'This file type is not a recognized subtitle format. Supported formats: .srt, .vtt, .ass, .txt, .json';
+
+function pad2(n: number): string {
+  return String(Math.max(0, Math.floor(n))).padStart(2, '0');
+}
+
+function pad3(n: number): string {
+  return String(Math.max(0, Math.floor(n))).padStart(3, '0');
+}
+
+function formatSubtitleTime(ms: number, sep: ',' | '.'): string {
+  const clamped = Math.max(0, Math.round(ms));
+  const hours = Math.floor(clamped / 3_600_000);
+  const minutes = Math.floor((clamped % 3_600_000) / 60_000);
+  const seconds = Math.floor((clamped % 60_000) / 1000);
+  const millis = clamped % 1000;
+  return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}${sep}${pad3(millis)}`;
+}
+
+function parseSubtitleClockMs(raw: string): number | null {
+  const normalized = raw.trim().replace(',', '.');
+  const match =
+    /^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/.exec(normalized) ??
+    /^(?:0*:)?(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/.exec(normalized);
+  if (!match) return null;
+  const hasHours = match.length === 5;
+  const hours = hasHours ? Number(match[1]) : 0;
+  const minutes = Number(hasHours ? match[2] : match[1]);
+  const seconds = Number(hasHours ? match[3] : match[2]);
+  const frac = (hasHours ? match[4] : match[3]) ?? '';
+  if (![hours, minutes, seconds].every(Number.isFinite)) return null;
+  const millis = frac ? Number(frac.padEnd(3, '0').slice(0, 3)) : 0;
+  return (hours * 3600 + minutes * 60 + seconds) * 1000 + (Number.isFinite(millis) ? millis : 0);
+}
+
+async function normalizeSubtitleFileForImport(file: File): Promise<File> {
+  const lower = file.name.trim().toLowerCase();
+  if (PASSTHROUGH_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+    return file;
+  }
+  if (!CONVERTIBLE_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+    throw new Error(UNSUPPORTED_SUBTITLE_FORMAT_ERROR);
+  }
+  const raw = await file.text();
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('Subtitle file is empty');
+  }
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'subtitles';
+  if (lower.endsWith('.ass') || lower.endsWith('.ssa')) {
+    const cues: Array<{ startMs: number; endMs: number; text: string }> = [];
+    let textFieldIndex = 9;
+    for (const line of raw.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+      const tLine = line.trim();
+      if (/^Format:/i.test(tLine)) {
+        const idx = tLine.slice(7).split(',').map((f) => f.trim().toLowerCase()).indexOf('text');
+        if (idx >= 0) textFieldIndex = idx;
+        continue;
+      }
+      if (!/^Dialogue:/i.test(tLine)) continue;
+      const payload = tLine.slice(9).trim();
+      const parts: string[] = [];
+      let cursor = 0;
+      for (let i = 0; i < textFieldIndex; i += 1) {
+        const comma = payload.indexOf(',', cursor);
+        if (comma < 0) break;
+        parts.push(payload.slice(cursor, comma).trim());
+        cursor = comma + 1;
+      }
+      const startMs = parseSubtitleClockMs(parts[1] ?? '');
+      const endMs = parseSubtitleClockMs(parts[2] ?? '');
+      const text = (cursor < payload.length ? payload.slice(cursor) : '')
+        .replace(/\{[^}]*\}/g, '')
+        .replace(/\\N|\\n/g, '\n')
+        .replace(/\\h/g, ' ')
+        .trim();
+      if (startMs !== null && endMs !== null && endMs > startMs && text) {
+        cues.push({ startMs, endMs, text });
+      }
+    }
+    if (cues.length === 0) {
+      throw new Error('No subtitle dialogue entries found in ASS/SSA file');
+    }
+    const srt = cues
+      .map((c, idx) => `${idx + 1}\n${formatSubtitleTime(c.startMs, ',')} --> ${formatSubtitleTime(c.endMs, ',')}\n${c.text}`)
+      .join('\n\n');
+    return new File([srt], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
+  }
+  if (/^WEBVTT/i.test(trimmed)) {
+    return new File([raw], `${baseName}.vtt`, { type: 'text/vtt;charset=utf-8' });
+  }
+  const cleaned = raw.replace(/^\uFEFF/, '').trim();
+  if (/^\d{0,2}:?\d{2}:\d{2}[,.]\d{2,3}\s+-->\s+/m.test(cleaned)) {
+    return new File([cleaned], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
+  }
+  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const srt = lines
+    .map((line, index) => `${index + 1}\n${formatSubtitleTime(index * 4000, ',')} --> ${formatSubtitleTime((index + 1) * 4000, ',')}\n${line}`)
+    .join('\n\n');
+  return new File([srt], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
+}
+
+function formatTranscriptForWebExport(
+  segments: readonly TranscriptSegment[],
+  format: TranscriptExportFormat,
+): string {
+  const done = segments.filter((seg) => seg.status === 'done' && seg.text.trim().length > 0);
+  if (format === 'txt') {
+    return done.map((seg) => seg.text.trim()).join('\n');
+  }
+  if (format === 'vtt') {
+    const body = done
+      .map((seg) => `${formatSubtitleTime(seg.startMs, '.')} --> ${formatSubtitleTime(Math.max(seg.endMs, seg.startMs + 1), '.')}\n${seg.text.trim()}`)
+      .join('\n\n');
+    return `WEBVTT\n\n${body}\n`;
+  }
+  return done
+    .map((seg, idx) => `${idx + 1}\n${formatSubtitleTime(seg.startMs, ',')} --> ${formatSubtitleTime(Math.max(seg.endMs, seg.startMs + 1), ',')}\n${seg.text.trim()}`)
+    .join('\n\n');
+}
 
 export type MediaLibraryViewMode = 'list' | 'grouped';
 
@@ -202,6 +330,8 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const [newGroup, setNewGroup] = useState<{ name: string } | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const lastBilibiliSeqRef = useRef(bilibiliRequestSeq);
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
+  const subtitleImportTargetRef = useRef<MediaLibraryItem | null>(null);
   const { items, loaded, error, refresh, removeLocal } = library;
 
   useEffect(() => {
@@ -229,6 +359,31 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const now = useMemo(() => Date.now(), [items]);
 
   // ---------------------------------------------------------------- 行操作
+  const handleSubtitleInputChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const target = subtitleImportTargetRef.current;
+    subtitleImportTargetRef.current = null;
+    if (!file || !target) return;
+    let uploadId: string | undefined;
+    try {
+      if (file.size > MAX_SUBTITLE_FILE_SIZE) {
+        throw new Error(t('learningHub:mediaTranscript.importTooLarge', { defaultValue: 'Subtitle files must be 20 MB or smaller.' }));
+      }
+      const uploadFile = await normalizeSubtitleFileForImport(file);
+      uploadId = await stageBlobUpload(uploadFile, { name: uploadFile.name });
+      const result = await mediaTranscriptApi.importFile(target.id, `dstu-staged:${uploadId}`);
+      uploadId = undefined;
+      const count = result.segments.filter((s) => s.status === 'done').length;
+      showGlobalNotification('success', t('learningHub:mediaTranscript.importSuccess', { count }));
+      void refresh();
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.importFailed'));
+    } finally {
+      if (uploadId) await abortStagedUpload(uploadId);
+    }
+  }, [refresh, t]);
+
   const handleAction = useCallback((item: MediaLibraryItem, action: MediaRowAction) => {
     switch (action.type) {
       case 'rename':
@@ -238,15 +393,24 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         setDeleting(item);
         return;
       case 'reveal':
-        window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
-          detail: { view: 'learning-hub', openResource: `/${item.id}` },
-        }));
+        if (isWorkbenchHostEnabled()) {
+          launchWorkbenchApp({ typeId: 'files', reason: 'api' });
+        } else {
+          window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+            detail: { view: 'learning-hub', openResource: `/${item.id}` },
+          }));
+        }
         return;
       case 'importSubtitle':
+        if (usesAndroidSaf() || isWebUiShell() || !isTauriEnvironment()) {
+          subtitleImportTargetRef.current = item;
+          subtitleInputRef.current?.click();
+          return;
+        }
         void (async () => {
           try {
             const path = await fileManager.pickSingleFile({
-              filters: [{ name: t('learningHub:mediaTranscript.importFilterName'), extensions: ['srt', 'vtt', 'json'] }],
+              filters: [{ name: t('learningHub:mediaTranscript.importFilterName'), extensions: ['srt', 'vtt', 'ass', 'txt', 'json'] }],
             });
             if (!path) return;
             const result = await mediaTranscriptApi.importFile(item.id, path);
@@ -282,6 +446,26 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         void (async () => {
           try {
             const base = item.name.replace(/\.[^.]+$/, '') || 'transcript';
+            if (usesAndroidSaf()) {
+              const staged = `/deep-student/recovery/exports/${crypto.randomUUID()}.${action.format}`;
+              await mediaTranscriptApi.exportFile(item.id, action.format, staged);
+              if (!await saveAndroidStagedFile(staged, `${base}.${action.format}`, action.format === 'vtt' ? 'text/vtt' : 'text/plain')) return;
+              showGlobalNotification('success', t('learningHub:mediaTranscript.exportSuccess'));
+              return;
+            }
+            if (isWebUiShell() || !isTauriEnvironment()) {
+              const transcript = await mediaTranscriptApi.get(item.id);
+              const content = formatTranscriptForWebExport(transcript.segments, action.format);
+              const saved = await fileManager.saveTextFile({
+                defaultFileName: `${base}.${action.format}`,
+                content,
+                filters: [{ name: action.format.toUpperCase(), extensions: [action.format] }],
+              });
+              if (!saved.canceled) {
+                showGlobalNotification('success', t('learningHub:mediaTranscript.exportSuccess'));
+              }
+              return;
+            }
             const dest = await fileManager.pickSavePath({
               defaultFileName: `${base}.${action.format}`,
               filters: [{ name: action.format.toUpperCase(), extensions: [action.format] }],
@@ -298,36 +482,42 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   }, [refresh, t]);
 
   const confirmRename = useCallback(async () => {
-    if (!renaming) return;
+    if (busy || !renaming) return;
     const name = renaming.name.trim();
     if (!name || name === renaming.item.name) {
       setRenaming(null);
       return;
     }
     setBusy(true);
-    const result = await dstu.rename(`/${renaming.item.id}`, name);
-    setBusy(false);
-    if (!result.ok) {
-      showGlobalNotification('error', result.error.toUserMessage(), t('mediaStudio:row.renameFailed'));
-      return;
+    try {
+      const result = await dstu.rename(`/${renaming.item.id}`, name);
+      if (!result.ok) {
+        showGlobalNotification('error', result.error.toUserMessage(), t('mediaStudio:row.renameFailed'));
+        return;
+      }
+      setRenaming(null);
+      void refresh();
+    } finally {
+      setBusy(false);
     }
-    setRenaming(null);
-    void refresh();
-  }, [renaming, refresh, t]);
+  }, [busy, renaming, refresh, t]);
 
   const confirmDelete = useCallback(async () => {
-    if (!deleting) return;
+    if (busy || !deleting) return;
     setBusy(true);
-    const result = await dstu.delete(`/${deleting.id}`);
-    setBusy(false);
-    if (!result.ok) {
-      showGlobalNotification('error', result.error.toUserMessage(), t('mediaStudio:row.deleteFailed'));
-      return;
+    try {
+      const result = await dstu.delete(`/${deleting.id}`);
+      if (!result.ok) {
+        showGlobalNotification('error', result.error.toUserMessage(), t('mediaStudio:row.deleteFailed'));
+        return;
+      }
+      removeLocal(deleting.id);
+      showGlobalNotification('success', t('mediaStudio:row.deleted', { name: deleting.name }));
+      setDeleting(null);
+    } finally {
+      setBusy(false);
     }
-    removeLocal(deleting.id);
-    showGlobalNotification('success', t('mediaStudio:row.deleted', { name: deleting.name }));
-    setDeleting(null);
-  }, [deleting, removeLocal, t]);
+  }, [busy, deleting, removeLocal, t]);
 
   // ---------------------------------------------------------------- 视图 / 分组
   const setViewMode = useCallback((mode: MediaLibraryViewMode) => {
@@ -951,6 +1141,14 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           data-media-import-input=""
         />
       ) : null}
+      <input
+        ref={subtitleInputRef}
+        type="file"
+        accept=".srt,.vtt,.ass,.ssa,.txt,.json,.bcc,text/vtt,text/plain,application/json"
+        onChange={(event) => void handleSubtitleInputChange(event)}
+        className="hidden"
+        data-media-subtitle-import-input=""
+      />
 
       <UnifiedDragDropZone
         zoneId="media-studio-library"
@@ -1099,7 +1297,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
       <DsAlertDialog
         open={renaming !== null}
-        onOpenChange={(open) => { if (!open) setRenaming(null); }}
+        onOpenChange={(open) => { if (!open && !busy) setRenaming(null); }}
         title={t('mediaStudio:row.rename')}
         confirmText={t('common:save')}
         confirmVariant="primary"
@@ -1128,7 +1326,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
       <DsAlertDialog
         open={deleting !== null}
-        onOpenChange={(open) => { if (!open) setDeleting(null); }}
+        onOpenChange={(open) => { if (!open && !busy) setDeleting(null); }}
         title={t('mediaStudio:row.deleteTitle', { name: deleting?.name ?? '' })}
         description={t('mediaStudio:row.deleteDesc')}
         confirmText={t('mediaStudio:row.delete')}

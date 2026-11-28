@@ -10,6 +10,7 @@ import i18next from 'i18next';
 import { UploadSimple } from '@phosphor-icons/react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { getErrorMessage } from '@/utils/errorUtils';
 import type { Command } from '../registry/types';
 
 /** 后端 import_apkg_to_library 返回结构（字段与 Rust ApkgImportResult serde 输出一致） */
@@ -38,16 +39,26 @@ export const ankiCommands: Command[] = [
     get keywords() { return kw('anki.import-apkg'); },
     priority: 90,
     execute: async (deps) => {
-      const selected = await dialogOpen({
-        multiple: false,
-        filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
-        title: i18next.t('command_palette:commands.anki.import-apkg', 'Import Anki Deck (.apkg)'),
-      });
-      // 用户取消选择时静默返回
-      if (!selected || Array.isArray(selected)) return;
-
       try {
+        const selected = await dialogOpen({
+          multiple: false,
+          filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
+          title: i18next.t('command_palette:commands.anki.import-apkg', 'Import Anki Deck (.apkg)'),
+        });
+        // 用户取消选择时静默返回
+        if (!selected || Array.isArray(selected)) return;
+
         const result = await invoke<ApkgImportResult>('import_apkg_to_library', { path: selected });
+        try {
+          const { requestFlashcardsDueRefresh, useFlashcardsLibraryStore } = await import('@/features/flashcards');
+          requestFlashcardsDueRefresh();
+          const libraryState = useFlashcardsLibraryStore.getState();
+          if (libraryState.items.length > 0 || libraryState.total > 0) {
+            void libraryState.refresh();
+          }
+        } catch {
+          // 刷新通知失败不影响导入成功回执
+        }
         const queued = result.reviewEnqueue?.enqueued ?? 0;
         deps.showNotification(
           'success',
@@ -63,11 +74,10 @@ export const ankiCommands: Command[] = [
               }),
         );
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
         deps.showNotification(
           'error',
           i18next.t('command_palette:notifications.apkg_import_failed', {
-            error: message,
+            error: getErrorMessage(error),
             defaultValue: 'Failed to import Anki deck: {{error}}',
           }),
         );

@@ -6,7 +6,7 @@
  * 合法 researchSessionId 才触发 HPIAS 事件桥 + 实时研究面板。
  */
 
-import React, { useCallback, useMemo, useSyncExternalStore } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FolderSimplePlus, PushPinSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
@@ -271,8 +271,13 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     serializedArtifactContent,
   ]);
 
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+
   const handleSaveToSpace = useCallback(async () => {
-    if (!serializedArtifactContent) return;
+    if (!serializedArtifactContent || isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSaving(true);
     try {
       const result = await usePinnedArtifactStore.getState().saveArtifactToStudySpace({
         title: artifactTitle,
@@ -297,6 +302,9 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
       } catch {
         // ignore notification errors in headless environments
       }
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
     }
   }, [artifactTitle, resolvedGroupId, resolvedSessionId, serializedArtifactContent, t]);
 
@@ -345,6 +353,7 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
               <DsButton
                 variant="ghost"
                 size="sm"
+                disabled={isSaving}
                 onClick={() => void handleSaveToSpace()}
                 data-testid="generative-ui-save-space-button"
                 className="[@media(pointer:coarse)]:!min-h-11"

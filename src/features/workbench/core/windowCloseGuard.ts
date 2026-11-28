@@ -53,17 +53,19 @@ export function __resetWindowDirtyForTests(): void {
 }
 
 // 窗口从 store 移除时清理残留脏标记（长会话防泄漏；集合为空时零成本）
-useWindowStore.subscribe((state) => {
-  if (dirtyWindowIds.size === 0) return;
-  let changed = false;
-  for (const id of dirtyWindowIds) {
-    if (!state.windows[id]) {
-      dirtyWindowIds.delete(id);
-      changed = true;
+if (typeof useWindowStore.subscribe === 'function') {
+  useWindowStore.subscribe((state) => {
+    if (dirtyWindowIds.size === 0) return;
+    let changed = false;
+    for (const id of dirtyWindowIds) {
+      if (!state.windows[id]) {
+        dirtyWindowIds.delete(id);
+        changed = true;
+      }
     }
-  }
-  if (changed) notifyDirtyListeners();
-});
+    if (changed) notifyDirtyListeners();
+  });
+}
 
 /** 同一窗口的 canClose single-flight；调用方在 await 后必须重新读取窗口状态。 */
 export function confirmWindowClose(windowId: string): Promise<boolean> {

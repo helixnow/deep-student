@@ -1757,6 +1757,10 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
     prevIsStreamingRef.current = isStreaming;
     prevTurnAnchorIdRef.current = turnAnchorId;
 
+    if (switchedTurn) {
+      setIsTimelineCollapsed(false);
+    }
+
     if (startedNewStream || switchedTurn || nodes.length <= LIVE_ACTIVITY_VISIBLE_ROWS) {
       setIsWindowExpandedAll(false);
     }

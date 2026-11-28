@@ -47,6 +47,7 @@ import {
   AppMenuItem,
 } from '@/components/ui/app-menu/AppMenu';
 import { showGlobalNotification } from '../UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
@@ -294,6 +295,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   // zip 技能包导入覆盖确认状态（复用 pendingImport 的确认交互模式）
   const [zipOverwriteOpen, setZipOverwriteOpen] = useState(false);
   const [pendingZipImport, setPendingZipImport] = useState<{ zipPath: string; name: string } | null>(null);
+  const [overwriting, setOverwriting] = useState(false);
+  const overwritingRef = useRef(false);
 
   // zip 导入装前确认状态：dry_run 扫描结果（含风险分级）先行展示，用户确认后才真正安装
   const [zipConfirmOpen, setZipConfirmOpen] = useState(false);
@@ -799,6 +802,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       }
     } catch (e) {
       console.error('[SkillsManagement] Export failed:', e);
+      showGlobalNotification('error', getErrorMessage(e));
     }
   }, [t]);
 
@@ -820,6 +824,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     }
 
     let exportedCount = 0;
+    let failedCount = 0;
+    let lastError: unknown = null;
     for (const skill of userSkills) {
       const content = serializeSkillToMarkdown(
         {
@@ -853,10 +859,19 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         }
       } catch (e) {
         console.error(`[SkillsManagement] Export ${skill.id} failed:`, e);
+        failedCount++;
+        lastError = e;
       }
     }
 
-    if (exportedCount > 0) {
+    if (failedCount > 0 && exportedCount > 0) {
+      showGlobalNotification(
+        'warning',
+        `${t('skills:management.export_all_success', { count: exportedCount })} (${getErrorMessage(lastError)})`,
+      );
+    } else if (failedCount > 0) {
+      showGlobalNotification('error', getErrorMessage(lastError));
+    } else if (exportedCount > 0) {
       showGlobalNotification(
         'success',
         t('skills:management.export_all_success', { count: exportedCount })
@@ -1097,7 +1112,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   }, [t]);
 
   const handleConfirmOverwrite = useCallback(async () => {
-    if (!pendingImport) return;
+    if (!pendingImport || overwritingRef.current) return;
+    overwritingRef.current = true;
+    setOverwriting(true);
 
     try {
       const existingSkill = skillRegistry.get(pendingImport.skill.id);
@@ -1125,9 +1142,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     } catch (error) {
       showGlobalNotification(
         'error',
-        t('skills:management.import_failed', { error: String(error) })
+        t('skills:management.import_failed', { error: getErrorMessage(error) })
       );
     } finally {
+      overwritingRef.current = false;
+      setOverwriting(false);
       setPendingImport(null);
       setImportOverwriteOpen(false);
       if (fileInputRef.current) {
@@ -1137,6 +1156,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   }, [pendingImport, t]);
 
   const handleCancelOverwrite = useCallback(() => {
+    if (overwritingRef.current) return;
     setPendingImport(null);
     setImportOverwriteOpen(false);
     if (fileInputRef.current) {
@@ -1145,7 +1165,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   }, []);
 
   const handleConfirmZipOverwrite = useCallback(async () => {
-    if (!pendingZipImport) return;
+    if (!pendingZipImport || overwritingRef.current) return;
+    overwritingRef.current = true;
+    setOverwriting(true);
 
     try {
       await runZipImport(pendingZipImport.zipPath, true);
@@ -1153,15 +1175,18 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       showGlobalNotification(
         'error',
         t('skills:management.import_zip_failed'),
-        String(error),
+        getErrorMessage(error),
       );
     } finally {
+      overwritingRef.current = false;
+      setOverwriting(false);
       setPendingZipImport(null);
       setZipOverwriteOpen(false);
     }
   }, [pendingZipImport, runZipImport, t]);
 
   const handleCancelZipOverwrite = useCallback(() => {
+    if (overwritingRef.current) return;
     setPendingZipImport(null);
     setZipOverwriteOpen(false);
   }, []);
@@ -1489,10 +1514,16 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       editingSkill?.name,
       tapBrowserOpen,
       isLoading,
-      allSkills.length,
+      allSkills,
       filteredSkills.length,
       searchQuery,
       updateChecking,
+      handleCreate,
+      handleExportAll,
+      handleExportTap,
+      handleCheckUpdates,
+      handleImportClick,
+      handleImportZipClick,
     ],
     useClassicDesktopHeader,
   );
@@ -2173,7 +2204,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         {importOverwriteOpen && pendingImport && (
           <InlineConfirmSection
             label={t('skills:management.import_overwrite_title')}
-            onCancel={handleCancelOverwrite}
+            onCancel={() => {
+              if (!overwriting) handleCancelOverwrite();
+            }}
             className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
           >
             <div className="text-ui font-medium text-foreground">
@@ -2187,6 +2220,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelOverwrite}
+                disabled={overwriting}
                 className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
@@ -2195,6 +2229,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmOverwrite()}
+                disabled={overwriting}
                 className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}
@@ -2206,7 +2241,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         {zipOverwriteOpen && pendingZipImport && (
           <InlineConfirmSection
             label={t('skills:management.import_zip_overwrite_title')}
-            onCancel={handleCancelZipOverwrite}
+            onCancel={() => {
+              if (!overwriting) handleCancelZipOverwrite();
+            }}
             className="mb-4 space-y-2.5 rounded-lg border border-warning/35 bg-warning/10 p-3"
           >
             <div className="text-ui font-medium text-foreground">
@@ -2220,6 +2257,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelZipOverwrite}
+                disabled={overwriting}
                 className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
@@ -2228,6 +2266,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmZipOverwrite()}
+                disabled={overwriting}
                 className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}

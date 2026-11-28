@@ -8,6 +8,7 @@ import { dstu } from '@/dstu';
 import { addTypedEventListener } from '@/events';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { registerContentDirtyChecker, type ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { mergeExpandedMarkdown } from '../markdownWindow';
 import { assertNoteContentSize, fullDocumentRecoveryStore, type FullDocumentApi, type RetainedNoteDraft } from '../fullDocument';
@@ -494,7 +495,16 @@ export function useNoteSaveEngine({
   const handleManualSave = useCallback(async () => {
     if (effectiveReadOnly) return;
     setSaveError(null);
-    await flushNoteDraft();
+    try {
+      await flushNoteDraft();
+    } catch (error: unknown) {
+      if (!isUnmountedRef.current) {
+        const flagged = error as Error & { isNoteConflict?: boolean };
+        setSaveError(flagged?.isNoteConflict ? 'conflict' : 'failed');
+      }
+      showGlobalNotification('error', getErrorMessage(error));
+      throw error;
+    }
   }, [flushNoteDraft, effectiveReadOnly]);
 
   const saveStatus: NoteSaveStatus = isSaving

@@ -17,6 +17,7 @@ import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { translationDstuAdapter } from '@/dstu/adapters/translationDstuAdapter';
 import { saveTranslationDraftSnapshot } from '@/translation';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -216,6 +217,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [isPrintPreview, setIsPrintPreview] = useState(false);
   const [savedToNote, setSavedToNote] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [justSeekedKey, setJustSeekedKey] = useState<string | null>(null);
@@ -224,9 +226,21 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
   const seekTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const copyTimerRef = useRef<number | null>(null);
+  const translatingRef = useRef(false);
+  const prevDocRef = useRef(doc);
+  const initialCompletedRef = useRef(initialCompletedSectionIds);
+  initialCompletedRef.current = initialCompletedSectionIds;
 
   useEffect(() => {
     setSavedToNote(false);
+    if (prevDocRef.current !== doc) {
+      prevDocRef.current = doc;
+      setSelectedAnswers({});
+      setCompletedSections(new Set(initialCompletedRef.current));
+      setSelectedDifficulty('all');
+      setCopiedKey(null);
+      setActiveSectionId(doc.sections.length > 0 ? getSectionId(doc.sections[0], 0) : '');
+    }
   }, [doc]);
 
   useEffect(() => () => {
@@ -507,86 +521,93 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
 
   const handleSendToTranslate = useCallback(
     async (text: string, title: string, sectionId?: string) => {
+      if (translatingRef.current) return;
       const trimmed = text.trim();
       if (!trimmed) return;
-      if (onSendToTranslate) {
-        await onSendToTranslate({ text: trimmed, title, sectionId, document: doc });
-        showActionFeedback(
-          t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
-        );
-        return;
-      }
-
-      const tgtLang = inferTranslateTargetLang(trimmed);
-      const now = Date.now();
-      let createdId: string | null = null;
+      translatingRef.current = true;
+      setTranslating(true);
       try {
-        const res = await translationDstuAdapter.createTranslation({
-          id: '',
-          sourceText: trimmed,
-          translatedText: '',
-          srcLang: 'auto',
-          tgtLang,
-          createdAt: now,
-          updatedAt: now,
-        });
-        if (res.ok && res.value?.id) {
-          createdId = res.value.id;
-          saveTranslationDraftSnapshot({
-            id: createdId,
-            srcLang: 'auto',
-            tgtLang,
+        if (onSendToTranslate) {
+          await onSendToTranslate({ text: trimmed, title, sectionId, document: doc });
+          showActionFeedback(
+            t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
+          );
+          return;
+        }
+
+        const tgtLang = inferTranslateTargetLang(trimmed);
+        const now = Date.now();
+        let createdId: string | null = null;
+        try {
+          const res = await translationDstuAdapter.createTranslation({
+            id: '',
             sourceText: trimmed,
             translatedText: '',
+            srcLang: 'auto',
+            tgtLang,
+            createdAt: now,
             updatedAt: now,
           });
+          if (res.ok && res.value?.id) {
+            createdId = res.value.id;
+            saveTranslationDraftSnapshot({
+              id: createdId,
+              srcLang: 'auto',
+              tgtLang,
+              sourceText: trimmed,
+              translatedText: '',
+              updatedAt: now,
+            });
+          }
+        } catch {
+          createdId = null;
         }
-      } catch {
-        createdId = null;
-      }
 
-      if (createdId) {
-        const payload = { resourceId: createdId, sourceText: trimmed, title };
+        if (createdId) {
+          const payload = { resourceId: createdId, sourceText: trimmed, title };
+          workbenchBus.launch({
+            typeId: 'translation',
+            instanceKey: createdId,
+            reason: 'api',
+            payload,
+          });
+          if (!workbenchBus.isEnabled()) {
+            dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TRANSLATION, {
+              translationId: createdId,
+              title,
+            });
+          }
+          showActionFeedback(
+            t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
+          );
+          return;
+        }
+
+        saveTranslationDraftSnapshot({
+          id: null,
+          srcLang: 'auto',
+          tgtLang,
+          sourceText: trimmed,
+          translatedText: '',
+          updatedAt: now,
+        });
+        await copyTextToClipboard(trimmed).catch(() => false);
         workbenchBus.launch({
           typeId: 'translation',
-          instanceKey: createdId,
           reason: 'api',
-          payload,
+          payload: { sourceText: trimmed, title },
         });
-        if (!workbenchBus.isEnabled()) {
-          dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TRANSLATION, {
-            translationId: createdId,
-            title,
-          });
-        }
         showActionFeedback(
-          t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
+          t('learningHub:handoutReader.sentToTranslateCopiedFallback', {
+            defaultValue: '已打开翻译工作台（文本已复制备用）',
+          }),
         );
-        return;
+      } catch (error: unknown) {
+        showGlobalNotification('error', getErrorMessage(error));
+      } finally {
+        translatingRef.current = false;
+        setTranslating(false);
       }
-
-      saveTranslationDraftSnapshot({
-        id: null,
-        srcLang: 'auto',
-        tgtLang,
-        sourceText: trimmed,
-        translatedText: '',
-        updatedAt: now,
-      });
-      await copyTextToClipboard(trimmed).catch(() => false);
-      workbenchBus.launch({
-        typeId: 'translation',
-        reason: 'api',
-        payload: { sourceText: trimmed, title },
-      });
-      if (!workbenchBus.isEnabled()) {
-        dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'learning-hub' });
-      }
-      showActionFeedback(
-        t('learningHub:handoutReader.sentToTranslateCopiedFallback', {
-          defaultValue: '已打开翻译工作台（文本已复制备用）',
-        }),
-      );
     },
     [doc, onSendToTranslate, showActionFeedback, t],
   );
@@ -605,11 +626,12 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
         setSavedToNote(false);
         showActionFeedback(null);
       }
-    } catch {
+    } catch (error: unknown) {
       setSavedToNote(false);
       showActionFeedback(null);
+      showGlobalNotification('error', getErrorMessage(error));
     }
-  }, [doc, onSaveToNote, showActionFeedback, t]);
+  }, [doc, normalizedDoc, onSaveToNote, showActionFeedback, t]);
 
   const handlePrintView = useCallback(() => {
     setIsPrintPreview((prev) => !prev);
@@ -727,6 +749,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              disabled={translating}
               onClick={() =>
                 void handleSendToTranslate(handoutIrToMarkdown(normalizedDoc), doc.title)
               }
@@ -751,33 +774,35 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                 })}
               </span>
             </DsButton>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleSaveToNote()}
-              data-saved={savedToNote ? 'true' : 'false'}
-              className={cn(
-                '!h-auto gap-1.5 !px-2.5 !py-1.5 text-xs font-medium rounded-md border border-border/35 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none',
-                savedToNote
-                  ? 'bg-success/15 text-success hover:bg-success/20'
-                  : 'bg-background text-foreground hover:bg-muted/60',
-              )}
-            >
-              {savedToNote ? (
-                <Check className="w-3.5 h-3.5" aria-hidden="true" />
-              ) : (
-                <FilePlus className="w-3.5 h-3.5" aria-hidden="true" />
-              )}
-              <span>
-                {savedToNote
-                  ? t('learningHub:handoutReader.savedToNote', {
-                      defaultValue: '已转存至笔记',
-                    })
-                  : t('learningHub:handoutReader.saveToNote', {
-                      defaultValue: '转存至笔记',
-                    })}
-              </span>
-            </DsButton>
+            {onSaveToNote && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleSaveToNote()}
+                data-saved={savedToNote ? 'true' : 'false'}
+                className={cn(
+                  '!h-auto gap-1.5 !px-2.5 !py-1.5 text-xs font-medium rounded-md border border-border/35 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none',
+                  savedToNote
+                    ? 'bg-success/15 text-success hover:bg-success/20'
+                    : 'bg-background text-foreground hover:bg-muted/60',
+                )}
+              >
+                {savedToNote ? (
+                  <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : (
+                  <FilePlus className="w-3.5 h-3.5" aria-hidden="true" />
+                )}
+                <span>
+                  {savedToNote
+                    ? t('learningHub:handoutReader.savedToNote', {
+                        defaultValue: '已转存至笔记',
+                      })
+                    : t('learningHub:handoutReader.saveToNote', {
+                        defaultValue: '转存至笔记',
+                      })}
+                </span>
+              </DsButton>
+            )}
             <DsButton
               variant="ghost"
               size="sm"
@@ -1061,6 +1086,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
+                      disabled={translating}
                       onClick={() =>
                         void handleSendToTranslate(
                           handoutSectionToText(section, index),

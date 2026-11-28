@@ -1138,6 +1138,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
+                onClick={() => handleRunSyncGuarded("bidirectional")}
+                disabled={loading || syncRunning}
+                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
+              >
+                <ArrowsLeftRight size={14} className="mr-1.5" />
+                {t("data:governance.sync_bidirectional")}
+              </DsButton>
+              <DsButton
+                variant="outline"
+                size="sm"
                 onClick={() => handleRunSyncGuarded("upload")}
                 disabled={loading || syncRunning}
                 className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"

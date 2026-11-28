@@ -254,20 +254,15 @@ export function CommandPaletteProvider({
     close,
   ]);
   
-  // 执行命令
+  // 执行命令（commandRegistry.execute 已统一弹出错误通知，此处仅记录日志避免双 toast）
   const executeCommand = useCallback(async (id: string) => {
     try {
       await commandRegistry.execute(id, deps);
       close(); // 执行后关闭面板
     } catch (error: unknown) {
       console.error('[CommandPalette] 命令执行失败:', error);
-      showGlobalNotification(
-        'error',
-        t('command_palette:error.execute_failed'),
-        t('common:status.error')
-      );
     }
-  }, [deps, close, t]);
+  }, [deps, close]);
   
   // 搜索命令（使用 ref 读取 currentView，避免每次视图切换重建）
   const searchCommands = useCallback((query: string) => {

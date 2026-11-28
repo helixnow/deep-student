@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, CaretRight, CaretLeft, House, CircleNotch, FolderOpen as FolderInputIcon } from '@phosphor-icons/react';
+import { Folder, CaretRight, CaretLeft, House, CircleNotch, ArrowClockwise, FolderOpen as FolderInputIcon } from '@phosphor-icons/react';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogFooter } from '@/components/ui/DsDialog';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -248,6 +248,7 @@ export function FolderPickerDialog({
   }, []);
 
   const handleConfirm = () => {
+    if (isLoading || error) return;
     onConfirm(selectedId);
     onOpenChange(false);
   };
@@ -273,8 +274,17 @@ export function FolderPickerDialog({
       <CircleNotch size={20} className="animate-spin text-muted-foreground" />
     </div>
   ) : error ? (
-    <div className="flex items-center justify-center h-32 px-5 text-sm text-destructive">
-      {error}
+    <div className="flex flex-col items-center justify-center gap-3 h-32 px-5 text-center" role="alert">
+      <p className="text-sm text-destructive break-words">{error}</p>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        onClick={() => void loadFolderTree()}
+        className="gap-1.5"
+      >
+        <ArrowClockwise size={14} aria-hidden="true" />
+        {t('common:retry')}
+      </DsButton>
     </div>
   ) : (
     <div className={cn('py-1', inline ? 'px-3' : 'px-5')} role="tree" aria-label={resolvedTitle}>
@@ -373,7 +383,7 @@ export function FolderPickerDialog({
             variant="primary"
             size="sm"
             onClick={handleConfirm}
-            disabled={isLoading}
+            disabled={isLoading || Boolean(error)}
             className="px-4"
           >
             {confirmLabel ?? t('finder.folderPicker.confirm')}
@@ -404,7 +414,7 @@ export function FolderPickerDialog({
           <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading || Boolean(error)}>
             {confirmLabel ?? t('finder.folderPicker.confirm')}
           </DsButton>
         </DsDialogFooter>

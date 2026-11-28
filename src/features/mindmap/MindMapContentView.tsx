@@ -31,6 +31,7 @@ import {
   importMindMap,
 } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/utils/cn';
 import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
@@ -733,7 +734,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const webImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const finalizeImportedDocument = useCallback(
-    (
+    async (
       imported: MindMapDocument,
       report: ReturnType<typeof createXmindImportReport>,
       initialDocument: MindMapDocument,
@@ -749,31 +750,60 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       latest.setFocusedNodeId(imported.root.id);
       const importedTitle = imported.root.text?.trim();
       const targetMindmapId = resourceId ?? storeApi.getState().mindmapId;
+      let persisted = true;
+      let persistErrorMessage: string | null = null;
       if (targetMindmapId) {
-        void storeApi.getState().save().then(() => {
-          if (importedTitle) {
-            void dstu.rename(`/${targetMindmapId}`, importedTitle);
-            onTitleChange?.(importedTitle);
+        try {
+          const saved = await storeApi.getState().save();
+          if (!isCurrent()) return;
+          if (saved) {
+            if (importedTitle) {
+              try {
+                const renameRes = await dstu.rename(`/${targetMindmapId}`, importedTitle);
+                if (!renameRes || renameRes.ok) {
+                  onTitleChange?.(importedTitle);
+                } else {
+                  console.warn('[MindMapContentView] Rename after import failed:', renameRes.error);
+                }
+              } catch (renameErr) {
+                console.warn('[MindMapContentView] Rename after import failed:', renameErr);
+              }
+            }
+          } else {
+            persisted = false;
           }
-        }).catch((err) => {
+        } catch (err) {
           console.warn('[MindMapContentView] Auto-save after import failed:', err);
-        });
+          persisted = false;
+          persistErrorMessage = getErrorMessage(err);
+        }
       } else if (typeof dstu.create === 'function') {
-        void Promise.resolve(
-          dstu.create('/', {
+        try {
+          const res = await dstu.create('/', {
             type: 'mindmap',
             name: importedTitle || t('mindmap:outline.untitled', { defaultValue: '导入的思维导图' }),
             content: JSON.stringify(imported),
-          }),
-        ).then((res) => {
+          });
+          if (!isCurrent()) return;
           if (res?.ok && res.value?.id) {
-            void storeApi.getState().loadMindMap(res.value.id, { preserveViewports: true });
+            await storeApi.getState().loadMindMap(res.value.id, { preserveViewports: true });
             if (importedTitle) onTitleChange?.(importedTitle);
+          } else {
+            persisted = false;
+            if (res && !res.ok && res.error) {
+              persistErrorMessage =
+                typeof res.error.toUserMessage === 'function'
+                  ? res.error.toUserMessage()
+                  : getErrorMessage(res.error);
+            }
           }
-        }).catch((err) => {
+        } catch (err) {
           console.warn('[MindMapContentView] VFS persist for imported mindmap failed:', err);
-        });
+          persisted = false;
+          persistErrorMessage = getErrorMessage(err);
+        }
       }
+      if (!isCurrent()) return;
       const nodeCount = countTreeNodes(imported.root);
       const hasDropped = report.droppedImages > 0 || report.droppedSummaries > 0;
       if (hasDropped) {
@@ -782,6 +812,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           droppedImages: report.droppedImages,
           droppedSummaries: report.droppedSummaries,
         });
+      }
+      if (!persisted) {
+        showGlobalNotification(
+          'error',
+          persistErrorMessage || t('mindmap:store.saveFailed'),
+        );
+        return;
       }
       showGlobalNotification(
         'success',
@@ -794,7 +831,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           : t('mindmap:import.successSummary', { nodes: nodeCount }),
       );
     },
-    [storeApi, t],
+    [onTitleChange, resourceId, storeApi, t],
   );
 
   const reportImportError = useCallback(
@@ -831,7 +868,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         const imported = lowerName.endsWith('.xmind')
           ? await importFromXmindZip(await file.arrayBuffer(), report)
           : await importFromFile(file);
-        finalizeImportedDocument(imported, report, initialDocument, isCurrent);
+        await finalizeImportedDocument(imported, report, initialDocument, isCurrent);
       } catch (error: unknown) {
         reportImportError(error, isCurrent);
       } finally {
@@ -880,7 +917,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         : lowerPath.endsWith('.mmap')
           ? await importFromMmapZip(await TauriAPI.readFileAsBytes(filePath))
           : importMindMap(await fileManager.readTextFile(filePath), 'auto');
-      finalizeImportedDocument(imported, report, initialDocument, isCurrent);
+      await finalizeImportedDocument(imported, report, initialDocument, isCurrent);
     } catch (error: unknown) {
       reportImportError(error, isCurrent);
     } finally {

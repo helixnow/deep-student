@@ -110,15 +110,10 @@ export async function dispatchMindMapAiAction({
       workbenchBus.launch({ typeId: 'chat', placement: { mode: 'beside' }, reason: 'command' });
     }
 
-    const emitPrefill = () =>
-      dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
-        content: prompt,
-        autoSend: false,
-      });
-    emitPrefill();
-    if (typeof window !== 'undefined') {
-      window.setTimeout(emitPrefill, 180);
-    }
+    dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+      content: prompt,
+      autoSend: false,
+    });
 
     showGlobalNotification(
       'success',

@@ -30,7 +30,7 @@ interface ResultPanelProps {
   gradingResult: string;
   isGrading: boolean;
   charCount: number;
-  onCopyResult: () => void;
+  onCopyResult: () => void | boolean | Promise<void | boolean>;
   onExportResult: () => void;
   currentRound: number;
   /** 错误信息 */
@@ -153,14 +153,24 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   // 复制成功就地反馈：图标切换为 Check，1.5s 后还原
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
   }, []);
-  const handleCopy = () => {
-    onCopyResult();
-    setCopied(true);
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+  const handleCopy = async () => {
+    try {
+      const ok = await onCopyResult();
+      if (ok === false || !mountedRef.current) return;
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 错误通知由上层回调处理，此处不误报复制成功
+    }
   };
 
   const gradingPhase = useMemo(
@@ -283,7 +293,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           variant="ghost"
           size="icon"
           iconOnly
-          onClick={handleCopy}
+          onClick={() => { void handleCopy(); }}
           className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           aria-label={t('essay_grading:result_section.copy')}
         >

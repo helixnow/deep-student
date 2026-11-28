@@ -13,11 +13,88 @@ export type ExamsFinderView = 'all' | 'mistakes';
 
 const EXAMS_VIEW_STORAGE_KEY = 'learningHub.examsView';
 export const EXAMS_VIEW_EVENT = 'learningHub:exams-view';
+const PENDING_EXAM_QUESTION_FOCUS_KEY = 'learningHub.pendingExamQuestionFocus';
+const PENDING_EXAM_QUESTION_FOCUS_TTL_MS = 60_000;
+
+export interface PendingExamQuestionFocus {
+  examId: string;
+  questionId: string;
+  at: number;
+}
+
+let inMemoryPendingFocus: PendingExamQuestionFocus | null = null;
+
+export function setPendingExamQuestionFocus(examId: string, questionId: string): void {
+  const entry: PendingExamQuestionFocus = { examId, questionId, at: Date.now() };
+  inMemoryPendingFocus = entry;
+  try {
+    sessionStorage.setItem(PENDING_EXAM_QUESTION_FOCUS_KEY, JSON.stringify(entry));
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
+
+export function clearPendingExamQuestionFocus(examId?: string, questionId?: string): void {
+  if (
+    inMemoryPendingFocus &&
+    (!examId || inMemoryPendingFocus.examId === examId) &&
+    (!questionId || inMemoryPendingFocus.questionId === questionId)
+  ) {
+    inMemoryPendingFocus = null;
+  }
+  try {
+    const raw = sessionStorage.getItem(PENDING_EXAM_QUESTION_FOCUS_KEY);
+    if (!raw) return;
+    if (!examId && !questionId) {
+      sessionStorage.removeItem(PENDING_EXAM_QUESTION_FOCUS_KEY);
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<PendingExamQuestionFocus>;
+    if (
+      (!examId || parsed.examId === examId) &&
+      (!questionId || parsed.questionId === questionId)
+    ) {
+      sessionStorage.removeItem(PENDING_EXAM_QUESTION_FOCUS_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function peekPendingExamQuestionFocus(examId: string): PendingExamQuestionFocus | null {
+  const now = Date.now();
+  let entry = inMemoryPendingFocus;
+  if (!entry) {
+    try {
+      const raw = sessionStorage.getItem(PENDING_EXAM_QUESTION_FOCUS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PendingExamQuestionFocus>;
+        if (
+          typeof parsed.examId === 'string' &&
+          typeof parsed.questionId === 'string' &&
+          typeof parsed.at === 'number'
+        ) {
+          entry = { examId: parsed.examId, questionId: parsed.questionId, at: parsed.at };
+          inMemoryPendingFocus = entry;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!entry) return null;
+  if (now - entry.at > PENDING_EXAM_QUESTION_FOCUS_TTL_MS) {
+    clearPendingExamQuestionFocus();
+    return null;
+  }
+  return entry.examId === examId ? entry : null;
+}
 
 /** 题目集冷打开时题目还在加载，按这些时刻重发定位，收到 handled 即停 */
 const FOCUS_RETRY_DELAYS_MS = [250, 600, 1200, 2000, 3200, 5000];
 
 export function openQuestionInExam(examId: string, questionId: string): void {
+  setPendingExamQuestionFocus(examId, questionId);
   window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
     detail: { view: 'learning-hub', openResource: `/${examId}` },
   }));
@@ -31,7 +108,10 @@ export function openQuestionInExam(examId: string, questionId: string): void {
             questionId,
             targetResourceId: examId,
             acknowledge: (result: { handled: boolean }) => {
-              if (result.handled) handled = true;
+              if (result.handled) {
+                handled = true;
+                clearPendingExamQuestionFocus(examId, questionId);
+              }
             },
           },
         }));

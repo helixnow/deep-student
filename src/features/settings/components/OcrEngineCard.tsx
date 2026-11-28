@@ -18,6 +18,7 @@ import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Switch } from '@/components/ui/shad/Switch';
 import { excludeOpenCodeGo } from '@/utils/opencodeGo';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { invoke } from '@tauri-apps/api/core';
 import { OcrEngineTestPanel } from './OcrEngineTestPanel';
 import { cn } from '@/lib/utils';
@@ -159,6 +160,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
       });
     } catch (error: unknown) {
       console.error('更新 OCR 引擎优先级失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       await loadEngines();
     } finally {
       setSaving(false);
@@ -179,6 +181,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
       });
     } catch (error: unknown) {
       console.error('更新 OCR 引擎优先级失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
       await loadEngines();
     } finally {
       setSaving(false);
@@ -355,8 +358,9 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 setThinkingEnabled(next);
                 try {
                   await invoke('set_ocr_thinking_enabled', { enabled: next });
-                } catch {
+                } catch (error: unknown) {
                   setThinkingEnabled(!next);
+                  showGlobalNotification('error', getErrorMessage(error));
                 }
               }}
               disabled={saving}

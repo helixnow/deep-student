@@ -182,6 +182,14 @@ export const MigrationStatusBanner: React.FC = () => {
           {migrationLevel === 'error' && (
             <CopyDiagnosticButton />
           )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:!h-11"
+            onClick={dismiss}
+          >
+            {t('common:actions.later')}
+          </DsButton>
         </div>
       </div>
     </div>

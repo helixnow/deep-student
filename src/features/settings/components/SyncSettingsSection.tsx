@@ -621,6 +621,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Download className="h-4 w-4 mr-2" />
               {t('data:sync_settings.download')}
             </DsButton>
+            <DsButton
+              variant="outline"
+              onClick={() => { void handleSync('bidirectional'); }}
+              disabled={isSyncing}
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
+            >
+              <ArrowsLeftRight className="h-4 w-4 mr-2" />
+              {t('data:sync_settings.bidirectional')}
+            </DsButton>
           </div>
 
           {/* 同步进度显示 */}

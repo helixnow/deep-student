@@ -23,6 +23,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import {
@@ -355,49 +356,58 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     }, BACK_PRIORITY.overlay);
   }, []);
 
-  // Esc 关闭（等价于"先随便看看"）+ Tab 焦点圈定在面板内
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (activeLegalDocRef.current !== null) {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          event.stopPropagation();
-          setActiveLegalDoc(null);
-        }
-        return;
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        onSkip();
-        return;
-      }
-      if (event.key !== 'Tab' || !panelRef.current) return;
+  // Esc 关闭（等价于"先随便看看"）+ Tab 焦点圈定在面板内（挂载在 document 上，避免点击遮罩或焦点外泄后失效）
+  useEventRegistry(
+    activeLegalDoc === null
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            options: true,
+            listener: (rawEvent) => {
+              const event = rawEvent as KeyboardEvent;
+              if (activeLegalDocRef.current !== null) return;
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                onSkipRef.current();
+                return;
+              }
+              if (event.key !== 'Tab' || !panelRef.current) return;
 
-      const focusables = Array.from(
-        panelRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((el) => el.offsetParent !== null);
-      if (focusables.length === 0) {
-        event.preventDefault();
-        return;
-      }
+              const focusables = Array.from(
+                panelRef.current.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+              ).filter((el) => el.offsetParent !== null);
+              if (focusables.length === 0) {
+                event.preventDefault();
+                return;
+              }
 
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey) {
-        if (active === first || active === panelRef.current) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    },
-    [onSkip],
+              const first = focusables[0];
+              const last = focusables[focusables.length - 1];
+              const active = document.activeElement;
+              const activeInside = active !== null && panelRef.current.contains(active);
+              if (!activeInside) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+                return;
+              }
+              if (event.shiftKey) {
+                if (active === first || active === panelRef.current) {
+                  event.preventDefault();
+                  last.focus();
+                }
+              } else if (active === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            },
+          },
+        ]
+      : [],
+    [activeLegalDoc],
   );
 
   const currentLanguage = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US';
@@ -467,10 +477,12 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         paddingLeft: 'calc(0.75rem + var(--android-safe-area-left, env(safe-area-inset-left, 0px)))',
         paddingRight: 'calc(0.75rem + var(--android-safe-area-right, env(safe-area-inset-right, 0px)))',
       }}
-      onKeyDown={handleKeyDown}
     >
-      {/* 遮罩层 */}
-      <div className="absolute inset-0 bg-black/25" />
+      {/* 遮罩层：阻止 mousedown 默认失焦行为，保持键盘焦点留在弹窗内 */}
+      <div
+        className="absolute inset-0 bg-black/25"
+        onMouseDown={(event) => event.preventDefault()}
+      />
 
       {/* 面板 */}
       <div

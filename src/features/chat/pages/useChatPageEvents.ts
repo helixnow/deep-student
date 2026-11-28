@@ -31,6 +31,7 @@ import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
 import {
   invalidatePendingChatNavigation,
+  invalidatePendingChatPrefill,
   markChatPageReady,
 } from '../navigation/pendingChatNavigation';
 import { isHiddenDraftSession } from './draftSession';
@@ -930,6 +931,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
       const store = getCurrentStore();
       if (store) {
+        invalidatePendingChatPrefill();
         store.getState().setInputValue(content);
         console.log('[ChatV2Page] Input bar content pre-filled');
       }

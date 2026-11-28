@@ -73,6 +73,8 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   const channelDisplay = getChannelPluginDisplay(plugin, t);
   const { isSmallScreen } = useBreakpoint();
   const [config, setConfig] = useState<IlinkBotConfig | null>(null);
+  const savedConfigRef = useRef<IlinkBotConfig | null>(null);
+  const [rateLimitDraft, setRateLimitDraft] = useState<string>('10');
   const [status, setStatus] = useState<PluginStatusSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [unbindOpen, setUnbindOpen] = useState(false);
@@ -80,7 +82,10 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
 
   const refreshConfig = useCallback(async () => {
     try {
-      setConfig(await pluginsApi.getConfig(plugin.id));
+      const loaded = await pluginsApi.getConfig(plugin.id);
+      savedConfigRef.current = loaded;
+      setConfig(loaded);
+      setRateLimitDraft(String(loaded.rateLimitPerMin));
     } catch (e) {
       showGlobalNotification('error', getErrorMessage(e));
     }
@@ -171,6 +176,10 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
       onPluginChange();
       showGlobalNotification('success', t('settings:plugins.saved'));
     } catch (e) {
+      if (savedConfigRef.current) {
+        setConfig(savedConfigRef.current);
+        setRateLimitDraft(String(savedConfigRef.current.rateLimitPerMin));
+      }
       showGlobalNotification('error', getErrorMessage(e));
     } finally {
       setBusy(false);
@@ -395,13 +404,20 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               min={1}
               max={120}
               className="!w-28 bg-transparent md:!w-24 [@media(pointer:coarse)]:min-h-11"
-              value={config.rateLimitPerMin}
-              onChange={(e) =>
-                setConfig((c) =>
-                  c ? { ...c, rateLimitPerMin: Number(e.target.value) || 10 } : c,
-                )
-              }
-              onBlur={() => void saveConfig({ rateLimitPerMin: config.rateLimitPerMin })}
+              value={rateLimitDraft}
+              onChange={(e) => setRateLimitDraft(e.target.value)}
+              onBlur={() => {
+                const savedValue = savedConfigRef.current?.rateLimitPerMin ?? config.rateLimitPerMin;
+                const parsed = parseInt(rateLimitDraft.trim(), 10);
+                const clamped = Number.isFinite(parsed)
+                  ? Math.min(120, Math.max(1, parsed))
+                  : savedValue;
+                setRateLimitDraft(String(clamped));
+                setConfig((c) => (c ? { ...c, rateLimitPerMin: clamped } : c));
+                if (clamped !== savedValue) {
+                  void saveConfig({ rateLimitPerMin: clamped });
+                }
+              }}
             />
           </SettingRow>
 
@@ -415,7 +431,11 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               onChange={(e) =>
                 setConfig((c) => (c ? { ...c, systemPrompt: e.target.value } : c))
               }
-              onBlur={() => void saveConfig({ systemPrompt: config.systemPrompt })}
+              onBlur={() => {
+                if (config.systemPrompt !== (savedConfigRef.current?.systemPrompt ?? '')) {
+                  void saveConfig({ systemPrompt: config.systemPrompt });
+                }
+              }}
               rows={3}
               placeholder={t('settings:plugins.system_prompt_placeholder')}
             />

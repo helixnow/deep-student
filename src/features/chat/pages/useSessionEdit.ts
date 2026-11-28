@@ -151,6 +151,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       emitSessionListUpdated();
     } catch (error) {
       console.error('[ChatV2Page] Failed to toggle session pin:', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [setSessions]);
 
@@ -232,17 +233,15 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   const handleSubmitGroup = useCallback(async (payload: CreateGroupRequest | UpdateGroupRequest) => {
     try {
       if (editingGroup) {
-        await updateGroup(editingGroup.id, payload as UpdateGroupRequest);
-      } else {
-        await createGroup(payload as CreateGroupRequest);
+        return await updateGroup(editingGroup.id, payload as UpdateGroupRequest);
       }
-      closeGroupEditor();
+      return await createGroup(payload as CreateGroupRequest);
     } catch (error) {
       console.error('[ChatV2Page] Failed to save group:', getErrorMessage(error));
       // 向上抛出，让 GroupEditorPanel 展示保存失败提示并保持编辑器打开
       throw error;
     }
-  }, [closeGroupEditor, createGroup, editingGroup, updateGroup]);
+  }, [createGroup, editingGroup, updateGroup]);
 
   const applySessionGroupUpdate = useCallback((sessionId: string, groupId: string | null) => {
     setSessions((prev) =>
@@ -333,9 +332,11 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
         groupId: groupId ?? null,
       });
       applySessionGroupUpdate(sessionId, groupId ?? null);
+      emitSessionListUpdated();
       void loadUngroupedCount();
     } catch (error) {
       console.error('[ChatV2Page] Failed to move session to group:', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error));
     }
   }, [applySessionGroupUpdate, loadUngroupedCount]);
 

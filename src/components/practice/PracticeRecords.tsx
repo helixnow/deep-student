@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, Play, Trash, ListChecks } from '@phosphor-icons/react';
 import { practiceApi, type PracticeSummary } from '@/api/practiceApi';
@@ -19,6 +19,8 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const deletingBusyRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([practiceApi.list(scopeId, false), practiceApi.list(scopeId, true)])
@@ -37,12 +39,18 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
     };
   }, [scopeId, paperId, revision, readOnly]);
   const remove = async (row: PracticeSummary, submitted: boolean) => {
+    if (deletingBusyRef.current) return;
+    deletingBusyRef.current = true;
+    setDeletingBusy(true);
     try {
       await practiceApi.remove(row.id, submitted);
       setDeleteId(null);
       setRevision((r) => r + 1);
     } catch (error) {
       setError(getErrorMessage(error));
+    } finally {
+      deletingBusyRef.current = false;
+      setDeletingBusy(false);
     }
   };
   if (!error && drafts.length === 0 && attempts.length === 0) {
@@ -80,6 +88,7 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
         variant="ghost"
         size="icon"
         iconOnly
+        disabled={deletingBusy}
         title={t('common:delete')}
         aria-label={t('common:delete')}
         onClick={() => setDeleteId(record.id)}
@@ -90,10 +99,10 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
       {deleteId === record.id && (
         <div className="flex w-full items-center justify-end gap-2">
           <span className="mr-auto text-xs text-muted-foreground">{t('batch.deleteRecord')}</span>
-          <DsButton variant="ghost" size="sm" onClick={() => setDeleteId(null)}>
+          <DsButton variant="ghost" size="sm" disabled={deletingBusy} onClick={() => setDeleteId(null)}>
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="danger" size="sm" onClick={() => void remove(record, submitted)}>
+          <DsButton variant="danger" size="sm" disabled={deletingBusy} onClick={() => void remove(record, submitted)}>
             {t('common:delete')}
           </DsButton>
         </div>

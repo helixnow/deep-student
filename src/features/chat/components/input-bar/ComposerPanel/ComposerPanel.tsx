@@ -409,6 +409,8 @@ export interface ComposerPanelRowProps
   children: React.ReactNode;
   /** 行尾节点（hover 后才显的次级动作请自行用 group-hover/opacity） */
   trailing?: React.ReactNode;
+  /** 当 leading/trailing 含独立可交互按钮时启用，外层改为 div 容器避免嵌套 button */
+  interactiveSlots?: boolean;
   /** 密度：cozy 默认 (列表)，compact 用于极紧凑列（mention 弹层） */
   density?: ComposerPanelRowDensity;
   /** 选中时的强度：tinted (默认) / soft (仅左侧豆条) */
@@ -424,15 +426,71 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
       leading,
       children,
       trailing,
+      interactiveSlots = false,
       density = 'cozy',
       selectedAccent = 'tinted',
       className,
       disabled,
+      onClick,
       ...rest
     },
     ref
   ) => {
     const tinted = selectedAccent === 'tinted';
+    const rowClassName = cn(
+      'group relative flex w-full items-start gap-2 text-left transition-colors outline-none',
+      'rounded-[var(--menu-shell-row-radius)] border border-transparent',
+      // coarse 指针触控保底：行高不低于 44px（桌面 fine 指针不受影响）
+      '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+      density === 'cozy'
+        ? 'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]'
+        : 'px-2 py-1.5',
+      // 默认 hover
+      !selected && 'hover:bg-[color:var(--menu-shell-row-hover)]',
+      // 选中态——tinted: 三层强调色；soft: 仅淡背景
+      selected && tinted && [
+        'border-[color:var(--button-primary-border)]',
+        'bg-[color:var(--button-primary-surface)]',
+        'text-[color:var(--button-primary-foreground)]',
+        'hover:bg-[color:var(--button-primary-hover)]',
+      ],
+      selected && !tinted && [
+        'bg-[color:var(--menu-shell-row-active)]',
+      ],
+      // focus
+      'focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)] focus-visible:ring-offset-0',
+      // disabled
+      disabled && 'cursor-not-allowed opacity-60',
+      className
+    );
+
+    if (interactiveSlots) {
+      return (
+        <div className={rowClassName}>
+          {selected && !tinted ? (
+            <span
+              className="pointer-events-none absolute inset-y-1 left-0 w-[2px] rounded-full bg-[color:var(--button-primary-foreground)]"
+              aria-hidden="true"
+            />
+          ) : null}
+          {leading}
+          {/* eslint-disable-next-line ds-components/no-native-button -- Row 主内容触发按钮，与 leading/trailing 可交互控件平级避免嵌套 button */}
+          <button
+            ref={ref}
+            type="button"
+            disabled={disabled}
+            aria-pressed={selected || undefined}
+            onClick={onClick}
+            className="min-w-0 flex-1 rounded-sm bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)] disabled:cursor-not-allowed"
+            {...rest}
+          >
+            {children}
+          </button>
+          {trailing}
+        </div>
+      );
+    }
+
     return (
       // eslint-disable-next-line ds-components/no-native-button -- Row 是 ComposerPanel 的低层 primitive，需要直接控制 token 化的强调色 className，使用 DsButton 会被其内置 variant 覆盖
       <button
@@ -440,32 +498,8 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
         type="button"
         disabled={disabled}
         aria-pressed={selected || undefined}
-        className={cn(
-          'group relative flex w-full items-start gap-2 text-left transition-colors outline-none',
-          'rounded-[var(--menu-shell-row-radius)] border border-transparent',
-          // 📱 coarse 指针触控保底：行高不低于 44px（桌面 fine 指针不受影响）
-          '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
-          density === 'cozy'
-            ? 'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]'
-            : 'px-2 py-1.5',
-          // 默认 hover
-          !selected && 'hover:bg-[color:var(--menu-shell-row-hover)]',
-          // 选中态——tinted: 三层强调色；soft: 仅淡背景
-          selected && tinted && [
-            'border-[color:var(--button-primary-border)]',
-            'bg-[color:var(--button-primary-surface)]',
-            'text-[color:var(--button-primary-foreground)]',
-            'hover:bg-[color:var(--button-primary-hover)]',
-          ],
-          selected && !tinted && [
-            'bg-[color:var(--menu-shell-row-active)]',
-          ],
-          // focus
-          'focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)] focus-visible:ring-offset-0',
-          // disabled
-          disabled && 'cursor-not-allowed opacity-60',
-          className
-        )}
+        onClick={onClick}
+        className={rowClassName}
         {...rest}
       >
         {selected && !tinted ? (

@@ -82,7 +82,6 @@ export function SandboxWorkbenchPage() {
     <SandboxWorkbenchSurface
       className="h-full"
       hideToolbar={isSmallScreen || !showInspectorAction}
-      hideInspectorToggle
       ownerKey={LEGACY_SANDBOX_OWNER_KEY}
     />
   );
