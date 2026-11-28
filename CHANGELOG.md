@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.14](https://github.com/helixnow/deep-student/compare/v0.20.13...v0.20.14) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ci:** disable AWS CLI v2.23+ default CRC32 checksums for Cloudflare R2 S3 calls ([#583](https://github.com/helixnow/deep-student/issues/583)) ([5849870](https://github.com/helixnow/deep-student/commit/58498703ddc0c169849916f8927bbdcd85e7a9cb))
+
 ## [0.20.13](https://github.com/helixnow/deep-student/compare/v0.20.12...v0.20.13) (2026-11-28)
 
 
