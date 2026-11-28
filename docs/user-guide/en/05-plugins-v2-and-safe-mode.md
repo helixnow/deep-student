@@ -2,7 +2,7 @@
 
 > Extend DeepStudent without writing a line of code — install shareable `.dspack` Study Packs, ask **AI Plugin Workshop** to build and refine custom study tools for you, review every permission in plain English, and rely on **Safe Mode** for instant 1-minute self-rescue if a third-party plugin ever misbehaves.
 
-![AI Plugin Workshop and unified plugin manager](../images/plugin-workshop-desktop-light.webp)
+![AI Plugin Workshop and unified plugin manager](../images/en/plugin-workshop-desktop-light.webp)
 
 ---
 

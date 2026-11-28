@@ -20,7 +20,7 @@
 
 **What you get**: DeepStudent opens straight into your chosen starter app (Library, Chat, or Flashcards) with your AI assistant connected and ready to work on your local files.
 
-![DeepStudent Study Desktop overview](../images/workbench-desktop-light.webp)
+![DeepStudent Study Desktop overview](../images/en/workbench-desktop-light.webp)
 
 ---
 

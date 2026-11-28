@@ -2,7 +2,7 @@
 
 > Your study library lives locally on your device first — and when you want safety snapshots, multi-device sync, phone review, or browser access from any computer, everything stays encrypted, reversible, and ergonomic even on a 360px phone screen.
 
-![Local backups and data governance overview](../images/data-sync-desktop-light.webp)
+![Local backups and data governance overview](../images/en/data-sync-desktop-light.webp)
 
 ---
 
@@ -110,7 +110,7 @@ When E2EE is enabled, DeepStudent derives encryption keys locally on your device
 
 Whether you use the **Android native app** or open **Mobile WebUI** in your phone browser, DeepStudent is tuned for comfortable one-handed study down to **360px** screen width:
 
-![Mobile one-handed chat and study layout](../images/mobile-mobile-light.webp)
+![Mobile one-handed chat and study layout](../images/en/mobile-mobile-light.webp)
 
 - **Smart Dock Reveal Handle & Typing Clearance**: Whenever you tap into the chat composer to type, the bottom **Dock** automatically tucks out of the way so it never covers the Send button or overlaps your phone keyboard. Whenever you want to switch apps, tap or swipe up the compact bottom **`Dock`** handle pill — and tap **Collapse Dock** to tuck it back away.
 - **In-Flow Sidebar Bar & Compact Drawer**: Inside narrow windows, the sidebar bar sits cleanly in-flow rather than floating on top of page titles or action buttons, keeping every tap target unobstructed.
@@ -122,7 +122,7 @@ Whether you use the **Android native app** or open **Mobile WebUI** in your phon
 
 **What you want to do**: Host DeepStudent on a home server, NAS, or VPS and open your study workspace from any computer or phone browser — or install it like a native app on your home screen.
 
-![Self-hosted WebUI running full Study Desktop in a desktop browser](../images/webui-pwa-desktop-light.webp)
+![Self-hosted WebUI running full Study Desktop in a desktop browser](../images/en/webui-pwa-desktop-light.webp)
 
 1. **Adaptive interface by screen size**:
    - **Desktop-width browser**: Runs the **full windowed Study Desktop** by default — the same Dock, multi-window tiling, and 4 stage presets as the Desktop app (you can still switch to classic single-pane layout in Settings if you prefer).
