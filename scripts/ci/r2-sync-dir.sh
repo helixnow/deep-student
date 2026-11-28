@@ -51,6 +51,8 @@ AWS_ACCESS_KEY_ID=$(jq -er 'select(.success == true) | .result.accessKeyId' <<<"
 AWS_SECRET_ACCESS_KEY=$(jq -er 'select(.success == true) | .result.secretAccessKey' <<<"$credential_response")
 AWS_SESSION_TOKEN=$(jq -er 'select(.success == true) | .result.sessionToken' <<<"$credential_response")
 export AWS_DEFAULT_REGION=auto
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 ENDPOINT="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
 DEST="s3://${BUCKET}/${PREFIX}"
 
