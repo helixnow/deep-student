@@ -13,8 +13,8 @@
         "notes": "No macOS WKWebView WebDriver support upstream; driver must orchestrate app launch + data-dir assertions directly (tauri-driver does not support macOS)."
       },
       "waiver": {
-        "until": "2026-11-30",
-        "reason": "On 2026-11-02, the repository owner authorized a temporary renewal to unblock v0.11.0 recovery after being informed that real-artifact upgrade E2E remains unverified on all four platforms. This renewal ends on 2026-11-30; the driver remains unimplemented, and existing CI, database migration, fixture, signing, and publication gates remain required.",
+        "until": "2027-02-28",
+        "reason": "On 2026-11-28, the repository owner authorized a temporary renewal through 2027-02-28 because real-artifact upgrade E2E drivers remain unimplemented on all four platforms. Existing CI, database migration, fixture, updater signing, and publication gates remain required.",
         "approved_by": "helixnow"
       }
     },
@@ -29,8 +29,8 @@
         "notes": "Reuse the tauri-driver + msedgedriver path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-11-30",
-        "reason": "On 2026-11-02, the repository owner authorized a temporary renewal to unblock v0.11.0 recovery after being informed that real-artifact upgrade E2E remains unverified on all four platforms. This renewal ends on 2026-11-30; the driver remains unimplemented, and existing CI, database migration, fixture, signing, and publication gates remain required.",
+        "until": "2027-02-28",
+        "reason": "On 2026-11-28, the repository owner authorized a temporary renewal through 2027-02-28 because real-artifact upgrade E2E drivers remain unimplemented on all four platforms. Existing CI, database migration, fixture, updater signing, and publication gates remain required.",
         "approved_by": "helixnow"
       }
     },
@@ -45,8 +45,8 @@
         "notes": "Reuse the tauri-driver + webkit2gtk-driver + xvfb path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-11-30",
-        "reason": "On 2026-11-02, the repository owner authorized a temporary renewal to unblock v0.11.0 recovery after being informed that real-artifact upgrade E2E remains unverified on all four platforms. This renewal ends on 2026-11-30; the driver remains unimplemented, and existing CI, database migration, fixture, signing, and publication gates remain required.",
+        "until": "2027-02-28",
+        "reason": "On 2026-11-28, the repository owner authorized a temporary renewal through 2027-02-28 because real-artifact upgrade E2E drivers remain unimplemented on all four platforms. Existing CI, database migration, fixture, updater signing, and publication gates remain required.",
         "approved_by": "helixnow"
       }
     },
@@ -61,8 +61,8 @@
         "notes": "Requires reactivecircus/android-emulator-runner (or equivalent) plus adb-driven data seeding/assertions."
       },
       "waiver": {
-        "until": "2026-11-30",
-        "reason": "On 2026-11-02, the repository owner authorized a temporary renewal to unblock v0.11.0 recovery after being informed that real-artifact upgrade E2E remains unverified on all four platforms. This renewal ends on 2026-11-30; the driver remains unimplemented, and existing CI, database migration, fixture, signing, and publication gates remain required.",
+        "until": "2027-02-28",
+        "reason": "On 2026-11-28, the repository owner authorized a temporary renewal through 2027-02-28 because real-artifact upgrade E2E drivers remain unimplemented on all four platforms. Existing CI, database migration, fixture, updater signing, and publication gates remain required.",
         "approved_by": "helixnow"
       }
     }

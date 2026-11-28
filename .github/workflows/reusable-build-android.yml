@@ -90,13 +90,27 @@ jobs:
 
       - name: Install root and mobile dependencies
         run: |
-          npm ci --legacy-peer-deps
-          npm --prefix mobile ci --legacy-peer-deps
+          npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
+          npm --prefix mobile ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
+
+      - name: Cache Gradle wrapper and dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json', 'mobile/scripts/build-apk.mjs') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Cache Gradle distribution
         run: |
           dest="$HOME/.gradle/wrapper/dists/gradle-8.14.3-bin/seed"
           mkdir -p "$dest"
+          if [ -s "$dest/gradle-8.14.3-bin.zip" ]; then
+            echo "Gradle 8.14.3 distribution restored from cache"
+            exit 0
+          fi
           if ! curl -fsSL --retry 2 --retry-delay 5 -o "$dest/gradle-8.14.3-bin.zip" https://services.gradle.org/distributions/gradle-8.14.3-bin.zip; then
             curl -fsSL --retry 3 --retry-delay 5 -o "$dest/gradle-8.14.3-bin.zip" https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-bin.zip
           fi

@@ -61,7 +61,7 @@ jobs:
         run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
 
       - name: Install Sentry CLI (pinned)
         if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}

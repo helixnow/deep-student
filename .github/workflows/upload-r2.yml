@@ -45,29 +45,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.value }}"
-          FAILED_FILES=""
-          for FILE in release-assets/*; do
-            NAME=$(basename "$FILE")
-            case "$NAME" in
-              *.json) CT="application/json" ;;
-              *.sig)  CT="application/pgp-signature" ;;
-              *.dmg)  CT="application/x-apple-diskimage" ;;
-              *.apk)  CT="application/vnd.android.package-archive" ;;
-              *.deb)  CT="application/vnd.debian.binary-package" ;;
-              *)      CT="application/octet-stream" ;;
-            esac
-            if ! bash scripts/ci/r2-put.sh \
-              "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              "$FILE" \
-              "$CT" \
-              "public, max-age=31536000, immutable"; then
-              FAILED_FILES="${FAILED_FILES}${NAME}\n"
-            fi
-          done
-          if [ -n "$FAILED_FILES" ]; then
-            printf "%b" "$FAILED_FILES"
-            exit 1
-          fi
+          bash scripts/ci/r2-upload-release.sh release-assets "${R2_BUCKET}/releases/${TAG}"
 
       - name: Generate R2 latest.json for auto-updater
         env:
