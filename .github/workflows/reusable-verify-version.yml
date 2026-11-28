@@ -32,6 +32,15 @@ on:
       version:
         description: 'Semver without v prefix'
         value: ${{ jobs.verify.outputs.version }}
+      allow_unsigned_macos:
+        description: 'Resolved macOS signing policy (true = ad-hoc unsigned)'
+        value: ${{ jobs.verify.outputs.allow_unsigned_macos }}
+      allow_unsigned_windows:
+        description: 'Resolved Windows signing policy (true = unsigned NSIS)'
+        value: ${{ jobs.verify.outputs.allow_unsigned_windows }}
+      allow_unsigned_desktop:
+        description: 'Resolved combined desktop signing policy'
+        value: ${{ jobs.verify.outputs.allow_unsigned_desktop }}
 
 permissions:
   contents: read
@@ -44,6 +53,9 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
       tag_name: ${{ steps.verify.outputs.tag_name }}
       version: ${{ steps.verify.outputs.version }}
+      allow_unsigned_macos: ${{ steps.secrets.outputs.allow_unsigned_macos || inputs.allow_unsigned_desktop }}
+      allow_unsigned_windows: ${{ steps.secrets.outputs.allow_unsigned_windows || inputs.allow_unsigned_desktop }}
+      allow_unsigned_desktop: ${{ steps.secrets.outputs.allow_unsigned_desktop || inputs.allow_unsigned_desktop }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -53,9 +65,11 @@ jobs:
           node-version: '24'
 
       - name: Preflight required release credentials
+        id: secrets
         if: ${{ inputs.check_release_secrets }}
         env:
           ALLOW_UNSIGNED_DESKTOP: ${{ inputs.allow_unsigned_desktop }}
+          REQUIRE_SIGNED_DESKTOP: ${{ vars.REQUIRE_SIGNED_DESKTOP }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}

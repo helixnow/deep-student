@@ -15,7 +15,7 @@ on:
         default: false
         type: boolean
       allow_unsigned_desktop:
-        description: 'No platform certificates (updater signatures remain required)'
+        description: 'Force unsigned desktop builds even when Apple/Windows signing certificates are configured (unsigned is automatic when no certificates are configured)'
         default: false
         type: boolean
       allow_missing_migration_fixtures:

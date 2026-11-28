@@ -29,12 +29,6 @@ jobs:
   build-macos:
     name: macOS arm64
     runs-on: macos-26
-    env:
-      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
-      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
-      ELECTRON_CUSTOM_DIR: '{{ version }}'
-      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
-      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v4
@@ -42,16 +36,31 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
       - name: Rebuild better-sqlite3 for Electron
         run: npx @electron/rebuild -f -w better-sqlite3
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-bin-${{ runner.os }}-arm64-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-bin-${{ runner.os }}-arm64-
       # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
-      # GitHub release CDN 偶发 504，下载失败重试三次。
+      # 优先走缓存与官方 CDN，遇 504 自动回退 npmmirror 镜像。
       - name: Install Electron binary
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node node_modules/electron/install.js; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node node_modules/electron/install.js; then exit 0; fi
+            else
+              if ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ \
+                 ELECTRON_CUSTOM_DIR='{{ version }}' \
+                 node node_modules/electron/install.js; then exit 0; fi
+            fi
             echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
             sleep 15
           done
@@ -64,7 +73,12 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node electron/scripts/package.mjs --mac --arm64; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node electron/scripts/package.mjs --mac --arm64; then exit 0; fi
+            else
+              if ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ \
+                 node electron/scripts/package.mjs --mac --arm64; then exit 0; fi
+            fi
             echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
             sleep 20
           done
@@ -86,12 +100,6 @@ jobs:
   build-windows:
     name: Windows x64
     runs-on: windows-latest
-    env:
-      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
-      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
-      ELECTRON_CUSTOM_DIR: '{{ version }}'
-      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
-      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v4
@@ -99,16 +107,31 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
       - name: Rebuild better-sqlite3 for Electron
         run: npx @electron/rebuild -f -w better-sqlite3
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-bin-${{ runner.os }}-x64-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-bin-${{ runner.os }}-x64-
       # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
-      # GitHub release CDN 偶发 504，下载失败重试三次。
+      # 优先走缓存与官方 CDN，遇 504 自动回退 npmmirror 镜像。
       - name: Install Electron binary
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node node_modules/electron/install.js; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node node_modules/electron/install.js; then exit 0; fi
+            else
+              if ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ \
+                 ELECTRON_CUSTOM_DIR='{{ version }}' \
+                 node node_modules/electron/install.js; then exit 0; fi
+            fi
             echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
             sleep 15
           done
@@ -121,7 +144,12 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node electron/scripts/package.mjs --win; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node electron/scripts/package.mjs --win; then exit 0; fi
+            else
+              if ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ \
+                 node electron/scripts/package.mjs --win; then exit 0; fi
+            fi
             echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
             sleep 20
           done
@@ -140,12 +168,6 @@ jobs:
   build-linux:
     name: Linux x64
     runs-on: ubuntu-latest
-    env:
-      # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
-      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
-      ELECTRON_CUSTOM_DIR: '{{ version }}'
-      # electron-builder 的 AppImage/NSIS/dmg 工具也从 GitHub release 下载，同样走镜像。
-      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v4
@@ -155,16 +177,31 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfuse2 rpm
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
       - name: Rebuild better-sqlite3 for Electron
         run: npx @electron/rebuild -f -w better-sqlite3
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-bin-${{ runner.os }}-x64-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-bin-${{ runner.os }}-x64-
       # electron 45 不提供 postinstall，二进制必须显式下载，否则 electron-builder 找不到 node_modules/electron/dist。
-      # GitHub release CDN 偶发 504，下载失败重试三次。
+      # 优先走缓存与官方 CDN，遇 504 自动回退 npmmirror 镜像。
       - name: Install Electron binary
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node node_modules/electron/install.js; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node node_modules/electron/install.js; then exit 0; fi
+            else
+              if ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ \
+                 ELECTRON_CUSTOM_DIR='{{ version }}' \
+                 node node_modules/electron/install.js; then exit 0; fi
+            fi
             echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
             sleep 15
           done
@@ -177,7 +214,12 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node electron/scripts/package.mjs --linux; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node electron/scripts/package.mjs --linux; then exit 0; fi
+            else
+              if ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ \
+                 node electron/scripts/package.mjs --linux; then exit 0; fi
+            fi
             echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
             sleep 20
           done
