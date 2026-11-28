@@ -1,6 +1,6 @@
 <div align="center">
 
-[简体中文](./README_CN.md) | **English**
+[简体中文](./README_CN.md) | **English** | [Türkçe](./README_TR.md)
 
 <img src="./public/deepstudent-logo.svg" alt="DeepStudent" width="160" />
 
