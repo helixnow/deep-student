@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import todoUrl from './app-icons/todo.svg';
 import notesUrl from './app-icons/notes.svg';
 import examUrl from './app-icons/exam.svg';
@@ -22,10 +22,11 @@ import aiDashboardUrl from './app-icons/aiDashboard.svg';
 import filesUrl from './app-icons/files.svg';
 import mindmapUrl from './app-icons/mindmap.svg';
 import mediaUrl from './app-icons/media.svg';
+import pluginWorkshopUrl from './app-icons/pluginWorkshop.svg';
 
 /**
- * 全彩插画风应用图标（独立 SVG 资源，统一青绿→藏青主色 + 琥珀/橙点缀）。
- * 以 <img> 引用而非内联，避免各 SVG 内部渐变 id（SVGID_1_ 等）互相冲突。
+ * 扁平拟物风子应用图标资源映射（64×64 画布，各 SVG 自带纸墨矿物色系圆角底座与纸厚边）。
+ * 以 <img> / <image> 引用独立资源，避免跨图标内部 clipPath id 冲突。
  */
 export const APP_ICON_URLS: Record<string, string> = {
   todo: todoUrl,
@@ -50,6 +51,7 @@ export const APP_ICON_URLS: Record<string, string> = {
   files: filesUrl,
   mindmap: mindmapUrl,
   media: mediaUrl,
+  pluginWorkshop: pluginWorkshopUrl,
 };
 
 export function hasIllustratedAppIcon(typeId: string): boolean {
@@ -62,10 +64,8 @@ interface AppIconImageProps {
 }
 
 /**
- * 自带浅色圆角底座的应用图标。
- * 底座随图标走（而非依赖使用场景提供背景），保证在应用面板的白色瓷贴
- * 和 Dock 的深色透明底两种环境下辨识度一致——藏青线条为主的插画
- * （笔记/题目集等）在深色背景上不会沉底。
+ * 应用图标展示组件。
+ * 各图标 SVG 已内置圆角底座与实体描边，此处直接等比铺满容器，不再叠加二次外框底座。
  */
 export const AppIconImage: React.FC<AppIconImageProps> = ({ typeId, className }) => {
   const src = APP_ICON_URLS[typeId];
@@ -78,18 +78,12 @@ export const AppIconImage: React.FC<AppIconImageProps> = ({ typeId, className })
         'pointer-events-none inline-flex aspect-square select-none items-center justify-center',
         className,
       )}
-      style={{
-        borderRadius: '22.5%',
-        background: 'linear-gradient(180deg, #ffffff, #eef1f5)',
-        boxShadow: 'inset 0 0 0 0.5px rgba(31, 41, 55, 0.16), 0 1px 2px rgba(15, 23, 42, 0.25)',
-      }}
     >
       <img
         src={src}
         alt=""
         draggable={false}
-        className="pointer-events-none select-none object-contain"
-        style={{ width: '76%', height: '76%' }}
+        className="pointer-events-none h-full w-full select-none object-contain"
       />
     </span>
   );
@@ -122,3 +116,4 @@ export const FileAppIcon = makeAppIcon('file');
 export const FilePreviewAppIcon = makeAppIcon('file-preview');
 export const TaskDashboardAppIcon = makeAppIcon('taskDashboard');
 export const FilesAppIcon = makeAppIcon('files');
+export const PluginWorkshopAppIcon = makeAppIcon('pluginWorkshop');

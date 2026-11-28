@@ -1,22 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-  <rect x="40" y="24" width="82" height="102" rx="8" fill="#DFEFED" stroke="#A6C4CB" stroke-width="3"/>
-  <path d="M116 34v86M110 30v94" stroke="#B9DEDA" stroke-width="3" stroke-linecap="round"/>
-  <linearGradient id="tb_cover" x1="70" x2="70" y1="16" y2="130" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#2BB3A3" offset="0"/>
-    <stop stop-color="#14607E" offset=".62"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
-  </linearGradient>
-  <path d="M40 16h62a10 10 0 0 1 10 10v98a10 10 0 0 1-10 10H40a12 12 0 0 1-12-12V28a12 12 0 0 1 12-12z" fill="url(#tb_cover)"/>
-  <linearGradient id="tb_spine" x1="35" x2="35" y1="16" y2="134" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#1A4A70" offset="0"/>
-    <stop stop-color="#16325A" offset="1"/>
-  </linearGradient>
-  <path d="M40 16h4v118h-4a12 12 0 0 1-12-12V28a12 12 0 0 1 12-12z" fill="url(#tb_spine)"/>
-  <linearGradient id="tb_mark" x1="88" x2="88" y1="16" y2="58" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#F9AC33" offset="0"/>
-    <stop stop-color="#F0603C" offset="1"/>
-  </linearGradient>
-  <path d="M78 16h20v42l-10-10-10 10V16z" fill="url(#tb_mark)"/>
-  <rect x="54" y="86" width="40" height="7" rx="3.5" fill="#fff" opacity=".9"/>
-  <rect x="54" y="100" width="28" height="7" rx="3.5" fill="#fff" opacity=".55"/>
-</svg>
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="wb-textbook-c"><path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z"/></clipPath></defs>
+  <g clip-path="url(#wb-textbook-c)">
+  <rect x="2" y="2" width="60" height="60" fill="#D8D0C2"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, -2.2)" fill="#FAF7F0"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, 0.9)" fill="none" stroke="#FFFFFF" stroke-opacity="0.92" stroke-width="1.1"/>
+  </g>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" fill="none" stroke="#0F172A" stroke-opacity="0.13" stroke-width="0.95"/>
+  <rect x="13" y="10.2" width="38" height="46.5" rx="4.5" fill="#8C7E6B" fill-opacity="0.3"/>
+  <rect x="13" y="8" width="38" height="47" rx="4.5" fill="#631D25"/>
+  <path d="M17.5 48.2H50.2V52.8C50.2 53.4 49.7 53.8 49 53.8H17.5C16.1 53.8 15 52.7 15 51.3C15 49.6 16.1 48.2 17.5 48.2Z" fill="#FAF8F4"/>
+  <line x1="18" y1="51" x2="49.5" y2="51" stroke="#DDD6C7" stroke-width="1"/>
+  <rect x="13" y="8" width="37.2" height="41.5" rx="4" fill="#963640"/>
+  <path d="M13 12C13 9.8 14.8 8 17 8H21.2V49.5H17C14.8 49.5 13 47.7 13 45.5V12Z" fill="#6E222A"/>
+  <line x1="21.2" y1="8" x2="21.2" y2="49.5" stroke="#52161D" stroke-width="1.1"/>
+  <rect x="25.8" y="20.5" width="18.5" height="11" rx="2.4" fill="#F7F3EA"/>
+  <rect x="29" y="24.8" width="12" height="2.5" rx="1.25" fill="#6E222A"/>
+  <path d="M40 8H45.8V20L42.9 17.6L40 20V8Z" fill="#CC923E"/></svg>

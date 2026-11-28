@@ -7,6 +7,7 @@ const TYPE_IDS = [
   'notes', 'todo', 'chat', 'pomodoro', 'translation', 'skills',
   'textbook', 'browser', 'templates', 'sandbox', 'flashcards', 'settings',
   'exam', 'image', 'file', 'file-preview', 'taskDashboard', 'files', 'essay',
+  'mindmap', 'media', 'aiDashboard', 'pluginWorkshop',
 ];
 
 describe('WorkbenchAppIcon', () => {

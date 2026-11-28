@@ -1,34 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-  <g stroke="#127487" stroke-width="6" stroke-linecap="round" fill="none">
-    <path d="M62 64C50 58 44 50 40 40"/>
-    <path d="M62 86C50 92 44 100 40 110"/>
-    <path d="M88 64c12-6 18-14 22-24"/>
-    <path d="M88 86c12 6 18 14 22 24"/>
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="wb-mindmap-c"><path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z"/></clipPath></defs>
+  <g clip-path="url(#wb-mindmap-c)">
+  <rect x="2" y="2" width="60" height="60" fill="#2D2F4A"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, -2.2)" fill="#46496E"/>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" transform="translate(0, 0.9)" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.05"/>
   </g>
-  <linearGradient id="mm_center" x1="75" x2="75" y1="52" y2="98" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#14A5A0" offset="0"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
-  </linearGradient>
-  <rect x="52" y="52" width="46" height="46" rx="14" fill="url(#mm_center)"/>
-  <circle cx="75" cy="75" r="9" fill="#fff" opacity=".92"/>
-  <linearGradient id="mm_n1" x1="35" x2="35" y1="19" y2="45" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#5FD0CB" offset="0"/>
-    <stop stop-color="#2BB3A3" offset="1"/>
-  </linearGradient>
-  <circle cx="35" cy="32" r="13" fill="url(#mm_n1)"/>
-  <linearGradient id="mm_n2" x1="35" x2="35" y1="105" y2="131" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#2BB3A3" offset="0"/>
-    <stop stop-color="#127487" offset="1"/>
-  </linearGradient>
-  <circle cx="35" cy="118" r="13" fill="url(#mm_n2)"/>
-  <linearGradient id="mm_n3" x1="115" x2="115" y1="19" y2="45" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#F9AC33" offset="0"/>
-    <stop stop-color="#F0603C" offset="1"/>
-  </linearGradient>
-  <circle cx="115" cy="32" r="13" fill="url(#mm_n3)"/>
-  <linearGradient id="mm_n4" x1="115" x2="115" y1="105" y2="131" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#1D6FA8" offset="0"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
-  </linearGradient>
-  <circle cx="115" cy="118" r="13" fill="url(#mm_n4)"/>
-</svg>
+  <path d="M 21 3 H 43 C 51.8 3 56.2 3 58.6 5.4 C 61 7.8 61 12.2 61 21 V 43 C 61 51.8 61 56.2 58.6 58.6 C 56.2 61 51.8 61 43 61 H 21 C 12.2 61 7.8 61 5.4 58.6 C 3 56.2 3 51.8 3 43 V 21 C 3 12.2 3 7.8 5.4 5.4 C 7.8 3 12.2 3 21 3 Z" fill="none" stroke="#0F172A" stroke-opacity="0.22" stroke-width="0.9"/>
+  <path d="M25 31.5C32 31.5 32 17 39 17" fill="none" stroke="#C4C7E0" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M25 31.5H39" fill="none" stroke="#C4C7E0" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M25 31.5C32 31.5 32 46 39 46" fill="none" stroke="#C4C7E0" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="9.5" y="27" width="16.5" height="12" rx="5" fill="#25273E" fill-opacity="0.45"/>
+  <rect x="9.5" y="25.2" width="16.5" height="12" rx="5" fill="#FAF9F6"/>
+  <rect x="38" y="13.8" width="16.5" height="9" rx="4.5" fill="#25273E" fill-opacity="0.38"/>
+  <rect x="38" y="12.2" width="16.5" height="9" rx="4.5" fill="#DFB05C"/>
+  <rect x="38" y="28.4" width="16.5" height="9" rx="4.5" fill="#25273E" fill-opacity="0.38"/>
+  <rect x="38" y="26.8" width="16.5" height="9" rx="4.5" fill="#C7CAE3"/>
+  <rect x="38" y="43" width="16.5" height="9" rx="4.5" fill="#25273E" fill-opacity="0.38"/>
+  <rect x="38" y="41.4" width="16.5" height="9" rx="4.5" fill="#979CC2"/></svg>

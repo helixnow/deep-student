@@ -14,7 +14,6 @@
  * 由 P11 在 workbench 启动入口（apps/registerAll）统一调用 registerSystemApps()。
  */
 import React from 'react';
-import { PuzzlePiece } from '@phosphor-icons/react';
 import { AppIconImage } from '../../icons/appIcons';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { contributeWorkbenchApp } from '../../core/appContributions';
@@ -210,7 +209,7 @@ export function registerSystemApps(): void {
 
   contributeWorkbenchApp({
     typeId: 'pluginWorkshop', nameKey: 'plugin_manager:workshop.label',
-    icon: <PuzzlePiece className="h-8 w-8" weight="duotone" />,
+    icon: <AppIconImage typeId="pluginWorkshop" className="h-8 w-8" />,
     instanceMode: 'single', memoryWeight: 1,
     defaultFrame: { w: 960, h: 680 }, minSize: { w: 420, h: 380 },
     render: hostGatedApp('dstu.plugin-workshop', 'plugin_manager:workshop.label', () => import('./PluginWorkshopAppWindow')),
