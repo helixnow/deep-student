@@ -45,9 +45,6 @@ jobs:
       RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
       GH_TOKEN: ${{ github.token }}
       NODE_OPTIONS: '--max-old-space-size=4096'
-      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
-      ELECTRON_CUSTOM_DIR: '{{ version }}'
-      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     strategy:
       fail-fast: false
       matrix:
@@ -109,7 +106,7 @@ jobs:
         run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
 
       - name: Rebuild better-sqlite3 for Electron
         run: |
@@ -123,11 +120,27 @@ jobs:
           fi
           npx @electron/rebuild -f -w better-sqlite3 --arch="$ARCH"
 
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-bin-${{ runner.os }}-${{ matrix.arch || matrix.target }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-bin-${{ runner.os }}-${{ matrix.arch || matrix.target }}-
+
       - name: Install Electron binary
         shell: bash
         run: |
           for attempt in 1 2 3; do
-            if node node_modules/electron/install.js; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node node_modules/electron/install.js; then exit 0; fi
+            else
+              if ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ \
+                 ELECTRON_CUSTOM_DIR='{{ version }}' \
+                 node node_modules/electron/install.js; then exit 0; fi
+            fi
             echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
             sleep 15
           done
@@ -218,7 +231,12 @@ jobs:
             esac
           fi
           for attempt in 1 2 3; do
-            if node electron/scripts/package.mjs --mac --"$ARCH"; then exit 0; fi
+            if [ "$attempt" -eq 1 ]; then
+              if node electron/scripts/package.mjs --mac --"$ARCH" --release; then exit 0; fi
+            else
+              if ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ \
+                 node electron/scripts/package.mjs --mac --"$ARCH" --release; then exit 0; fi
+            fi
             echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
             sleep 20
           done

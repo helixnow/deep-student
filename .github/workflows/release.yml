@@ -18,7 +18,7 @@ on:
         default: ''
         type: string
       allow_unsigned_desktop:
-        description: 'Allow building without Apple/Windows signing certificates (updater signatures remain required)'
+        description: 'Force unsigned desktop builds even when Apple/Windows signing certificates are configured (unsigned is automatic when no certificates are configured)'
         required: false
         default: false
         type: boolean

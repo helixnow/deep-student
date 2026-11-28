@@ -210,17 +210,48 @@ export function pointerDecision(currentVersion, nextVersion) {
   return 'refresh';
 }
 
+const APPLE_SIGNING_BASE = [
+  'APPLE_CERTIFICATE_BASE64',
+  'APPLE_CERTIFICATE_PASSWORD',
+  'APPLE_SIGNING_IDENTITY',
+  'APPLE_ID',
+  'APPLE_TEAM_ID',
+];
+const WINDOWS_SIGNING_BASE = ['WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD'];
+
 export function checkSecrets(env = process.env) {
   // Android stays optional for desktop publication; its own job remains fail-closed.
   const required = ['TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'];
-  if (env.ALLOW_UNSIGNED_DESKTOP !== 'true') {
-    required.push('APPLE_CERTIFICATE_BASE64', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_TEAM_ID', 'WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD');
-    if (!env.APPLE_APP_SPECIFIC_PASSWORD && !env.APPLE_PASSWORD) {
-      required.push('APPLE_PASSWORD');
+  const forceUnsigned = env.ALLOW_UNSIGNED_DESKTOP === 'true';
+  const requireSigned = env.REQUIRE_SIGNED_DESKTOP === 'true';
+  const appleHasPassword = Boolean(env.APPLE_APP_SPECIFIC_PASSWORD || env.APPLE_PASSWORD);
+  const appleAny = APPLE_SIGNING_BASE.some((name) => Boolean(env[name])) || appleHasPassword;
+  const windowsAny = WINDOWS_SIGNING_BASE.some((name) => Boolean(env[name]));
+
+  let allowUnsignedMacos = true;
+  let allowUnsignedWindows = true;
+
+  if (!forceUnsigned) {
+    if (requireSigned || appleAny) {
+      allowUnsignedMacos = false;
+      required.push(...APPLE_SIGNING_BASE);
+      if (!appleHasPassword) {
+        required.push('APPLE_PASSWORD');
+      }
+    }
+    if (requireSigned || windowsAny) {
+      allowUnsignedWindows = false;
+      required.push(...WINDOWS_SIGNING_BASE);
     }
   }
+
   const missing = required.filter((name) => !env[name]);
   assert.equal(missing.length, 0, `Missing required release secrets: ${missing.join(', ')}`);
+  return {
+    allowUnsignedMacos,
+    allowUnsignedWindows,
+    allowUnsignedDesktop: allowUnsignedMacos || allowUnsignedWindows,
+  };
 }
 
 export function verifyTag(root, tag, expectedSha) {
@@ -253,7 +284,21 @@ async function main() {
   switch (command) {
     case 'source': assertSource(root, sha); verifyMetadata(root, options.version); break;
     case 'metadata': verifyMetadata(root, options.version); break;
-    case 'secrets': checkSecrets(); break;
+    case 'secrets': {
+      const policy = checkSecrets();
+      if (process.env.GITHUB_OUTPUT) {
+        appendFileSync(
+          process.env.GITHUB_OUTPUT,
+          `allow_unsigned_macos=${policy.allowUnsignedMacos}\n`
+            + `allow_unsigned_windows=${policy.allowUnsignedWindows}\n`
+            + `allow_unsigned_desktop=${policy.allowUnsignedDesktop}\n`,
+        );
+      }
+      console.log(
+        `[release-contracts] desktop signing policy: macOS=${policy.allowUnsignedMacos ? 'ad-hoc (unsigned)' : 'Developer ID'}, Windows=${policy.allowUnsignedWindows ? 'unsigned' : 'Authenticode'}`,
+      );
+      break;
+    }
     case 'android-manifest': {
       assert.ok(options.file && options.output && options.url, '--file, --output and --url are required');
       writeJson(options.output, patchAndroidManifest(JSON.parse(readFileSync(options.file, 'utf8')), options.version, options.url));

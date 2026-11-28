@@ -23,7 +23,7 @@ import { verifyMigrations } from '../migrations-integrity.ts';
 import { resolveBuildNumber, resolveGitRevision } from '../../scripts/generate-version.mjs';
 
 const flags = new Set(process.argv.slice(2).filter((arg) => arg.startsWith('--')));
-const known = new Set(['--mac', '--win', '--linux', '--arm64', '--x64', '--dir', '--skip-verify']);
+const known = new Set(['--mac', '--win', '--linux', '--arm64', '--x64', '--dir', '--release', '--skip-verify']);
 for (const flag of flags) if (!known.has(flag)) throw new Error(`unknown option ${flag}`);
 if (flags.has('--arm64') && flags.has('--x64')) throw new Error('--arm64 and --x64 cannot be combined');
 
@@ -112,11 +112,16 @@ if (!existsSync(join(root, 'dist', 'index.html'))) {
   process.stderr.write('[package] dist/index.html 不存在：先执行 `npm run build`，否则窗口会加载空白页。\n');
 }
 
+const releaseTargets = flags.has('--release') && !flags.has('--dir')
+  ? (platform === 'mac' ? ['dmg'] : platform === 'win' ? ['nsis'] : [])
+  : [];
+
 const cli = require.resolve('electron-builder/out/cli/cli.js');
 const argv = [
   cli,
   '--config', join(electronDir, 'electron-builder.config.cjs'),
   `--${platform}`,
+  ...releaseTargets,
   ...(targetArch === 'arm64' ? ['--arm64'] : targetArch === 'x64' ? ['--x64'] : []),
   ...(flags.has('--dir') ? ['--dir'] : []),
   // 本机同架构直接用已安装的 Electron 发行目录，不联网下载 electron-vX-<platform>-<arch>.zip。

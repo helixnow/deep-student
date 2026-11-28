@@ -55,7 +55,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
           RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          ALLOW_UNSIGNED_DESKTOP: ${{ inputs.allow_unsigned_desktop }}
+          ALLOW_UNSIGNED_DESKTOP: ${{ needs.verify.outputs.allow_unsigned_desktop }}
+          ALLOW_UNSIGNED_MACOS: ${{ needs.verify.outputs.allow_unsigned_macos }}
+          ALLOW_UNSIGNED_WINDOWS: ${{ needs.verify.outputs.allow_unsigned_windows }}
           ALLOW_MISSING_FIXTURES: ${{ inputs.allow_missing_migration_fixtures }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
           FORCE_REBUILD: ${{ inputs.force_rebuild }}
@@ -88,7 +90,7 @@ jobs:
       source_sha: ${{ needs.verify.outputs.source_sha }}
       tag_name: ${{ inputs.tag_name }}
       reuse_run_id: ${{ needs.plan.outputs.macos-arm }}
-      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+      allow_unsigned: ${{ needs.verify.outputs.allow_unsigned_macos == 'true' }}
     secrets: inherit
   macos-intel:
     needs: [verify, plan, frontend, migration]
@@ -99,7 +101,7 @@ jobs:
       source_sha: ${{ needs.verify.outputs.source_sha }}
       tag_name: ${{ inputs.tag_name }}
       reuse_run_id: ${{ needs.plan.outputs.macos-intel }}
-      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+      allow_unsigned: ${{ needs.verify.outputs.allow_unsigned_macos == 'true' }}
     secrets: inherit
   windows:
     needs: [verify, plan, frontend, migration]
@@ -110,7 +112,7 @@ jobs:
       source_sha: ${{ needs.verify.outputs.source_sha }}
       tag_name: ${{ inputs.tag_name }}
       reuse_run_id: ${{ needs.plan.outputs.windows }}
-      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+      allow_unsigned: ${{ needs.verify.outputs.allow_unsigned_windows == 'true' }}
     secrets: inherit
   linux:
     needs: [verify, plan, frontend, migration]

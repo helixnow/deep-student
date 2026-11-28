@@ -41,7 +41,12 @@ function download(repo, run, name, dir) {
 }
 function policy(stage) {
   if (stage === 'migration') return process.env.ALLOW_MISSING_FIXTURES || 'false';
-  if (['macos-arm', 'macos-intel', 'windows'].includes(stage)) return process.env.ALLOW_UNSIGNED_DESKTOP || 'true';
+  if (stage === 'macos-arm' || stage === 'macos-intel') {
+    return process.env.ALLOW_UNSIGNED_MACOS || process.env.ALLOW_UNSIGNED_DESKTOP || 'true';
+  }
+  if (stage === 'windows') {
+    return process.env.ALLOW_UNSIGNED_WINDOWS || process.env.ALLOW_UNSIGNED_DESKTOP || 'true';
+  }
   return '';
 }
 async function main() {
