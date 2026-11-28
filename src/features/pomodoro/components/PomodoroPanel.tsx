@@ -862,18 +862,20 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 <ChartBar size={16} weight="bold" className="shrink-0 text-foreground" aria-hidden="true" />
               )}
               <span className="text-ui font-semibold text-foreground">{inlinePanelTitle}</span>
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => setInlinePanel(null)}
-                title={t('close', { ns: 'common' })}
-                aria-label={t('close', { ns: 'common' })}
-                // 视觉保持 24px；coarse 触屏用伪元素 -inset-2.5 扩成 44px 触控目标（24 + 2×10）
-                className="relative ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard after:absolute after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
-              >
-                <X size={14} />
-              </DsButton>
+              {isMobile && (
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => setInlinePanel(null)}
+                  title={t('close', { ns: 'common' })}
+                  aria-label={t('close', { ns: 'common' })}
+                  // 视觉保持 24px；coarse 触屏用伪元素 -inset-2.5 扩成 44px 触控目标（24 + 2×10）
+                  className="relative ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard after:absolute after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
+                >
+                  <X size={14} />
+                </DsButton>
+              )}
             </div>
             <CustomScrollArea
               className="-mr-1 max-h-[min(48vh,420px)] min-h-0"
@@ -1196,22 +1198,24 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   </span>
                 </DsButton>
               )}
-              {/* 次要操作收纳开关（运行中横滑区常显，此开关只在空闲态生效） */}
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => setMobileMoreOpen((v) => !v)}
-                aria-expanded={mobileMoreOpen || mode !== 'idle'}
-                title={t('pomodoro.controls.more', '更多操作')}
-                aria-label={t('pomodoro.controls.more', '更多操作')}
-                className={cn(
-                  '!h-11 !w-11 transition-colors duration-150 ease-standard',
-                  mobileMoreOpen && 'text-primary',
-                )}
-              >
-                <DotsThree size={20} weight="bold" />
-              </DsButton>
+              {/* 次要操作收纳开关（运行中横滑区常显，仅空闲态渲染） */}
+              {mode === 'idle' && (
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => setMobileMoreOpen((v) => !v)}
+                  aria-expanded={mobileMoreOpen}
+                  title={t('pomodoro.controls.more', '更多操作')}
+                  aria-label={t('pomodoro.controls.more', '更多操作')}
+                  className={cn(
+                    '!h-11 !w-11 transition-colors duration-150 ease-standard',
+                    mobileMoreOpen && 'text-primary',
+                  )}
+                >
+                  <DotsThree size={20} weight="bold" />
+                </DsButton>
+              )}
             </div>
           </div>
 

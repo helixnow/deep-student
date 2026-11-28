@@ -285,6 +285,8 @@ interface TodoMainPanelProps {
   /** 移动端受控批量多选态（由 TodoContentView 顶栏「更多」菜单驱动） */
   checkMode?: boolean;
   onCheckModeChange?: (active: boolean) => void;
+  /** 与外层移动端顶栏共享详情未保存守卫 ref */
+  detailCloseGuardRef?: React.MutableRefObject<((onConfirmClose: () => void) => boolean) | null>;
 }
 
 export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
@@ -295,6 +297,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
   onMobileSearchOpenChange,
   checkMode: checkModeProp,
   onCheckModeChange,
+  detailCloseGuardRef: externalDetailCloseGuardRef,
 }) => {
   const { t } = useTranslation(['todo', 'common', 'sidebar']);
   const { isSmallScreen } = useBreakpoint();
@@ -333,8 +336,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
 
   // 面板根节点：快捷键门禁用它判定承载环境（legacy 页面 vs workbench 窗口）
   const panelRootRef = useRef<HTMLDivElement | null>(null);
-  // 详情面板未保存修改守卫：Esc / 移动端覆盖层返回先经详情守卫确认
-  const detailCloseGuardRef = useRef<((onConfirmClose: () => void) => boolean) | null>(null);
+  // 详情面板未保存修改守卫：Esc / 移动端覆盖层返回 / 移动端顶栏返回箭头先经详情守卫确认
+  const internalDetailCloseGuardRef = useRef<((onConfirmClose: () => void) => boolean) | null>(null);
+  const detailCloseGuardRef = externalDetailCloseGuardRef ?? internalDetailCloseGuardRef;
 
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
@@ -361,6 +365,13 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({
     lastCheckedIdRef.current = null;
     setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
   }, []);
+
+  // 移动端顶栏退出多选模式时同步清空已勾选条目，避免批量操作栏残留
+  useEffect(() => {
+    if (checkModeProp === false) {
+      clearChecked();
+    }
+  }, [checkModeProp, clearChecked]);
 
   // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏/顶栏「选择」开关进入，
   // 进入后行首显示复选框、点行即勾选（不打开详情）。行内左右滑手势暂停避免误触。

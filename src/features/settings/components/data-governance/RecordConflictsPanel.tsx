@@ -1021,7 +1021,7 @@ export const RecordConflictsPanel: React.FC<{
               variant="outline"
               size="sm"
               onClick={() => requestBulkResolve('keep_cloud')}
-              disabled={loading || pairs.length === 0}
+              disabled={loading || pairs.every((p) => p.clouds.length === 0)}
               className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('data:governance.conflict_bulk_use_cloud')}

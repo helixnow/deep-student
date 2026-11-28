@@ -238,8 +238,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
           shortcut={shortcuts.addChild}
           onClick={() => {
             const newId = addNode(node.id, 0);
-            if (node.collapsed) toggleCollapse(node.id);
-            setTimeout(() => setFocusedNodeId(newId), 0);
+            if (newId) setTimeout(() => setFocusedNodeId(newId), 0);
           }}
         >
           {t('actions.addChild')}
@@ -250,7 +249,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             shortcut={shortcuts.addSibling}
             onClick={() => {
               const newId = addNode(parentId, indexInParent + 1);
-              setTimeout(() => setFocusedNodeId(newId), 0);
+              if (newId) setTimeout(() => setFocusedNodeId(newId), 0);
             }}
           >
             {t('contextMenu.addSibling')}

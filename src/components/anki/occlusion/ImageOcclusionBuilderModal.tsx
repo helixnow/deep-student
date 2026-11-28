@@ -1066,17 +1066,6 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                     className="h-9 min-w-[160px] flex-1 text-base sm:h-8 sm:text-xs [@media(pointer:coarse)]:!h-11"
                     data-testid="occlusion-box-label-input"
                   />
-                  <DsButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeBox(selectedBox.id)}
-                    className="min-h-[36px] px-3 text-xs text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
-                    data-testid="occlusion-delete-box-btn"
-                  >
-                    <Trash size={14} />
-                    <span>{t('occlusion.deleteSelectedBox', { defaultValue: '删除选中遮挡' })}</span>
-                  </DsButton>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">

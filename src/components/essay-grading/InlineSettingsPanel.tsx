@@ -85,7 +85,7 @@ interface InlineSettingsPanelProps {
   // 自定义提示词
   customPrompt: string;
   setCustomPrompt: (prompt: string) => void;
-  onSavePrompt: () => void;
+  onSavePrompt: () => boolean | void | Promise<boolean | void>;
   onRestoreDefaultPrompt: () => void;
   // 状态
   isGrading?: boolean;
@@ -439,6 +439,16 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
           };
           await saveBuiltinOverride(input);
           showGlobalNotification('success', t('settings:gradingMode.successSaved'));
+        } else if (isLocalCustomModeId(editingMode.id)) {
+          saveLocalCustomMode({
+            id: editingMode.id,
+            name: payload.name,
+            description: payload.description ?? editingMode.description,
+            total_max_score: payload.total_max_score,
+            score_dimensions: payload.score_dimensions ?? editingMode.score_dimensions,
+            system_prompt: payload.system_prompt,
+          });
+          showGlobalNotification('success', t('settings:gradingMode.successUpdated'));
         } else {
           await updateCustomMode({ id: editingMode.id, ...payload });
           showGlobalNotification('success', t('settings:gradingMode.successUpdated'));
@@ -658,9 +668,10 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     }
   }, [setModeId, setGradeLevel, modes, viewMode]);
 
-  // 保存提示词：就地成功反馈，不关闭面板
-  const handleSavePrompt = useCallback(() => {
-    onSavePrompt();
+  // 保存提示词：等待真实落库成功后再展示就地成功反馈，不关闭面板
+  const handleSavePrompt = useCallback(async () => {
+    const saved = await onSavePrompt();
+    if (saved === false) return;
     setPromptJustSaved(true);
     if (promptSavedTimerRef.current) clearTimeout(promptSavedTimerRef.current);
     promptSavedTimerRef.current = setTimeout(() => {
@@ -865,15 +876,6 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       <span className="text-xs font-medium text-foreground">
                         {t('essay_grading:settings_panel.custom_rubric')}
                       </span>
-                      <DsButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCustomRubricOpen(false)}
-                        aria-label={t('essay_grading:actions.cancel')}
-                        className="!h-auto !px-1 !py-0.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                      >
-                        {t('essay_grading:actions.cancel')}
-                      </DsButton>
                     </div>
                     <div className="essay-rubric-form-grid grid grid-cols-1 gap-2 sm:grid-cols-[1fr_92px]">
                       <div className="space-y-1">
@@ -1018,7 +1020,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                           {t('essay_grading:settings_panel.custom_rubric_badge')}
                         </Badge>
                       ) : null}
-                      {isLocalCustomModeId(currentMode.id) && !isGrading && (
+                      {isLocalCustomModeId(currentMode.id) && !isGrading && !customRubricOpen && (
                         <div className="flex items-center gap-1">
                           <DsButton
                             variant="ghost"

@@ -1284,7 +1284,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </AppMenuItem>
         <AppMenuItem
           icon={<Download size={16} />}
-          disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
+          disabled={allSkills.filter(s => !s.isBuiltin || s.isCustomized).length === 0}
           onClick={handleExportAll}
         >
           {t('skills:management.export_all_short')}
@@ -1426,7 +1426,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {
               id: 'skills-root',
               label: t('sidebar:navigation.skills_management', { defaultValue: t('skills:management.title') }),
-              onClick: () => setEditorOpen(false),
+              onClick: () => {
+                if (editorRequestCloseRef.current) {
+                  editorRequestCloseRef.current();
+                } else {
+                  setEditorOpen(false);
+                }
+              },
             },
             {
               id: 'skills-editor',
@@ -1684,7 +1690,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     return (
     <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
       {!isSmallScreen && hiddenFileInput}
-      {toolbarPortalTarget
+      {toolbarPortalTarget && !editorOpen
         ? createPortal(
             <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{toolbarPrimaryRow}</div>,
             toolbarPortalTarget,
@@ -2311,6 +2317,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <SkillFullscreenEditor
           open={editorOpen}
           onClose={() => setEditorOpen(false)}
+          requestCloseRef={editorRequestCloseRef}
           skill={editingSkill ?? undefined}
           location={editorLocation}
           onSave={handleSave}

@@ -632,7 +632,11 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       // CSV 格式且有 examId 时使用后端导出（支持更多选项）
       if (format === 'csv' && examId) {
         if (questions.some(question => question.groupId || question.materials?.length)) {
-          throw new Error(t('exam_sheet:questionBank.export.csvGroupedUnsupported', { defaultValue: 'CSV 无法保留共享材料和题组关系，请选择 v2 JSON 或 ZIP 便携包。' }));
+          showGlobalNotification(
+            'warning',
+            t('exam_sheet:questionBank.export.csvGroupedUnsupported', { defaultValue: 'CSV 无法保留共享材料和题组关系，请选择 v2 JSON 或 ZIP 便携包。' }),
+          );
+          return;
         }
         try {
           const outcome = await handleCsvBackendExport();

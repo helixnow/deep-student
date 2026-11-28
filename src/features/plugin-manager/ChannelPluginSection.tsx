@@ -270,6 +270,7 @@ export function ChannelPluginDialog({ plugin, models, onOpenChange, onChanged }:
               models={[...models]}
               onBack={() => onOpenChange(false)}
               onPluginChange={onChanged}
+              hideBackButton
             />
           </Suspense>
         ) : null}

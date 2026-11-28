@@ -361,17 +361,17 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         title={t('settings:dimension_management.title')}
         description={t('settings:dimension_management.description')}
         actions={
-          <>
+          !isAddingNew ? (
             <DsButton
               variant="outline"
               size="sm"
-              onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
+              onClick={handleOpenCreateDialog}
               className="flex-1 sm:flex-none [@media(pointer:coarse)]:!h-11"
             >
-              {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
-              <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
+              <Plus size={12} className="mr-1" />
+              <span>{t('settings:dimension_management.create_dimension')}</span>
             </DsButton>
-          </>
+          ) : undefined
         }
       />
 
@@ -383,9 +383,6 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
-               <X size={14} />
-            </DsButton>
           </div>
           
           <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-3 md:gap-x-4 mb-3">

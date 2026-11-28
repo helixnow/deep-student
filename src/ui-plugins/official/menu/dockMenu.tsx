@@ -12,12 +12,12 @@ function official(id: string, order: number, items: AppMenuContributionFor<'work
 }
 
 export const officialDockMenuEntries: readonly SlotEntry<AppMenuContribution>[] = [
-  official('dock:open', 10, ({ t, workbench, typeId, instanceMode, windows }) => {
-    const multi = instanceMode === 'multi';
+  official('dock:open', 10, ({ t, workbench, typeId, instanceMode, canOpenNewWindow, windows }) => {
+    const multi = instanceMode === 'multi' && canOpenNewWindow !== false;
     return [{
       id: 'open',
       icon: <Plus size={16} weight="bold" />,
-      // single：始终「打开」（已运行则禁用）；multi 有实例时「新建窗口」
+      // single 或仅限资源打开的 multi：始终「打开」（已运行则禁用）；支持新建空白窗的 multi 有实例时「新建窗口」
       label: multi && windows.length > 0 ? t('workbench:dock.newWindow') : t('workbench:dock.open'),
       disabled: !(multi || windows.length === 0),
       run: () => workbench.launchAppFrom(typeId, 'dock'),

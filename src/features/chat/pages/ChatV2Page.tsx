@@ -52,7 +52,7 @@ import {
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
-import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
+import { SidebarFrameIcon } from '@/app/shell/DesktopShellIcons';
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
@@ -1513,6 +1513,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   // 分支，含刷新/检查器动作），再画 SandboxToolbar 会形成双顶栏
                   //（与 SandboxWorkbenchPage 独立视图的小屏处理对齐）
                   hideToolbar
+                  hideInspectorToggle
                   className="h-full"
                   onClose={handleCloseSandbox}
                   ownerKey={sandboxOwnerKey}
@@ -1619,7 +1620,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </div>
       )}
 
-      {!isSmallScreen && sandboxActiveSession && (
+      {!isSmallScreen && sandboxActiveSession && !sandboxWorkbenchOpen && (
         <div
           className="absolute z-20"
           style={{
@@ -1628,7 +1629,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           }}
         >
           <CommonTooltip
-            content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
+            content={t('page.expandSandboxWorkbench')}
             position="bottom"
           >
             <DsButton
@@ -1636,34 +1637,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               size="icon"
               iconOnly
               onClick={toggleSandboxWorkbench}
-              className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
-                sandboxWorkbenchOpen
-                  ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
-                  : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
-              )}
-              aria-label={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
-              title={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
+              className="relative !h-8 !w-8 overflow-hidden rounded-[var(--shell-nav-row-radius)] border border-border/80 bg-background/95 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              aria-label={t('page.expandSandboxWorkbench')}
+              title={t('page.expandSandboxWorkbench')}
             >
-              <span className="relative block h-[18px] w-[18px]">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
-                    sandboxWorkbenchOpen ? 'translate-x-[-4px] opacity-0' : 'translate-x-0 opacity-100'
-                  )}
-                >
-                  <SidebarFrameIcon />
-                </span>
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
-                    sandboxWorkbenchOpen ? 'translate-x-0 opacity-100' : 'translate-x-[4px] opacity-0'
-                  )}
-                >
-                  <SidebarFrameWithLeftRailIcon />
-                </span>
+              <span className="relative block h-[18px] w-[18px]" aria-hidden="true">
+                <SidebarFrameIcon />
               </span>
             </DsButton>
           </CommonTooltip>

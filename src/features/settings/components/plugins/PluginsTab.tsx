@@ -43,6 +43,8 @@ interface IlinkBotConfigPanelProps {
   models: UnifiedModelInfo[];
   onBack: () => void;
   onPluginChange: () => void;
+  /** 外层已由对话框提供关闭入口时隐藏重复的返回列表按钮 */
+  hideBackButton?: boolean;
 }
 
 function stateBadgeVariant(state: PluginState): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -65,6 +67,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   models,
   onBack,
   onPluginChange,
+  hideBackButton = false,
 }) => {
   const { t } = useTranslation(['settings', 'common', 'plugin_manager']);
   const channelDisplay = getChannelPluginDisplay(plugin, t);
@@ -215,7 +218,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               {channelDisplay.blurb}
             </p>
           </div>
-          {!isSmallScreen && (
+          {!isSmallScreen && !hideBackButton && (
             <DsButton
               variant="outline"
               size="sm"

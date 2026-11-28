@@ -288,10 +288,12 @@ describe('Stage 5 R3-E UI Regressions', () => {
     const toggleBtn = screen.getByRole('button', { name: '收起云存储设置' });
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
 
-    // Genuine accessible <button> controls for sync
+    // Genuine accessible <button> controls for sync (no duplicate adjacent bidirectional button)
     fireEvent.click(screen.getByRole('button', { name: '立即同步' }));
     expect(onRunSync).toHaveBeenCalledWith('bidirectional', 'keep_latest');
-    fireEvent.click(screen.getByRole('button', { name: '双向同步' }));
+    expect(screen.queryByRole('button', { name: '双向同步' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '上传' }));
+    expect(onRunSync).toHaveBeenCalledWith('upload', 'keep_latest');
     expect(onRunSync).toHaveBeenCalledTimes(2);
 
     // Collapsing switches label to 展开云存储设置 while keeping CloudStorageSection mounted (hidden)

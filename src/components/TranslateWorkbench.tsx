@@ -2061,13 +2061,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   }, [defaultPromptForDomain, domain, persistPromptSetting, scheduleSessionPersist]);
 
   // 复制翻译结果
-  const handleCopyResult = useCallback(async () => {
+  const handleCopyResult = useCallback(async (): Promise<boolean> => {
     try {
       await copyTextToClipboard(translatedText);
       showGlobalNotification('success', t('translation:target_section.copied'));
+      return true;
     } catch (error: unknown) {
       console.error('[Translation] Failed to copy:', error);
       showGlobalNotification('error', t('translation:errors.copy_failed', { error: getErrorMessage(error) }));
+      return false;
     }
   }, [translatedText, t]);
 

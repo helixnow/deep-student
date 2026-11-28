@@ -81,8 +81,8 @@ export interface TranslationPopoverProps {
   onAddToInput?: (text: string) => void;
   /** 头部是否显示模型名（阅读器内 360px 面板放不下，会与目标语言叠在一起） */
   showModelName?: boolean;
-  /** 一键将译文存入 PDF 批注笔记 */
-  onSaveToAnnotation?: (text: string) => void;
+  /** 一键将译文存入 PDF 批注笔记（返回 false 表示未实际落库） */
+  onSaveToAnnotation?: (text: string) => boolean | void;
 }
 
 // ============================================================================
@@ -732,7 +732,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
 
   const handleSaveToAnnotation = useCallback(() => {
     if (!fullTranslation || !onSaveToAnnotation) return;
-    onSaveToAnnotation(fullTranslation);
+    const saved = onSaveToAnnotation(fullTranslation);
+    if (saved === false) return;
     setPinnedAnnotation(true);
     if (pinnedAnnotationTimerRef.current) clearTimeout(pinnedAnnotationTimerRef.current);
     pinnedAnnotationTimerRef.current = setTimeout(() => setPinnedAnnotation(false), 1500);

@@ -9,6 +9,7 @@ import { cardAgent } from '@/components/anki/cardforge';
 import type { CardSourceRef } from '@/components/anki/cardforge/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { isWorkbenchHostEnabled, launchWorkbenchApp } from '@/shared/workbenchHost';
 import { getErrorMessage } from '@/utils/errorUtils';
 
 /** 内容短于该长度时制卡质量不可控，直接拒绝而不是发一个必然失败的任务 */
@@ -35,6 +36,10 @@ export type GenerateCardsFromTextResult =
   | { ok: false; reason: 'too_short' | 'generate_failed'; error?: string };
 
 function navigateToTaskDashboard(): void {
+  if (isWorkbenchHostEnabled()) {
+    launchWorkbenchApp({ typeId: 'taskDashboard', reason: 'api' });
+    return;
+  }
   dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view: 'task-dashboard' });
 }
 

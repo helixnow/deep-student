@@ -381,6 +381,7 @@ const ClearOption: React.FC<ClearOptionProps> = ({
     <div className="flex-1 min-w-0">
       <Label
         htmlFor={label}
+        onClick={(e) => e.stopPropagation()}
         className="flex items-center font-medium text-sm text-foreground cursor-pointer [@media(pointer:coarse)]:min-h-11"
       >
         {label}

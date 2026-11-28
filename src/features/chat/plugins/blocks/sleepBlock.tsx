@@ -409,7 +409,10 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
 
   // 手动唤醒
   const handleManualWake = async () => {
-    if (!sleepId || !workspaceId) return;
+    if (!sleepId || !workspaceId) {
+      showGlobalNotification('info', t('sleep.wakeNoop'));
+      return;
+    }
     setIsWaking(true);
     try {
       const result = await manualWake(workspaceId, sleepId);

@@ -120,6 +120,8 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
     mobileBottomPadding = false,
     hasOpenApp = false,
     onCloseApp,
+    collapsedAppTabCount = 0,
+    onRestoreAppPanel,
     hideToolbarAndNav = false,
     quickAccessPortalTarget,
     toolbarPortalTarget,
@@ -393,6 +395,8 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             onSortChange={isSmallScreen ? setSorting : undefined}
             hasOpenApp={!isSmallScreen && hasOpenApp}
             onCloseApp={onCloseApp}
+            collapsedAppTabCount={!isSmallScreen ? collapsedAppTabCount : 0}
+            onRestoreAppPanel={!isSmallScreen ? onRestoreAppPanel : undefined}
           />
         )}
       </UnifiedDragDropZone>

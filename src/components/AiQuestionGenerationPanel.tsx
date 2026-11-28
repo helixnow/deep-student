@@ -159,9 +159,15 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     materials: Array<{ local_id?: string; id?: string; content: string }>;
     drafts: GeneratedQuestionDraft[];
   } | null>(null);
+  const dismissedInitialDraftIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || !initialDraftJobId) {
+    if (!open) {
+      dismissedInitialDraftIdRef.current = null;
+      setLoadedDraft(null);
+      return;
+    }
+    if (!initialDraftJobId || dismissedInitialDraftIdRef.current === initialDraftJobId) {
       setLoadedDraft(null);
       return;
     }
@@ -416,8 +422,9 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
       event.target.value = ''; // 允许重复选择同一文件
       if (files.length === 0) return;
 
+      let count = references.length;
       for (const file of files) {
-        if (references.length >= MAX_REFERENCE_FILES) {
+        if (count >= MAX_REFERENCE_FILES) {
           showGlobalNotification('warning', t('exam_sheet:aiGeneration.referenceTooMany'));
           break;
         }
@@ -442,6 +449,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(file);
           });
+          count += 1;
           setReferences((prev) => [
             ...prev,
             { id: `local_${Date.now()}_${file.name}`, name: file.name, source: 'local' as const, base64 },
@@ -496,7 +504,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     (basedOnExisting && canUseExistingQuestions);
 
   const handleStart = async () => {
-    if (maxQuestions <= 0 || maxQuestions > 100) return;
+    if (submitting || maxQuestions <= 0 || maxQuestions > 100) return;
     if (!hasGenerationContext) {
       showGlobalNotification(
         'warning',
@@ -1083,6 +1091,9 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 type="button"
                 className="text-primary hover:underline"
                 onClick={() => {
+                  if (initialDraftJobId) {
+                    dismissedInitialDraftIdRef.current = initialDraftJobId;
+                  }
                   selectTask(null);
                   setLoadedDraft(null);
                   setSpecs([newSpecRow()]);
@@ -1112,7 +1123,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 <DsButton
                   variant="default"
                   size="sm"
-                  disabled={maxQuestions <= 0 || maxQuestions > 100 || !hasGenerationContext}
+                  disabled={submitting || maxQuestions <= 0 || maxQuestions > 100 || !hasGenerationContext}
                   onClick={() => void handleStart()}
                 >
                   <Sparkle size={14} className="mr-1" />

@@ -1699,7 +1699,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
 
   // 保存 Prompt
-  const handleSavePrompt = useCallback(async () => {
+  const handleSavePrompt = useCallback(async (): Promise<boolean> => {
     try {
       await TauriAPI.saveSetting('essay_grading.prompt', customPrompt);
       const targetSessionId = currentSession?.id ?? initialSession?.id;
@@ -1709,11 +1709,14 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         });
         if (!updateResult.ok) {
           showGlobalNotification('error', updateResult.error.toUserMessage());
+          return false;
         }
       }
       showGlobalNotification('success', t('essay_grading:prompt_editor.saved'));
+      return true;
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
+      return false;
     }
   }, [customPrompt, currentSession?.id, initialSession?.id, t]);
 
@@ -1725,9 +1728,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // 历史管理函数已移除 - 由 Learning Hub 管理
 
   // 复制结果
-  const handleCopyResult = useCallback(() => {
-    copyTextToClipboard(gradingResult);
-    showGlobalNotification('success', t('essay_grading:result_section.copied'));
+  const handleCopyResult = useCallback(async () => {
+    try {
+      await copyTextToClipboard(gradingResult);
+      showGlobalNotification('success', t('essay_grading:result_section.copied'));
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error));
+    }
   }, [gradingResult, t]);
 
   // 导出结果

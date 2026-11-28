@@ -90,7 +90,6 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
     const json = JSON.stringify(exportData, null, 2);
     const defaultFileName = `statistics-${new Date().toISOString().split('T')[0]}.json`;
 
-    let saved = false;
     try {
       const result = await fileManager.saveTextFile({
         title: t('export_stats_title'),
@@ -98,14 +97,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         filters: [{ name: t('file_filter_json'), extensions: ['json'] }],
         content: json,
       });
-      if (!result.canceled) {
-        saved = true;
-      }
+      if (result.canceled) return;
     } catch (err: unknown) {
       console.warn('[SOTADashboard] Export failed, falling back to browser download', err);
-    }
-
-    if (!saved) {
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

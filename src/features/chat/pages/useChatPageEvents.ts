@@ -827,19 +827,34 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           store.getState().toggleFeature('learnMode');
         }
       },
-      // 收藏当前对话
+      // 收藏/置顶当前对话（保留已有 metadata 字段，支持切换取消置顶，并广播刷新列表）
       [COMMAND_EVENTS.CHAT_BOOKMARK_SESSION]: async () => {
         console.log('[ChatV2Page] CHAT_BOOKMARK_SESSION triggered');
         const sessionId = currentSessionIdRef.current;
         if (sessionId) {
           try {
+            const currentSession = await invoke<{ metadata?: Record<string, unknown> } | null>(
+              'chat_v2_get_session',
+              { sessionId },
+            );
+            const existingMeta = currentSession?.metadata && typeof currentSession.metadata === 'object'
+              ? currentSession.metadata
+              : {};
+            const nextPinned = !existingMeta.pinned;
             await invoke('chat_v2_update_session_settings', {
               sessionId,
-              settings: { is_favorite: true },
+              settings: { metadata: { ...existingMeta, pinned: nextPinned } },
             });
-            // 可选：显示成功提示
+            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+            showGlobalNotification(
+              'success',
+              nextPinned
+                ? t('sidebar.pinned', { defaultValue: '已置顶当前对话' })
+                : t('sidebar.unpinned', { defaultValue: '已取消置顶' }),
+            );
           } catch (error) {
             console.error('[ChatV2Page] Failed to bookmark session:', getErrorMessage(error));
+            showGlobalNotification('error', getErrorMessage(error));
           }
         }
       },

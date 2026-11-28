@@ -165,6 +165,8 @@ export interface MindMapSearchBannerProps {
   searchInput: string;
   onSearchInputChange: (value: string) => void;
   onCloseSearch: () => void;
+  /** 演示模式下顶部工具栏隐藏，需要保留搜索条内部关闭按钮 */
+  presentationMode?: boolean;
 }
 
 /**
@@ -173,7 +175,7 @@ export interface MindMapSearchBannerProps {
  * - 挂载 `useImeCompositionGuard`，防止中文/日文/韩文输入法按 Enter 上屏候选词时误触发 `nextSearchResult`。
  */
 export const MindMapSearchBanner: React.FC<MindMapSearchBannerProps> = React.memo(
-  ({ showSearch, searchInput, onSearchInputChange, onCloseSearch }) => {
+  ({ showSearch, searchInput, onSearchInputChange, onCloseSearch, presentationMode = false }) => {
     const { t } = useTranslation(['mindmap']);
     const searchFn = useMindMapStore((state) => state.search);
     const searchResults = useMindMapStore((state) => state.searchResults);
@@ -391,7 +393,7 @@ export const MindMapSearchBanner: React.FC<MindMapSearchBannerProps> = React.mem
 
               <DsButton
                 variant="ghost"
-                className="mm-search-close"
+                className={cn('mm-search-close', !presentationMode && 'md:hidden')}
                 aria-label={t('mindmap:toolbar.closeSearch')}
                 onClick={onCloseSearch}
               >

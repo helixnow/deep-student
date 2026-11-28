@@ -420,7 +420,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
     };
   }, []);
 
-  const handleBaseUrlSave = useCallback(() => {
+  const handleBaseUrlSave = useCallback(async () => {
     if (!selectedVendor) return;
     const normalized = normalizeBaseUrl(baseUrlDraft);
     if (!normalized) {
@@ -432,13 +432,14 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
       return;
     }
     setBaseUrlSaveStatus('saving');
-    handleSaveVendorBaseUrl(selectedVendor.id, normalized);
-    // 模拟保存完成（实际保存是同步的 state update）
+    const saved = await handleSaveVendorBaseUrl(selectedVendor.id, normalized);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      setBaseUrlSaveStatus('saved');
-      saveTimerRef.current = setTimeout(() => setBaseUrlSaveStatus('idle'), 2000);
-    }, 300);
+    if (saved === false) {
+      setBaseUrlSaveStatus('idle');
+      return;
+    }
+    setBaseUrlSaveStatus('saved');
+    saveTimerRef.current = setTimeout(() => setBaseUrlSaveStatus('idle'), 2000);
   }, [selectedVendor, baseUrlDraft, handleSaveVendorBaseUrl, t]);
 
   if (!selectedVendor) {

@@ -68,6 +68,8 @@ export interface AnkiCardActionButtonsProps {
   onSyncStatusChange?: (status: 'synced' | 'error' | 'syncing', error?: string) => void;
   /** 保存成功后用后端返回的真实 ID 更新并持久化当前块。 */
   onCardsPersisted?: (mappings: SaveAnkiCardIdMapping[]) => Promise<void>;
+  /** 完成态小结条已直出导出按钮时，避免「更多」菜单重复出现导出 APKG。 */
+  hideExportInMenu?: boolean;
 }
 
 export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
@@ -86,6 +88,7 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
   onDeckNameChange,
   onSyncStatusChange,
   onCardsPersisted,
+  hideExportInMenu = false,
 }) => {
   const { t } = useTranslation('chatV2');
   const [saveStatus, setSaveStatus] = useState<ActionStatus>('idle');
@@ -651,13 +654,15 @@ export const AnkiCardActionButtons: React.FC<AnkiCardActionButtonsProps> = ({
             </AppMenuTrigger>
             <AppMenuContent align="end" width={240}>
               <AppMenuGroup>
-                <AppMenuItem
-                  icon={renderIcon(exportStatus, DownloadSimple)}
-                  onClick={() => void handleExport()}
-                  disabled={isDisabled || exportStatus === 'loading'}
-                >
-                  {t('blocks.ankiCards.export')}
-                </AppMenuItem>
+                {!hideExportInMenu && (
+                  <AppMenuItem
+                    icon={renderIcon(exportStatus, DownloadSimple)}
+                    onClick={() => void handleExport()}
+                    disabled={isDisabled || exportStatus === 'loading'}
+                  >
+                    {t('blocks.ankiCards.export')}
+                  </AppMenuItem>
+                )}
                 <AppMenuItem
                   icon={renderIcon(syncStatus, PaperPlaneRight)}
                   onClick={() => void handleSync()}

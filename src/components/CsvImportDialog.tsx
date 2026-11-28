@@ -614,6 +614,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           });
         }
         if (batchQuestions.length > 0) {
+          attempt.backendStarted = true;
           await invoke('qbank_batch_create_questions', {
             paramsList: batchQuestions,
           });
@@ -1068,25 +1069,6 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               <span className="tabular-nums">{importProgress.failed}</span>
               <span className="text-xs">{t('exam_sheet:csv.result_failed')}</span>
             </span>
-          </div>
-          {/* 取消按钮 */}
-          <div className="flex justify-center pt-1">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleCancelImport()}
-              disabled={isCancelling}
-              className="text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
-            >
-              {isCancelling ? (
-                <CircleNotch size={16} className="mr-1.5 animate-spin" />
-              ) : (
-                <XCircle size={16} className="mr-1.5" />
-              )}
-              {isCancelling
-                ? t('exam_sheet:csv.cancelling_import')
-                : t('exam_sheet:csv.cancel_import')}
-            </DsButton>
           </div>
         </div>
       )}

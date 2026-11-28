@@ -11,6 +11,8 @@ interface SandboxToolbarProps {
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   onClose: () => void;
+  /** 宿主全局顶栏已挂载检查器开关时隐藏工具栏内重复按钮 */
+  hideInspectorToggle?: boolean;
 }
 
 export function SandboxToolbar({
@@ -20,6 +22,7 @@ export function SandboxToolbar({
   inspectorOpen,
   onToggleInspector,
   onClose,
+  hideInspectorToggle = false,
 }: SandboxToolbarProps) {
   const { t } = useTranslation('workbench');
   // DsButton iconOnly 已内建 coarse 指针 ≥44px 触控目标
@@ -37,17 +40,19 @@ export function SandboxToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onToggleInspector}
-          title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
-          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
-          className={iconBtnClass}
-        >
-          <SidebarSimple size={16} />
-        </DsButton>
+        {!hideInspectorToggle && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onToggleInspector}
+            title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+            aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+            className={iconBtnClass}
+          >
+            <SidebarSimple size={16} />
+          </DsButton>
+        )}
         <DsButton
           variant="ghost"
           size="icon"

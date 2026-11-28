@@ -54,8 +54,13 @@ export const ReciteStatusBar: React.FC = () => {
     return countBlankProgress(document.root, revealedBlanks);
   }, [reciteMode, document.root, revealedBlanks]);
 
-  // 本次背诵里翻开过的空 → 卡片；已存过的节点不重复存（同一会话连点两次）
+  // 本次背诵里翻开过的空 → 卡片；已存过的节点不重复存（同一会话连点两次；切换导图/退出背诵/全部重盖后重置）
   const [savedNodeIds, setSavedNodeIds] = useState<ReadonlySet<string>>(() => new Set());
+  React.useEffect(() => {
+    if (!reciteMode) {
+      setSavedNodeIds(new Set());
+    }
+  }, [reciteMode, mindmapId]);
   const [savingCards, setSavingCards] = useState(false);
   const missCards = useMemo(
     () => (reciteMode ? buildReciteMissCards(document.root, reciteSessionLog).filter((card) => !savedNodeIds.has(card.nodeId)) : []),
@@ -251,11 +256,19 @@ export const ReciteStatusBar: React.FC = () => {
         <Eye size={14} />
         {t('recite.revealAll')}
       </DsButton>
-      <DsButton variant="ghost" onClick={resetAllBlanks} className="mm-recite-status-action h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
+      <DsButton
+        variant="ghost"
+        onClick={() => {
+          setSavedNodeIds(new Set());
+          resetAllBlanks();
+        }}
+        className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+        disabled={progress.total === 0}
+      >
         <EyeSlash size={14} />
         {t('recite.resetAll')}
       </DsButton>
-      <DsButton variant="ghost" onClick={() => setReciteMode(false)} className="mm-recite-status-action h-7 px-2 text-xs gap-1">
+      <DsButton variant="ghost" onClick={() => setReciteMode(false)} className="mm-recite-status-action h-7 px-2 text-xs gap-1 md:hidden">
         <X size={14} />
         {t('recite.exit')}
       </DsButton>

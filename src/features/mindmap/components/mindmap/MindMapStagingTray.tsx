@@ -184,7 +184,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
               <DsButton
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 transition-colors motion-reduce:transition-none"
+                className="h-6 w-6 transition-colors motion-reduce:transition-none md:hidden"
                 onClick={() => setStagingTrayOpen(false)}
                 aria-label={t('mn5.stagingTrayToggleHint')}
                 data-testid="mm-staging-close-btn"

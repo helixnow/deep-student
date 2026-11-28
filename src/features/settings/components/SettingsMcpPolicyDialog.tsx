@@ -2,7 +2,6 @@ import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { X } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { DsButton } from '@/components/ui/DsButton';
@@ -86,12 +85,9 @@ export function SettingsMcpPolicyDialog({
       closeOnOverlayClick={false}
     >
       <div className="ui-rise-in relative mx-auto mt-10 flex min-h-0 max-h-[min(85dvh,720px)] w-[90%] max-w-[500px] flex-col overflow-hidden rounded-[var(--radius-shell-dialog)] bg-popover p-4 text-popover-foreground shadow-lg">
-        {/* 头部 */}
-        <div className="mb-4 flex items-center justify-between">
+        {/* 头部（关闭按钮由外层 UnifiedModal / DsDialog 统一提供） */}
+        <div className="mb-4 flex items-center justify-between pr-8">
           <h3 className="text-base font-semibold text-foreground">{t('settings:mcp.security_policy')}</h3>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-            <X size={16} />
-          </DsButton>
         </div>
         {/* 矮窗口下限高滚动，避免表单被弹窗限高裁剪后按钮不可达 */}
         <CustomScrollArea

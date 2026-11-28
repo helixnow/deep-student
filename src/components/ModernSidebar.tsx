@@ -1429,22 +1429,24 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 label: topicsSectionLabel,
                 action: (
                   <div className="flex items-center gap-1">
-                    <CommonTooltip content={toggleAllTopicsLabel} position="right">
-                      <DsButton
-                        variant="ghost"
-                        size="icon"
-                        iconOnly
-                        aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                        onClick={handleToggleAllTopicGroups}
-                      >
-                        {areAllTopicGroupsExpanded ? (
-                          <CaretDoubleUp className="size-3.5" strokeWidth={2} />
-                        ) : (
-                          <CaretDoubleDown className="size-3.5" strokeWidth={2} />
-                        )}
-                      </DsButton>
-                    </CommonTooltip>
+                    {topicSessionGroups.length > 0 ? (
+                      <CommonTooltip content={toggleAllTopicsLabel} position="right">
+                        <DsButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          aria-label={toggleAllTopicsLabel}
+                          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                          onClick={handleToggleAllTopicGroups}
+                        >
+                          {areAllTopicGroupsExpanded ? (
+                            <CaretDoubleUp className="size-3.5" strokeWidth={2} />
+                          ) : (
+                            <CaretDoubleDown className="size-3.5" strokeWidth={2} />
+                          )}
+                        </DsButton>
+                      </CommonTooltip>
+                    ) : null}
                     <CommonTooltip content={createTopicLabel} position="right">
                       <DsButton
                         variant="ghost"
@@ -1558,8 +1560,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
       {navigationScope === 'full' && settingsNavItem ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
-        <div className="relative flex items-center gap-1">
-          <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1">
+          <div className="relative min-w-0 flex-1">
             <SidebarRow
               rowType="nav"
               aria-label={t(settingsNavItem.labelKey)}
@@ -1571,6 +1573,36 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
             >
               <SidebarRowLabel>{t(settingsNavItem.labelKey)}</SidebarRowLabel>
             </SidebarRow>
+            {shouldShowUpdateBadge ? (
+              <button
+                type="button"
+                data-slot="sidebar-update-badge"
+                className="desktop-shell-update-badge absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void updater.performUpdateAction();
+                }}
+                aria-label={
+                  updater?.downloading
+                    ? updateProgressPercent === null
+                      ? t('sidebar:update.downloading')
+                      : `${t('sidebar:update.downloading')} ${updateProgressPercent}%`
+                    : updater?.readyToRelaunch
+                      ? t('sidebar:update.restart')
+                      : t('sidebar:update.available')
+                }
+                disabled={updater?.downloading}
+              >
+                {updater?.downloading ? (
+                  <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                    <CircleNotch size={10} className="animate-spin" />
+                    {updateProgressPercent === null ? null : <span>{updateProgressPercent}%</span>}
+                  </span>
+                ) : updater?.readyToRelaunch ? (
+                  t('sidebar:update.restart')
+                ) : t('sidebar:update.short')}
+              </button>
+            ) : null}
           </div>
           {!sidebarCollapsed && !isMobilePlatform() ? (
             <CommonTooltip
@@ -1595,37 +1627,6 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 <Desktop size={17} />
               </DsButton>
             </CommonTooltip>
-          ) : null}
-
-          {shouldShowUpdateBadge ? (
-            <button
-              type="button"
-              data-slot="sidebar-update-badge"
-              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
-              onClick={(event) => {
-                event.stopPropagation();
-                void updater.performUpdateAction();
-              }}
-              aria-label={
-                updater?.downloading
-                  ? updateProgressPercent === null
-                    ? t('sidebar:update.downloading')
-                    : `${t('sidebar:update.downloading')} ${updateProgressPercent}%`
-                  : updater?.readyToRelaunch
-                    ? t('sidebar:update.restart')
-                    : t('sidebar:update.available')
-              }
-              disabled={updater?.downloading}
-            >
-              {updater?.downloading ? (
-                <span className="inline-flex items-center gap-0.5" aria-hidden="true">
-                  <CircleNotch size={10} className="animate-spin" />
-                  {updateProgressPercent === null ? null : <span>{updateProgressPercent}%</span>}
-                </span>
-              ) : updater?.readyToRelaunch ? (
-                t('sidebar:update.restart')
-              ) : t('sidebar:update.short')}
-            </button>
           ) : null}
         </div>
       </div>

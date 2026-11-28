@@ -52,7 +52,7 @@ interface TargetPanelProps {
     onEditTranslation: () => void;
     onSpeak: () => void;
     isSpeaking: boolean;
-    onCopyResult: () => void;
+    onCopyResult: () => boolean | void | Promise<boolean | void>;
     onExportTranslation: () => void;
     onSaveAsFlashcard?: () => void | Promise<void>;
     isOutdated?: boolean;
@@ -105,15 +105,26 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     // ===== 复制按钮成功态 =====
     const [justCopied, setJustCopied] = useState(false);
     const copyTimerRef = useRef<number | null>(null);
-    const handleCopy = useCallback(() => {
-        onCopyResult();
+    const markCopied = useCallback(() => {
         setJustCopied(true);
         if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
         copyTimerRef.current = window.setTimeout(() => {
             setJustCopied(false);
             copyTimerRef.current = null;
         }, COPY_FEEDBACK_MS);
-    }, [onCopyResult]);
+    }, []);
+    const handleCopy = useCallback(() => {
+        const result = onCopyResult();
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+            void (result as Promise<boolean | void>).then((ok) => {
+                if (ok !== false) markCopied();
+            });
+            return;
+        }
+        if (result !== false) {
+            markCopied();
+        }
+    }, [markCopied, onCopyResult]);
 
     // ===== 存为生词闪卡（打通查词 → 记忆闭环） =====
     const [savingFlashcard, setSavingFlashcard] = useState(false);

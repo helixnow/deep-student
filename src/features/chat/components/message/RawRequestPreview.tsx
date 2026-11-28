@@ -305,27 +305,14 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
 
   const handleCopy = async () => {
     try {
-      const needsFullSource = copyFilterConfig.images === 'full' || copyFilterConfig.tools === 'full';
-      let textToCopy = displayText;
-
-      if (needsFullSource && current.logFilePath) {
-        try {
-          const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
-          const fullContent = await tauriInvoke<string>('read_debug_log_file', { path: current.logFilePath });
-          const fullBody = JSON.parse(fullContent);
-          const asRaw: RawRequest = {
-            _source: current._source,
-            model: current.model,
-            url: current.url,
-            body: fullBody,
-            logFilePath: current.logFilePath,
-          };
-          textToCopy = await applyCopyFilter(asRaw, isBackendLlm, displayText, copyFilterConfig, t, showGlobalNotification);
-        } catch {
-          showGlobalNotification('warning', t('messageItem.rawRequest.logReadFailed'));
-        }
-      }
-
+      const textToCopy = await applyCopyFilter(
+        current,
+        isBackendLlm,
+        displayText,
+        copyFilterConfig,
+        t,
+        showGlobalNotification,
+      );
       await copyTextToClipboard(textToCopy);
       showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
     } catch (error: unknown) {

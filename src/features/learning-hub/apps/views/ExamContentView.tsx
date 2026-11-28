@@ -1453,9 +1453,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onViewDetail={handleViewQuestionDetail}
                 onViewHistory={handleOpenHistory}
                 onFilterChange={handleFilterChange}
-                onCsvImport={readOnly ? undefined : handleOpenCsvImport}
-                onCsvExport={handleOpenExport}
-                showCsvActions={!readOnly}
+                showCsvActions={false}
               />
             ) : viewMode === 'stats' && hasQuestions ? (
               <QuestionBankStatsView

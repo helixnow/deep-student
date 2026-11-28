@@ -16,6 +16,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { commandRegistry } from '../registry/commandRegistry';
+import { isGlobalCommandEnabled } from '../registry/capabilityRegistry';
 import { shortcutManager, type ShortcutConflict } from '../registry/shortcutManager';
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
@@ -60,7 +61,9 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
 
   const allCommands = useMemo(() => {
     void version;
-    return commandRegistry.getAll();
+    return commandRegistry
+      .getAll()
+      .filter((cmd) => !cmd.id.startsWith('global.') || isGlobalCommandEnabled(cmd.id));
   }, [version]);
 
   const filteredCommands = useMemo(() => {

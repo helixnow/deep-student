@@ -1028,7 +1028,6 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
                   {batchBusy ? <CircleNotch size={14} className="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" /> : null}
                   {moveMenu(false)}
                   {deleteSelectedButton(false)}
-                  {doneButton(false)}
                 </div>
               </div>
             ) : null}

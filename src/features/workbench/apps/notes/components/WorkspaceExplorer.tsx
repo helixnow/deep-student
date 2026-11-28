@@ -161,7 +161,14 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [insightCreateNonce, setInsightCreateNonce] = useState(0);
   const hasTreeItems = treeItems.length > 0;
-  const showTagFilter = tagFilterOpen || selectedTags.length > 0;
+  const prevSelectedTagsCountRef = useRef(selectedTags.length);
+  useEffect(() => {
+    if (prevSelectedTagsCountRef.current === 0 && selectedTags.length > 0) {
+      setTagFilterOpen(true);
+    }
+    prevSelectedTagsCountRef.current = selectedTags.length;
+  }, [selectedTags.length]);
+  const showTagFilter = tagFilterOpen;
 
   // 行内输入行 / 确认条（非模态）：打开时把焦点送进面板，关闭后归还给触发
   // 元素；触发行已被删除时回落到树内相邻可聚焦行。
@@ -419,9 +426,8 @@ export const WorkspaceExplorer: React.FC<WorkspaceExplorerProps> = ({
           selectedTags={selectedTags}
           onChange={onSelectedTagsChange}
           open={showTagFilter}
-          onOpenChange={(next) => {
-            if (!next && selectedTags.length === 0) setTagFilterOpen(false);
-          }}
+          onOpenChange={setTagFilterOpen}
+          hideHeaderToggle
           className="notes-explorer-tag-filter"
         />
       )}

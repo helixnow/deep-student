@@ -364,6 +364,8 @@ export const Settings: React.FC<SettingsComponentProps> = ({
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
     config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
     config.webSearchDeepseekNeedContent,
+    config.webSearchEngine, config.webSearchTimeoutMs, config.webSearchInjectSnippetMax,
+    config.webSearchInjectTotalMax, config.webSearchWhitelist, config.webSearchBlacklist,
   ]);
 
   // Ensure the settings scroll viewport remains vertically scrollable across all viewports
@@ -466,7 +468,7 @@ export const Settings: React.FC<SettingsComponentProps> = ({
       onClearCache: handleClearCaches,
       onOpenPolicy: handleOpenMcpPolicy,
       onCreateServer: handleCreateMcpTool,
-      onEditServer: useStandaloneMobileShell ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined,
+      onEditServer: useStandaloneMobileShell ? (server) => handleEditMcpTool(server as McpToolConfig, (config.mcpTools || []).findIndex((s) => s.id === server.id)) : undefined,
       scrollElement: settingsScrollElement,
     }),
     statistics: () => ({ embedded: true, mode: 'stats' }),

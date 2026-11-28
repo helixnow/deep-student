@@ -96,11 +96,10 @@ export const settingsCommands: Command[] = [
     get keywords() { return kw('settings.api-config'); },
     priority: 90,
     execute: (deps) => {
+      const route = { tab: 'apis' as const };
+      setPendingSettingsRoute(route);
       deps.navigate('settings');
-      // 触发设置页面跳转到 API 配置 tab
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'apis' });
-      }, 100);
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
     },
   },
   {

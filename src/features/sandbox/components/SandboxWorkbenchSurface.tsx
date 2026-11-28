@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSimplePlus, SidebarSimple, X } from '@phosphor-icons/react';
+import { FolderSimplePlus, SidebarSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
@@ -40,7 +40,6 @@ import {
   useSandboxWorkbenchStore,
   type SandboxSessionRevisionState,
 } from '../store/useSandboxWorkbenchStore';
-import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
 import type { SandboxOwnerKey } from '../types';
 import './SandboxWorkbenchSurface.css';
@@ -60,6 +59,10 @@ export interface SandboxWorkbenchSurfaceProps {
    * 隐藏预览内容区顶栏中的重复标题（由外部窗口标题栏承载时使用）。
    */
   hideTitle?: boolean;
+  /**
+   * 隐藏内部检查器开关（宿主全局顶栏或移动端统一顶栏已承载时使用）。
+   */
+  hideInspectorToggle?: boolean;
 }
 
 const viewportClasses: Record<'desktop' | 'tablet' | 'mobile', string> = {
@@ -75,6 +78,7 @@ export function SandboxWorkbenchSurface({
   ownerKey,
   hideToolbar = false,
   hideTitle = false,
+  hideInspectorToggle = false,
 }: SandboxWorkbenchSurfaceProps) {
   const { t, i18n } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
@@ -501,6 +505,7 @@ export function SandboxWorkbenchSurface({
             inspectorOpen={inspectorOpen}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
+            hideInspectorToggle
           />
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -565,6 +570,7 @@ export function SandboxWorkbenchSurface({
             inspectorOpen={inspectorOpen}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
+            hideInspectorToggle
           />
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -616,7 +622,7 @@ export function SandboxWorkbenchSurface({
             )}
             aria-hidden="true"
           />
-          {!hideTitle && (
+          {!hideTitle && hideToolbar && (
             <span
               className="max-w-[220px] truncate text-xs font-medium text-foreground"
               data-testid="sandbox-artifact-title"
@@ -762,7 +768,7 @@ export function SandboxWorkbenchSurface({
                   : t('sandbox.mobileShort', '手')}
             </DsButton>
           ))}
-          {hideToolbar && (
+          {hideToolbar && !hideInspectorToggle && (
             <DsButton
               variant="ghost"
               size="icon"
@@ -972,17 +978,6 @@ export function SandboxWorkbenchSurface({
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">{t('sandbox.inspector')}</h2>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={() => setInspectorOpen(false, ownerKey)}
-            title={t('sandbox.collapse')}
-            aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:-my-2"
-          >
-            <X size={14} />
-          </DsButton>
         </div>
       </div>
       <CustomScrollArea
@@ -1001,33 +996,6 @@ export function SandboxWorkbenchSurface({
               </span>
             </div>
             <p className="mt-2 break-all text-xs text-muted-foreground">{inspectorSession.sourceMessageId}</p>
-          </div>
-
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              {(['desktop', 'tablet', 'mobile'] as const).map((preset) => (
-                <DsButton
-                  key={preset}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setViewportPreset(preset, ownerKey)}
-                  className={`!h-auto justify-start rounded-lg border px-2 py-2 text-left text-xs font-normal transition-colors ${
-                    viewportPreset === preset
-                      ? 'border-foreground/30 bg-foreground/5 text-foreground'
-                      : 'border-border bg-transparent'
-                  }`}
-                  aria-label={t(`sandbox.${preset}`)}
-                  title={t(`sandbox.${preset}`)}
-                >
-                  {preset === 'desktop'
-                    ? t('sandbox.desktopShort', '桌')
-                    : preset === 'tablet'
-                      ? t('sandbox.tabletShort', '平')
-                      : t('sandbox.mobileShort', '手')}
-                </DsButton>
-              ))}
-            </div>
           </div>
 
           <div>
@@ -1079,6 +1047,7 @@ export function SandboxWorkbenchSurface({
             inspectorOpen={inspectorOpen}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
+            hideInspectorToggle={hideInspectorToggle}
           />
         </div>
       )}
@@ -1101,7 +1070,7 @@ export function SandboxWorkbenchSurface({
             <Panel
               id="sandbox-preview-panel"
               order={1}
-              defaultSize={inspectorOpen ? 74 : 82}
+              defaultSize={inspectorOpen ? 74 : 100}
               minSize={58}
               className="h-full min-w-0"
             >
@@ -1125,18 +1094,7 @@ export function SandboxWorkbenchSurface({
                   {inspectorShell}
                 </Panel>
               </>
-            ) : (
-              <Panel
-                id="sandbox-status-rail-panel"
-                order={2}
-                defaultSize={18}
-                minSize={14}
-                maxSize={22}
-                className="min-w-0"
-              >
-                <SandboxStatusRail onOpenInspector={handleToggleInspector} />
-              </Panel>
-            )}
+            ) : null}
           </PanelGroup>
         )}
       </div>

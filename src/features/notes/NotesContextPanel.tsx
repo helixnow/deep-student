@@ -642,14 +642,24 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         const { oldName, newName } = pending;
         setIsRenamingTag(true);
         try {
+            const currentTags = effectiveActive.tags || [];
+            let activeUpdated = false;
+            if (currentTags.includes(oldName) && props.onTagsChange) {
+                const nextActiveTags = Array.from(
+                    new Set(currentTags.map(tag => (tag === oldName ? newName : tag))),
+                );
+                await props.onTagsChange(nextActiveTags);
+                activeUpdated = true;
+            }
             const { updated, skipped, failed } = await renameTagAcrossNotesDstu(
                 oldName,
                 newName,
                 effectiveActive.id,
             );
+            const totalUpdated = updated + (activeUpdated ? 1 : 0);
             const summary = t('notes:header.rename_tag_batch_summary', {
                 defaultValue: '已更新 {{updated}} 篇，跳过 {{skipped}} 篇（有未保存修改），失败 {{failed}} 篇',
-                updated,
+                updated: totalUpdated,
                 skipped,
                 failed,
             });
@@ -658,6 +668,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
                 summary,
             );
+            handleCancelRenameTag();
         } catch (error: unknown) {
             console.error("Failed to rename tag across library", error);
             showGlobalNotification('error', t('notes:header.rename_failed'));

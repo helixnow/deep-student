@@ -231,6 +231,9 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                       onClick={async () => {
                         try {
                           await action.action();
+                          if (action.type === 'cancel') {
+                            onDismiss(error.id);
+                          }
                         } catch (err: unknown) {
                           console.error('Recovery action failed:', err);
                         }

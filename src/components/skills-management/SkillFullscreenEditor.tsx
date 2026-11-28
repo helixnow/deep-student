@@ -69,6 +69,8 @@ export interface SkillFullscreenEditorProps {
   originRect?: DOMRect | null;
   /** 主题模式 */
   theme?: 'light' | 'dark';
+  /** 外部顶栏面包屑返回时触发内部未保存修改确认 */
+  requestCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface ValidationErrors {
@@ -161,6 +163,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   onDelete,
   originRect,
   theme = 'dark',
+  requestCloseRef,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
   const isEdit = Boolean(skill);
@@ -322,6 +325,14 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
     }
     onClose();
   }, [isDirty, onClose, t]);
+
+  useEffect(() => {
+    if (!requestCloseRef) return;
+    requestCloseRef.current = open ? handleCloseRequest : null;
+    return () => {
+      requestCloseRef.current = null;
+    };
+  }, [open, handleCloseRequest, requestCloseRef]);
 
   useEventRegistry(open ? [
     {

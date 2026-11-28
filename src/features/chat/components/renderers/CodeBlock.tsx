@@ -34,7 +34,6 @@ import { registerArtifactRenderer } from '@/components/previews/artifactRenderer
 import { DiagramAndLiveSvgView } from '@/components/previews/DiagramAndLiveSvgView';
 import { htmlUsesScripts, shouldAutoPreviewHtml } from '@/components/previews/chatHtmlPreviewDocument';
 import { OpenUILangRenderer } from '@/features/generative-ui';
-import { ReplyCommandActionButton } from '@/features/chat/utils/replyCommandAndSecretLoop';
 import {
   launchSandboxWorkbench,
   pinArtifactToCanvas,
@@ -1318,17 +1317,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     return () => ro.disconnect();
   }, [previewVisible]);
 
-  // ---- 「…」更多菜单（SVG / HTML / OpenUI / InteractiveHTML） ----
+  // ---- 「…」更多菜单（SVG / HTML / OpenUI / Diagram / InteractiveHTML） ----
   const showingSource = canRenderSvg
     ? !svgPreviewActive
     : canRenderOpenUI
       ? !openuiPreviewActive
-      : canRenderInteractiveHtml
-        ? !interactiveHtmlPreviewActive
-        : !htmlPreviewActive;
+      : canRenderDiagram
+        ? !diagramPreviewActive
+        : canRenderInteractiveHtml
+          ? !interactiveHtmlPreviewActive
+          : !htmlPreviewActive;
   const moreActions: CodeBlockMenuAction[] = [];
   if (hasLivePreview) {
-    if (!canRenderOpenUI) {
+    if (!canRenderOpenUI && !canRenderDiagram) {
       moreActions.push({
         key: 'download',
         label: t('codeBlock.download'),
@@ -1366,7 +1367,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       onSelect: () => {
         if (canRenderSvg) {
           setSvgView(showingSource ? 'preview' : 'source');
-        } else if (canRenderOpenUI) {
+        } else if (canRenderOpenUI || canRenderDiagram) {
           setOpenuiView(showingSource ? 'preview' : 'source');
         } else if (canRenderInteractiveHtml) {
           setInteractiveHtmlView(showingSource ? 'preview' : 'source');
@@ -1463,25 +1464,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           </>
         )}
         {svgPreviewActive && progressiveSvg !== null && zoomControls}
-        {(htmlPreviewActive || interactiveHtmlPreviewActive) && !isStreaming && (
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className="code-block-copy"
-            onClick={() => {
-              void runSaveAction(
-                () => downloadHtmlSource(codeContent, htmlFileNameFor(codeContent)),
-                'codeBlock.saveFailed',
-              );
-            }}
-            aria-label={t('codeBlock.download')}
-            title={t('codeBlock.download')}
-            data-testid="code-block-download-html"
-          >
-            <DownloadSimple size={14} />
-          </DsButton>
-        )}
         {(htmlPreviewActive || interactiveHtmlPreviewActive) && (htmlOverflowing || htmlExpanded) && (
           <DsButton
             variant="ghost"
@@ -1505,12 +1487,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
-        <ReplyCommandActionButton
-          isStreaming={!!isStreaming}
-          language={language}
-          command={codeContent}
-          onRun={handleCopy}
-        />
         <DsButton variant="ghost" size="sm" className="code-block-copy [@media(pointer:coarse)]:!min-h-11" onClick={handleCopy}>
           <IconSwap
             active={copied}

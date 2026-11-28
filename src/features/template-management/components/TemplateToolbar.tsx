@@ -28,6 +28,8 @@ export interface TemplateToolbarProps {
   onViewModeChange: (mode: TemplateViewMode) => void;
   resultCount: number;
   totalCount: number;
+  /** 经典桌面顶栏已挂载搜索框时隐藏工具栏内重复搜索输入 */
+  hideSearch?: boolean;
 }
 
 const TYPE_FILTERS: TemplateTypeFilter[] = ['all', 'basic', 'cloze', 'other'];
@@ -46,6 +48,7 @@ export const TemplateToolbar: React.FC<TemplateToolbarProps> = ({
   onViewModeChange,
   resultCount,
   totalCount,
+  hideSearch = false,
 }) => {
   const { t } = useTranslation('template');
   const filtersActive = hasActiveFilters({ ...query, search: searchInput });
@@ -76,29 +79,31 @@ export const TemplateToolbar: React.FC<TemplateToolbarProps> = ({
   return (
     <div className="wb-tm-toolbar" role="search">
       <div className="wb-tm-toolbar-row">
-        <div className="wb-tm-toolbar-search">
-          <MagnifyingGlass size={14} aria-hidden />
-          <input
-            type="search"
-            value={searchInput}
-            onChange={(e) => onSearchInputChange(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder={t('search_placeholder')}
-            aria-label={t('search_placeholder')}
-            data-template-search
-            className="wb-tm-toolbar-search-input"
-          />
-          {searchInput && (
-            <button
-              type="button"
-              className="wb-tm-toolbar-search-clear"
-              onClick={() => onSearchInputChange('')}
-              aria-label={t('templateMgmt.clear_search')}
-            >
-              <X size={12} weight="bold" />
-            </button>
-          )}
-        </div>
+        {!hideSearch && (
+          <div className="wb-tm-toolbar-search">
+            <MagnifyingGlass size={14} aria-hidden />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => onSearchInputChange(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={t('search_placeholder')}
+              aria-label={t('search_placeholder')}
+              data-template-search
+              className="wb-tm-toolbar-search-input"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                className="wb-tm-toolbar-search-clear"
+                onClick={() => onSearchInputChange('')}
+                aria-label={t('templateMgmt.clear_search')}
+              >
+                <X size={12} weight="bold" />
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="wb-tm-toolbar-spacer" />
 

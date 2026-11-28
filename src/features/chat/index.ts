@@ -143,6 +143,7 @@ export { sessionManager } from './core/session';
 
 // 「引用到对话」无活动会话时的闭环入口（learning-hub / notes / workbench 调用）
 export { ensureActiveChatSession } from './pages/ensureActiveChatSession';
+export { KbScopePickerHost } from './kbScope/KbScopePickerHost';
 
 export type {
   ISessionManager,

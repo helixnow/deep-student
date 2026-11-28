@@ -121,8 +121,18 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       {failed && (
         <QueueErrorBar
           failedItem={failed}
-          onRetry={() => retryFailed(failed.id)}
-          onSkip={() => removeQueued(failed.id)}
+          onRetry={() => {
+            retryFailed(failed.id);
+            if (store.getState().sessionStatus === 'idle') {
+              void maybeDequeue?.();
+            }
+          }}
+          onSkip={() => {
+            removeQueued(failed.id);
+            if (store.getState().sessionStatus === 'idle') {
+              void maybeDequeue?.();
+            }
+          }}
           onClearAll={() => clearQueue()}
         />
       )}
@@ -133,7 +143,12 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
           allowSteer={effectiveAllowSteer && item.status === 'pending'}
           onClick={() => handleClick(item.id)}
           onSteer={() => void handleSteer(item.id)}
-          onDelete={() => removeQueued(item.id)}
+          onDelete={() => {
+            removeQueued(item.id);
+            if (item.status === 'failed' && store.getState().sessionStatus === 'idle') {
+              void maybeDequeue?.();
+            }
+          }}
         />
       ))}
     </div>

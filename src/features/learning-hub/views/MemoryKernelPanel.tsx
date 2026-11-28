@@ -400,7 +400,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             size="sm"
             data-testid="memory-kernel-reflect-btn"
             disabled={busy}
-            onClick={() => void handleToggleReflection()}
+            onClick={() => {
+              if (!reflectionReport) setExpanded(true);
+              void handleToggleReflection();
+            }}
             className="h-6 px-2 text-xs"
             title={t('settings:memory.kernel.reflectionTitle')}
           >
@@ -410,7 +413,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={() => setShowPreview(prev => !prev)}
+            onClick={() => {
+              setShowPreview((prev) => {
+                const next = !prev;
+                if (next) setExpanded(true);
+                return next;
+              });
+            }}
             className="h-6 px-2 text-xs"
           >
             <Eye size={12} className="mr-1" />
@@ -422,7 +431,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({
             disabled={historyCount === 0}
             onClick={() => {
               if (historyCount === 0) return;
-              setShowHistory(prev => !prev);
+              setShowHistory((prev) => {
+                const next = !prev;
+                if (next) setExpanded(true);
+                return next;
+              });
             }}
             className={cn(
               'h-6 px-2 text-xs',

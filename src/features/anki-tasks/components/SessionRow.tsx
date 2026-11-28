@@ -440,49 +440,45 @@ export const SessionRow: React.FC<{
             </PropRow>
           </div>
 
-          {/* 操作按钮（移动端为唯一操作入口，补齐暂停/恢复/跳转聊天） */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {session.totalCards > 0 && (
-              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
-                <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
+          {/* 操作按钮（移动端为唯一操作入口，桌面端行头已展示导出/重试/删除） */}
+          {isSmallScreen && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {session.totalCards > 0 && (
+                <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
+                  <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
+                </DsButton>
+              )}
+              {group === 'active' && session.activeTasks > 0 && (
+                <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
+                  <Pause size={14} />{t('pause')}
+                </DsButton>
+              )}
+              {session.pausedTasks > 0 && (
+                <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
+                  <Play size={14} />{t('resume')}
+                </DsButton>
+              )}
+              {group === 'active' && (
+                <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
+                  <XCircle size={14} />{t('tasks.cancelTask')}
+                </DsButton>
+              )}
+              {session.sourceSessionId && (
+                <DsButton size="sm" variant="default" onClick={onJump}>
+                  <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
+                </DsButton>
+              )}
+              <DsButton
+                size="sm"
+                variant={deleteConfirm ? 'danger' : 'default'}
+                onClick={handleDelete}
+                disabled={!!busy}
+              >
+                <Trash size={14} />
+                {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
               </DsButton>
-            )}
-            {session.failedTasks > 0 && (
-              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
-                <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
-              </DsButton>
-            )}
-            {isSmallScreen && group === 'active' && session.activeTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
-                <Pause size={14} />{t('pause')}
-              </DsButton>
-            )}
-            {isSmallScreen && session.pausedTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
-                <Play size={14} />{t('resume')}
-              </DsButton>
-            )}
-            {isSmallScreen && group === 'active' && (
-              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
-                <XCircle size={14} />{t('tasks.cancelTask')}
-              </DsButton>
-            )}
-            {isSmallScreen && session.sourceSessionId && (
-              <DsButton size="sm" variant="default" onClick={onJump}>
-                <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
-              </DsButton>
-            )}
-            <DsButton
-              size="sm"
-              variant={deleteConfirm ? 'danger' : 'default'}
-              onClick={handleDelete}
-              disabled={!!busy}
-             
-            >
-              <Trash size={14} />
-              {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
-            </DsButton>
-          </div>
+            </div>
+          )}
 
           {/* 失败分段面板 — 展示后端写入的 error_message + 逐段/整体重试入口 */}
           {session.failedTasks > 0 && (

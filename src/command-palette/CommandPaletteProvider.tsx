@@ -33,6 +33,7 @@ import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
 import { normalizeShortcut, buildShortcutString } from './registry/shortcutUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 export const WORKBENCH_OPEN_APPS_PANEL_EVENT = 'workbench:open-apps-panel';
 export const WORKBENCH_TOGGLE_APPS_PANEL_EVENT = 'workbench:toggle-apps-panel';
@@ -202,9 +203,29 @@ export function CommandPaletteProvider({
   }, [workbenchActive, t, i18n.language]);
 
   const commandPaletteNavigate = useCallback((view: CurrentView, params?: Record<string, unknown>) => {
-    if (workbenchActive && isWorkbenchHostEnabled() && view === 'sandbox-workbench') {
-      launchWorkbenchApp({ typeId: 'sandbox', reason: 'command' });
-      return;
+    if (workbenchActive && isWorkbenchHostEnabled()) {
+      const workbenchTypeByView: Partial<Record<CurrentView, string>> = {
+        'chat-v2': 'chat',
+        'skills-management': 'skills',
+        media: 'media',
+        flashcards: 'flashcards',
+        'task-dashboard': 'taskDashboard',
+        todo: 'todo',
+        'learning-hub': 'files',
+        'pdf-reader': 'files',
+        'template-management': 'templates',
+        'sandbox-workbench': 'sandbox',
+        settings: 'settings',
+      };
+      if (view === 'dashboard' || view === 'data-management') {
+        dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
+        return;
+      }
+      const mappedTypeId = workbenchTypeByView[view];
+      if (mappedTypeId) {
+        launchWorkbenchApp({ typeId: mappedTypeId, reason: 'command' });
+        return;
+      }
     }
     navigate(view, params);
   }, [navigate, workbenchActive]);

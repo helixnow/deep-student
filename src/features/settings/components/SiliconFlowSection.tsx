@@ -264,7 +264,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     };
   }, [getModelCapabilities, selectedModelData, selectedModel]);
 
-  const persistApiKey = useCallback(async (value: string) => {
+  const persistApiKey = useCallback(async (value: string): Promise<boolean> => {
     try {
       const trimmed = value.trim();
       if (trimmed) {
@@ -295,9 +295,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         );
         window.dispatchEvent(new CustomEvent('api_configurations_changed'));
       }
+      return true;
     } catch (error: unknown) {
       console.error('Failed to save SiliconFlow API key:', error);
       showGlobalNotification('error', t('common:siliconflow.save_api_key_failed'));
+      return false;
     }
   }, [showGlobalNotification, siliconFlowVendorKey, siliconFlowLegacyKey, t]);
 
@@ -427,7 +429,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       setSavingApiKey(true);
       clearStatusTimer();
       setApiKeyStatus('saving');
-      await persistApiKey(trimmed);
+      const persisted = await persistApiKey(trimmed);
+      if (!persisted) {
+        scheduleStatusReset('error', 3200);
+        showMessage?.('error', t('settings:vendor_panel.api_key_save_failed'));
+        return;
+      }
       lastSavedApiKeyRef.current = trimmed;
       scheduleStatusReset('saved');
       setApiKeyPasted(false);
@@ -448,10 +455,14 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       return;
     }
 
+    setConfirmingClearApiKey(false);
+    const cleared = await persistApiKey('');
+    if (!cleared) {
+      return;
+    }
     setApiKey('');
     lastSavedApiKeyRef.current = '';
     setShowApiKey(false);
-    setConfirmingClearApiKey(false);
     clearStatusTimer();
     setApiKeyStatus('idle');
     setApiKeyPasted(false);
@@ -460,7 +471,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     setSelectedModel('');
     setLastFetchTime(null);
     setIsFromCache(false);
-    await persistApiKey('');
     await clearCachedModels();
     showGlobalNotification('success', t('common:siliconflow.api_key_cleared'));
   };
@@ -698,7 +708,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }));
 
     try {
-      await onCreateConfig(configData);
+      const createdId = await onCreateConfig(configData);
+      if (!createdId) return;
       showGlobalNotification('success', t('common:siliconflow.config_created_success', { model: selectedModel }));
       
       // 只重置选中的模型，保留API密钥和模型列表以便继续添加其他模型
@@ -734,7 +745,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     { model: 'BAAI/bge-reranker-v2-m3', name: 'SiliconFlow - BAAI/bge-reranker-v2-m3', assignmentKey: t('settings:mapping_keys.reranker_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.chat_title_configured') },
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
-    { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.question_parsing_configured') },
+    { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.qbank_ai_generation_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.memory_decision_configured') },
     { model: 'Qwen/Qwen3-ASR-1.7B', name: 'SiliconFlow - Qwen/Qwen3-ASR-1.7B', assignmentKey: t('settings:mapping_keys.voice_input_asr_configured') },
   ];

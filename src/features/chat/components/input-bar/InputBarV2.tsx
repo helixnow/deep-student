@@ -2256,10 +2256,19 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关
         // 🔧 会话切换 key（用于重置内部状态）
         sessionSwitchKey={sessionSwitchKey}
-        // 🔧 P1-27: 上下文引用可视化
+        // 🔧 P1-27: 上下文引用可视化（仅清空本组件可见引用，不误清技能/伪附件托管引用）
         pendingContextRefs={pendingContextRefs}
         onRemoveContextRef={removeContextRef}
-        onClearContextRefs={clearContextRefs}
+        onClearContextRefs={() => {
+          const hiddenTypes = new Set([
+            'note', 'textbook', 'exam', 'essay', 'translation',
+            'image', 'file', 'mindmap', 'todo', 'skill', 'skill_instruction',
+          ]);
+          const visibleRefs = pendingContextRefs.filter(
+            (ref) => !hiddenTypes.has(ref.typeId) && !ref.autoLoaded,
+          );
+          visibleRefs.forEach((ref) => removeContextRef(ref.resourceId));
+        }}
         onContextRefCreated={handleContextRefCreated}
         // 🆕 工具审批请求
         pendingApprovalRequest={pendingApprovalRequest}

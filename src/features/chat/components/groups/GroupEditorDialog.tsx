@@ -587,23 +587,24 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   }, [registryVersion]);
 
   const pinnedHighlightSet = useMemo(() => new Set(pinnedResourceIds), [pinnedResourceIds]);
+  const pinnedResourceIdsRef = useRef<string[]>(pinnedResourceIds);
+  pinnedResourceIdsRef.current = pinnedResourceIds;
 
   const togglePinnedResource = useCallback(
     (sourceId: string): 'added' | 'removed' | false => {
       const trimmed = sourceId.trim();
       if (!trimmed) return false;
-      const box = { result: 'added' as 'added' | 'removed' };
-      setPinnedResourceIds((prev) => {
-        if (prev.includes(trimmed)) {
-          box.result = 'removed';
-          return prev.filter((id) => id !== trimmed);
-        }
-        return [...prev, trimmed];
-      });
-      if (box.result === 'removed') {
+      const exists = pinnedResourceIdsRef.current.includes(trimmed);
+      const nextIds = exists
+        ? pinnedResourceIdsRef.current.filter((id) => id !== trimmed)
+        : [...pinnedResourceIdsRef.current, trimmed];
+      pinnedResourceIdsRef.current = nextIds;
+      setPinnedResourceIds(nextIds);
+      if (exists) {
         setResolvedPinnedRefs((prev) => prev.filter((r) => r.sourceId !== trimmed));
+        return 'removed';
       }
-      return box.result;
+      return 'added';
     },
     [],
   );
@@ -870,8 +871,11 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     groupEditorSubmitRef.current = () => {
       if (isSaving) return;
       if (!name.trim()) {
+        setNameTouched(true);
         setActiveTab('general');
-        nameInputRef.current?.focus();
+        window.requestAnimationFrame(() => {
+          nameInputRef.current?.focus();
+        });
         return;
       }
       void handleSubmit();
@@ -1393,7 +1397,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                             hostId={FINDER_HOST_IDS.groupPicker}
                             sessionActive={pickerOpen}
                             commandsEnabled={false}
-                            onClose={() => setPickerOpen(false)}
                             onOpenApp={(item: ResourceListItem) => {
                               togglePinnedResource(item.id);
                             }}

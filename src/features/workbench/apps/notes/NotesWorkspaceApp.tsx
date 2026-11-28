@@ -1929,6 +1929,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                   notes={resources}
                   onOpenResource={openWorkspaceSearchResult}
                   onClose={closeBacklinks}
+                  hideCloseButton
                   onCreateFromUnresolved={createFromUnresolved}
                   onRefresh={() => { void loadResources({ blocking: false }); }}
                   outlineContent={(

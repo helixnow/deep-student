@@ -670,19 +670,21 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         role="toolbar"
         aria-label={t('workbench:apps.filePreview')}
       >
-        <ToolbarAction
-          label={t('filePreview.search')}
-          shortcut={shortcutLabel('F')}
-          note={canSearch ? undefined : t('filePreview.searchUnavailable')}
-          disabled={!canSearch}
-          active={searchOpen}
-          onClick={toggleSearchPanel}
-        >
-          <MagnifyingGlass size={16} />
-        </ToolbarAction>
+        {previewMode !== 'pdf' && (
+          <ToolbarAction
+            label={t('filePreview.search')}
+            shortcut={shortcutLabel('F')}
+            note={canSearch ? undefined : t('filePreview.searchUnavailable')}
+            disabled={!canSearch}
+            active={searchOpen}
+            onClick={toggleSearchPanel}
+          >
+            <MagnifyingGlass size={16} />
+          </ToolbarAction>
+        )}
         {!collapseActions && (
           <>
-            <ToolbarSeparator />
+            {previewMode !== 'pdf' && <ToolbarSeparator />}
             <ToolbarAction
               label={t('filePreview.saveAs')}
               shortcut={shortcutLabel('S')}

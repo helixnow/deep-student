@@ -150,6 +150,20 @@ export function translateLegacyNavigation(
     return;
   }
 
+  if (typeId === 'flashcards') {
+    const payload = 'payload' in req ? req.payload : undefined;
+    if (payload && typeof payload === 'object') {
+      try {
+        window.sessionStorage.setItem('flashcards.pendingLaunchPayload', JSON.stringify(payload));
+      } catch {
+        // ignore storage errors
+      }
+      dispatch('flashcards:apply-launch-payload', payload);
+    }
+    dispatchLegacyViewNavigation('flashcards', instanceKey ?? null);
+    return;
+  }
+
   if (dispatchLegacyViewNavigation(typeId, instanceKey ?? null)) {
     return;
   }

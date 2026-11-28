@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
@@ -728,8 +729,11 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
       );
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
-      console.error('[ChatV2Page] Failed to rename session:', getErrorMessage(error));
+      const message = getErrorMessage(error);
+      console.error('[ChatV2Page] Failed to rename session:', message);
+      showGlobalNotification('error', message);
     }
   }, [setSessions]);
 

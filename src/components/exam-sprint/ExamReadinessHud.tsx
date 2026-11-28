@@ -135,7 +135,7 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
       aria-label={t('examSprint.hud.editConfigLabel')}
       data-testid="exam-horizon-config-dialog"
       style={{ zIndex: Z_INDEX.modal }}
-      onClick={() => setConfigOpen(false)}
+      onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
       className="fixed inset-0 flex items-center justify-center bg-background/75 p-4 backdrop-blur-xs"
     >
       <div
@@ -148,9 +148,10 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
           </h3>
           <button
             type="button"
+            disabled={savingConfig}
             aria-label={t('examSprint.hud.cancelConfig')}
-            onClick={() => setConfigOpen(false)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
           >
             <X size={16} aria-hidden="true" />
           </button>
@@ -215,8 +216,9 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
         <div className="mt-5 flex items-center justify-end gap-2 border-t border-border/35 pt-3.5">
           <button
             type="button"
-            onClick={() => setConfigOpen(false)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border/35 bg-card px-4 py-2 text-xs font-medium text-foreground hover:bg-muted/50"
+            disabled={savingConfig}
+            onClick={() => { if (!savingRef.current) setConfigOpen(false); }}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border/35 bg-card px-4 py-2 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
           >
             {t('examSprint.hud.cancelConfig')}
           </button>

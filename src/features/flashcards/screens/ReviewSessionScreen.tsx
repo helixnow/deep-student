@@ -755,7 +755,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           {current && <>
-            {hasCardAudio && <AppMenuItem icon={<ArrowClockwise size={18} />} onClick={handleReplayAudio}>{replayAudioLabel}</AppMenuItem>}
             <AppMenuItem icon={<ArrowSquareOut size={18} />} onClick={openSource}>{t('session.viewSource')}</AppMenuItem>
             <AppMenuItem icon={<ChatCircleText size={18} />} onClick={askAi}>{t('session.askAi')}</AppMenuItem>
             {cardActionEntries.map((entry) => {
@@ -1076,7 +1075,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
-        {lastSuspended ? (
+        {lastSuspended && lastSuspended.reason !== 'leech' ? (
           <DsButton
             type="button"
             variant="ghost"
@@ -1104,21 +1103,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         >
           {speaking ? <Stop size={16} /> : <SpeakerHigh size={16} />}
         </DsButton>
-        {hasCardAudio ? (
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={handleReplayAudio}
-            aria-label={replayAudioLabel}
-            aria-keyshortcuts="R"
-            title={`${replayAudioLabel} · R`}
-            data-testid="fc-review-replay-audio-toolbar"
-          >
-            <ArrowClockwise size={16} />
-          </DsButton>
-        ) : null}
         <DsButton
           type="button"
           variant="ghost"

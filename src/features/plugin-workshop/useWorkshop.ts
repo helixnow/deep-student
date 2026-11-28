@@ -36,7 +36,9 @@ export function useWorkshop(adapter: WorkshopAdapter) {
 
   const act = useCallback(async (action: WorkshopAction, item: WorkshopItem, input?: Record<string, string>) => {
     // 「在这个对话里修改」 is about the conversation, not a step of the work: the Host checks the state itself.
-    if (busy.current || (action !== 'bind' && !workshopActions(item.phase).includes(action))) return;
+    // 已有已安装版本时（即使后续迭代 failed），仍允许触发「试用」。
+    const canTryInstalled = action === 'try' && item.installed?.phase === 'installed';
+    if (busy.current || (action !== 'bind' && !canTryInstalled && !workshopActions(item.phase).includes(action))) return;
     busy.current = true;
     setBusyId(item.id);
     setError(undefined);

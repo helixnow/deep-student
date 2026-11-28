@@ -38,7 +38,14 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/T
 import { Badge } from '@/components/ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { DsAlertDialog } from '@/components/ui/DsDialog';
+import {
+  DsAlertDialog,
+  DsDialog,
+  DsDialogDescription,
+  DsDialogFooter,
+  DsDialogHeader,
+  DsDialogTitle,
+} from '@/components/ui/DsDialog';
 import { SecurityStatusIndicator } from '@/components/SecurityStatusIndicator';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -2477,6 +2484,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             <QuickSyncNowButton
               dataTestId="governance-quick-sync-now-btn"
               cloudConfiguredOverride={cloudSyncConfigured}
+              hideConflictBadge
               onSyncTrigger={() => runCloudSync('bidirectional', syncStrategy)}
             />
           </div>
@@ -2684,61 +2692,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             </DsAlertDialog>
           );
         })()}
-        <DsAlertDialog
-          open={showRestorePromptDialog}
-          onOpenChange={(open) => {
-            if (!open) {
-              setShowRestorePromptDialog(false);
-              setImportedBackupId(null);
-            }
-          }}
-          title={t('data:governance.import_complete_title')}
-          description={
-            <div className="space-y-2">
-              <p>{t('data:governance.import_complete_desc')}</p>
-              <p className="text-warning font-medium">
-                {t('data:governance.restore_save_work_warning')}
-              </p>
-            </div>
-          }
-          confirmText={t('data:governance.restore_now')}
-          cancelText={t('data:governance.restore_later')}
-          confirmVariant="warning"
-          onConfirm={() => {
-            const targetId = importedBackupId;
-            setShowRestorePromptDialog(false);
-            setImportedBackupId(null);
-            if (targetId) void restoreBackup(targetId);
-          }}
-        />
-        <DsAlertDialog
-          open={showRestartDialog}
-          onOpenChange={() => undefined}
-          title={t('data:governance.restore_complete_title')}
-          description={
-            <div className="space-y-2">
-              <p>{t('data:governance.restore_complete_desc')}</p>
-              <p className="text-warning font-medium">
-                {t('data:governance.restore_save_work_warning')}
-              </p>
-            </div>
-          }
-          confirmText={t('data:governance.restart_now')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="primary"
-          onConfirm={async () => {
-            setShowRestartDialog(false);
-            try {
-              await TauriAPI.restartApp();
-              if (import.meta.env.DEV || isWebUiShell()) {
-                window.location.reload();
-              }
-            } catch (error: unknown) {
-              console.error('重启应用失败:', error);
-              showGlobalNotification('error', getErrorMessage(error));
-            }
-          }}
-        />
       </TabsContent>
 
       <TabsContent value="archive">
@@ -2763,31 +2716,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           currentJobOperation={currentJobOperation}
           resumableJobs={resumableJobs}
           onResumeJob={resumeJob}
-          showRestartDialog={showRestartDialog}
-          onRestartNow={async () => {
-            setShowRestartDialog(false);
-            try {
-              await TauriAPI.restartApp();
-              if (import.meta.env.DEV || isWebUiShell()) {
-                window.location.reload();
-              }
-            } catch (error: unknown) {
-              console.error('重启应用失败:', error);
-              showGlobalNotification('error', getErrorMessage(error));
-            }
-          }}
-          showRestorePromptDialog={showRestorePromptDialog}
-          onRestoreNow={() => {
-            setShowRestorePromptDialog(false);
-            if (importedBackupId) {
-              void restoreBackup(importedBackupId);
-              setImportedBackupId(null);
-            }
-          }}
-          onRestoreLater={() => {
-            setShowRestorePromptDialog(false);
-            setImportedBackupId(null);
-          }}
+          showRestartDialog={false}
+          onRestartNow={() => undefined}
+          showRestorePromptDialog={false}
+          onRestoreNow={() => undefined}
+          onRestoreLater={() => undefined}
           verifyResult={verifyResult}
           showVerifyDialog={showVerifyDialog}
           onCloseVerifyDialog={() => {
@@ -2806,6 +2739,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             onRefresh={loadSyncStatus}
             onDetectConflicts={detectConflicts}
             unresolvedConflictCount={unresolvedConflictCount}
+            hideConflictBanner
             externalConflictFocusSignal={externalConflictJumpSignal}
             cloudSyncConfigured={cloudSyncConfigured}
             cloudSyncSummary={cloudSyncSummary}
@@ -2856,6 +2790,75 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <DebugTab />
         </TabsContent>
       )}
+
+      {/* 提升至 Tabs 顶层：即使恢复/导入任务完成时用户已切换至其他页签，强制重启与恢复提示弹窗仍正常呈现 */}
+      <DsAlertDialog
+        open={showRestorePromptDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowRestorePromptDialog(false);
+            setImportedBackupId(null);
+          }
+        }}
+        title={t('data:governance.import_complete_title')}
+        description={
+          <div className="space-y-2">
+            <p>{t('data:governance.import_complete_desc')}</p>
+            <p className="text-warning font-medium">
+              {t('data:governance.restore_save_work_warning')}
+            </p>
+          </div>
+        }
+        confirmText={t('data:governance.restore_now')}
+        cancelText={t('data:governance.restore_later')}
+        confirmVariant="warning"
+        onConfirm={() => {
+          const targetId = importedBackupId;
+          setShowRestorePromptDialog(false);
+          setImportedBackupId(null);
+          if (targetId) void restoreBackup(targetId);
+        }}
+      />
+      <DsDialog
+        open={showRestartDialog}
+        onOpenChange={() => undefined}
+        showClose={false}
+        closeOnOverlay={false}
+      >
+        <DsDialogHeader>
+          <DsDialogTitle>{t('data:governance.restore_complete_title')}</DsDialogTitle>
+          <DsDialogDescription>
+            <div className="space-y-2">
+              <p>{t('data:governance.restore_complete_desc')}</p>
+              <p className="text-warning font-medium">
+                {t('data:governance.restore_save_work_warning')}
+              </p>
+            </div>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogFooter>
+          <DsButton
+            variant="primary"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={async () => {
+              setShowRestartDialog(false);
+              try {
+                await TauriAPI.restartApp();
+                if (import.meta.env.DEV || isWebUiShell()) {
+                  window.location.reload();
+                }
+              } catch (error: unknown) {
+                console.error('重启应用失败:', error);
+                showGlobalNotification('error', getErrorMessage(error));
+              }
+            }}
+          >
+            <ArrowCounterClockwise size={16} className="mr-2" />
+            {t('data:governance.restart_now')}
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
     </Tabs>
   );
 

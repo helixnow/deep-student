@@ -808,18 +808,20 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                     <span className="hidden text-xs text-muted-foreground sm:inline">
                       {t('todo:automation.createPanel.shortcutHint')}
                     </span>
-                    <DsButton
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                      disabled={creating}
-                      aria-label={t('common:actions.close')}
-                      title={t('common:actions.close')}
-                      onClick={closeCreate}
-                    >
-                      <X size={16} />
-                    </DsButton>
+                    {hideHeader && (
+                      <DsButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                        disabled={creating}
+                        aria-label={t('common:actions.close')}
+                        title={t('common:actions.close')}
+                        onClick={closeCreate}
+                      >
+                        <X size={16} />
+                      </DsButton>
+                    )}
                   </div>
                 </div>
 

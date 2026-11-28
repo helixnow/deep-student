@@ -1018,6 +1018,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 >
                   <Checkbox
                     checked={selectedTiers.includes(tier.value)}
+                    onClick={(e) => e.stopPropagation()}
                     onCheckedChange={() => handleTierToggle(tier.value)}
                   />
                   <div className="flex-1 min-w-0">
@@ -1062,6 +1063,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     >
                       <Checkbox
                         checked={selectedAssetTypes.includes(asset.value)}
+                        onClick={(e) => e.stopPropagation()}
                         onCheckedChange={() => handleAssetTypeToggle(asset.value)}
                       />
                       {asset.icon}
@@ -1615,8 +1617,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         onResumeJob={onResumeJob}
       />
 
-      {/* Task 3: 恢复完成后重启提示对话框 */}
-      <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>
+      {/* Task 3: 恢复完成后重启提示对话框（强制重启，不展示无效关闭按钮与遮罩点击） */}
+      <DsDialog open={showRestartDialog} onOpenChange={() => undefined} showClose={false} closeOnOverlay={false}>
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
             <CheckCircle size={20} className="text-success" />

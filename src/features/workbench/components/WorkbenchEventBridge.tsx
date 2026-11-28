@@ -43,6 +43,7 @@ import { launchNewChatSession, openChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
 import { resolvePluginViewAppTypeId } from '../apps/plugin-views/register';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { KbScopePickerHost } from '@/features/chat';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
@@ -371,6 +372,10 @@ export const WorkbenchEventBridge: React.FC = () => {
           workbenchBus.launch({ typeId: 'sandbox', reason: 'api' });
           return;
         }
+        if (detail?.view === 'task-dashboard') {
+          workbenchBus.launch({ typeId: 'taskDashboard', reason: 'api' });
+          return;
+        }
         // 社区插件视图（ctx.ui.navigate / kernel.navigation.navigate(viewKey)）→ 对应插件应用窗口
         const pluginAppTypeId = resolvePluginViewAppTypeId(detail?.view);
         if (pluginAppTypeId) workbenchBus.launch({ typeId: pluginAppTypeId, reason: 'api' });
@@ -507,7 +512,7 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
   }, []);
 
-  return null;
+  return <KbScopePickerHost />;
 };
 
 export default WorkbenchEventBridge;

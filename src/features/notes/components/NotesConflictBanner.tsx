@@ -73,22 +73,26 @@ export const NotesConflictBanner: React.FC<NotesConflictBannerProps> = ({
               ? t('notes:editorV2.conflict_compare_hide', 'Hide comparison')
               : t('notes:editorV2.conflict_compare', 'Compare')}
           </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
-            onClick={() => onResolve('mine', conflictAction)}
-          >
-            {t('notes:editor.conflict_restore_mine')}
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-            onClick={() => onResolve('remote', conflictAction)}
-          >
-            {t('notes:editor.conflict_keep_remote', 'Keep remote')}
-          </DsButton>
+          {!conflictDiffOpen && (
+            <>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => onResolve('mine', conflictAction)}
+              >
+                {t('notes:editor.conflict_restore_mine')}
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => onResolve('remote', conflictAction)}
+              >
+                {t('notes:editor.conflict_keep_remote', 'Keep remote')}
+              </DsButton>
+            </>
+          )}
         </div>
       </div>
 

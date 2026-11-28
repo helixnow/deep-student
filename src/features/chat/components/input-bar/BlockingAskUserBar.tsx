@@ -29,6 +29,8 @@ import { cn } from '@/utils/cn';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import type { PlaygroundAskUserInteraction } from '../../dev/playground/blockingRuntime';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
 import { OpenUILangRenderer } from '@/features/generative-ui';
@@ -151,8 +153,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           setHasResponded(true);
         } catch (error) {
           console.error('[BlockingAskUserBar] Failed to send response:', error);
-          // Mark as responded anyway to avoid stuck UI
-          setHasResponded(true);
+          showGlobalNotification('error', getErrorMessage(error));
         } finally {
           setIsResponding(false);
         }

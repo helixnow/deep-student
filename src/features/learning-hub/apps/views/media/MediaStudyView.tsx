@@ -1168,7 +1168,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             className="flex min-w-0 max-w-[42%] shrink items-center gap-1.5 pr-1 empty:hidden"
           />
         ) : null}
-        {showTranscribeButton && (
+        {showTranscribeButton && (!panelOpen || (status !== 'partial' && status !== 'failed')) && !(companion && panelOpen && companion.activeTab === MEDIA_STUDY_TRANSCRIPT_TAB && !hasTranscript) && (
           <DsButton
             variant="ghost"
             size="sm"
@@ -1190,7 +1190,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           </DsButton>
         )}
 
-        {running && (
+        {running && !panelOpen && (
           <div className="flex min-w-0 items-center gap-1.5 px-1.5 text-xs text-muted-foreground" role="status" aria-live="polite">
             <CircleNotch size={14} className="shrink-0 animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
             <span className="truncate">

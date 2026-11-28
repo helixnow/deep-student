@@ -203,6 +203,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     extraFields: { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) },
   }), [card]);
   const isCloze = isClozeReviewCard(editable, template);
+  const [draftClozeMode, setDraftClozeMode] = useState(false);
+  const effectiveIsCloze = isCloze || draftClozeMode;
   const editValues = useMemo(
     () => getReviewCardEditValues(editable, template),
     [editable, template],
@@ -242,6 +244,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
       translate('library.create.clozePlaceholder', { defaultValue: 'Cloze text' }),
     );
     setDraftFront(nextValue);
+    setDraftClozeMode(true);
     requestAnimationFrame(() => {
       const el = editFrontRef.current;
       if (!el) return;
@@ -254,6 +257,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     setDraftFront(editValues.front);
     setDraftBack(editValues.back);
     setDraftTags(card.tags.join(', '));
+    setDraftClozeMode(false);
     setEditError(null);
     setEditing(true);
   }, [editValues, card.tags]);
@@ -262,11 +266,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     const nextFront = draftFront.trim();
     const nextBack = draftBack.trim();
     // Cloze 卡：back（Extra）允许为空，但正面必须含有效挖空标记
-    if (!nextFront || (!isCloze && !nextBack)) {
+    if (!nextFront || (!effectiveIsCloze && !nextBack)) {
       setEditError(translate('library.editEmpty'));
       return;
     }
-    if (isCloze && !hasValidCloze(nextFront)) {
+    if (effectiveIsCloze && !hasValidCloze(nextFront)) {
       setEditError(translate('session.invalidClozeEdit'));
       return;
     }
@@ -282,7 +286,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     setSaving(true);
     setEditError(null);
     try {
-      const ok = await onSaveEdit(card.id, patch, template);
+      const effectiveTemplate: ReviewEditTemplate | null | undefined =
+        draftClozeMode && !isCloze
+          ? { fields: template?.fields ?? [], note_type: 'Cloze' }
+          : template;
+      const ok = await onSaveEdit(card.id, patch, effectiveTemplate);
       if (ok) setEditing(false);
     } finally {
       setSaving(false);

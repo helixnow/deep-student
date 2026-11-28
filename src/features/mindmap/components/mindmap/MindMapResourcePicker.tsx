@@ -198,25 +198,37 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
     }
   }, [loadRootResources, t]);
 
+  const hasSearchedRef = useRef(false);
+
   // 打开时加载资源 + 聚焦搜索框
   useEffect(() => {
     if (isOpen) {
+      hasSearchedRef.current = false;
       loadRootResources();
       requestAnimationFrame(() => inputRef.current?.focus());
     } else {
+      hasSearchedRef.current = false;
       setQuery('');
       setResources([]);
     }
   }, [isOpen, loadRootResources]);
 
-  // 搜索防抖（仅在用户实际输入时触发，避免与初始加载重复）
+  // 搜索防抖（仅在用户实际输入时触发；清空搜索词时恢复根目录列表）
   useEffect(() => {
-    if (!isOpen || !query) return;
+    if (!isOpen) return;
+    if (!query.trim()) {
+      if (hasSearchedRef.current) {
+        hasSearchedRef.current = false;
+        loadRootResources();
+      }
+      return;
+    }
+    hasSearchedRef.current = true;
     const timer = setTimeout(() => {
       searchResources(query);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, isOpen, searchResources]);
+  }, [query, isOpen, loadRootResources, searchResources]);
 
   // 自定义 picker（移动子屏/桌面浮层）都需显式接入 Android 返回键。
   // 标签页保活时仅允许当前可见导图注册，避免隐藏实例拦截返回。

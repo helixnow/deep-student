@@ -54,8 +54,8 @@ export interface ExplainPopoverProps {
   contextBefore?: string;
   /** 选区后文 */
   contextAfter?: string;
-  /** 一键将解读结果存入 PDF 批注笔记 */
-  onSaveToAnnotation?: (text: string) => void;
+  /** 一键将解读结果存入 PDF 批注笔记（返回 false 表示未实际落库） */
+  onSaveToAnnotation?: (text: string) => boolean | void;
 }
 
 // ============================================================================
@@ -229,7 +229,8 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
   const handleSaveToAnnotation = useCallback(() => {
     if (!explanation || !onSaveToAnnotation) return;
-    onSaveToAnnotation(explanation);
+    const saved = onSaveToAnnotation(explanation);
+    if (saved === false) return;
     setPinned(true);
     if (pinnedTimerRef.current) clearTimeout(pinnedTimerRef.current);
     pinnedTimerRef.current = setTimeout(() => setPinned(false), 1500);

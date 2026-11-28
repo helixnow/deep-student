@@ -15,6 +15,8 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { fileManager } from '@/utils/fileManager';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { translationDstuAdapter } from '@/dstu/adapters/translationDstuAdapter';
 import { saveTranslationDraftSnapshot } from '@/translation';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -434,12 +436,32 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
     }, 2000);
   }, []);
 
-  const handleExportMarkdown = useCallback(() => {
+  const handleExportMarkdown = useCallback(async () => {
     const md = handoutIrToMarkdown(normalizedDoc);
-    onExportMarkdown?.(md, doc);
-    showActionFeedback(
-      t('learningHub:handoutReader.exportedMarkdown', { defaultValue: '已导出 Markdown' }),
-    );
+    try {
+      if (onExportMarkdown) {
+        await onExportMarkdown(md, doc);
+        showActionFeedback(
+          t('learningHub:handoutReader.exportedMarkdown', { defaultValue: '已导出 Markdown' }),
+        );
+        return;
+      }
+      const safeName = (normalizedDoc.title || 'handout')
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .trim() || 'handout';
+      const result = await fileManager.saveTextFile({
+        content: md,
+        defaultPath: `${safeName}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!result.canceled) {
+        showActionFeedback(
+          t('learningHub:handoutReader.exportedMarkdown', { defaultValue: '已导出 Markdown' }),
+        );
+      }
+    } catch (error) {
+      showActionFeedback(getErrorMessage(error));
+    }
   }, [doc, normalizedDoc, onExportMarkdown, showActionFeedback, t]);
 
   const handleCopyHandout = useCallback(async () => {

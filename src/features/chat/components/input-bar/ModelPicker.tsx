@@ -676,22 +676,6 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 disabled={disabled}
               />
             )}
-            {isRetryMode && onRetry && (
-              <DsButton
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  onRetry(compareSelected.map((m) => m.id));
-                  onClose();
-                }}
-                disabled={disabled || compareSelected.length === 0}
-                title={t('chatV2:modelMention.retry')}
-                className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-              >
-                <ArrowCounterClockwise size={14} />
-                {t('chatV2:modelMention.retry')}
-              </DsButton>
-            )}
             <DsButton
               variant="ghost"
               size="icon"

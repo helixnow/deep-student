@@ -1186,12 +1186,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleConfirmInsecureFtpSave = useCallback(async () => {
     setShowInsecureFtpWarning(false);
     if (insecureWarningAction === 'test') {
-      await doTestConnection(true);
+      const config = buildConfig(true);
+      if (canTestWithStoredCredentials(config)) {
+        await doTestWithStoredCredentials(true);
+      } else {
+        await doTestConnection(true);
+      }
     } else {
       await doSaveConfig(true);
     }
     setInsecureWarningAction(null);
-  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
+  }, [insecureWarningAction, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doSaveConfig, doTestConnection]);
 
   // 确认保存不安全 WebDAV 配置
   const handleConfirmInsecureWebdavSave = useCallback(async () => {

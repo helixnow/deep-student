@@ -419,7 +419,6 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           <div className="pt-2">
             <OcrEngineTestPanel
               availableModels={engines}
-              onClose={() => setShowTestPanel(false)}
             />
           </div>
         )}

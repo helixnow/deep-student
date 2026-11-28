@@ -21,10 +21,14 @@ export function SandboxWorkbenchPage() {
   const hasSession = useSandboxWorkbenchStore((state) => (
     selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).activeSession !== null
   ));
+  const isOpen = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).isOpen
+  ));
   const inspectorOpen = useSandboxWorkbenchStore((state) => (
     selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).inspectorOpen
   ));
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
+  const showInspectorAction = hasSession && isOpen;
 
   // D-1: 移动端顶栏标题（sandbox-workbench 独立视图形态；
   // 作为 chat-v2 右屏嵌入时不经过本页面组件，不受影响）
@@ -36,7 +40,7 @@ export function SandboxWorkbenchPage() {
     // viewStore.setCurrentView 仅允许 App.tsx 写入，跨组件导航走 NAVIGATE_TO_VIEW 事件。
     showBackArrow: true,
     onMenuClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }),
-    rightActions: hasSession ? (
+    rightActions: showInspectorAction ? (
       <>
         <DsButton
           variant="ghost"
@@ -50,13 +54,13 @@ export function SandboxWorkbenchPage() {
         </DsButton>
       </>
     ) : undefined,
-  }, [t, hasSession, inspectorOpen, setInspectorOpen]);
+  }, [t, showInspectorAction, inspectorOpen, setInspectorOpen]);
 
   useDesktopHeader(
     'sandbox-workbench',
     {
       breadcrumbs: [{ id: 'sandbox-root', label: t('sandbox.title') }],
-      actions: hasSession ? (
+      actions: showInspectorAction ? (
         <DsButton
           variant="ghost"
           size="icon"
@@ -70,14 +74,15 @@ export function SandboxWorkbenchPage() {
         </DsButton>
       ) : undefined,
     },
-    [t, hasSession, inspectorOpen, setInspectorOpen],
+    [t, showInspectorAction, inspectorOpen, setInspectorOpen],
     !isSmallScreen,
   );
 
   return (
     <SandboxWorkbenchSurface
       className="h-full"
-      hideToolbar={isSmallScreen}
+      hideToolbar={isSmallScreen || !showInspectorAction}
+      hideInspectorToggle
       ownerKey={LEGACY_SANDBOX_OWNER_KEY}
     />
   );

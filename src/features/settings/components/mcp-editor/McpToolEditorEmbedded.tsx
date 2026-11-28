@@ -368,7 +368,14 @@ export function renderMcpToolEditorEmbedded({
                   <DsButton
                     variant="outline"
                     size="sm"
-                    onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
+                    onClick={() => {
+                      const existing = draft.env || {};
+                      let idx = Object.keys(existing).length + 1;
+                      while (Object.prototype.hasOwnProperty.call(existing, `ENV_${idx}`)) {
+                        idx += 1;
+                      }
+                      updateDraft({ env: { ...existing, [`ENV_${idx}`]: '' } });
+                    }}
                     className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <Plus className="h-4 w-4 mr-1" />

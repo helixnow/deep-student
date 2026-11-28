@@ -1041,41 +1041,6 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({
   const isInlineSkillTrustApproval = Boolean(
     pendingApproval && normalizedToolShort === 'skill_trust_request',
   );
-  const [inlineApprovalBusy, setInlineApprovalBusy] = useState(false);
-  const handleInlineSkillTrustRespond = useCallback(
-    async (approved: boolean) => {
-      if (!pendingApproval || inlineApprovalBusy) return;
-      setInlineApprovalBusy(true);
-      try {
-        if ('respond' in pendingApproval && typeof (pendingApproval as { respond?: unknown }).respond === 'function') {
-          await (pendingApproval as unknown as {
-            respond: (resp: { approved: boolean; remember: boolean; rememberSession: boolean; reason?: string }) => Promise<void>;
-          }).respond({
-            approved,
-            remember: false,
-            rememberSession: false,
-            reason: approved ? undefined : 'user_rejected',
-          });
-        } else {
-          await invoke('chat_v2_tool_approval_respond', {
-            sessionId,
-            toolCallId: pendingApproval.toolCallId,
-            toolName: pendingApproval.toolName,
-            approved,
-            reason: approved ? null : 'user_rejected',
-            remember: false,
-            rememberSession: false,
-            arguments: pendingApproval.arguments,
-          });
-        }
-      } catch (error) {
-        showGlobalNotification('error', getErrorMessage(error), t('approval.notification.responseFailedTitle', { ns: 'chatV2' }));
-      } finally {
-        setInlineApprovalBusy(false);
-      }
-    },
-    [pendingApproval, inlineApprovalBusy, sessionId, t],
-  );
   const isShellCommand = isShellTimelineTool(node.toolName);
   const shellDescriptor = useMemo(() => getShellCommandDescriptor({
     toolName: node.toolName,
@@ -1279,42 +1244,21 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({
           ) : null}
         </DsButton>
 
-        {/* 内联技能信任审批卡（确保 skill_trust_request 在时间线节点处也可立即批准或拒绝） */}
+        {/* 内联技能信任审批提示（批准/拒绝操作由输入框上方 BlockingApprovalBar 唯一承载，避免双处重复按钮） */}
         {isInlineSkillTrustApproval && pendingApproval && (
           <div
             data-testid="timeline-skill-trust-approval"
-            className="mt-1 flex flex-col gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs"
+            className="mt-1 flex items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs font-medium text-foreground"
           >
-            <div className="flex items-center gap-1.5 font-medium text-foreground">
-              <ShieldCheck size={14} className="shrink-0 text-warning" />
-              <span>
-                {getLocalizedApprovalDescription(
-                  pendingApproval.toolName,
-                  pendingApproval.arguments,
-                  pendingApproval.description,
-                  t,
-                )}
-              </span>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <DsButton
-                variant="outline"
-                size="sm"
-                disabled={inlineApprovalBusy}
-                onClick={() => void handleInlineSkillTrustRespond(false)}
-                className="text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-              >
-                {t('approval.skillTrustReject', { ns: 'chatV2' })}
-              </DsButton>
-              <DsButton
-                size="sm"
-                disabled={inlineApprovalBusy}
-                onClick={() => void handleInlineSkillTrustRespond(true)}
-                className="bg-success text-success-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-              >
-                {t('approval.skillTrustApprove', { ns: 'chatV2' })}
-              </DsButton>
-            </div>
+            <ShieldCheck size={14} className="shrink-0 text-warning" />
+            <span>
+              {getLocalizedApprovalDescription(
+                pendingApproval.toolName,
+                pendingApproval.arguments,
+                pendingApproval.description,
+                t,
+              )}
+            </span>
           </div>
         )}
 

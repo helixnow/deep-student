@@ -638,7 +638,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsMutating(false);
     }
-  }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, parseBatchImportItems, t]);
+  }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, newMemoryFolderPath, parseBatchImportItems, t]);
 
   // ========== 内联展开预览 ==========
   const handleToggleExpand = useCallback(async (noteId: string) => {
@@ -963,11 +963,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   }, []);
 
   // ========== 加载画像 ==========
-  const handleToggleProfile = useCallback(async () => {
-    if (showProfile) {
-      setShowProfile(false);
-      return;
-    }
+  const loadProfile = useCallback(async () => {
     const reqId = ++profileReqIdRef.current;
     setIsLoadingProfile(true);
     setShowProfile(true);
@@ -987,7 +983,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         setIsLoadingProfile(false);
       }
     }
-  }, [showProfile, t]);
+  }, [t]);
+
+  const handleToggleProfile = useCallback(async () => {
+    if (showProfile) {
+      setShowProfile(false);
+      return;
+    }
+    await loadProfile();
+  }, [showProfile, loadProfile]);
 
   // ========== 审计日志 ==========
   // ★ 显式传 offset + 请求序号，消除“offset effect 链”带来的重复追加与筛选竞态
@@ -1357,10 +1361,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           ) : null}
         </div>
 
-        {/* 视图切换 */}
+        {/* 视图切换：切到树状视图时退出搜索态与批量态，避免空白视口与无效复选框 */}
         <DsButton
           variant="ghost" size="icon" iconOnly
-          onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
+          onClick={() => {
+            const nextMode = viewMode === 'list' ? 'tree' : 'list';
+            if (nextMode === 'tree') {
+              if (isSearchMode) handleClearSearch();
+              if (batchMode) {
+                setBatchMode(false);
+                setSelectedIds(new Set());
+                setConfirmingBatchDelete(false);
+              }
+            }
+            setViewMode(nextMode);
+          }}
           className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
           aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
@@ -1370,10 +1385,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
         <div className="w-px h-3.5 bg-border/35" />
 
-        {/* 操作 */}
+        {/* 操作：树状视图下开启批量模式时自动切回列表视图，确保每项可勾选 */}
         <DsButton
           variant="ghost" size="icon" iconOnly
-          onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); setConfirmingBatchDelete(false); }}
+          onClick={() => {
+            const nextBatch = !batchMode;
+            if (nextBatch && viewMode === 'tree') {
+              setViewMode('list');
+            }
+            setBatchMode(nextBatch);
+            setSelectedIds(new Set());
+            setConfirmingBatchDelete(false);
+          }}
           className={cn(batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
@@ -1703,9 +1726,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <ListPlus size={14} className="shrink-0" />
                       <span className="text-xs font-medium text-muted-foreground">{t('memory.batch_import')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="!h-6 !w-6 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
-                      <X size={14} />
-                    </DsButton>
                   </div>
 
                   <div className="p-3.5 space-y-3">
@@ -1820,9 +1840,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <MemoryIcon size={14} className="shrink-0" />
                       <span className="text-xs font-medium text-muted-foreground">{t('memory.create_title')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="!h-6 !w-6 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel')}>
-                      <X size={14} />
-                    </DsButton>
                   </div>
 
                   <div className="p-3.5 space-y-3">
@@ -1952,7 +1969,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   ) : profileError ? (
                     <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
                       <div>{profileError}</div>
-                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:!min-h-11">
+                      <DsButton variant="ghost" size="sm" onClick={() => void loadProfile()} className="text-xs [@media(pointer:coarse)]:!min-h-11">
                         {t('common:retry')}
                       </DsButton>
                     </div>
@@ -2343,7 +2360,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           )}
                         </div>
                       </div>
-                      {!batchMode && (
+                      {!batchMode && !isExpanded && (
                         isConfirmingDelete ? (
                           <DsButton
                             variant="ghost" size="sm"
@@ -2563,7 +2580,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     {meta?.isImportant && (
                       <Star size={12} className="text-warning flex-shrink-0" weight="fill" />
                     )}
-                    {isConfirmingDelete ? (
+                    {!isNoteExpanded && (isConfirmingDelete ? (
                       <DsButton
                         variant="ghost" size="sm"
                         className="!h-auto !px-1.5 !py-0.5 text-2xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
@@ -2583,7 +2600,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       >
                         <Trash size={12} />
                       </DsButton>
-                    )}
+                    ))}
                   </div>
 
                   <AnimatePresence initial={false}>

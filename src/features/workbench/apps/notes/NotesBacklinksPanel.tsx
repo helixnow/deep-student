@@ -143,6 +143,8 @@ export interface NotesBacklinksPanelProps {
   requestedTab?: NotesBacklinksTabRequest | null;
   /** 面板当前真实生效页签变化时通知宿主，供快捷键/命令面板判断切换目标。 */
   onActiveTabChange?: (tab: PanelTab) => void;
+  /** 宿主顶栏/状态栏已提供常驻切换入口时隐藏面板内部重复的关闭按钮 */
+  hideCloseButton?: boolean;
   className?: string;
 }
 
@@ -650,6 +652,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   graphContent,
   requestedTab,
   onActiveTabChange,
+  hideCloseButton = false,
   className,
 }) => {
   const { t } = useTranslation('workbench');
@@ -1366,17 +1369,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             {activeResource?.type === 'note' && <span title={activeResource.name}>{activeResource.name}</span>}
           </div>
         )}
-        <div className="notes-backlinks-panel-actions">
-          <button
-            type="button"
-            className="notes-backlinks-panel-icon-button"
-            onClick={onClose}
-            aria-label={closeButtonLabel}
-            title={closeButtonLabel}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
+        {!hideCloseButton && (
+          <div className="notes-backlinks-panel-actions">
+            <button
+              type="button"
+              className="notes-backlinks-panel-icon-button"
+              onClick={onClose}
+              aria-label={closeButtonLabel}
+              title={closeButtonLabel}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </header>
 
       {hasExtraTabs && activeResource?.type === 'note' && (

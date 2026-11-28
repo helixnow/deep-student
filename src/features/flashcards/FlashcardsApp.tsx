@@ -22,6 +22,7 @@ import { useDesktopHeader, useHasDesktopHeaderHost } from '@/components/layout/D
 import {
   CardsHubDesktopNav,
   CARDS_HUB_SELECT_SCREEN_EVENT,
+  consumePendingCardsHubScreen,
   type CardsHubReviewScreen,
 } from '@/components/layout/CardsHubDesktopNav';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
@@ -105,9 +106,42 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   const hasDesktopHeaderHost = useHasDesktopHeaderHost();
   const useClassicDesktopHeader = !isSmallScreen && !embedded && hasDesktopHeaderHost;
 
+  useEffect(() => {
+    if (embedded) return;
+    try {
+      const raw = window.sessionStorage.getItem('flashcards.pendingLaunchPayload');
+      if (raw) {
+        window.sessionStorage.removeItem('flashcards.pendingLaunchPayload');
+        applyLaunchPayload(JSON.parse(raw));
+      }
+    } catch {
+      // ignore storage/parse errors
+    }
+    const pending = consumePendingCardsHubScreen();
+    if (pending) {
+      if (screen === 'session') endSession();
+      setScreen(pending);
+    }
+  }, [applyLaunchPayload, embedded, endSession, screen, setScreen]);
+
   useEventRegistry(
     !embedded
       ? [
+          {
+            target: 'window',
+            type: 'flashcards:apply-launch-payload',
+            listener: (event) => {
+              const payload = (event as CustomEvent<unknown>).detail;
+              if (payload && typeof payload === 'object') {
+                try {
+                  window.sessionStorage.removeItem('flashcards.pendingLaunchPayload');
+                } catch {
+                  // ignore
+                }
+                applyLaunchPayload(payload);
+              }
+            },
+          },
           {
             target: 'window',
             type: CARDS_HUB_SELECT_SCREEN_EVENT,
@@ -119,6 +153,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
                 || targetScreen === 'settings'
                 || targetScreen === 'scheduler'
               ) {
+                consumePendingCardsHubScreen();
                 if (screen === 'session') endSession();
                 setScreen(targetScreen);
               }

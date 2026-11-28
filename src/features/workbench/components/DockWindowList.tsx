@@ -316,8 +316,9 @@ export function DockWindowList({
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (phase === 'closing') return;
     const target = event.target as HTMLElement | null;
-    // 关闭按钮自己的 Enter/Space 走原生；Delete 仍关窗
+    // 关闭按钮与「显示所有窗口」按钮自己的 Enter/Space 走原生；Delete 仍关窗
     const onCloseBtn = Boolean(target?.closest('.wb-docklist-close'));
+    const onShowAllBtn = Boolean(target?.closest('.wb-docklist-showall'));
 
     switch (event.key) {
       case 'Escape':
@@ -345,7 +346,7 @@ export function DockWindowList({
         break;
       case 'Enter':
       case ' ':
-        if (onCloseBtn) break;
+        if (onCloseBtn || onShowAllBtn) break;
         event.preventDefault();
         if (windows[activeIndex]) {
           const id = windows[activeIndex].id;
@@ -483,7 +484,7 @@ export function DockWindowList({
           <button
             type="button"
             role="menuitem"
-            tabIndex={-1}
+            tabIndex={0}
             className="wb-docklist-showall"
             data-wb-docklist-show-all=""
             data-testid="wb-docklist-show-all"

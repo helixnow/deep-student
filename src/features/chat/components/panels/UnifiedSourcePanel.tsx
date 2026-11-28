@@ -703,16 +703,6 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     }
   }, []);
 
-  const handleLocateGraph = useCallback((item: UnifiedSourceItem) => {
-    const cardId = item.sourceId || (item.raw as any)?.source_id || item.raw.document_id;
-    if (!cardId) return;
-    try {
-      window.dispatchEvent(new CustomEvent('DSTU_LOCATE_GRAPH_CARD' as any, { detail: { cardId } }));
-    } catch (error: unknown) {
-      console.error('[UnifiedSourcePanel] Failed to dispatch graph locate event:', error);
-    }
-  }, []);
-
   const getItemResourceLocator = useCallback((item: UnifiedSourceItem): ResourceLocator => buildResourceLocator({
     sourceId: item.sourceId || item.raw?.source_id || undefined,
     resourceId: item.resourceId,
@@ -833,14 +823,6 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         </DsButton>
       );
     }
-    if (item.origin === 'graph') {
-      return (
-        <DsButton variant="ghost" size="sm" onClick={() => handleLocateGraph(item)} className={btnClass}>
-          <ArrowSquareOut size={iconSize} />
-          {t('common:chat.sources.locateGraph')}
-        </DsButton>
-      );
-    }
     if (item.origin === 'memory' && getMemoryLocateId(item)) {
       return (
         <DsButton variant="ghost" size="sm" onClick={() => handleLocateMemory(item)} className={btnClass}>
@@ -866,7 +848,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       );
     }
     return null;
-  }, [t, handleLocateGraph, handleLocateMemory, handleLocateResource, handleOpenLink, getMemoryLocateId, getItemResourceLocator]);
+  }, [t, handleLocateMemory, handleLocateResource, handleOpenLink, getMemoryLocateId, getItemResourceLocator]);
 
   const registerCardRef = useCallback((id: string) => (el: HTMLElement | null) => {
     if (el) cardRefs.current.set(id, el);

@@ -9,7 +9,9 @@ import { Pause, Play, Plus, Robot } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import type { Command } from '../registry/types';
 import { activateWorkbenchApp } from '@/shared/workbenchHost';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useAutomationStore } from '@/features/todo/stores/useAutomationStore';
+import { useTodoStore } from '@/features/todo';
 import { isMobilePlatform } from '@/utils/platform';
 import {
   AUTOMATION_REQUEST_CREATE_EVENT,
@@ -26,9 +28,9 @@ export const AUTOMATION_EVENTS = {
   REQUEST_CREATE: AUTOMATION_REQUEST_CREATE_EVENT,
 } as const;
 
-/** 与 StatusBar / todoActivation 一致的 showAutomations 打开路径 */
-function openAutomationsWorkspace(): Promise<boolean> {
-  return activateWorkbenchApp({
+/** 与 StatusBar / todoActivation 一致的 showAutomations 打开路径（含经典壳与移动端兜底） */
+async function openAutomationsWorkspace(): Promise<boolean> {
+  const handled = await activateWorkbenchApp({
     typeId: 'todo',
     instanceKey: '',
     action: 'showAutomations',
@@ -38,6 +40,13 @@ function openAutomationsWorkspace(): Promise<boolean> {
       payload: { todoView: 'automations' },
     },
   });
+  if (handled) return true;
+  useTodoStore.getState().setWorkspaceView('automations');
+  if (isMobilePlatform()) {
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'todo' });
+    return true;
+  }
+  return false;
 }
 
 /**

@@ -1174,6 +1174,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               searchInput={searchInput}
               onSearchInputChange={setSearchInput}
               onCloseSearch={handleCloseSearch}
+              presentationMode={presentationMode}
             />
 
             <div className="flex-1 min-w-0 min-h-0 relative">

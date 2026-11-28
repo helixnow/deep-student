@@ -15,6 +15,7 @@ import {
 } from '@phosphor-icons/react';
 import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { UnifiedMobileHeader } from '@/components/layout/UnifiedMobileHeader';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -237,7 +238,6 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
   onSettled,
 }) => {
   const { t } = useTranslation('review');
-  const isNarrowMobile = useMediaQuery('(max-width: 639px)');
   const isMobileViewport = useMediaQuery('(max-width: 767px)');
   const checkpointScopeKey = spaceId ?? null;
 
@@ -277,8 +277,10 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
   const [resumedFromCheckpoint, setResumedFromCheckpoint] = useState(false);
   const pressTimerRef = useRef<number | null>(null);
   const revealedAtRef = useRef<number>(0);
+  const ttsSeqRef = useRef(0);
 
   const stopReadingAloud = useCallback(() => {
+    ttsSeqRef.current += 1;
     setIsSpeakingTts(false);
     void stopTts().catch(() => {});
   }, []);
@@ -589,7 +591,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
   // 接管 Android 物理返回键与浏览器后退：手机查看来源时先回到冲刺，否则走安全结算/退出
   const backActionRef = useRef<() => void>(() => {});
   backActionRef.current = () => {
-    if (splitDocked && isNarrowMobile && phase.kind === 'active') {
+    if (splitDocked && isMobileViewport && phase.kind === 'active') {
       setSplitDocked(false);
       return;
     }
@@ -662,11 +664,20 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
     }
     const text = buildSpeakableText(currentItem, revealed);
     if (!text) return;
+    const seq = ++ttsSeqRef.current;
     setIsSpeakingTts(true);
     void speakTts(text)
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (ttsSeqRef.current !== seq) return;
+        const msg = getErrorMessage(err);
+        if (msg && !/abort|cancel|interrupt/i.test(msg)) {
+          showGlobalNotification('error', msg);
+        }
+      })
       .finally(() => {
-        setIsSpeakingTts(false);
+        if (ttsSeqRef.current === seq) {
+          setIsSpeakingTts(false);
+        }
       });
   }, [currentItem, isSpeakingTts, revealed, stopReadingAloud]);
 
@@ -858,7 +869,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (splitDocked && isNarrowMobile && phase.kind === 'active') {
+        if (splitDocked && isMobileViewport && phase.kind === 'active') {
           setSplitDocked(false);
         } else {
           handleExitRequest();
@@ -866,7 +877,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
         return;
       }
 
-      if (splitDocked && isNarrowMobile) return;
+      if (splitDocked && isMobileViewport) return;
 
       const target = event.target as HTMLElement | null;
       if (
@@ -938,7 +949,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
       handleReveal,
       handleRevealAnchor,
       handleToggleOption,
-      isNarrowMobile,
+      isMobileViewport,
       phase.kind,
       primarySourceAnchor,
       revealed,
@@ -1004,7 +1015,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
   const progressPct =
     queue.length > 0 ? Math.min(100, Math.round((cursor / queue.length) * 100)) : 0;
 
-  const content = splitDocked && isNarrowMobile && phase.kind === 'active' && currentItem ? (
+  const content = splitDocked && isMobileViewport && phase.kind === 'active' && currentItem ? (
     <div
       role="region"
       aria-label={t('examSprint.player.dialogLabel')}
@@ -1135,7 +1146,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                 <X size={18} aria-hidden="true" />
               </DsButton>
 
-              {splitDocked && !isNarrowMobile ? (
+              {splitDocked && !isMobileViewport ? (
                 <DsButton
                   type="button"
                   variant="ghost"

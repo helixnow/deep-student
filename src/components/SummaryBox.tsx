@@ -112,6 +112,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
               variant="ghost"
               size="sm"
               className="sb-btn sb-btn-ghost"
+              disabled={chatHistory.length === 0 || !onGenerateSummary}
               onClick={(e) => { e.stopPropagation(); generateSummary(); }}
               title={t('summaryBox.generateSummary')}
             >

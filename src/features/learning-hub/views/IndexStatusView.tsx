@@ -1771,7 +1771,10 @@ export const IndexStatusView: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
-                    className="text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+                    className={cn(
+                      'text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11',
+                      inspectingResourceId === resource.resourceId && inspectMode === 'chunks' && 'bg-primary/10 text-primary border-primary/20'
+                    )}
                   >
                     <Stack className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
@@ -1803,9 +1806,6 @@ export const IndexStatusView: React.FC = () => {
                             {t('indexStatus.detail.indexUnitCount', { count: textChunks.length })}
                           </span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
-                          <X className="h-3.5 w-3.5" />
-                        </DsButton>
                       </div>
                       <div className="p-3">
                         {inspectLoading ? (
@@ -1872,9 +1872,6 @@ export const IndexStatusView: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
-                          <X className="h-3.5 w-3.5" />
-                        </DsButton>
                       </div>
 
                       <div className="p-3">
@@ -1971,22 +1968,6 @@ export const IndexStatusView: React.FC = () => {
                             {!ocrInfo.ocrText && !ocrInfo.extractedText && !ocrInfo.ocrPages && (
                               <div className="text-center py-6 text-muted-foreground text-sm">
                                 {t('indexStatus.detail.noOcrOrExtracted')}
-                              </div>
-                            )}
-
-                            {/* 操作区 */}
-                            {ocrInfo.hasOcr && (
-                              <div className="flex justify-end pt-2 border-t border-border/30">
-                                <DsButton
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
-                                  disabled={clearingOcr}
-                                  className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
-                                >
-                                  {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
-                                  {t('indexStatus.action.clearOcrAndReindex')}
-                                </DsButton>
                               </div>
                             )}
                           </div>
@@ -2488,9 +2469,11 @@ export const IndexStatusView: React.FC = () => {
                   ))}
                 </div>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
-                <X className="h-4 w-4" />
-              </DsButton>
+              {isMobile && (
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
+                  <X className="h-4 w-4" />
+                </DsButton>
+              )}
             </div>
           </div>
           

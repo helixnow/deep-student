@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CaretRight } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -61,6 +61,8 @@ export interface TagFilterProps {
   /** Optional controlled expanded state (e.g. triggered from search bar filter icon). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** 外层搜索栏已提供标签展开/收起按钮时隐藏内部重复的折叠标题按钮 */
+  hideHeaderToggle?: boolean;
   className?: string;
 }
 
@@ -87,6 +89,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
   onRefresh,
   open: openProp,
   onOpenChange,
+  hideHeaderToggle = false,
   className,
 }) => {
   const { t } = useTranslation();
@@ -98,11 +101,17 @@ export const TagFilter: React.FC<TagFilterProps> = ({
 
   const selected = normalizeSelected(selectedTags);
   const selectedKeys = new Set(selected.map((tag) => tag.toLocaleLowerCase()));
-  // 侧栏以页面树为主体：标签筛选默认收起成一行，有选中标签时自动展开
-  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  // 侧栏以页面树为主体：标签筛选默认收起成一行，有选中标签时自动展开（展开后仍允许手动收起）
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(selected.length > 0);
   const isControlled = openProp !== undefined;
-  const expanded = isControlled ? openProp : uncontrolledExpanded;
-  const open = expanded || selected.length > 0;
+  const prevSelectedCountRef = useRef(selected.length);
+  useEffect(() => {
+    if (!isControlled && prevSelectedCountRef.current === 0 && selected.length > 0) {
+      setUncontrolledExpanded(true);
+    }
+    prevSelectedCountRef.current = selected.length;
+  }, [isControlled, selected.length]);
+  const open = isControlled ? openProp : uncontrolledExpanded;
   const toggleExpanded = () => {
     const next = !open;
     if (!isControlled) setUncontrolledExpanded(next);
@@ -148,29 +157,38 @@ export const TagFilter: React.FC<TagFilterProps> = ({
 
   return (
     <div className={cn('notes-tag-filter', className)} data-notes-tag-filter>
-      <div className="notes-tag-filter-toolbar">
-        <button
-          type="button"
-          className="notes-tag-filter-label"
-          aria-expanded={open}
-          onClick={toggleExpanded}
-        >
-          <CaretRight size={10} aria-hidden className="notes-tag-filter-caret" data-open={open || undefined} />
-          {t('workbench:notesWorkspace.tagFilter.label')}
-          {selected.length > 0 && (
-            <span className="notes-tag-filter-selected-count">{selected.length}</span>
+      {(!hideHeaderToggle || selected.length > 0) && (
+        <div className="notes-tag-filter-toolbar">
+          {!hideHeaderToggle ? (
+            <button
+              type="button"
+              className="notes-tag-filter-label"
+              aria-expanded={open}
+              onClick={toggleExpanded}
+            >
+              <CaretRight size={10} aria-hidden className="notes-tag-filter-caret" data-open={open || undefined} />
+              {t('workbench:notesWorkspace.tagFilter.label')}
+              {selected.length > 0 && (
+                <span className="notes-tag-filter-selected-count">{selected.length}</span>
+              )}
+            </button>
+          ) : (
+            <span className="notes-tag-filter-label">
+              {t('workbench:notesWorkspace.tagFilter.label')}
+              <span className="notes-tag-filter-selected-count">{selected.length}</span>
+            </span>
           )}
-        </button>
-        {selected.length > 0 && (
-          <button
-            type="button"
-            className="notes-tag-filter-clear"
-            onClick={clearAll}
-          >
-            {t('workbench:notesWorkspace.tagFilter.clear')}
-          </button>
-        )}
-      </div>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              className="notes-tag-filter-clear"
+              onClick={clearAll}
+            >
+              {t('workbench:notesWorkspace.tagFilter.clear')}
+            </button>
+          )}
+        </div>
+      )}
 
       {open && selected.length > 1 && (
         <p className="notes-tag-filter-hint" role="note">

@@ -146,6 +146,10 @@ export interface LearningHubSidebarProps {
   hasOpenApp?: boolean;
   /** ★ 关闭应用面板回调 */
   onCloseApp?: () => void;
+  /** ★ 右侧应用面板被折叠时后台保持打开的标签页数量（用于在底栏提供恢复入口） */
+  collapsedAppTabCount?: number;
+  /** ★ 展开已折叠右侧应用面板的回调 */
+  onRestoreAppPanel?: () => void;
   /** ★ 隐藏顶部工具栏和导航栏（移动端聊天内嵌模式使用，由外部容器提供面包屑） */
   hideToolbarAndNav?: boolean;
   /** ★ 桌面端将快捷入口渲染到外层 Shell 侧栏 */

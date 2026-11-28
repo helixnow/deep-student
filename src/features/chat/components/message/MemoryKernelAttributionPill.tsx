@@ -365,6 +365,7 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   const handleOpenMemorySettings = () => {
     setOpen(false);
     setPendingSettingsRoute({ tab: 'memory' });
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
     dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'memory' });
   };
 

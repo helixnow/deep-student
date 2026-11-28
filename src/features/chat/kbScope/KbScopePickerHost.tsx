@@ -5,18 +5,26 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { KB_SCOPE_PICKER_EVENT, setKbScope } from './kbScope';
 
-/** 挂在聊天页：「＋」菜单的「检索范围」打开文件夹选择器；选根目录 = 不限范围 */
+const mountedKbScopeHosts = new Set<symbol>();
+
+/** 挂在聊天页或桌面事件桥：「＋」菜单的「检索范围」打开文件夹选择器；选根目录 = 不限范围 */
 export const KbScopePickerHost: React.FC = () => {
   const { t } = useTranslation('chatV2');
   const { isSmallScreen } = useBreakpoint();
   const [sessionId, setSessionId] = useState<string | null>(null);
   useEffect(() => {
+    const token = Symbol('kb-scope-host');
+    mountedKbScopeHosts.add(token);
     const onOpen = (event: Event) => {
+      if (mountedKbScopeHosts.values().next().value !== token) return;
       const id = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
       if (id) setSessionId(id);
     };
     window.addEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
-    return () => window.removeEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
+    return () => {
+      mountedKbScopeHosts.delete(token);
+      window.removeEventListener(KB_SCOPE_PICKER_EVENT, onOpen);
+    };
   }, []);
   return (
     <FolderPickerDialog

@@ -142,8 +142,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
   }, [config?.autoExtractFrequency, savingFrequency, t]);
 
   // 画像
-  const handleToggleProfile = useCallback(async () => {
-    if (activePanel === 'profile') { setActivePanel(null); return; }
+  const loadProfile = useCallback(async () => {
     setIsLoadingProfile(true);
     setProfileError(false);
     setActivePanel('profile');
@@ -156,7 +155,12 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
     } finally {
       setIsLoadingProfile(false);
     }
-  }, [activePanel]);
+  }, []);
+
+  const handleToggleProfile = useCallback(async () => {
+    if (activePanel === 'profile') { setActivePanel(null); return; }
+    await loadProfile();
+  }, [activePanel, loadProfile]);
 
   // 审计日志
   const loadAuditLogs = useCallback(async (offset: number) => {
@@ -409,7 +413,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
                   <WarningCircle size={12} className="text-destructive/70" />
                   <span>{t('memory.profile_load_error')}</span>
-                  <DsButton variant="ghost" size="sm" onClick={() => { setActivePanel(null); handleToggleProfile(); }} className="!h-5 !px-1.5 text-2xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5">
+                  <DsButton variant="ghost" size="sm" onClick={() => void loadProfile()} className="!h-5 !px-1.5 text-2xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5">
                     {t('common:retry')}
                   </DsButton>
                 </div>

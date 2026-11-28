@@ -528,39 +528,6 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
               <Trash size={16} />
             </DsButton>
           )}
-
-          {/* 更多操作菜单 */}
-          <AppMenu>
-            <AppMenuTrigger asChild>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
-                <DotsThree size={16} />
-              </DsButton>
-            </AppMenuTrigger>
-            <AppMenuContent align="start" width={160}>
-              <AppMenuItem onClick={handleCopy} icon={<Copy size={16} />}>
-                {t('messageItem.actions.copy')}
-              </AppMenuItem>
-              {canRetry && onRetry && (
-                <AppMenuItem
-                  onClick={handleRetry}
-                  disabled={isOperating}
-                  icon={<ArrowCounterClockwise size={16} />}
-                >
-                  {t('variant.retry')}
-                </AppMenuItem>
-              )}
-              {canDelete && onDelete && (
-                <AppMenuItem
-                  onClick={handleDelete}
-                  disabled={isOperating}
-                  destructive
-                  icon={<Trash size={16} />}
-                >
-                  {t('variant.delete')}
-                </AppMenuItem>
-              )}
-            </AppMenuContent>
-          </AppMenu>
         </div>
 
         {/* Token 统计 */}

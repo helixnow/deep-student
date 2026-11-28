@@ -822,7 +822,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               {
                 id: 'fc-root',
                 label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
-                onClick: navigateToFlashcards,
+                onClick: () => {
+                  if (!confirmDiscardEditorChanges()) return;
+                  navigateToFlashcards();
+                },
               },
               {
                 id: 'tm-root',
@@ -838,7 +841,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               {
                 id: 'fc-root',
                 label: t('sidebar:navigation.flashcards', { defaultValue: '闪卡' }),
-                onClick: navigateToFlashcards,
+                onClick: () => {
+                  if (!confirmDiscardEditorChanges()) return;
+                  navigateToFlashcards();
+                },
               },
               {
                 id: 'tm-root',
@@ -1036,14 +1042,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={handleCancelEdit}
-              disabled={editorSubmitting}
-            >
-              {t('cancel_button')}
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              size="sm"
               onClick={handleEditorSubmit}
               disabled={editorSubmitting}
               className="bg-[color:var(--button-tonal-bg)] font-medium text-foreground"
@@ -1107,7 +1105,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             </Tooltip>
           </>
         )}
-        {isSelectingMode && onCancel && (
+        {isSelectingMode && !useClassicDesktopHeader && onCancel && (
           <DsButton
             variant="ghost"
             size="sm"
@@ -1162,6 +1160,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         onViewModeChange={handleViewModeChange}
         resultCount={filteredTemplates.length}
         totalCount={templates.length}
+        hideSearch={useClassicDesktopHeader && !isEditingMode && !isSelectingMode}
       />
 
       <TemplateBrowser
@@ -1256,9 +1255,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                     await templateManager.createTemplate(templateData);
                     backToBrowse();
                     setError(null);
+                    return true;
                   } catch (err: unknown) {
                     logError('创建模板失败', err);
                     setError(formatErrorMessage(t('create_failed'), err));
+                    return false;
                   }
                 } else if (editingTemplate) {
                   try {
@@ -1273,7 +1274,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                         oldType: editingTemplate.note_type,
                         newType: templateData.note_type,
                       }))) {
-                        return;
+                        return false;
                       }
                     }
                     setIsLoading(true);
@@ -1281,13 +1282,16 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                     backToBrowse();
                     setError(null);
                     setTemplates(templateManager.getAllTemplates());
+                    return true;
                   } catch (err: unknown) {
                     logError('更新模板失败', err);
                     setError(formatErrorMessage(t('update_failed'), err));
+                    return false;
                   } finally {
                     setIsLoading(false);
                   }
                 }
+                return false;
               }}
               onCancel={handleCancelEdit}
             />
@@ -1319,12 +1323,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     label: string,
     onClick: () => void,
     active = false,
+    disabled = false,
   ) => (
     <button
       key={key}
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={mobileDrawerNavRowClassName(active, 'group gap-2.5')}
+      className={mobileDrawerNavRowClassName(active, 'group gap-2.5 disabled:opacity-50 disabled:pointer-events-none')}
     >
       <span className={mobileDrawerRowIconWrapClassName}>
         <Icon size={18} />
@@ -1352,6 +1358,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             size="icon"
             iconOnly
             onClick={() => {
+              if (isEditingMode && !confirmDiscardEditorChanges()) return;
               startCreateTemplate();
               closeMobileDrawer();
             }}
@@ -1398,9 +1405,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <>
               <span className={mobileDrawerSectionLabelClassName}>{t('import_section')}</span>
               {renderMobileDrawerRow('import-builtin', Download, isImporting ? t('importing') : t('import_builtin_templates'), () => {
+                if (isImporting) return;
                 handleImportBuiltinTemplates();
                 closeMobileDrawer();
-              })}
+              }, false, isImporting)}
               {renderMobileDrawerRow('import-external', Upload, t('import_external_templates'), () => {
                 handleImportExternalClick();
                 closeMobileDrawer();
@@ -1447,8 +1455,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     // ===== 桌面：经典壳浏览态走闪卡中心单层导航；编辑态/选择模式/Workbench 窗口走 wb-tm-nav =====
     layout = (
       <div ref={rootRef} className="wb-tm-root overflow-hidden">
-        {useClassicDesktopHeader && !isEditingMode && !isSelectingMode ? (
-          <CardsHubDesktopNav activeSection="templates" />
+        {useClassicDesktopHeader && !isEditingMode ? (
+          isSelectingMode ? null : <CardsHubDesktopNav activeSection="templates" />
         ) : (
           workbenchNav
         )}

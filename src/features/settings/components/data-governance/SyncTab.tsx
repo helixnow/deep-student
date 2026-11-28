@@ -179,6 +179,8 @@ export interface SyncTabProps {
   onResolveConflicts?: (strategy: MergeStrategy) => void;
   /** 持久化全局未解决冲突组数（由 DataGovernanceDashboard 从 syncStatusStore 传入） */
   unresolvedConflictCount?: number;
+  /** 外层 Dashboard 已展示未解决冲突横幅时隐藏重复横幅 */
+  hideConflictBanner?: boolean;
   /** 外部请求聚焦到记录级冲突面板的信号计数 */
   externalConflictFocusSignal?: number;
   cloudSyncConfigured: boolean;
@@ -237,6 +239,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onRefresh,
   onDetectConflicts,
   unresolvedConflictCount = 0,
+  hideConflictBanner = false,
   externalConflictFocusSignal = 0,
   cloudSyncConfigured,
   cloudSyncSummary,
@@ -512,7 +515,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   return (
     <div className="min-w-0 space-y-8 pb-6" data-testid="sync-tab-content">
       {/* 持久化未解决冲突提醒条 */}
-      {effectiveUnresolvedConflictCount > 0 && (
+      {!hideConflictBanner && effectiveUnresolvedConflictCount > 0 && (
         <div
           role="alert"
           data-testid="sync-tab-unresolved-conflicts-banner"
@@ -1131,16 +1134,6 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 <span>{t("sync:syncNow", { defaultValue: "立即同步" })}</span>
-              </DsButton>
-              <DsButton
-                variant="outline"
-                size="sm"
-                onClick={() => handleRunSyncGuarded("bidirectional")}
-                disabled={loading || syncRunning}
-                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
-              >
-                <ArrowsLeftRight size={14} className="mr-1.5" />
-                {t("data:governance.sync_bidirectional")}
               </DsButton>
               <DsButton
                 variant="outline"

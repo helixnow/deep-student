@@ -100,7 +100,14 @@ export async function importConversationSnapshotFromFile(): Promise<void> {
       throw new Error('Snapshot exceeds maximum size of 50 MiB');
     }
     const result = await importConversationSnapshot(content);
-    showGlobalNotification('success', i18n.t('chatV2:browser.exportSuccess', { messageCount: result.messageCount, path: result.sessionId }));
+    window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    showGlobalNotification(
+      'success',
+      i18n.t('chatV2:browser.importSuccess', {
+        defaultValue: '已导入 {{messageCount}} 条消息',
+        messageCount: result.messageCount,
+      }),
+    );
   } catch (error) {
     showGlobalNotification('error', getErrorMessage(error));
   }
