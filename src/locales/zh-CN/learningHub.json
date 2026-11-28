@@ -266,7 +266,9 @@
     "loop": "循环播放",
     "fullscreen": "全屏",
     "exitFullscreen": "退出全屏",
-    "progress": "播放进度"
+    "progress": "播放进度",
+    "backgroundListen": "后台听课",
+    "backgroundListenHint": "切视图时继续播放音频"
   },
   "mediaHandout": {
     "generate": "生成讲义",

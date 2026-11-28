@@ -266,7 +266,9 @@
     "loop": "Loop",
     "fullscreen": "Full screen",
     "exitFullscreen": "Exit full screen",
-    "progress": "Seek"
+    "progress": "Seek",
+    "backgroundListen": "Background Audio",
+    "backgroundListenHint": "Keep playing audio when switching views"
   },
   "mediaHandout": {
     "generate": "Handout",
