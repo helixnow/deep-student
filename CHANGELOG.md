@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.13](https://github.com/helixnow/deep-student/compare/v0.20.12...v0.20.13) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ui:** refine subapp icons and close interactive control gaps ([#580](https://github.com/helixnow/deep-student/issues/580)) ([f7050f0](https://github.com/helixnow/deep-student/commit/f7050f014855d38bf73092664b15b737cc025abd))
+
 ## [0.20.12](https://github.com/helixnow/deep-student/compare/v0.20.11...v0.20.12) (2026-11-28)
 
 ### Features
