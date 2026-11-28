@@ -64,7 +64,7 @@ jobs:
         run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund
 
       - name: Static migration gate
         run: node scripts/ci/check-migrations.mjs

@@ -61,6 +61,9 @@ AWS_ACCESS_KEY_ID=$(jq -er 'select(.success == true) | .result.accessKeyId' <<<"
 AWS_SECRET_ACCESS_KEY=$(jq -er 'select(.success == true) | .result.secretAccessKey' <<<"$credential_response")
 AWS_SESSION_TOKEN=$(jq -er 'select(.success == true) | .result.sessionToken' <<<"$credential_response")
 export AWS_DEFAULT_REGION=auto
+# AWS CLI v2.23+ defaults to trailing CRC32 checksums which Cloudflare R2 rejects on DeleteObjects/PutObject.
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 ENDPOINT="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
 EXISTING_KEYS_JSON=$(aws s3api list-objects-v2 \
@@ -94,17 +97,25 @@ echo "Deleting ${DELETE_COUNT} obsolete R2 object(s) across tag(s): ${OBSOLETE_T
 
 BATCH_SIZE=1000
 OFFSET=0
+ERROR_TOTAL=0
 while [[ "$OFFSET" -lt "$DELETE_COUNT" ]]; do
   PAYLOAD=$(jq -nc \
     --argjson keys "$OBSOLETE_KEYS_JSON" \
     --argjson offset "$OFFSET" \
     --argjson size "$BATCH_SIZE" \
     '{Objects: ($keys[$offset:($offset + $size)] | map({Key: .})), Quiet: true}')
-  aws s3api delete-objects \
+  DEL_OUT=$(aws s3api delete-objects \
     --bucket "$R2_BUCKET" \
     --endpoint-url "$ENDPOINT" \
-    --delete "$PAYLOAD" >/dev/null
+    --delete "$PAYLOAD" \
+    --output json)
+  ERR_COUNT=$(jq '(.Errors // []) | length' <<<"${DEL_OUT:-"{}"}")
+  if [[ "$ERR_COUNT" -gt 0 ]]; then
+    ERROR_TOTAL=$((ERROR_TOTAL + ERR_COUNT))
+    echo "::warning::r2-cleanup reported ${ERR_COUNT} deletion error(s):" >&2
+    jq -r '.Errors[] | "  \(.Key): \(.Code) \(.Message)"' <<<"$DEL_OUT" >&2
+  fi
   OFFSET=$((OFFSET + BATCH_SIZE))
 done
 
-echo "R2 cleanup complete (${DELETE_COUNT} object(s) deleted)"
+echo "R2 cleanup complete (${DELETE_COUNT} requested, ${ERROR_TOTAL} error(s))"

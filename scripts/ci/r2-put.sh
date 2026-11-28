@@ -97,6 +97,8 @@ upload_large_object() {
   AWS_SECRET_ACCESS_KEY="$secret_access_key" \
   AWS_SESSION_TOKEN="$session_token" \
   AWS_DEFAULT_REGION="auto" \
+  AWS_REQUEST_CHECKSUM_CALCULATION="when_required" \
+  AWS_RESPONSE_CHECKSUM_VALIDATION="when_required" \
     aws s3 cp "$FILE_PATH" "s3://${bucket}/${key}" \
       --endpoint-url "https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com" \
       --content-type "$CONTENT_TYPE" \
